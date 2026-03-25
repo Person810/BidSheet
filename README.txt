@@ -26,11 +26,13 @@ Getting Started
 Requires Node.js 20+ and C++ build tools (Visual Studio with "Desktop
 development with C++" on Windows, or build-essential on Linux).
 
-    git clone https://github.com/YOUR_USERNAME/utility-estimator.git
-    cd utility-estimator
+    git clone https://github.com/Person810/BidSheet.git
+    cd BidSheet
     npm install
-    npm run dev      (in one terminal)
-    npm start        (in another terminal)
+    npm run dev      (compiles main process + starts Vite renderer)
+
+    Then in a second terminal:
+    npm start        (launches the Electron app)
 
 To build installers:
 
