@@ -1,0 +1,57 @@
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose a safe API to the renderer process
+contextBridge.exposeInMainWorld('api', {
+  // ---- Materials ----
+  getMaterialCategories: () => ipcRenderer.invoke('db:material-categories:list'),
+  getMaterials: (categoryId?: number) => ipcRenderer.invoke('db:materials:list', categoryId),
+  getMaterial: (id: number) => ipcRenderer.invoke('db:materials:get', id),
+  saveMaterial: (material: any) => ipcRenderer.invoke('db:materials:save', material),
+  deleteMaterial: (id: number) => ipcRenderer.invoke('db:materials:delete', id),
+  updateMaterialPrice: (id: number, newPrice: number, source: string) =>
+    ipcRenderer.invoke('db:materials:update-price', id, newPrice, source),
+
+  // ---- Labor ----
+  getLaborRoles: () => ipcRenderer.invoke('db:labor-roles:list'),
+  saveLaborRole: (role: any) => ipcRenderer.invoke('db:labor-roles:save', role),
+  getCrewTemplates: () => ipcRenderer.invoke('db:crew-templates:list'),
+  getCrewTemplate: (id: number) => ipcRenderer.invoke('db:crew-templates:get', id),
+  saveCrewTemplate: (template: any) => ipcRenderer.invoke('db:crew-templates:save', template),
+  getProductionRates: () => ipcRenderer.invoke('db:production-rates:list'),
+  saveProductionRate: (rate: any) => ipcRenderer.invoke('db:production-rates:save', rate),
+
+  // ---- Equipment ----
+  getEquipment: () => ipcRenderer.invoke('db:equipment:list'),
+  saveEquipment: (equip: any) => ipcRenderer.invoke('db:equipment:save', equip),
+  deleteEquipment: (id: number) => ipcRenderer.invoke('db:equipment:delete', id),
+
+  // ---- Jobs / Bids ----
+  getJobs: (status?: string) => ipcRenderer.invoke('db:jobs:list', status),
+  getJob: (id: number) => ipcRenderer.invoke('db:jobs:get', id),
+  saveJob: (job: any) => ipcRenderer.invoke('db:jobs:save', job),
+  deleteJob: (id: number) => ipcRenderer.invoke('db:jobs:delete', id),
+  duplicateJob: (id: number) => ipcRenderer.invoke('db:jobs:duplicate', id),
+
+  getBidSections: (jobId: number) => ipcRenderer.invoke('db:bid-sections:list', jobId),
+  saveBidSection: (section: any) => ipcRenderer.invoke('db:bid-sections:save', section),
+  deleteBidSection: (id: number) => ipcRenderer.invoke('db:bid-sections:delete', id),
+
+  getBidLineItems: (sectionId: number) => ipcRenderer.invoke('db:line-items:list', sectionId),
+  saveBidLineItem: (item: any) => ipcRenderer.invoke('db:line-items:save', item),
+  deleteBidLineItem: (id: number) => ipcRenderer.invoke('db:line-items:delete', id),
+
+  getBidSummary: (jobId: number) => ipcRenderer.invoke('db:jobs:summary', jobId),
+
+  // ---- Settings ----
+  getSettings: () => ipcRenderer.invoke('db:settings:get'),
+  saveSettings: (settings: any) => ipcRenderer.invoke('db:settings:save', settings),
+
+  // ---- Setup ----
+  isSetupComplete: () => ipcRenderer.invoke('db:setup:is-complete'),
+  runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string) =>
+    ipcRenderer.invoke('db:setup:run', trades, includeBallparkPrices, companyName),
+
+  // ---- Import/Export ----
+  exportDatabase: () => ipcRenderer.invoke('db:export'),
+  importPriceSheet: (filePath: string) => ipcRenderer.invoke('db:import-prices', filePath),
+});
