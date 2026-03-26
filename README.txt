@@ -5,7 +5,7 @@ Free, open source construction estimating software for underground utility
 subcontractors. Build bid proposals for water, sewer, and civil work without
 paying for expensive proprietary tools.
 
-Everything runs locally on your machine. No account, no cloud, no subscriptions.
+Everything runs locally on your machine.
 
 What It Does
 ------------
