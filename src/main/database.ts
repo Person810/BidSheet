@@ -132,6 +132,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 1) {
     migrateV1(db);
   }
+  if (version < 2) {
+    migrateV2(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -295,4 +298,82 @@ function migrateV1(db: Database.Database): void {
     INSERT INTO app_settings (id, company_name) VALUES (1, '');
     INSERT INTO schema_version (version) VALUES (1);
   `);
+}
+
+// V2: Add aliases columns for fuzzy search on all catalog tables
+function migrateV2(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE materials ADD COLUMN aliases TEXT;
+    ALTER TABLE labor_roles ADD COLUMN aliases TEXT;
+    ALTER TABLE crew_templates ADD COLUMN aliases TEXT;
+    ALTER TABLE production_rates ADD COLUMN aliases TEXT;
+    ALTER TABLE equipment ADD COLUMN aliases TEXT;
+
+    INSERT INTO schema_version (version) VALUES (2);
+  `);
+
+  // Seed common aliases for standard fittings and items
+  const aliasMap: Record<string, string> = {
+    // Bends = elbows
+    '90° Bend': 'elbow, quarter bend, 90 degree, 90 elbow',
+    '45° Bend': 'elbow, eighth bend, 45 degree, 45 elbow',
+    // Tees = T junctions
+    'Tee': 't junction, t fitting, branch, tee fitting',
+    'Wye': 'y fitting, y junction, wye fitting, lateral',
+    // Reducers
+    'Reducer': 'bushing, reducing coupling, step down',
+    // Couplings
+    'Coupling': 'union, connector, joiner',
+    // Caps
+    'Cap': 'end cap, plug, dead end',
+    // Valves
+    'Gate Valve': 'shutoff valve, isolation valve, gate',
+    'Butterfly Valve': 'BFV, throttle valve',
+    'Check Valve': 'backflow preventer, non-return valve',
+    'Ball Valve': 'shutoff, quarter turn valve',
+    // Cleanout
+    'Cleanout': 'CO, access point, clean out, sweep',
+    // Manholes
+    'Manhole': 'MH, access structure, maintenance hole',
+    // Hydrants
+    'Fire Hydrant': 'FH, hydrant, fire plug',
+    // Service materials
+    'Corp Stop': 'corporation stop, corp valve, tap valve',
+    'Curb Stop': 'curb valve, service valve',
+    // Pipe terms
+    'SDR-35': 'gravity sewer, sewer pipe',
+    'C900': 'pressure pipe, water main pipe',
+    'DI Pipe': 'ductile iron, DIP, DI, iron pipe',
+    'HDPE': 'poly pipe, polyethylene, PE pipe, fusion pipe',
+    // Bedding/backfill
+    '#57 Stone': 'number 57, no 57, bedding stone, clean stone',
+    'Pea Gravel': 'pea rock, small gravel',
+    'Select Fill': 'select backfill, approved fill, borrow',
+    'Flowable Fill': 'CLSM, controlled low strength, slurry',
+    // Shoring
+    'Trench Box': 'trench shield, shoring box, shield',
+    // Equipment
+    'Excavator': 'trackhoe, track hoe, digger',
+    'Backhoe': 'loader backhoe, TLB, rubber tire',
+    'Skid Steer': 'bobcat, skid loader, SSL',
+    'Compactor': 'tamper, plate tamper, whacker, wacker',
+    'Dump Truck': 'haul truck, rock truck',
+    'Lowboy': 'low boy, equipment trailer, flatbed',
+    // Labor
+    'Operator': 'equipment operator, heavy equipment operator, opr',
+    'Pipe Layer': 'pipelayer, pipe fitter, pipe man',
+    'Laborer': 'helper, general labor, hand',
+    'Foreman': 'crew lead, crew leader, supervisor, boss',
+    'Teamster': 'truck driver, driver, CDL driver',
+  };
+
+  const updateMat = db.prepare('UPDATE materials SET aliases = ? WHERE name LIKE ?');
+  const updateEquip = db.prepare('UPDATE equipment SET aliases = ? WHERE name LIKE ?');
+  const updateRole = db.prepare('UPDATE labor_roles SET aliases = ? WHERE name LIKE ?');
+
+  for (const [pattern, aliases] of Object.entries(aliasMap)) {
+    updateMat.run(aliases, `%${pattern}%`);
+    updateEquip.run(aliases, `%${pattern}%`);
+    updateRole.run(aliases, `%${pattern}%`);
+  }
 }

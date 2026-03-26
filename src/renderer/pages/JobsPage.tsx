@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  FuzzyAutocomplete,
+  materialsToAutocomplete,
+  crewsToAutocomplete,
+  productionRatesToAutocomplete,
+  equipmentToAutocomplete,
+} from '../components/FuzzyAutocomplete';
 
 type View = 'list' | 'detail';
 
@@ -214,6 +221,12 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
   const [equipment, setEquipment] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
 
+  // Memoized autocomplete item lists
+  const materialItems = useMemo(() => materialsToAutocomplete(materials), [materials]);
+  const crewItems = useMemo(() => crewsToAutocomplete(crews), [crews]);
+  const rateItems = useMemo(() => productionRatesToAutocomplete(productionRates), [productionRates]);
+  const equipmentItems = useMemo(() => equipmentToAutocomplete(equipment), [equipment]);
+
   const loadJob = useCallback(async () => {
     const [j, s, mats, cr, pr, eq, set] = await Promise.all([
       window.api.getJob(jobId),
@@ -326,57 +339,62 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
   };
 
   // ---- Material picker handler ----
-  const onMaterialSelect = (materialId: number) => {
-    const mat = materials.find((m: any) => m.id === materialId);
-    if (mat) {
-      setLineForm((prev) => ({
-        ...prev,
-        materialId: mat.id,
-        materialUnitCost: mat.default_unit_cost,
-        description: prev.description || mat.name,
-        unit: mat.unit,
-      }));
+  const onMaterialSelect = (item: any) => {
+    if (item) {
+      const mat = materials.find((m: any) => m.id === item.id);
+      if (mat) {
+        setLineForm((prev) => ({
+          ...prev,
+          materialId: mat.id,
+          materialUnitCost: mat.default_unit_cost,
+          description: prev.description || mat.name,
+          unit: mat.unit,
+        }));
+      }
     } else {
       setLineForm((prev) => ({ ...prev, materialId: 0 }));
     }
   };
 
   // ---- Crew picker handler ----
-  const onCrewSelect = (crewId: number) => {
-    const crew = crews.find((c: any) => c.id === crewId);
-    if (crew) {
-      const costPerHour = crew.members.reduce(
-        (sum: number, m: any) => sum + m.quantity * m.default_hourly_rate * m.burden_multiplier, 0
-      );
-      setLineForm((prev) => ({
-        ...prev,
-        crewTemplateId: crew.id,
-        laborCostPerHour: costPerHour,
-      }));
+  const onCrewSelect = (item: any) => {
+    if (item) {
+      const crew = crews.find((c: any) => c.id === item.id);
+      if (crew) {
+        const costPerHour = crew.members.reduce(
+          (sum: number, m: any) => sum + m.quantity * m.default_hourly_rate * m.burden_multiplier, 0
+        );
+        setLineForm((prev) => ({
+          ...prev,
+          crewTemplateId: crew.id,
+          laborCostPerHour: costPerHour,
+        }));
+      }
     } else {
       setLineForm((prev) => ({ ...prev, crewTemplateId: 0 }));
     }
   };
 
   // ---- Production rate picker handler ----
-  const onProductionRateSelect = (rateId: number) => {
-    const rate = productionRates.find((r: any) => r.id === rateId);
-    if (rate) {
-      const hours = rate.rate_per_hour > 0 ? lineForm.quantity / rate.rate_per_hour : 0;
-      // Also auto-select the crew for this production rate
-      const crew = crews.find((c: any) => c.id === rate.crew_template_id);
-      const costPerHour = crew
-        ? crew.members.reduce(
-            (sum: number, m: any) => sum + m.quantity * m.default_hourly_rate * m.burden_multiplier, 0
-          )
-        : lineForm.laborCostPerHour;
-      setLineForm((prev) => ({
-        ...prev,
-        productionRateId: rate.id,
-        crewTemplateId: rate.crew_template_id,
-        laborHours: Math.round(hours * 10) / 10,
-        laborCostPerHour: costPerHour,
-      }));
+  const onProductionRateSelect = (item: any) => {
+    if (item) {
+      const rate = productionRates.find((r: any) => r.id === item.id);
+      if (rate) {
+        const hours = rate.rate_per_hour > 0 ? lineForm.quantity / rate.rate_per_hour : 0;
+        const crew = crews.find((c: any) => c.id === rate.crew_template_id);
+        const costPerHour = crew
+          ? crew.members.reduce(
+              (sum: number, m: any) => sum + m.quantity * m.default_hourly_rate * m.burden_multiplier, 0
+            )
+          : lineForm.laborCostPerHour;
+        setLineForm((prev) => ({
+          ...prev,
+          productionRateId: rate.id,
+          crewTemplateId: rate.crew_template_id,
+          laborHours: Math.round(hours * 10) / 10,
+          laborCostPerHour: costPerHour,
+        }));
+      }
     } else {
       setLineForm((prev) => ({ ...prev, productionRateId: 0 }));
     }
@@ -394,14 +412,16 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
   };
 
   // ---- Equipment picker handler ----
-  const onEquipmentSelect = (equipId: number) => {
-    const eq = equipment.find((e: any) => e.id === equipId);
-    if (eq) {
-      setLineForm((prev) => ({
-        ...prev,
-        equipmentCostPerHour: eq.hourly_rate,
-        equipmentHours: prev.laborHours || prev.equipmentHours, // default to same as labor hours
-      }));
+  const onEquipmentSelect = (item: any) => {
+    if (item) {
+      const eq = equipment.find((e: any) => e.id === item.id);
+      if (eq) {
+        setLineForm((prev) => ({
+          ...prev,
+          equipmentCostPerHour: eq.hourly_rate,
+          equipmentHours: prev.laborHours || prev.equipmentHours,
+        }));
+      }
     }
   };
 
@@ -636,15 +656,14 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
               <div className="form-row">
                 <div className="form-group" style={{ flex: 2 }}>
                   <label>Pick from Catalog (optional)</label>
-                  <select className="form-control" value={lineForm.materialId}
-                    onChange={(e) => onMaterialSelect(parseInt(e.target.value))}>
-                    <option value={0}>-- Manual entry --</option>
-                    {materials.map((m: any) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.unit}) - ${m.default_unit_cost.toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
+                  <FuzzyAutocomplete
+                    items={materialItems}
+                    value={lineForm.materialId || null}
+                    onSelect={(item) => onMaterialSelect(item)}
+                    placeholder="Search materials... (e.g. 8 pvc, bend, tee)"
+                    allowManualEntry
+                    manualEntryLabel="-- Manual entry --"
+                  />
                 </div>
                 <div className="form-group">
                   <label>Unit Cost ($)</label>
@@ -665,32 +684,25 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
               <div className="form-row">
                 <div className="form-group">
                   <label>Production Rate (optional)</label>
-                  <select className="form-control" value={lineForm.productionRateId}
-                    onChange={(e) => onProductionRateSelect(parseInt(e.target.value))}>
-                    <option value={0}>-- Manual entry --</option>
-                    {productionRates.map((r: any) => (
-                      <option key={r.id} value={r.id}>
-                        {r.description} ({r.rate_per_hour} {r.unit}/hr)
-                      </option>
-                    ))}
-                  </select>
+                  <FuzzyAutocomplete
+                    items={rateItems}
+                    value={lineForm.productionRateId || null}
+                    onSelect={(item) => onProductionRateSelect(item)}
+                    placeholder="Search production rates..."
+                    allowManualEntry
+                    manualEntryLabel="-- Manual entry --"
+                  />
                 </div>
                 <div className="form-group">
                   <label>Crew</label>
-                  <select className="form-control" value={lineForm.crewTemplateId}
-                    onChange={(e) => onCrewSelect(parseInt(e.target.value))}>
-                    <option value={0}>-- Manual entry --</option>
-                    {crews.map((c: any) => {
-                      const cost = c.members.reduce(
-                        (s: number, m: any) => s + m.quantity * m.default_hourly_rate * m.burden_multiplier, 0
-                      );
-                      return (
-                        <option key={c.id} value={c.id}>
-                          {c.name} (${cost.toFixed(2)}/hr)
-                        </option>
-                      );
-                    })}
-                  </select>
+                  <FuzzyAutocomplete
+                    items={crewItems}
+                    value={lineForm.crewTemplateId || null}
+                    onSelect={(item) => onCrewSelect(item)}
+                    placeholder="Search crews..."
+                    allowManualEntry
+                    manualEntryLabel="-- Manual entry --"
+                  />
                 </div>
               </div>
               <div className="form-row">
@@ -724,15 +736,14 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
               <div className="form-row">
                 <div className="form-group">
                   <label>Pick Equipment (optional)</label>
-                  <select className="form-control" defaultValue={0}
-                    onChange={(e) => onEquipmentSelect(parseInt(e.target.value))}>
-                    <option value={0}>-- Manual entry --</option>
-                    {equipment.map((eq: any) => (
-                      <option key={eq.id} value={eq.id}>
-                        {eq.name} (${eq.hourly_rate.toFixed(2)}/hr)
-                      </option>
-                    ))}
-                  </select>
+                  <FuzzyAutocomplete
+                    items={equipmentItems}
+                    value={null}
+                    onSelect={(item) => onEquipmentSelect(item)}
+                    placeholder="Search equipment... (e.g. excavator, backhoe)"
+                    allowManualEntry
+                    manualEntryLabel="-- Manual entry --"
+                  />
                 </div>
               </div>
               <div className="form-row">

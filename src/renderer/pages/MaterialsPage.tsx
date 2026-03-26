@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+  FuzzyAutocomplete,
+  categoriesToAutocomplete,
+} from '../components/FuzzyAutocomplete';
 
 interface Category {
   id: number;
@@ -18,6 +22,7 @@ interface Material {
   last_price_update: string;
   notes: string | null;
   is_active: number;
+  aliases: string | null;
 }
 
 const EMPTY_MATERIAL = {
@@ -28,6 +33,7 @@ const EMPTY_MATERIAL = {
   supplier: '',
   partNumber: '',
   notes: '',
+  aliases: '',
   categoryId: 0,
   isActive: true,
 };
@@ -70,7 +76,8 @@ export function MaterialsPage() {
     searchTerm
       ? m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.supplier || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.part_number || '').toLowerCase().includes(searchTerm.toLowerCase())
+        (m.part_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.aliases || '').toLowerCase().includes(searchTerm.toLowerCase())
       : true
   );
 
@@ -90,6 +97,7 @@ export function MaterialsPage() {
       supplier: mat.supplier || '',
       partNumber: mat.part_number || '',
       notes: mat.notes || '',
+      aliases: mat.aliases || '',
       categoryId: mat.category_id,
       isActive: mat.is_active === 1,
     });
@@ -106,6 +114,7 @@ export function MaterialsPage() {
       supplier: form.supplier || null,
       partNumber: form.partNumber || null,
       notes: form.notes || null,
+      aliases: form.aliases || null,
       categoryId: form.categoryId,
       isActive: form.isActive,
     };
@@ -133,10 +142,7 @@ export function MaterialsPage() {
     return val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  const categoryCount = (catId: number) => {
-    // We only have current filtered list, so show total for "all" view
-    return materials.filter((m) => m.category_id === catId).length;
-  };
+  const categoryItems = categoriesToAutocomplete(categories);
 
   return (
     <div className="materials-layout">
@@ -282,17 +288,16 @@ export function MaterialsPage() {
               </div>
               <div className="form-group">
                 <label>Category</label>
-                <select
-                  className="form-control"
-                  value={form.categoryId}
-                  onChange={(e) => setForm({ ...form, categoryId: parseInt(e.target.value) })}
-                >
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                <FuzzyAutocomplete
+                  items={categoryItems}
+                  value={form.categoryId || null}
+                  onSelect={(item) => {
+                    if (item) {
+                      setForm({ ...form, categoryId: item.id as number });
+                    }
+                  }}
+                  placeholder="Search categories..."
+                />
               </div>
             </div>
             <div className="form-row">
@@ -351,6 +356,19 @@ export function MaterialsPage() {
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
               />
+            </div>
+            <div className="form-group">
+              <label>Also Known As (aliases for search)</label>
+              <input
+                type="text"
+                className="form-control"
+                value={form.aliases}
+                onChange={(e) => setForm({ ...form, aliases: e.target.value })}
+                placeholder="e.g. elbow, quarter bend, 90 degree (comma separated)"
+              />
+              <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Comma-separated alternative names — helps find this item when typing different terms
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>

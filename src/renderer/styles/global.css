@@ -641,6 +641,137 @@ body {
 }
 
 /* ============================================================
+   FUZZY AUTOCOMPLETE
+   ============================================================ */
+
+.fuzzy-autocomplete {
+  position: relative;
+  width: 100%;
+}
+
+.fuzzy-input-wrap {
+  position: relative;
+}
+
+.fuzzy-input {
+  padding-right: 28px !important;
+}
+
+.fuzzy-clear-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.fuzzy-clear-btn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.fuzzy-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 600;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 2px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.fuzzy-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.fuzzy-item:last-child {
+  border-bottom: none;
+}
+
+.fuzzy-item:hover,
+.fuzzy-active {
+  background: var(--bg-hover);
+}
+
+.fuzzy-item-left {
+  min-width: 0;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.fuzzy-item-label {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fuzzy-item-sublabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.fuzzy-item-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.fuzzy-item-detail {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.fuzzy-item-detail-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.fuzzy-manual {
+  border-bottom: 1px solid var(--accent);
+}
+
+.fuzzy-manual-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.fuzzy-no-results {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ============================================================
    PRINT STYLES
    ============================================================ */
 
@@ -775,5 +906,10 @@ body {
     border-top: 2px solid #111;
     border-bottom: none;
     font-size: 14px;
+  }
+
+  .fuzzy-autocomplete,
+  .fuzzy-dropdown {
+    display: none !important;
   }
 }

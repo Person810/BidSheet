@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+  FuzzyAutocomplete,
+  laborRolesToAutocomplete,
+  crewsToAutocomplete,
+} from '../components/FuzzyAutocomplete';
 
 // ---- Types ----
 
@@ -8,6 +13,7 @@ interface LaborRole {
   default_hourly_rate: number;
   burden_multiplier: number;
   notes: string | null;
+  aliases: string | null;
 }
 
 interface CrewMember {
@@ -103,11 +109,11 @@ export function LaborPage() {
 function LaborRolesTab({ roles, onRefresh }: { roles: LaborRole[]; onRefresh: () => void }) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<LaborRole | null>(null);
-  const [form, setForm] = useState({ name: '', defaultHourlyRate: 0, burdenMultiplier: 1.35, notes: '' });
+  const [form, setForm] = useState({ name: '', defaultHourlyRate: 0, burdenMultiplier: 1.35, notes: '', aliases: '' });
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: '', defaultHourlyRate: 0, burdenMultiplier: 1.35, notes: '' });
+    setForm({ name: '', defaultHourlyRate: 0, burdenMultiplier: 1.35, notes: '', aliases: '' });
     setShowModal(true);
   };
 
@@ -118,6 +124,7 @@ function LaborRolesTab({ roles, onRefresh }: { roles: LaborRole[]; onRefresh: ()
       defaultHourlyRate: role.default_hourly_rate,
       burdenMultiplier: role.burden_multiplier,
       notes: role.notes || '',
+      aliases: role.aliases || '',
     });
     setShowModal(true);
   };
@@ -257,6 +264,19 @@ function LaborRolesTab({ roles, onRefresh }: { roles: LaborRole[]; onRefresh: ()
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </div>
+            <div className="form-group">
+              <label>Also Known As (aliases for search)</label>
+              <input
+                type="text"
+                className="form-control"
+                value={form.aliases}
+                onChange={(e) => setForm({ ...form, aliases: e.target.value })}
+                placeholder="e.g. equipment operator, heavy equipment operator, opr"
+              />
+              <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Comma-separated alternative names for fuzzy search
+              </div>
+            </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim()}>
@@ -286,6 +306,8 @@ function CrewTemplatesTab({
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<CrewTemplate | null>(null);
   const [form, setForm] = useState({ name: '', description: '', members: [] as { laborRoleId: number; quantity: number }[] });
+
+  const roleItems = laborRolesToAutocomplete(roles);
 
   const openAdd = () => {
     setEditing(null);
@@ -441,18 +463,18 @@ function CrewTemplatesTab({
                       min="1"
                     />
                     <span style={{ fontSize: 13 }}>×</span>
-                    <select
-                      className="form-control"
-                      style={{ flex: 1 }}
-                      value={member.laborRoleId}
-                      onChange={(e) => updateMember(i, 'laborRoleId', parseInt(e.target.value))}
-                    >
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.name} (${(role.default_hourly_rate * role.burden_multiplier).toFixed(2)}/hr)
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ flex: 1 }}>
+                      <FuzzyAutocomplete
+                        items={roleItems}
+                        value={member.laborRoleId}
+                        onSelect={(item) => {
+                          if (item) {
+                            updateMember(i, 'laborRoleId', item.id as number);
+                          }
+                        }}
+                        placeholder="Search roles..."
+                      />
+                    </div>
                     <button className="btn btn-sm btn-secondary" onClick={() => removeMember(i)}>
                       ×
                     </button>
@@ -504,6 +526,7 @@ function ProductionRatesTab({
   });
 
   const UNITS = ['LF', 'EA', 'CY', 'VF', 'SY', 'TON'];
+  const crewItems = crewsToAutocomplete(crews);
 
   const openAdd = () => {
     setEditing(null);
@@ -623,17 +646,16 @@ function ProductionRatesTab({
             <div className="form-row">
               <div className="form-group">
                 <label>Crew</label>
-                <select
-                  className="form-control"
-                  value={form.crewTemplateId}
-                  onChange={(e) => setForm({ ...form, crewTemplateId: parseInt(e.target.value) })}
-                >
-                  {crews.map((crew) => (
-                    <option key={crew.id} value={crew.id}>
-                      {crew.name}
-                    </option>
-                  ))}
-                </select>
+                <FuzzyAutocomplete
+                  items={crewItems}
+                  value={form.crewTemplateId || null}
+                  onSelect={(item) => {
+                    if (item) {
+                      setForm({ ...form, crewTemplateId: item.id as number });
+                    }
+                  }}
+                  placeholder="Search crews..."
+                />
               </div>
               <div className="form-group">
                 <label>Unit</label>

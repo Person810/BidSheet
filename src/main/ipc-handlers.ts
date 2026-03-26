@@ -52,25 +52,25 @@ export function registerIpcHandlers(db: Database.Database): void {
           `UPDATE materials SET
             category_id = ?, name = ?, description = ?, unit = ?,
             default_unit_cost = ?, supplier = ?, part_number = ?,
-            last_price_update = datetime('now'), notes = ?, is_active = ?
+            last_price_update = datetime('now'), notes = ?, aliases = ?, is_active = ?
           WHERE id = ?`
         )
         .run(
           material.categoryId, material.name, material.description,
           material.unit, material.defaultUnitCost, material.supplier,
-          material.partNumber, material.notes, material.isActive ? 1 : 0,
-          material.id
+          material.partNumber, material.notes, material.aliases || null,
+          material.isActive ? 1 : 0, material.id
         );
     } else {
       return db
         .prepare(
-          `INSERT INTO materials (category_id, name, description, unit, default_unit_cost, supplier, part_number, notes, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+          `INSERT INTO materials (category_id, name, description, unit, default_unit_cost, supplier, part_number, notes, aliases, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
         )
         .run(
           material.categoryId, material.name, material.description,
           material.unit, material.defaultUnitCost, material.supplier,
-          material.partNumber, material.notes
+          material.partNumber, material.notes, material.aliases || null
         );
     }
   });
@@ -114,15 +114,15 @@ export function registerIpcHandlers(db: Database.Database): void {
     if (role.id) {
       return db
         .prepare(
-          `UPDATE labor_roles SET name = ?, default_hourly_rate = ?, burden_multiplier = ?, notes = ? WHERE id = ?`
+          `UPDATE labor_roles SET name = ?, default_hourly_rate = ?, burden_multiplier = ?, notes = ?, aliases = ? WHERE id = ?`
         )
-        .run(role.name, role.defaultHourlyRate, role.burdenMultiplier, role.notes, role.id);
+        .run(role.name, role.defaultHourlyRate, role.burdenMultiplier, role.notes, role.aliases || null, role.id);
     } else {
       return db
         .prepare(
-          `INSERT INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes) VALUES (?, ?, ?, ?)`
+          `INSERT INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, aliases) VALUES (?, ?, ?, ?, ?)`
         )
-        .run(role.name, role.defaultHourlyRate, role.burdenMultiplier, role.notes);
+        .run(role.name, role.defaultHourlyRate, role.burdenMultiplier, role.notes, role.aliases || null);
     }
   });
 
@@ -235,23 +235,23 @@ export function registerIpcHandlers(db: Database.Database): void {
       return db
         .prepare(
           `UPDATE equipment SET name = ?, category = ?, hourly_rate = ?, daily_rate = ?,
-            mobilization_cost = ?, fuel_cost_per_hour = ?, notes = ?, is_owned = ?, is_active = ?
+            mobilization_cost = ?, fuel_cost_per_hour = ?, notes = ?, aliases = ?, is_owned = ?, is_active = ?
           WHERE id = ?`
         )
         .run(
           equip.name, equip.category, equip.hourlyRate, equip.dailyRate,
-          equip.mobilizationCost, equip.fuelCostPerHour, equip.notes,
+          equip.mobilizationCost, equip.fuelCostPerHour, equip.notes, equip.aliases || null,
           equip.isOwned ? 1 : 0, equip.isActive ? 1 : 0, equip.id
         );
     } else {
       return db
         .prepare(
-          `INSERT INTO equipment (name, category, hourly_rate, daily_rate, mobilization_cost, fuel_cost_per_hour, notes, is_owned)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO equipment (name, category, hourly_rate, daily_rate, mobilization_cost, fuel_cost_per_hour, notes, aliases, is_owned)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           equip.name, equip.category, equip.hourlyRate, equip.dailyRate,
-          equip.mobilizationCost, equip.fuelCostPerHour, equip.notes,
+          equip.mobilizationCost, equip.fuelCostPerHour, equip.notes, equip.aliases || null,
           equip.isOwned ? 1 : 0
         );
     }

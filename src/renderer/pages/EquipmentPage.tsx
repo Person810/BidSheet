@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+  FuzzyAutocomplete,
+  simpleListToAutocomplete,
+} from '../components/FuzzyAutocomplete';
 
 interface EquipmentItem {
   id: number;
@@ -11,6 +15,7 @@ interface EquipmentItem {
   notes: string | null;
   is_owned: number;
   is_active: number;
+  aliases: string | null;
 }
 
 const EMPTY_FORM = {
@@ -21,6 +26,7 @@ const EMPTY_FORM = {
   mobilizationCost: 0,
   fuelCostPerHour: '',
   notes: '',
+  aliases: '',
   isOwned: true,
   isActive: true,
 };
@@ -53,12 +59,15 @@ export function EquipmentPage() {
     const matchesSearch =
       !searchTerm ||
       e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.category.toLowerCase().includes(searchTerm.toLowerCase());
+      e.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.aliases || '').toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
   // Get unique categories from actual data for filter buttons
   const usedCategories = [...new Set(equipment.map((e) => e.category))].sort();
+
+  const categoryItems = simpleListToAutocomplete(CATEGORIES);
 
   const openAdd = () => {
     setEditing(null);
@@ -76,6 +85,7 @@ export function EquipmentPage() {
       mobilizationCost: item.mobilization_cost,
       fuelCostPerHour: item.fuel_cost_per_hour != null ? String(item.fuel_cost_per_hour) : '',
       notes: item.notes || '',
+      aliases: item.aliases || '',
       isOwned: item.is_owned === 1,
       isActive: item.is_active === 1,
     });
@@ -92,6 +102,7 @@ export function EquipmentPage() {
       mobilizationCost: form.mobilizationCost,
       fuelCostPerHour: form.fuelCostPerHour ? parseFloat(form.fuelCostPerHour) : null,
       notes: form.notes || null,
+      aliases: form.aliases || null,
       isOwned: form.isOwned,
       isActive: form.isActive,
     };
@@ -276,18 +287,16 @@ export function EquipmentPage() {
               </div>
               <div className="form-group">
                 <label>Category</label>
-                <select
-                  className="form-control"
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                >
-                  <option value="">Select...</option>
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
+                <FuzzyAutocomplete
+                  items={categoryItems}
+                  value={form.category || null}
+                  onSelect={(item) => {
+                    if (item) {
+                      setForm({ ...form, category: item.id as string });
+                    }
+                  }}
+                  placeholder="Search or pick a category..."
+                />
               </div>
             </div>
             <div className="form-row">
@@ -349,6 +358,19 @@ export function EquipmentPage() {
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 placeholder="e.g. 20-ton class, good for mainline work"
               />
+            </div>
+            <div className="form-group">
+              <label>Also Known As (aliases for search)</label>
+              <input
+                type="text"
+                className="form-control"
+                value={form.aliases}
+                onChange={(e) => setForm({ ...form, aliases: e.target.value })}
+                placeholder="e.g. trackhoe, track hoe, digger"
+              />
+              <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Comma-separated alternative names for fuzzy search
+              </div>
             </div>
             <div className="form-group">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', textTransform: 'none', letterSpacing: 'normal', fontSize: 13 }}>
