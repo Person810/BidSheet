@@ -43,7 +43,7 @@ interface FormItem {
   notes: string;
 }
 
-const UNITS = ['LF', 'EA', 'CY', 'SY', 'TON', 'VF', 'LS', 'GAL', 'SF', 'HR'];
+const UNITS = ['LF', 'EA', 'CYD', 'SY', 'TON', 'VF', 'LS', 'GAL', 'SF', 'HR'];
 
 const EMPTY_FORM = {
   name: '',

@@ -525,7 +525,7 @@ function ProductionRatesTab({
     notes: '',
   });
 
-  const UNITS = ['LF', 'EA', 'CY', 'VF', 'SY', 'TON'];
+  const UNITS = ['LF', 'EA', 'CYD', 'VF', 'SY', 'TON'];
   const crewItems = crewsToAutocomplete(crews);
 
   const openAdd = () => {

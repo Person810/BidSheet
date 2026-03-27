@@ -146,13 +146,13 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { category: 'Bedding & Backfill', name: 'Pea Gravel', unit: 'TON', ballparkPrice: 32.00 },
       { category: 'Bedding & Backfill', name: 'Sand (bedding/haunching)', unit: 'TON', ballparkPrice: 18.00 },
       { category: 'Bedding & Backfill', name: 'Select Fill', unit: 'TON', ballparkPrice: 12.00 },
-      { category: 'Bedding & Backfill', name: 'Flowable Fill', unit: 'CY', ballparkPrice: 145.00 },
+      { category: 'Bedding & Backfill', name: 'Flowable Fill', unit: 'CYD', ballparkPrice: 145.00 },
       { category: 'Bedding & Backfill', name: 'Crushed Limestone Base', unit: 'TON', ballparkPrice: 22.00 },
       { category: 'Bedding & Backfill', name: 'Geotextile Fabric', unit: 'SY', ballparkPrice: 1.75 },
 
       // Concrete
-      { category: 'Concrete', name: 'Ready Mix Concrete (3000 psi)', unit: 'CY', ballparkPrice: 165.00 },
-      { category: 'Concrete', name: 'Ready Mix Concrete (4000 psi)', unit: 'CY', ballparkPrice: 180.00 },
+      { category: 'Concrete', name: 'Ready Mix Concrete (3000 psi)', unit: 'CYD', ballparkPrice: 165.00 },
+      { category: 'Concrete', name: 'Ready Mix Concrete (4000 psi)', unit: 'CYD', ballparkPrice: 180.00 },
       { category: 'Concrete', name: 'Thrust Block (formed)', unit: 'EA', ballparkPrice: 85.00, description: 'Labor + material per block' },
       { category: 'Concrete', name: 'Concrete Cradle/Encasement (per LF)', unit: 'LF', ballparkPrice: 25.00 },
       { category: 'Concrete', name: '#4 Rebar', unit: 'LF', ballparkPrice: 0.75 },

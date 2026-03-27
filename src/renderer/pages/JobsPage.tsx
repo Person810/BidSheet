@@ -717,7 +717,7 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
                 <label>Unit</label>
                 <select className="form-control" value={lineForm.unit}
                   onChange={(e) => setLineForm({ ...lineForm, unit: e.target.value })}>
-                  {['LF', 'EA', 'CY', 'SY', 'TON', 'VF', 'LS', 'HR', 'SF', 'GAL'].map((u) => (
+                  {['LF', 'EA', 'CYD', 'SY', 'TON', 'VF', 'LS', 'HR', 'SF', 'GAL'].map((u) => (
                     <option key={u} value={u}>{u}</option>
                   ))}
                 </select>

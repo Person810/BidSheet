@@ -39,7 +39,7 @@ const EMPTY_MATERIAL = {
   isActive: true,
 };
 
-const UNITS = ['LF', 'EA', 'CY', 'SY', 'TON', 'VF', 'LS', 'GAL', 'SF', 'HR'];
+const UNITS = ['LF', 'EA', 'CYD', 'SY', 'TON', 'VF', 'LS', 'GAL', 'SF', 'HR'];
 
 export function MaterialsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
