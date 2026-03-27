@@ -7,6 +7,26 @@ import {
   equipmentToAutocomplete,
 } from '../components/FuzzyAutocomplete';
 
+// In-app confirm dialog — replaces native confirm() which steals
+// focus from Electron's renderer and leaves inputs unresponsive.
+function ConfirmDialog({ message, onYes, onNo }: {
+  message: string; onYes: () => void; onNo: () => void;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onNo} style={{ zIndex: 10000 }}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
+        <h3>Confirm</h3>
+        <p style={{ margin: '16px 0 24px', lineHeight: 1.5 }}>{message}</p>
+        <div className="modal-actions">
+          <button className="btn btn-secondary" onClick={onNo} autoFocus>Cancel</button>
+          <button className="btn btn-primary" onClick={onYes}
+            style={{ background: 'var(--danger, #ef4444)' }}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type View = 'list' | 'detail';
 
 export function JobsPage() {
@@ -65,11 +85,17 @@ function JobList({ onOpenJob }: { onOpenJob: (id: number) => void }) {
     loadJobs();
   };
 
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+
   const handleDelete = async (id: number) => {
-    if (confirm('Delete this job and all its bid data? This cannot be undone.')) {
-      await window.api.deleteJob(id);
-      loadJobs();
-    }
+    setConfirmState({
+      msg: 'Delete this job and all its bid data? This cannot be undone.',
+      onYes: async () => {
+        setConfirmState(null);
+        await window.api.deleteJob(id);
+        loadJobs();
+      },
+    });
   };
 
   const handleDuplicate = async (id: number) => {
@@ -148,6 +174,11 @@ function JobList({ onOpenJob }: { onOpenJob: (id: number) => void }) {
         </tbody>
       </table>
 
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
+      )}
+
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -220,6 +251,13 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
   const [productionRates, setProductionRates] = useState<any[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
+  const [assemblies, setAssemblies] = useState<any[]>([]);
+
+  // Assembly picker state
+  const [showAssemblyPicker, setShowAssemblyPicker] = useState(false);
+  const [assemblySectionId, setAssemblySectionId] = useState<number | null>(null);
+  const [selectedAssemblyId, setSelectedAssemblyId] = useState<number | null>(null);
+  const [assemblyQty, setAssemblyQty] = useState(1);
 
   // Memoized autocomplete item lists
   const materialItems = useMemo(() => materialsToAutocomplete(materials), [materials]);
@@ -228,7 +266,7 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
   const equipmentItems = useMemo(() => equipmentToAutocomplete(equipment), [equipment]);
 
   const loadJob = useCallback(async () => {
-    const [j, s, mats, cr, pr, eq, set] = await Promise.all([
+    const [j, s, mats, cr, pr, eq, set, asm] = await Promise.all([
       window.api.getJob(jobId),
       window.api.getBidSections(jobId),
       window.api.getMaterials(),
@@ -236,6 +274,7 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
       window.api.getProductionRates(),
       window.api.getEquipment(),
       window.api.getSettings(),
+      window.api.getAssemblies(),
     ]);
     setJob(j);
     setSections(s);
@@ -244,6 +283,7 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
     setProductionRates(pr);
     setEquipment(eq);
     setSettings(set);
+    setAssemblies(asm);
     const items: Record<number, any[]> = {};
     for (const sec of s) {
       items[sec.id] = await window.api.getBidLineItems(sec.id);
@@ -270,11 +310,17 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
     loadJob();
   };
 
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+
   const deleteSection = async (id: number) => {
-    if (confirm('Delete this section and all its line items?')) {
-      await window.api.deleteBidSection(id);
-      loadJob();
-    }
+    setConfirmState({
+      msg: 'Delete this section and all its line items?',
+      onYes: async () => {
+        setConfirmState(null);
+        await window.api.deleteBidSection(id);
+        loadJob();
+      },
+    });
   };
 
   // ---- Line Items ----
@@ -332,10 +378,54 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
   };
 
   const deleteLineItem = async (id: number) => {
-    if (confirm('Delete this line item?')) {
-      await window.api.deleteBidLineItem(id);
-      loadJob();
+    setConfirmState({
+      msg: 'Delete this line item?',
+      onYes: async () => {
+        setConfirmState(null);
+        await window.api.deleteBidLineItem(id);
+        loadJob();
+      },
+    });
+  };
+
+  // ---- Assembly picker ----
+  const openAssemblyPicker = (sectionId: number) => {
+    setAssemblySectionId(sectionId);
+    setSelectedAssemblyId(null);
+    setAssemblyQty(1);
+    setShowAssemblyPicker(true);
+  };
+
+  const addAssemblyToSection = async () => {
+    if (!selectedAssemblyId || !assemblySectionId) return;
+    const assembly = assemblies.find((a: any) => a.id === selectedAssemblyId);
+    if (!assembly) return;
+    const sectionItems = lineItems[assemblySectionId] || [];
+    let sortOrder = sectionItems.length;
+
+    for (const item of assembly.items) {
+      await window.api.saveBidLineItem({
+        sectionId: assemblySectionId,
+        jobId,
+        description: item.material_name,
+        quantity: item.quantity * assemblyQty,
+        unit: item.material_unit,
+        sortOrder: sortOrder++,
+        materialId: item.material_id,
+        materialUnitCost: item.material_unit_cost,
+        crewTemplateId: null,
+        productionRateId: null,
+        laborHours: 0,
+        laborCostPerHour: 0,
+        equipmentCostPerHour: 0,
+        equipmentHours: 0,
+        subcontractorCost: 0,
+        notes: `From assembly: ${assembly.name}`,
+      });
     }
+
+    setShowAssemblyPicker(false);
+    loadJob();
   };
 
   // ---- Material picker handler ----
@@ -527,6 +617,9 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
             <h3 style={{ fontSize: 15 }}>{section.name}</h3>
             <div className="flex gap-8 no-print">
               <button className="btn btn-sm btn-primary" onClick={() => openAddLineItem(section.id)}>+ Line Item</button>
+              {assemblies.length > 0 && (
+                <button className="btn btn-sm btn-secondary" onClick={() => openAssemblyPicker(section.id)}>+ Assembly</button>
+              )}
               <button className="btn btn-sm btn-secondary" onClick={() => deleteSection(section.id)}>Remove Section</button>
             </div>
           </div>
@@ -799,6 +892,75 @@ function JobDetail({ jobId, onBack }: { jobId: number; onBack: () => void }) {
               <button className="btn btn-primary" onClick={saveLineItem} disabled={!lineForm.description.trim()}>
                 {editingLineItem ? 'Save Changes' : 'Add Line Item'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
+      )}
+
+      {/* Assembly Picker Modal */}
+      {showAssemblyPicker && (
+        <div className="modal-overlay" onClick={() => setShowAssemblyPicker(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} tabIndex={-1} style={{ width: 500, outline: 'none' }}>
+            <h3>Add Assembly</h3>
+            <div className="form-group">
+              <label>Assembly</label>
+              <select
+                className="form-control"
+                value={selectedAssemblyId || ''}
+                onChange={(e) => setSelectedAssemblyId(Number(e.target.value) || null)}
+                autoFocus
+              >
+                <option value="">-- Select an assembly --</option>
+                {assemblies.map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.items.length} material{a.items.length !== 1 ? 's' : ''} · ${a.items.reduce((s: number, i: any) => s + i.material_unit_cost * i.quantity, 0).toFixed(2)}/{a.unit})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedAssemblyId && (() => {
+              const asm = assemblies.find((a: any) => a.id === selectedAssemblyId);
+              if (!asm) return null;
+              const unitCost = asm.items.reduce((s: number, i: any) => s + i.material_unit_cost * i.quantity, 0);
+              return (
+                <>
+                  <div className="form-group">
+                    <label>Quantity ({asm.unit})</label>
+                    <input type="number" className="form-control" value={assemblyQty}
+                      onChange={(e) => setAssemblyQty(parseFloat(e.target.value) || 0)}
+                      min="0" step="any" style={{ width: 120 }} />
+                  </div>
+                  <div style={{ background: 'var(--bg-tertiary)', borderRadius: 6, padding: 12, marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 600 }}>
+                      Materials to add ({asm.items.length})
+                    </div>
+                    {asm.items.map((item: any) => (
+                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '3px 0' }}>
+                        <span>{item.material_name}</span>
+                        <span className="text-muted">
+                          {(item.quantity * assemblyQty).toFixed(2)} {item.material_unit} · ${(item.material_unit_cost * item.quantity * assemblyQty).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                      <span>Total</span>
+                      <span style={{ color: 'var(--accent)' }}>${(unitCost * assemblyQty).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowAssemblyPicker(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={addAssemblyToSection}
+                disabled={!selectedAssemblyId || assemblyQty <= 0}>Add to Bid</button>
             </div>
           </div>
         </div>

@@ -5,6 +5,26 @@ import {
   AutocompleteItem,
 } from '../components/FuzzyAutocomplete';
 
+// In-app confirm dialog — replaces native confirm() which steals
+// focus from Electron's renderer and leaves inputs unresponsive.
+function ConfirmDialog({ message, onYes, onNo }: {
+  message: string; onYes: () => void; onNo: () => void;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onNo} style={{ zIndex: 10000 }}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
+        <h3>Confirm</h3>
+        <p style={{ margin: '16px 0 24px', lineHeight: 1.5 }}>{message}</p>
+        <div className="modal-actions">
+          <button className="btn btn-secondary" onClick={onNo} autoFocus>Cancel</button>
+          <button className="btn btn-primary" onClick={onYes}
+            style={{ background: 'var(--danger, #ef4444)' }}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // LOCAL TYPES (match DB snake_case from IPC)
 // ============================================================
@@ -181,10 +201,17 @@ export function AssembliesPage() {
 
   // ---- Delete ----
 
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+
   const handleDelete = async (id: number) => {
-    if (!confirm('Remove this assembly?')) return;
-    await window.api.deleteAssembly(id);
-    loadAssemblies();
+    setConfirmState({
+      msg: 'Remove this assembly?',
+      onYes: async () => {
+        setConfirmState(null);
+        await window.api.deleteAssembly(id);
+        loadAssemblies();
+      },
+    });
   };
 
   // ---- Cost calc ----
@@ -325,13 +352,19 @@ export function AssembliesPage() {
         </div>
       )}
 
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
+      )}
+
       {/* ---- Modal ---- */}
       {showModal && (
         <div className="modal-backdrop" onClick={closeModal}>
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 700, width: '95%' }}
+            tabIndex={-1}
+            style={{ maxWidth: 700, width: '95%', outline: 'none' }}
           >
             <div className="modal-header">
               <h3>{editingId ? 'Edit Assembly' : 'New Assembly'}</h3>
