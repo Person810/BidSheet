@@ -39,6 +39,12 @@ declare global {
       deleteBidLineItem: (id: number) => Promise<any>;
       getBidSummary: (jobId: number) => Promise<any>;
 
+      // Assemblies
+      getAssemblies: () => Promise<any[]>;
+      getAssembly: (id: number) => Promise<any>;
+      saveAssembly: (assembly: any) => Promise<any>;
+      deleteAssembly: (id: number) => Promise<any>;
+
       // Settings
       getSettings: () => Promise<any>;
       saveSettings: (settings: any) => Promise<any>;

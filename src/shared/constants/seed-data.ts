@@ -174,6 +174,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { category: 'Testing & Misc', name: 'Pressure Test (per section)', unit: 'EA', ballparkPrice: 150.00 },
       { category: 'Testing & Misc', name: 'Mandrel Test', unit: 'EA', ballparkPrice: 50.00 },
       { category: 'Testing & Misc', name: 'CCTV Inspection (per LF)', unit: 'LF', ballparkPrice: 2.50 },
+      { category: 'Testing & Misc', name: 'Pipe Joint Lubricant (1 qt)', unit: 'EA', ballparkPrice: 18.00, description: 'Polyglide or equivalent pipe lube for gasket joints' },
     ],
     laborRoles: [
       { name: 'Foreman', rate: 38.00, burden: 1.40, notes: 'Crew foreman / working foreman' },

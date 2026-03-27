@@ -772,6 +772,151 @@ body {
 }
 
 /* ============================================================
+   ASSEMBLIES
+   ============================================================ */
+
+.assembly-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assembly-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.assembly-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  transition: background 0.1s;
+}
+
+.assembly-card-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.assembly-card-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.assembly-expand-icon {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.assembly-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.assembly-cost {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--success);
+}
+
+.assembly-card-body {
+  padding: 0 16px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.assembly-card-body .data-table th {
+  position: static;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+/* ---- Modal (alternate pattern) ---- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+
+.modal-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  max-height: 85vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 0;
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* ============================================================
    PRINT STYLES
    ============================================================ */
 

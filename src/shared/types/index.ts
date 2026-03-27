@@ -143,6 +143,34 @@ export interface BidLineItem {
 }
 
 // ============================================================
+// ASSEMBLIES (reusable material bundles)
+// ============================================================
+
+export interface Assembly {
+  id: number;
+  name: string;           // e.g. "8\" Water Main per LF"
+  description?: string;
+  unit: string;           // "LF", "EA", "LS" — the unit the assembly is measured in
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: AssemblyItem[];  // materials bundled in this assembly
+}
+
+export interface AssemblyItem {
+  id: number;
+  assemblyId: number;
+  materialId: number;
+  quantity: number;       // qty of this material per 1 unit of assembly
+  notes?: string;
+  // Joined fields (not stored, populated on read)
+  materialName?: string;
+  materialUnit?: string;
+  materialUnitCost?: number;
+}
+
+// ============================================================
 // BID SUMMARY (calculated, not stored)
 // ============================================================
 

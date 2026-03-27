@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld('api', {
 
   getBidSummary: (jobId: number) => ipcRenderer.invoke('db:jobs:summary', jobId),
 
+  // ---- Assemblies ----
+  getAssemblies: () => ipcRenderer.invoke('db:assemblies:list'),
+  getAssembly: (id: number) => ipcRenderer.invoke('db:assemblies:get', id),
+  saveAssembly: (assembly: any) => ipcRenderer.invoke('db:assemblies:save', assembly),
+  deleteAssembly: (id: number) => ipcRenderer.invoke('db:assemblies:delete', id),
+
   // ---- Settings ----
   getSettings: () => ipcRenderer.invoke('db:settings:get'),
   saveSettings: (settings: any) => ipcRenderer.invoke('db:settings:save', settings),

@@ -7,6 +7,7 @@ import { LaborPage } from './pages/LaborPage';
 import { EquipmentPage } from './pages/EquipmentPage';
 import { JobsPage } from './pages/JobsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { AssembliesPage } from './pages/AssembliesPage';
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -49,6 +50,9 @@ export function App() {
               <NavLink to="/materials">Materials</NavLink>
             </li>
             <li>
+              <NavLink to="/assemblies">Assemblies</NavLink>
+            </li>
+            <li>
               <NavLink to="/labor">Labor & Crews</NavLink>
             </li>
             <li>
@@ -64,6 +68,7 @@ export function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/jobs" element={<JobsPage />} />
             <Route path="/materials" element={<MaterialsPage />} />
+            <Route path="/assemblies" element={<AssembliesPage />} />
             <Route path="/labor" element={<LaborPage />} />
             <Route path="/equipment" element={<EquipmentPage />} />
             <Route path="/settings" element={<SettingsPage />} />

@@ -487,6 +487,78 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // ================================================================
+  // ASSEMBLIES
+  // ================================================================
+
+  ipcMain.handle('db:assemblies:list', () => {
+    const assemblies = db
+      .prepare('SELECT * FROM assemblies WHERE is_active = 1 ORDER BY name')
+      .all() as any[];
+
+    return assemblies.map((a) => ({
+      ...a,
+      items: db
+        .prepare(
+          `SELECT ai.*, m.name as material_name, m.unit as material_unit, m.default_unit_cost as material_unit_cost
+          FROM assembly_items ai
+          JOIN materials m ON ai.material_id = m.id
+          WHERE ai.assembly_id = ?`
+        )
+        .all(a.id),
+    }));
+  });
+
+  ipcMain.handle('db:assemblies:get', (_event, id: number) => {
+    const assembly = db.prepare('SELECT * FROM assemblies WHERE id = ?').get(id) as any;
+    if (!assembly) return null;
+    assembly.items = db
+      .prepare(
+        `SELECT ai.*, m.name as material_name, m.unit as material_unit, m.default_unit_cost as material_unit_cost
+        FROM assembly_items ai
+        JOIN materials m ON ai.material_id = m.id
+        WHERE ai.assembly_id = ?`
+      )
+      .all(id);
+    return assembly;
+  });
+
+  ipcMain.handle('db:assemblies:save', (_event, assembly: any) => {
+    const saveAssembly = db.transaction(() => {
+      let assemblyId: number;
+
+      if (assembly.id) {
+        db.prepare(
+          `UPDATE assemblies SET name = ?, description = ?, unit = ?, notes = ?, updated_at = datetime('now') WHERE id = ?`
+        ).run(assembly.name, assembly.description, assembly.unit, assembly.notes, assembly.id);
+        assemblyId = assembly.id;
+        // Clear existing items and re-insert
+        db.prepare('DELETE FROM assembly_items WHERE assembly_id = ?').run(assemblyId);
+      } else {
+        const result = db
+          .prepare('INSERT INTO assemblies (name, description, unit, notes) VALUES (?, ?, ?, ?)')
+          .run(assembly.name, assembly.description, assembly.unit, assembly.notes);
+        assemblyId = Number(result.lastInsertRowid);
+      }
+
+      // Insert items
+      const insertItem = db.prepare(
+        'INSERT INTO assembly_items (assembly_id, material_id, quantity, notes) VALUES (?, ?, ?, ?)'
+      );
+      for (const item of assembly.items || []) {
+        insertItem.run(assemblyId, item.materialId, item.quantity, item.notes || null);
+      }
+
+      return assemblyId;
+    });
+
+    return saveAssembly();
+  });
+
+  ipcMain.handle('db:assemblies:delete', (_event, id: number) => {
+    return db.prepare('UPDATE assemblies SET is_active = 0 WHERE id = ?').run(id);
+  });
+
+  // ================================================================
   // SETTINGS
   // ================================================================
 

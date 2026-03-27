@@ -135,6 +135,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 2) {
     migrateV2(db);
   }
+  if (version < 3) {
+    migrateV3(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -365,6 +368,7 @@ function migrateV2(db: Database.Database): void {
     'Laborer': 'helper, general labor, hand',
     'Foreman': 'crew lead, crew leader, supervisor, boss',
     'Teamster': 'truck driver, driver, CDL driver',
+    'Pipe Joint Lubricant': 'pipe lube, pipe dope, polyglide, joint lube, gasket lube, gray stuff',
   };
 
   const updateMat = db.prepare('UPDATE materials SET aliases = ? WHERE name LIKE ?');
@@ -376,4 +380,34 @@ function migrateV2(db: Database.Database): void {
     updateEquip.run(aliases, `%${pattern}%`);
     updateRole.run(aliases, `%${pattern}%`);
   }
+}
+
+// V3: Assemblies — reusable material bundles
+function migrateV3(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE assemblies (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      description TEXT,
+      unit        TEXT NOT NULL DEFAULT 'EA',
+      notes       TEXT,
+      is_active   INTEGER NOT NULL DEFAULT 1,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX idx_assemblies_name ON assemblies(name);
+
+    CREATE TABLE assembly_items (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      assembly_id INTEGER NOT NULL REFERENCES assemblies(id) ON DELETE CASCADE,
+      material_id INTEGER NOT NULL REFERENCES materials(id),
+      quantity    REAL NOT NULL DEFAULT 1,
+      notes       TEXT
+    );
+
+    CREATE INDEX idx_assembly_items_assembly ON assembly_items(assembly_id);
+
+    INSERT INTO schema_version (version) VALUES (3);
+  `);
 }
