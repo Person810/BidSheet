@@ -53,9 +53,9 @@ declare global {
       isSetupComplete: () => Promise<boolean>;
       runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string) => Promise<any>;
 
-      // Import/Export
+      // Backup/Restore
       exportDatabase: () => Promise<any>;
-      importPriceSheet: (filePath: string) => Promise<any>;
+      restoreDatabase: () => Promise<any>;
     };
   }
 }

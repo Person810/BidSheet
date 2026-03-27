@@ -57,7 +57,7 @@ contextBridge.exposeInMainWorld('api', {
   runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string) =>
     ipcRenderer.invoke('db:setup:run', trades, includeBallparkPrices, companyName),
 
-  // ---- Import/Export ----
+  // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),
-  importPriceSheet: (filePath: string) => ipcRenderer.invoke('db:import-prices', filePath),
+  restoreDatabase: () => ipcRenderer.invoke('db:restore'),
 });

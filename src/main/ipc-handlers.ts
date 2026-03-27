@@ -1,4 +1,7 @@
-import { ipcMain } from 'electron';
+import { ipcMain, dialog, app } from 'electron';
+import fs from 'fs';
+import path from 'path';
+import { getDbPath } from './database';
 import type Database from 'better-sqlite3';
 import { isSetupComplete, seedDatabase } from './database';
 import { TradeType } from '../shared/constants/seed-data';
@@ -556,6 +559,103 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('db:assemblies:delete', (_event, id: number) => {
     return db.prepare('UPDATE assemblies SET is_active = 0 WHERE id = ?').run(id);
+  });
+
+  // ================================================================
+  // DATABASE BACKUP / RESTORE
+  // ================================================================
+
+  ipcMain.handle('db:export', async () => {
+    const result = await dialog.showSaveDialog({
+      title: 'Export Database Backup',
+      defaultPath: `BidSheet-backup-${new Date().toISOString().slice(0, 10)}.db`,
+      filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+
+    try {
+      // Checkpoint WAL to flush pending writes into the main db file
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      const srcPath = getDbPath();
+      fs.copyFileSync(srcPath, result.filePath);
+
+      // Verify the backup file exists and matches the source size
+      const srcSize = fs.statSync(srcPath).size;
+      const destSize = fs.statSync(result.filePath).size;
+      if (destSize !== srcSize) {
+        return { success: false, error: `Backup file size mismatch (expected ${srcSize}, got ${destSize})` };
+      }
+
+      return { success: true, path: result.filePath };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('db:restore', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Restore Database from Backup',
+      filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
+
+    const backupPath = result.filePaths[0];
+    try {
+      // Validate: open the backup file and check it has our app_settings table
+      const BetterSqlite3 = require('better-sqlite3');
+      const testDb = new BetterSqlite3(backupPath, { readonly: true });
+      const hasSettings = testDb.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'"
+      ).get();
+      testDb.close();
+
+      if (!hasSettings) {
+        return { success: false, error: 'This file is not a valid BidSheet database.' };
+      }
+
+      const dbPath = getDbPath();
+      const walPath = dbPath + '-wal';
+      const shmPath = dbPath + '-shm';
+
+      // Save a safety copy of the current DB before overwriting
+      const safetyPath = dbPath + '.pre-restore';
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      fs.copyFileSync(dbPath, safetyPath);
+
+      // Close current db so we can overwrite it
+      db.close();
+
+      // Remove WAL/SHM sidecar files — leftover WAL from the old DB
+      // would corrupt the restored database
+      try { fs.unlinkSync(walPath); } catch (_) {}
+      try { fs.unlinkSync(shmPath); } catch (_) {}
+
+      // Copy backup over the main db file
+      fs.copyFileSync(backupPath, dbPath);
+
+      // Verify size matches
+      const srcSize = fs.statSync(backupPath).size;
+      const destSize = fs.statSync(dbPath).size;
+      if (destSize !== srcSize) {
+        // Restore failed — put the safety copy back
+        fs.copyFileSync(safetyPath, dbPath);
+        try { fs.unlinkSync(safetyPath); } catch (_) {}
+        return { success: false, error: 'Restore failed: file size mismatch after copy. Original database has been preserved.' };
+      }
+
+      // Clean up safety copy on success
+      try { fs.unlinkSync(safetyPath); } catch (_) {}
+
+      // Relaunch the app so it picks up the new database
+      // (migrations will run on startup and handle any schema differences)
+      app.relaunch();
+      app.exit(0);
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   });
 
   // ================================================================

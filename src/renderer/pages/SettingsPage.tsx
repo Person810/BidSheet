@@ -1,5 +1,24 @@
 import React, { useState, useEffect } from 'react';
 
+// In-app confirm dialog — same as JobsPage/AssembliesPage
+function ConfirmDialog({ message, onYes, onNo, yesLabel = 'Delete' }: {
+  message: string; onYes: () => void; onNo: () => void; yesLabel?: string;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onNo} style={{ zIndex: 10000 }}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
+        <h3>Confirm</h3>
+        <p style={{ margin: '16px 0 24px', lineHeight: 1.5 }}>{message}</p>
+        <div className="modal-actions">
+          <button className="btn btn-secondary" onClick={onNo} autoFocus>Cancel</button>
+          <button className="btn btn-primary" onClick={onYes}
+            style={{ background: 'var(--danger, #ef4444)' }}>{yesLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const [settings, setSettings] = useState({
     companyName: '',
@@ -14,6 +33,8 @@ export function SettingsPage() {
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   useEffect(() => {
     window.api.getSettings().then((s: any) => {
@@ -171,6 +192,51 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Data Management</h3>
+        <p className="text-muted mb-16">
+          Export your entire database to a backup file, or restore from a previous backup.
+        </p>
+        <div className="flex gap-8 items-center">
+          <button className="btn btn-secondary" onClick={async () => {
+            setBackupStatus(null);
+            const result = await window.api.exportDatabase();
+            if (result.canceled) return;
+            if (result.success) {
+              setBackupStatus('Backup saved successfully.');
+            } else {
+              setBackupStatus('Export failed: ' + result.error);
+            }
+            setTimeout(() => setBackupStatus(null), 4000);
+          }}>Export Backup</button>
+          <button className="btn btn-secondary" onClick={() => {
+            setConfirmState({
+              msg: 'Restoring from a backup will replace ALL current data (materials, jobs, bids, settings). The app will restart. Are you sure?',
+              onYes: async () => {
+                setConfirmState(null);
+                const result = await window.api.restoreDatabase();
+                if (result.canceled) return;
+                if (!result.success) {
+                  setBackupStatus('Restore failed: ' + result.error);
+                  setTimeout(() => setBackupStatus(null), 4000);
+                }
+                // If success, app restarts — we won't reach here
+              },
+            });
+          }}>Restore from Backup</button>
+          {backupStatus && (
+            <span style={{ fontSize: 13, color: backupStatus.includes('failed') ? 'var(--danger, #ef4444)' : 'var(--success, #22c55e)' }}>
+              {backupStatus}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} yesLabel="Restore" />
+      )}
 
       <div className="card">
         <h3 style={{ marginBottom: 16 }}>Trade Configuration</h3>
