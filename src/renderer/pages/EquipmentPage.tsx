@@ -3,6 +3,7 @@ import {
   FuzzyAutocomplete,
   simpleListToAutocomplete,
 } from '../components/FuzzyAutocomplete';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface EquipmentItem {
   id: number;
@@ -44,6 +45,7 @@ export function EquipmentPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<EquipmentItem | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   const loadEquipment = useCallback(async () => {
     const items = await window.api.getEquipment();
@@ -112,10 +114,14 @@ export function EquipmentPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Remove this equipment from the catalog?')) {
-      await window.api.deleteEquipment(id);
-      loadEquipment();
-    }
+    setConfirmState({
+      msg: 'Remove this equipment from the catalog?',
+      onYes: async () => {
+        setConfirmState(null);
+        await window.api.deleteEquipment(id);
+        loadEquipment();
+      },
+    });
   };
 
   const handleRateChange = async (item: EquipmentItem, field: string, value: string) => {
@@ -267,6 +273,11 @@ export function EquipmentPage() {
           )}
         </tbody>
       </table>
+
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
+      )}
 
       {/* Add/Edit Modal */}
       {showModal && (

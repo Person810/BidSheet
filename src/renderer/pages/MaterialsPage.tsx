@@ -3,6 +3,7 @@ import {
   FuzzyAutocomplete,
   categoriesToAutocomplete,
 } from '../components/FuzzyAutocomplete';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface Category {
   id: number;
@@ -48,6 +49,7 @@ export function MaterialsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<any>(null);
   const [form, setForm] = useState({ ...EMPTY_MATERIAL });
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   const loadCategories = useCallback(async () => {
     const cats = await window.api.getMaterialCategories();
@@ -125,10 +127,14 @@ export function MaterialsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Remove this material from the catalog?')) {
-      await window.api.deleteMaterial(id);
-      loadMaterials();
-    }
+    setConfirmState({
+      msg: 'Remove this material from the catalog?',
+      onYes: async () => {
+        setConfirmState(null);
+        await window.api.deleteMaterial(id);
+        loadMaterials();
+      },
+    });
   };
 
   const handlePriceChange = async (mat: Material, newPriceStr: string) => {
@@ -268,6 +274,11 @@ export function MaterialsPage() {
           </tbody>
         </table>
       </div>
+
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
+      )}
 
       {/* Add/Edit Modal */}
       {showModal && (
