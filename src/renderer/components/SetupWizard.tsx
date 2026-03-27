@@ -47,7 +47,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {step === 0 && (
           <div className="setup-step">
-            <h2>Welcome to Utility Estimator</h2>
+            <h2>Welcome to BidSheet</h2>
             <p className="setup-desc">
               Let's get you set up. First, what's your company name?
             </p>

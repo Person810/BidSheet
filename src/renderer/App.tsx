@@ -8,15 +8,28 @@ import { EquipmentPage } from './pages/EquipmentPage';
 import { JobsPage } from './pages/JobsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AssembliesPage } from './pages/AssembliesPage';
+import { getActiveModules } from './modules';
+import type { TradeModule } from './modules';
 
 export function App() {
   const [loading, setLoading] = useState(true);
   const [setupComplete, setSetupComplete] = useState(false);
+  const [activeModules, setActiveModules] = useState<TradeModule[]>([]);
 
   useEffect(() => {
     window.api.isSetupComplete().then((complete) => {
       setSetupComplete(complete);
-      setLoading(false);
+      if (complete) {
+        // Load trade_types to determine which modules are active
+        window.api.getSettings().then((s: any) => {
+          if (s?.trade_types) {
+            setActiveModules(getActiveModules(s.trade_types));
+          }
+          setLoading(false);
+        });
+      } else {
+        setLoading(false);
+      }
     });
   }, []);
 
@@ -32,12 +45,20 @@ export function App() {
     return <SetupWizard onComplete={() => setSetupComplete(true)} />;
   }
 
+  // Collect all tool routes from active modules (empty for now, ready for trench profiler etc.)
+  const moduleToolRoutes = activeModules.flatMap((mod) =>
+    mod.tools.map((tool) => ({ key: `${mod.id}-${tool.id}`, path: tool.path, tool }))
+  );
+
+  // Collect sidebar tool entries grouped by module (only modules with tools show up)
+  const modulesWithTools = activeModules.filter((mod) => mod.tools.length > 0);
+
   return (
     <HashRouter>
       <div className="app-layout">
         <nav className="sidebar">
           <div className="sidebar-header">
-            <h1>Utility Estimator</h1>
+            <h1>BidSheet</h1>
           </div>
           <ul className="nav-links">
             <li>
@@ -58,6 +79,21 @@ export function App() {
             <li>
               <NavLink to="/equipment">Equipment</NavLink>
             </li>
+
+            {/* Trade module tools -- only renders when modules have tools registered */}
+            {modulesWithTools.map((mod) => (
+              <li key={mod.id}>
+                <div className="nav-section-label">{mod.icon} {mod.name}</div>
+                <ul className="nav-links-nested">
+                  {mod.tools.map((tool) => (
+                    <li key={tool.id}>
+                      <NavLink to={tool.path}>{tool.icon ? `${tool.icon} ` : ''}{tool.name}</NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+
             <li>
               <NavLink to="/settings">Settings</NavLink>
             </li>
@@ -72,6 +108,11 @@ export function App() {
             <Route path="/labor" element={<LaborPage />} />
             <Route path="/equipment" element={<EquipmentPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+
+            {/* Trade module tool routes -- populated when tools are added to manifests */}
+            {moduleToolRoutes.map((rt) => (
+              <Route key={rt.key} path={rt.path} element={<div>TODO: {rt.tool.name}</div>} />
+            ))}
           </Routes>
         </main>
       </div>

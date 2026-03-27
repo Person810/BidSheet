@@ -1,5 +1,5 @@
 {
-  "name": "utility-estimator",
+  "name": "bidsheet",
   "version": "0.1.0",
   "description": "Open source underground utility estimating software for subcontractors",
   "main": "dist/main/main.js",
@@ -16,8 +16,8 @@
     "dist:linux": "npm run build && electron-builder --linux"
   },
   "build": {
-    "appId": "com.utility-estimator.app",
-    "productName": "Utility Estimator",
+    "appId": "com.bidsheet.app",
+    "productName": "BidSheet",
     "directories": {
       "output": "release"
     },

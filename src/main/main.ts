@@ -15,7 +15,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 1024,
     minHeight: 700,
-    title: 'Utility Estimator',
+    title: 'BidSheet',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
