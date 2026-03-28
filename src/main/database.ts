@@ -157,7 +157,7 @@ function migrateV1(db: Database.Database): void {
       default_unit_cost REAL NOT NULL DEFAULT 0,
       supplier          TEXT,
       part_number       TEXT,
-      last_price_update TEXT NOT NULL DEFAULT (datetime('now')),
+      last_price_update TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       notes             TEXT,
       is_active         INTEGER NOT NULL DEFAULT 1
     );
@@ -229,8 +229,8 @@ function migrateV1(db: Database.Database): void {
       bond_percent     REAL DEFAULT 0,
       tax_percent      REAL DEFAULT 0,
       notes            TEXT,
-      created_at       TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at       TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at       TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE INDEX idx_jobs_status ON jobs(status);
@@ -278,7 +278,7 @@ function migrateV1(db: Database.Database): void {
       old_price   REAL NOT NULL,
       new_price   REAL NOT NULL,
       source      TEXT NOT NULL DEFAULT 'Manual',
-      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE INDEX idx_price_updates_material ON price_updates(material_id);
@@ -392,8 +392,8 @@ function migrateV3(db: Database.Database): void {
       unit        TEXT NOT NULL DEFAULT 'EA',
       notes       TEXT,
       is_active   INTEGER NOT NULL DEFAULT 1,
-      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE INDEX idx_assemblies_name ON assemblies(name);

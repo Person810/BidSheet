@@ -53,6 +53,11 @@ declare global {
       isSetupComplete: () => Promise<boolean>;
       runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string) => Promise<any>;
 
+      // CSV Import
+      openCsvFile: () => Promise<any>;
+      parseCsvPath: (filePath: string) => Promise<any>;
+      importPriceSheet: (updates: any[], source: string) => Promise<any>;
+
       // Backup/Restore
       exportDatabase: () => Promise<any>;
       restoreDatabase: () => Promise<any>;

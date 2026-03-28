@@ -55,7 +55,7 @@ export function registerIpcHandlers(db: Database.Database): void {
           `UPDATE materials SET
             category_id = ?, name = ?, description = ?, unit = ?,
             default_unit_cost = ?, supplier = ?, part_number = ?,
-            last_price_update = datetime('now'), notes = ?, aliases = ?, is_active = ?
+            last_price_update = datetime('now', 'localtime'), notes = ?, aliases = ?, is_active = ?
           WHERE id = ?`
         )
         .run(
@@ -96,7 +96,7 @@ export function registerIpcHandlers(db: Database.Database): void {
 
         // Update the material
         db.prepare(
-          `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now') WHERE id = ?`
+          `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now', 'localtime') WHERE id = ?`
         ).run(newPrice, id);
       });
 
@@ -287,7 +287,7 @@ export function registerIpcHandlers(db: Database.Database): void {
             name = ?, job_number = ?, client = ?, location = ?,
             bid_date = ?, start_date = ?, description = ?, status = ?,
             overhead_percent = ?, profit_percent = ?, bond_percent = ?,
-            tax_percent = ?, notes = ?, updated_at = datetime('now')
+            tax_percent = ?, notes = ?, updated_at = datetime('now', 'localtime')
           WHERE id = ?`
         )
         .run(
@@ -531,7 +531,7 @@ export function registerIpcHandlers(db: Database.Database): void {
 
       if (assembly.id) {
         db.prepare(
-          `UPDATE assemblies SET name = ?, description = ?, unit = ?, notes = ?, updated_at = datetime('now') WHERE id = ?`
+          `UPDATE assemblies SET name = ?, description = ?, unit = ?, notes = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`
         ).run(assembly.name, assembly.description, assembly.unit, assembly.notes, assembly.id);
         assemblyId = assembly.id;
         // Clear existing items and re-insert
@@ -659,6 +659,112 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // ================================================================
+  // CSV PRICE IMPORT
+  // ================================================================
+
+  // Shared CSV reading logic used by both dialog picker and drag-and-drop
+  function readAndParseCsv(filePath: string): { headers: string[]; rows: Record<string, string>[]; fileName: string; error?: string } {
+    const fileName = path.basename(filePath);
+    try {
+      let raw = fs.readFileSync(filePath, 'utf-8');
+
+      // Strip BOM if present
+      if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+
+      // Detect delimiter: tab-separated vs comma-separated
+      const firstLine = raw.split(/\r?\n/)[0] || '';
+      const delimiter = firstLine.includes('\t') ? '\t' : ',';
+
+      const rows = parseCsvString(raw, delimiter);
+      if (rows.length === 0) {
+        return { error: 'No data found in file.', headers: [], rows: [], fileName };
+      }
+
+      const headers = Object.keys(rows[0]);
+      return { headers, rows, fileName };
+    } catch (err: any) {
+      return { error: `Failed to read file: ${err.message}`, headers: [], rows: [], fileName };
+    }
+  }
+
+  ipcMain.handle('db:csv:open', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Price Sheet CSV',
+      filters: [
+        { name: 'CSV Files', extensions: ['csv', 'tsv', 'txt'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return readAndParseCsv(result.filePaths[0]);
+  });
+
+  ipcMain.handle('db:csv:parse-path', (_event, filePath: string) => {
+    // Validate extension before reading
+    const ext = path.extname(filePath).toLowerCase();
+    if (!['.csv', '.tsv', '.txt'].includes(ext)) {
+      return { error: 'Unsupported file type. Use .csv, .tsv, or .txt files.', headers: [], rows: [], fileName: path.basename(filePath) };
+    }
+    return readAndParseCsv(filePath);
+  });
+
+  ipcMain.handle(
+    'db:materials:import-prices',
+    (
+      _event,
+      updates: { materialId: number; newPrice: number; supplier?: string; partNumber?: string }[],
+      source: string
+    ) => {
+      try {
+        let updated = 0;
+        let skipped = 0;
+
+        const importAll = db.transaction(() => {
+          const getMat = db.prepare('SELECT id, default_unit_cost FROM materials WHERE id = ?');
+          const logPrice = db.prepare(
+            'INSERT INTO price_updates (material_id, old_price, new_price, source) VALUES (?, ?, ?, ?)'
+          );
+          const updateMat = db.prepare(
+            `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now', 'localtime'),
+              supplier = COALESCE(?, supplier), part_number = COALESCE(?, part_number)
+            WHERE id = ?`
+          );
+
+          for (const u of updates) {
+            const existing = getMat.get(u.materialId) as any;
+            if (!existing) {
+              skipped++;
+              continue;
+            }
+
+            if (existing.default_unit_cost === u.newPrice) {
+              skipped++;
+              continue;
+            }
+
+            // Log price change for audit trail
+            logPrice.run(u.materialId, existing.default_unit_cost, u.newPrice, source);
+
+            // Update material price (and optionally supplier/part#)
+            updateMat.run(
+              u.newPrice,
+              u.supplier || null,
+              u.partNumber || null,
+              u.materialId
+            );
+            updated++;
+          }
+        });
+
+        importAll();
+        return { updated, skipped };
+      } catch (err: any) {
+        return { error: err.message, updated: 0, skipped: 0 };
+      }
+    }
+  );
+
+  // ================================================================
   // SETTINGS
   // ================================================================
 
@@ -683,4 +789,90 @@ export function registerIpcHandlers(db: Database.Database): void {
         settings.defaultTaxPercent, settings.defaultBondPercent
       );
   });
+}
+
+// ================================================================
+// CSV PARSER
+// Handles: quoted fields, escaped quotes, commas inside quotes,
+// CRLF/LF line endings, BOM, empty fields, tab-delimited.
+// ================================================================
+
+function parseCsvString(raw: string, delimiter: string): Record<string, string>[] {
+  const rows: string[][] = [];
+  let current: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < raw.length) {
+    const ch = raw[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        // Peek ahead: escaped quote ("") or end of quoted field
+        if (i + 1 < raw.length && raw[i + 1] === '"') {
+          field += '"';
+          i += 2;
+        } else {
+          inQuotes = false;
+          i++;
+        }
+      } else {
+        field += ch;
+        i++;
+      }
+    } else {
+      if (ch === '"' && field.length === 0) {
+        // Only enter quote mode at the START of a field (RFC 4180).
+        // A " mid-field (e.g. 8" pipe) is a literal character.
+        inQuotes = true;
+        i++;
+      } else if (ch === delimiter) {
+        current.push(field.trim());
+        field = '';
+        i++;
+      } else if (ch === '\r') {
+        // CRLF or bare CR
+        current.push(field.trim());
+        field = '';
+        rows.push(current);
+        current = [];
+        i++;
+        if (i < raw.length && raw[i] === '\n') i++;
+      } else if (ch === '\n') {
+        current.push(field.trim());
+        field = '';
+        rows.push(current);
+        current = [];
+        i++;
+      } else {
+        field += ch;
+        i++;
+      }
+    }
+  }
+
+  // Last field / last row
+  if (field || current.length > 0) {
+    current.push(field.trim());
+    rows.push(current);
+  }
+
+  // Filter out completely empty rows
+  const nonEmpty = rows.filter((r) => r.some((cell) => cell.length > 0));
+  if (nonEmpty.length < 2) return []; // need header + at least one data row
+
+  const headers = nonEmpty[0];
+  const dataRows: Record<string, string>[] = [];
+
+  for (let r = 1; r < nonEmpty.length; r++) {
+    const row = nonEmpty[r];
+    const obj: Record<string, string> = {};
+    for (let c = 0; c < headers.length; c++) {
+      obj[headers[c]] = c < row.length ? row[c] : '';
+    }
+    dataRows.push(obj);
+  }
+
+  return dataRows;
 }

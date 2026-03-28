@@ -4,6 +4,7 @@ import {
   categoriesToAutocomplete,
 } from '../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { CsvImportModal } from '../components/CsvImportModal';
 
 interface Category {
   id: number;
@@ -50,6 +51,7 @@ export function MaterialsPage() {
   const [editingMaterial, setEditingMaterial] = useState<any>(null);
   const [form, setForm] = useState({ ...EMPTY_MATERIAL });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const loadCategories = useCallback(async () => {
     const cats = await window.api.getMaterialCategories();
@@ -191,6 +193,9 @@ export function MaterialsPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
+              Import Prices
+            </button>
             <button className="btn btn-primary" onClick={openAdd}>
               + Add Material
             </button>
@@ -278,6 +283,13 @@ export function MaterialsPage() {
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
           onNo={() => setConfirmState(null)} />
+      )}
+
+      {showImportModal && (
+        <CsvImportModal
+          onComplete={loadMaterials}
+          onClose={() => setShowImportModal(false)}
+        />
       )}
 
       {/* Add/Edit Modal */}

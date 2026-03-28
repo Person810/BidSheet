@@ -57,6 +57,12 @@ contextBridge.exposeInMainWorld('api', {
   runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string) =>
     ipcRenderer.invoke('db:setup:run', trades, includeBallparkPrices, companyName),
 
+  // ---- CSV Import ----
+  openCsvFile: () => ipcRenderer.invoke('db:csv:open'),
+  parseCsvPath: (filePath: string) => ipcRenderer.invoke('db:csv:parse-path', filePath),
+  importPriceSheet: (updates: any[], source: string) =>
+    ipcRenderer.invoke('db:materials:import-prices', updates, source),
+
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),
   restoreDatabase: () => ipcRenderer.invoke('db:restore'),
