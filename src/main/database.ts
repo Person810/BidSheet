@@ -141,6 +141,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 4) {
     migrateV4(db);
   }
+  if (version < 5) {
+    migrateV5(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -420,5 +423,13 @@ function migrateV4(db: Database.Database): void {
   db.exec(`
     ALTER TABLE jobs ADD COLUMN bid_locked INTEGER NOT NULL DEFAULT 0;
     INSERT INTO schema_version (version) VALUES (4);
+  `);
+}
+
+// V5: auto_lock_on_close setting
+function migrateV5(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN auto_lock_on_close INTEGER NOT NULL DEFAULT 1;
+    INSERT INTO schema_version (version) VALUES (5);
   `);
 }

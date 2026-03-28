@@ -837,14 +837,16 @@ export function registerIpcHandlers(db: Database.Database): void {
           company_name = ?, company_address = ?, company_phone = ?,
           company_email = ?, company_logo = ?,
           default_overhead_percent = ?, default_profit_percent = ?,
-          default_tax_percent = ?, default_bond_percent = ?
+          default_tax_percent = ?, default_bond_percent = ?,
+          auto_lock_on_close = ?
         WHERE id = 1`
       )
       .run(
         settings.companyName, settings.companyAddress, settings.companyPhone,
         settings.companyEmail, settings.companyLogo,
         settings.defaultOverheadPercent, settings.defaultProfitPercent,
-        settings.defaultTaxPercent, settings.defaultBondPercent
+        settings.defaultTaxPercent, settings.defaultBondPercent,
+        settings.autoLockOnClose ? 1 : 0
       );
   });
 

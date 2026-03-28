@@ -12,6 +12,7 @@ export function SettingsPage() {
     defaultTaxPercent: 0,
     defaultBondPercent: 0,
     tradeTypes: '',
+    autoLockOnClose: true,
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,7 @@ export function SettingsPage() {
           defaultTaxPercent: s.default_tax_percent || 0,
           defaultBondPercent: s.default_bond_percent || 0,
           tradeTypes: s.trade_types || '',
+          autoLockOnClose: s.auto_lock_on_close !== 0,
         });
       }
       setLoading(false);
@@ -48,6 +50,7 @@ export function SettingsPage() {
       defaultProfitPercent: settings.defaultProfitPercent,
       defaultTaxPercent: settings.defaultTaxPercent,
       defaultBondPercent: settings.defaultBondPercent,
+      autoLockOnClose: settings.autoLockOnClose,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -172,6 +175,22 @@ export function SettingsPage() {
               step={0.25}
             />
           </div>
+        </div>
+      </div>
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Bid Behavior</h3>
+        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input
+            type="checkbox"
+            id="autoLockOnClose"
+            checked={settings.autoLockOnClose}
+            onChange={(e) => update('autoLockOnClose', e.target.checked)}
+            style={{ width: 16, height: 16, cursor: 'pointer' }}
+          />
+          <label htmlFor="autoLockOnClose" style={{ margin: 0, cursor: 'pointer' }}>
+            Lock bids automatically when marked Won or Lost
+          </label>
         </div>
       </div>
 

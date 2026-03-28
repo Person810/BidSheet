@@ -50,16 +50,18 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
   const [assemblySectionId, setAssemblySectionId] = useState<number | null>(null);
 
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
+  const [showEditJob, setShowEditJob] = useState(false);
+  const [editJobForm, setEditJobForm] = useState({ name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '' });
   const [lockBypassed, setLockBypassed] = useState(false);
 
-  // Derived: bid is effectively locked when job is won, bid_locked=1, and user hasn't bypassed this session
-  const isLocked = job?.status === 'won' && job?.bid_locked === 1 && !lockBypassed;
+  // Derived: bid is effectively locked when job is won or lost, bid_locked=1, and user hasn't bypassed this session
+  const isLocked = (job?.status === 'won' || job?.status === 'lost') && job?.bid_locked === 1 && !lockBypassed;
 
   // Gate any destructive/edit action behind a soft lock warning
   const withLockCheck = (action: () => void) => {
     if (isLocked) {
       setConfirmState({
-        msg: 'This bid is locked because the job was marked Won. Edit anyway?',
+        msg: 'This bid is locked. Edit anyway?',
         yesLabel: 'Edit Anyway',
         variant: 'neutral',
         onYes: () => { setConfirmState(null); setLockBypassed(true); action(); },
@@ -101,9 +103,10 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
 
   const updateStatus = async (status: string) => {
     if (!job) return;
-    // Auto-lock when marking won; clear bypass so lock takes effect immediately
-    const bidLocked = status === 'won' ? true : jobToPayload(job).bidLocked;
-    if (status === 'won') setLockBypassed(false);
+    // Auto-lock when marking won or lost, unless the setting is disabled
+    const shouldAutoLock = (status === 'won' || status === 'lost') && settings?.auto_lock_on_close !== 0;
+    const bidLocked = shouldAutoLock ? true : jobToPayload(job).bidLocked;
+    if (shouldAutoLock) setLockBypassed(false);
     await window.api.saveJob({ ...jobToPayload(job), status, bidLocked });
     loadJob();
   };
@@ -127,6 +130,35 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
         loadJob();
       },
     });
+  };
+
+  // ---- Edit Job Info ----
+  const openEditJob = () => {
+    if (!job) return;
+    setEditJobForm({
+      name: job.name || '',
+      jobNumber: job.job_number || '',
+      client: job.client || '',
+      location: job.location || '',
+      bidDate: job.bid_date ? job.bid_date.slice(0, 10) : '',
+      description: job.description || '',
+    });
+    setShowEditJob(true);
+  };
+
+  const saveJobInfo = async () => {
+    if (!job || !editJobForm.name.trim()) return;
+    await window.api.saveJob({
+      ...jobToPayload(job),
+      name: editJobForm.name.trim(),
+      jobNumber: editJobForm.jobNumber || null,
+      client: editJobForm.client || null,
+      location: editJobForm.location || null,
+      bidDate: editJobForm.bidDate || null,
+      description: editJobForm.description || null,
+    });
+    setShowEditJob(false);
+    loadJob();
   };
 
   // ---- Sections ----
@@ -275,7 +307,10 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
       <div className="page-header no-print">
         <div>
           <button className="btn btn-sm btn-secondary mb-16" onClick={onBack}>&#8592; Back to Jobs</button>
-          <h2>{job.name}</h2>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <h2 style={{ margin: 0 }}>{job.name}</h2>
+            <button className="btn btn-sm btn-secondary" onClick={openEditJob} style={{ fontSize: 12 }}>Edit</button>
+          </div>
           <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
             {job.client && <span>{job.client}</span>}
             {job.location && <span> &middot; {job.location}</span>}
@@ -283,16 +318,14 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
           </div>
         </div>
         <div className="flex gap-8">
-          {job.status === 'won' && (
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={toggleMasterLock}
-              title={job.bid_locked === 1 ? 'Bid locked -- click to permanently unlock' : 'Bid unlocked -- click to lock'}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, color: job.bid_locked === 1 ? 'var(--warning, #f59e0b)' : 'var(--text-muted)' }}
-            >
-              {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
-            </button>
-          )}
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={toggleMasterLock}
+            title={job.bid_locked === 1 ? 'Bid locked -- click to permanently unlock' : 'Bid unlocked -- click to lock'}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, color: job.bid_locked === 1 ? 'var(--warning, #f59e0b)' : 'var(--text-muted)' }}
+          >
+            {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
+          </button>
           <button className="btn btn-secondary" onClick={handlePrint}>Print Bid</button>
           {job.status === 'draft' && (
             <button className="btn btn-secondary" onClick={() => updateStatus('submitted')}>Mark Submitted</button>
@@ -486,6 +519,55 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
           yesLabel={confirmState.yesLabel}
           variant={confirmState.variant}
         />
+      )}
+
+      {/* Edit Job Info Modal */}
+      {showEditJob && (
+        <div className="modal-overlay" onClick={() => setShowEditJob(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit Job</h3>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Job Name</label>
+                <input type="text" className="form-control" value={editJobForm.name}
+                  onChange={(e) => setEditJobForm({ ...editJobForm, name: e.target.value })}
+                  autoFocus />
+              </div>
+              <div className="form-group">
+                <label>Job Number</label>
+                <input type="text" className="form-control" value={editJobForm.jobNumber}
+                  onChange={(e) => setEditJobForm({ ...editJobForm, jobNumber: e.target.value })}
+                  placeholder="optional" />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Client / GC</label>
+                <input type="text" className="form-control" value={editJobForm.client}
+                  onChange={(e) => setEditJobForm({ ...editJobForm, client: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>Bid Date</label>
+                <input type="date" className="form-control" value={editJobForm.bidDate}
+                  onChange={(e) => setEditJobForm({ ...editJobForm, bidDate: e.target.value })} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Location</label>
+              <input type="text" className="form-control" value={editJobForm.location}
+                onChange={(e) => setEditJobForm({ ...editJobForm, location: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label>Description</label>
+              <input type="text" className="form-control" value={editJobForm.description}
+                onChange={(e) => setEditJobForm({ ...editJobForm, description: e.target.value })} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowEditJob(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveJobInfo} disabled={!editJobForm.name.trim()}>Save</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Assembly Picker Modal */}
