@@ -22,7 +22,7 @@ export function jobToPayload(job: any) {
     location: job.location, bidDate: job.bid_date, startDate: job.start_date,
     description: job.description, status: job.status, overheadPercent: job.overhead_percent,
     profitPercent: job.profit_percent, bondPercent: job.bond_percent,
-    taxPercent: job.tax_percent, notes: job.notes,
+    taxPercent: job.tax_percent, notes: job.notes, bidLocked: job.bid_locked === 1,
   };
 }
 

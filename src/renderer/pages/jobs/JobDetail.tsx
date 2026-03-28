@@ -4,6 +4,22 @@ import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency } from './helpers';
 
+// Lock icon SVGs -- inline to avoid any import dependency
+const LockClosedIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+const LockOpenIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+  </svg>
+);
+
 interface JobDetailProps {
   jobId: number;
   onBack: () => void;
@@ -33,7 +49,25 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
   const [showAssemblyPicker, setShowAssemblyPicker] = useState(false);
   const [assemblySectionId, setAssemblySectionId] = useState<number | null>(null);
 
-  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
+  const [lockBypassed, setLockBypassed] = useState(false);
+
+  // Derived: bid is effectively locked when job is won, bid_locked=1, and user hasn't bypassed this session
+  const isLocked = job?.status === 'won' && job?.bid_locked === 1 && !lockBypassed;
+
+  // Gate any destructive/edit action behind a soft lock warning
+  const withLockCheck = (action: () => void) => {
+    if (isLocked) {
+      setConfirmState({
+        msg: 'This bid is locked because the job was marked Won. Edit anyway?',
+        yesLabel: 'Edit Anyway',
+        variant: 'neutral',
+        onYes: () => { setConfirmState(null); setLockBypassed(true); action(); },
+      });
+    } else {
+      action();
+    }
+  };
 
   const loadJob = useCallback(async () => {
     const [j, s, mats, cr, pr, eq, set, asm] = await Promise.all([
@@ -67,8 +101,32 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
 
   const updateStatus = async (status: string) => {
     if (!job) return;
-    await window.api.saveJob({ ...jobToPayload(job), status });
+    // Auto-lock when marking won; clear bypass so lock takes effect immediately
+    const bidLocked = status === 'won' ? true : jobToPayload(job).bidLocked;
+    if (status === 'won') setLockBypassed(false);
+    await window.api.saveJob({ ...jobToPayload(job), status, bidLocked });
     loadJob();
+  };
+
+  const toggleMasterLock = async () => {
+    if (!job) return;
+    const newLocked = job.bid_locked !== 1;
+    if (newLocked) {
+      // Re-locking: reset session bypass
+      setLockBypassed(false);
+    }
+    setConfirmState({
+      msg: newLocked
+        ? 'Lock this bid? Future edits will require confirmation.'
+        : 'Permanently unlock this bid? Edits will no longer require confirmation.',
+      yesLabel: newLocked ? 'Lock Bid' : 'Unlock Bid',
+      variant: 'neutral',
+      onYes: async () => {
+        setConfirmState(null);
+        await window.api.saveJob({ ...jobToPayload(job), bidLocked: newLocked });
+        loadJob();
+      },
+    });
   };
 
   // ---- Sections ----
@@ -80,44 +138,50 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
     loadJob();
   };
 
-  const deleteSection = async (id: number) => {
-    setConfirmState({
-      msg: 'Delete this section and all its line items?',
-      onYes: async () => {
-        setConfirmState(null);
-        await window.api.deleteBidSection(id);
-        loadJob();
-      },
+  const deleteSection = (id: number) => {
+    withLockCheck(() => {
+      setConfirmState({
+        msg: 'Delete this section and all its line items?',
+        onYes: async () => {
+          setConfirmState(null);
+          await window.api.deleteBidSection(id);
+          loadJob();
+        },
+      });
     });
   };
 
   // ---- Line Items ----
   const openAddLineItem = (sectionId: number) => {
-    setEditingSectionId(sectionId);
-    setEditingLineItem(null);
-    setLineForm(emptyLineForm());
-    setShowLineItemModal(true);
+    withLockCheck(() => {
+      setEditingSectionId(sectionId);
+      setEditingLineItem(null);
+      setLineForm(emptyLineForm());
+      setShowLineItemModal(true);
+    });
   };
 
   const openEditLineItem = (item: any) => {
-    setEditingSectionId(item.section_id);
-    setEditingLineItem(item);
-    setLineForm({
-      description: item.description,
-      quantity: item.quantity,
-      unit: item.unit,
-      materialId: item.material_id || 0,
-      materialUnitCost: item.material_unit_cost,
-      crewTemplateId: item.crew_template_id || 0,
-      productionRateId: item.production_rate_id || 0,
-      laborHours: item.labor_hours,
-      laborCostPerHour: item.labor_cost_per_hour,
-      equipmentHours: item.equipment_hours,
-      equipmentCostPerHour: item.equipment_cost_per_hour,
-      subcontractorCost: item.subcontractor_cost,
-      notes: item.notes || '',
+    withLockCheck(() => {
+      setEditingSectionId(item.section_id);
+      setEditingLineItem(item);
+      setLineForm({
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        materialId: item.material_id || 0,
+        materialUnitCost: item.material_unit_cost,
+        crewTemplateId: item.crew_template_id || 0,
+        productionRateId: item.production_rate_id || 0,
+        laborHours: item.labor_hours,
+        laborCostPerHour: item.labor_cost_per_hour,
+        equipmentHours: item.equipment_hours,
+        equipmentCostPerHour: item.equipment_cost_per_hour,
+        subcontractorCost: item.subcontractor_cost,
+        notes: item.notes || '',
+      });
+      setShowLineItemModal(true);
     });
-    setShowLineItemModal(true);
   };
 
   const saveLineItem = async () => {
@@ -145,21 +209,26 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
     loadJob();
   };
 
-  const deleteLineItem = async (id: number) => {
-    setConfirmState({
-      msg: 'Delete this line item?',
-      onYes: async () => {
-        setConfirmState(null);
-        await window.api.deleteBidLineItem(id);
-        loadJob();
-      },
+  const deleteLineItem = (id: number) => {
+    withLockCheck(() => {
+      setConfirmState({
+        msg: 'Delete this line item?',
+        onYes: async () => {
+          setConfirmState(null);
+          setLockBypassed(false);
+          await window.api.deleteBidLineItem(id);
+          loadJob();
+        },
+      });
     });
   };
 
   // ---- Assembly picker ----
   const openAssemblyPicker = (sectionId: number) => {
-    setAssemblySectionId(sectionId);
-    setShowAssemblyPicker(true);
+    withLockCheck(() => {
+      setAssemblySectionId(sectionId);
+      setShowAssemblyPicker(true);
+    });
   };
 
   const addAssemblyToSection = async (assemblyId: number, qty: number) => {
@@ -214,6 +283,16 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
           </div>
         </div>
         <div className="flex gap-8">
+          {job.status === 'won' && (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={toggleMasterLock}
+              title={job.bid_locked === 1 ? 'Bid locked -- click to permanently unlock' : 'Bid unlocked -- click to lock'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, color: job.bid_locked === 1 ? 'var(--warning, #f59e0b)' : 'var(--text-muted)' }}
+            >
+              {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={handlePrint}>Print Bid</button>
           {job.status === 'draft' && (
             <button className="btn btn-secondary" onClick={() => updateStatus('submitted')}>Mark Submitted</button>
@@ -380,7 +459,7 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
             </div>
           </div>
         ) : (
-          <button className="btn btn-secondary" onClick={() => setShowAddSection(true)}>+ Add Bid Section</button>
+          <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
         )}
       </div>
 
@@ -394,14 +473,19 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
           crews={crews}
           productionRates={productionRates}
           equipment={equipment}
-          onSave={saveLineItem}
-          onClose={() => setShowLineItemModal(false)}
+          onSave={async () => { await saveLineItem(); setLockBypassed(false); }}
+          onClose={() => { setShowLineItemModal(false); setLockBypassed(false); }}
         />
       )}
 
       {confirmState && (
-        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} />
+        <ConfirmDialog
+          message={confirmState.msg}
+          onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)}
+          yesLabel={confirmState.yesLabel}
+          variant={confirmState.variant}
+        />
       )}
 
       {/* Assembly Picker Modal */}

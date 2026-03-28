@@ -138,6 +138,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 3) {
     migrateV3(db);
   }
+  if (version < 4) {
+    migrateV4(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -409,5 +412,13 @@ function migrateV3(db: Database.Database): void {
     CREATE INDEX idx_assembly_items_assembly ON assembly_items(assembly_id);
 
     INSERT INTO schema_version (version) VALUES (3);
+  `);
+}
+
+// V4: bid_locked column on jobs
+function migrateV4(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE jobs ADD COLUMN bid_locked INTEGER NOT NULL DEFAULT 0;
+    INSERT INTO schema_version (version) VALUES (4);
   `);
 }

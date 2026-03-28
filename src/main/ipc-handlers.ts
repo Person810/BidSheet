@@ -353,14 +353,15 @@ export function registerIpcHandlers(db: Database.Database): void {
             name = ?, job_number = ?, client = ?, location = ?,
             bid_date = ?, start_date = ?, description = ?, status = ?,
             overhead_percent = ?, profit_percent = ?, bond_percent = ?,
-            tax_percent = ?, notes = ?, updated_at = datetime('now', 'localtime')
+            tax_percent = ?, notes = ?, bid_locked = ?,
+            updated_at = datetime('now', 'localtime')
           WHERE id = ?`
         )
         .run(
           job.name, job.jobNumber, job.client, job.location,
           job.bidDate, job.startDate, job.description, job.status,
           job.overheadPercent, job.profitPercent, job.bondPercent,
-          job.taxPercent, job.notes, job.id
+          job.taxPercent, job.notes, job.bidLocked ? 1 : 0, job.id
         );
     } else {
       return db
