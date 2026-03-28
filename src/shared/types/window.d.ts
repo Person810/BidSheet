@@ -61,6 +61,10 @@ declare global {
       // Backup/Restore
       exportDatabase: () => Promise<any>;
       restoreDatabase: () => Promise<any>;
+
+      // App Info
+      getLogDir: () => Promise<string>;
+
     };
   }
 }

@@ -2,23 +2,93 @@ import { ipcMain, dialog, app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { getDbPath } from './database';
+import { logger } from './logger';
 import type Database from 'better-sqlite3';
 import { isSetupComplete, seedDatabase } from './database';
 import { TradeType } from '../shared/constants/seed-data';
+
+// ================================================================
+// Error handling utilities
+// ================================================================
+
+/**
+ * Translate raw SQLite / filesystem errors into plain-English messages
+ * that a contractor (not a developer) can act on.
+ */
+function friendlyMessage(err: any): string {
+  const msg = err.message || String(err);
+  const code = err.code || '';
+
+  // SQLite errors
+  if (code === 'SQLITE_BUSY' || msg.includes('database is locked')) {
+    return 'Database is busy. Try again in a moment.';
+  }
+  if (code === 'SQLITE_CONSTRAINT' || msg.includes('UNIQUE constraint')) {
+    return 'This record conflicts with existing data. Check for duplicates.';
+  }
+  if (code === 'SQLITE_CORRUPT' || msg.includes('database disk image is malformed')) {
+    return 'Database file may be damaged. Try restoring from a backup.';
+  }
+  if (code === 'SQLITE_READONLY' || msg.includes('attempt to write a readonly')) {
+    return 'Database is read-only. Check file permissions or disk space.';
+  }
+  if (code === 'SQLITE_FULL' || msg.includes('database or disk is full')) {
+    return 'Disk is full. Free some space and try again.';
+  }
+
+  // Filesystem errors
+  if (msg.includes('ENOENT') || msg.includes('no such file')) {
+    return 'File not found. It may have been moved or deleted.';
+  }
+  if (msg.includes('EACCES') || msg.includes('permission denied')) {
+    return 'Permission denied. Check that BidSheet has access to this file.';
+  }
+  if (msg.includes('ENOSPC') || msg.includes('no space left')) {
+    return 'Disk is full. Free some space and try again.';
+  }
+
+  return 'Something went wrong. Check the log for details.';
+}
+
+/**
+ * Wraps an IPC handler with try/catch, structured logging, and
+ * user-friendly error translation. The re-thrown Error carries a
+ * plain-English message; Electron serializes it back to the renderer
+ * as a rejected promise.
+ */
+function safeHandle(
+  channel: string,
+  fn: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any
+): void {
+  ipcMain.handle(channel, async (event, ...args) => {
+    try {
+      return fn(event, ...args);
+    } catch (err: any) {
+      const friendly = friendlyMessage(err);
+      logger.error(channel, friendly, err.stack || err.message);
+      throw new Error(friendly);
+    }
+  });
+}
+
+// ================================================================
+// Handler registration
+// ================================================================
 
 export function registerIpcHandlers(db: Database.Database): void {
   // ================================================================
   // SETUP
   // ================================================================
 
-  ipcMain.handle('db:setup:is-complete', () => {
+  safeHandle('db:setup:is-complete', () => {
     return isSetupComplete(db);
   });
 
-  ipcMain.handle(
+  safeHandle(
     'db:setup:run',
     (_event, trades: string[], includeBallparkPrices: boolean, companyName: string) => {
       seedDatabase(db, trades as TradeType[], includeBallparkPrices, companyName);
+      logger.info('setup', `Setup complete: trades=${trades.join(',')}, company=${companyName}`);
       return { success: true };
     }
   );
@@ -27,7 +97,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // MATERIAL CATEGORIES
   // ================================================================
 
-  ipcMain.handle('db:material-categories:list', () => {
+  safeHandle('db:material-categories:list', () => {
     return db.prepare('SELECT * FROM material_categories ORDER BY name').all();
   });
 
@@ -35,7 +105,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // MATERIALS
   // ================================================================
 
-  ipcMain.handle('db:materials:list', (_event, categoryId?: number) => {
+  safeHandle('db:materials:list', (_event, categoryId?: number) => {
     if (categoryId) {
       return db
         .prepare('SELECT * FROM materials WHERE category_id = ? AND is_active = 1 ORDER BY name')
@@ -44,11 +114,11 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM materials WHERE is_active = 1 ORDER BY name').all();
   });
 
-  ipcMain.handle('db:materials:get', (_event, id: number) => {
+  safeHandle('db:materials:get', (_event, id: number) => {
     return db.prepare('SELECT * FROM materials WHERE id = ?').get(id);
   });
 
-  ipcMain.handle('db:materials:save', (_event, material: any) => {
+  safeHandle('db:materials:save', (_event, material: any) => {
     if (material.id) {
       return db
         .prepare(
@@ -78,23 +148,21 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
-  ipcMain.handle('db:materials:delete', (_event, id: number) => {
+  safeHandle('db:materials:delete', (_event, id: number) => {
     return db.prepare('UPDATE materials SET is_active = 0 WHERE id = ?').run(id);
   });
 
-  ipcMain.handle(
+  safeHandle(
     'db:materials:update-price',
     (_event, id: number, newPrice: number, source: string) => {
       const material = db.prepare('SELECT default_unit_cost FROM materials WHERE id = ?').get(id) as any;
       if (!material) return null;
 
       const updatePrice = db.transaction(() => {
-        // Log the price change
         db.prepare(
           `INSERT INTO price_updates (material_id, old_price, new_price, source) VALUES (?, ?, ?, ?)`
         ).run(id, material.default_unit_cost, newPrice, source);
 
-        // Update the material
         db.prepare(
           `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now', 'localtime') WHERE id = ?`
         ).run(newPrice, id);
@@ -109,11 +177,11 @@ export function registerIpcHandlers(db: Database.Database): void {
   // LABOR ROLES
   // ================================================================
 
-  ipcMain.handle('db:labor-roles:list', () => {
+  safeHandle('db:labor-roles:list', () => {
     return db.prepare('SELECT * FROM labor_roles ORDER BY name').all();
   });
 
-  ipcMain.handle('db:labor-roles:save', (_event, role: any) => {
+  safeHandle('db:labor-roles:save', (_event, role: any) => {
     if (role.id) {
       return db
         .prepare(
@@ -133,7 +201,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // CREW TEMPLATES
   // ================================================================
 
-  ipcMain.handle('db:crew-templates:list', () => {
+  safeHandle('db:crew-templates:list', () => {
     const templates = db.prepare('SELECT * FROM crew_templates ORDER BY name').all() as any[];
     return templates.map((t) => ({
       ...t,
@@ -148,7 +216,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     }));
   });
 
-  ipcMain.handle('db:crew-templates:get', (_event, id: number) => {
+  safeHandle('db:crew-templates:get', (_event, id: number) => {
     const template = db.prepare('SELECT * FROM crew_templates WHERE id = ?').get(id) as any;
     if (!template) return null;
     template.members = db
@@ -162,7 +230,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     return template;
   });
 
-  ipcMain.handle('db:crew-templates:save', (_event, template: any) => {
+  safeHandle('db:crew-templates:save', (_event, template: any) => {
     const saveTemplate = db.transaction(() => {
       let templateId: number;
 
@@ -171,7 +239,6 @@ export function registerIpcHandlers(db: Database.Database): void {
           template.name, template.description, template.id
         );
         templateId = template.id;
-        // Clear existing members and re-insert
         db.prepare('DELETE FROM crew_members WHERE crew_template_id = ?').run(templateId);
       } else {
         const result = db
@@ -180,7 +247,6 @@ export function registerIpcHandlers(db: Database.Database): void {
         templateId = Number(result.lastInsertRowid);
       }
 
-      // Insert members
       const insertMember = db.prepare(
         'INSERT INTO crew_members (crew_template_id, labor_role_id, quantity) VALUES (?, ?, ?)'
       );
@@ -198,7 +264,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // PRODUCTION RATES
   // ================================================================
 
-  ipcMain.handle('db:production-rates:list', () => {
+  safeHandle('db:production-rates:list', () => {
     return db
       .prepare(
         `SELECT pr.*, ct.name as crew_name
@@ -209,7 +275,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       .all();
   });
 
-  ipcMain.handle('db:production-rates:save', (_event, rate: any) => {
+  safeHandle('db:production-rates:save', (_event, rate: any) => {
     if (rate.id) {
       return db
         .prepare(
@@ -229,11 +295,11 @@ export function registerIpcHandlers(db: Database.Database): void {
   // EQUIPMENT
   // ================================================================
 
-  ipcMain.handle('db:equipment:list', () => {
+  safeHandle('db:equipment:list', () => {
     return db.prepare('SELECT * FROM equipment WHERE is_active = 1 ORDER BY category, name').all();
   });
 
-  ipcMain.handle('db:equipment:save', (_event, equip: any) => {
+  safeHandle('db:equipment:save', (_event, equip: any) => {
     if (equip.id) {
       return db
         .prepare(
@@ -260,7 +326,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
-  ipcMain.handle('db:equipment:delete', (_event, id: number) => {
+  safeHandle('db:equipment:delete', (_event, id: number) => {
     return db.prepare('UPDATE equipment SET is_active = 0 WHERE id = ?').run(id);
   });
 
@@ -268,18 +334,18 @@ export function registerIpcHandlers(db: Database.Database): void {
   // JOBS
   // ================================================================
 
-  ipcMain.handle('db:jobs:list', (_event, status?: string) => {
+  safeHandle('db:jobs:list', (_event, status?: string) => {
     if (status) {
       return db.prepare('SELECT * FROM jobs WHERE status = ? ORDER BY updated_at DESC').all(status);
     }
     return db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC').all();
   });
 
-  ipcMain.handle('db:jobs:get', (_event, id: number) => {
+  safeHandle('db:jobs:get', (_event, id: number) => {
     return db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
   });
 
-  ipcMain.handle('db:jobs:save', (_event, job: any) => {
+  safeHandle('db:jobs:save', (_event, job: any) => {
     if (job.id) {
       return db
         .prepare(
@@ -311,16 +377,15 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
-  ipcMain.handle('db:jobs:delete', (_event, id: number) => {
+  safeHandle('db:jobs:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
   });
 
-  ipcMain.handle('db:jobs:duplicate', (_event, id: number) => {
+  safeHandle('db:jobs:duplicate', (_event, id: number) => {
     const duplicate = db.transaction(() => {
       const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as any;
       if (!job) return null;
 
-      // Create new job as draft copy
       const newJob = db
         .prepare(
           `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, notes)
@@ -334,7 +399,6 @@ export function registerIpcHandlers(db: Database.Database): void {
         );
       const newJobId = Number(newJob.lastInsertRowid);
 
-      // Copy sections
       const sections = db.prepare('SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
       for (const section of sections) {
         const newSection = db
@@ -342,7 +406,6 @@ export function registerIpcHandlers(db: Database.Database): void {
           .run(newJobId, section.name, section.sort_order);
         const newSectionId = Number(newSection.lastInsertRowid);
 
-        // Copy line items in this section
         const items = db.prepare('SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order').all(section.id) as any[];
         const insertItem = db.prepare(
           `INSERT INTO bid_line_items (
@@ -370,7 +433,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     return duplicate();
   });
 
-  ipcMain.handle('db:jobs:summary', (_event, jobId: number) => {
+  safeHandle('db:jobs:summary', (_event, jobId: number) => {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job) return null;
 
@@ -407,11 +470,11 @@ export function registerIpcHandlers(db: Database.Database): void {
   // BID SECTIONS
   // ================================================================
 
-  ipcMain.handle('db:bid-sections:list', (_event, jobId: number) => {
+  safeHandle('db:bid-sections:list', (_event, jobId: number) => {
     return db.prepare('SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order').all(jobId);
   });
 
-  ipcMain.handle('db:bid-sections:save', (_event, section: any) => {
+  safeHandle('db:bid-sections:save', (_event, section: any) => {
     if (section.id) {
       return db
         .prepare('UPDATE bid_sections SET name = ?, sort_order = ? WHERE id = ?')
@@ -423,7 +486,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
-  ipcMain.handle('db:bid-sections:delete', (_event, id: number) => {
+  safeHandle('db:bid-sections:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM bid_sections WHERE id = ?').run(id);
   });
 
@@ -431,14 +494,13 @@ export function registerIpcHandlers(db: Database.Database): void {
   // BID LINE ITEMS
   // ================================================================
 
-  ipcMain.handle('db:line-items:list', (_event, sectionId: number) => {
+  safeHandle('db:line-items:list', (_event, sectionId: number) => {
     return db
       .prepare('SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order')
       .all(sectionId);
   });
 
-  ipcMain.handle('db:line-items:save', (_event, item: any) => {
-    // Auto-calculate totals
+  safeHandle('db:line-items:save', (_event, item: any) => {
     const materialTotal = item.quantity * item.materialUnitCost;
     const laborTotal = item.laborHours * item.laborCostPerHour;
     const equipmentTotal = item.equipmentHours * item.equipmentCostPerHour;
@@ -485,7 +547,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
-  ipcMain.handle('db:line-items:delete', (_event, id: number) => {
+  safeHandle('db:line-items:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM bid_line_items WHERE id = ?').run(id);
   });
 
@@ -493,7 +555,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // ASSEMBLIES
   // ================================================================
 
-  ipcMain.handle('db:assemblies:list', () => {
+  safeHandle('db:assemblies:list', () => {
     const assemblies = db
       .prepare('SELECT * FROM assemblies WHERE is_active = 1 ORDER BY name')
       .all() as any[];
@@ -511,7 +573,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     }));
   });
 
-  ipcMain.handle('db:assemblies:get', (_event, id: number) => {
+  safeHandle('db:assemblies:get', (_event, id: number) => {
     const assembly = db.prepare('SELECT * FROM assemblies WHERE id = ?').get(id) as any;
     if (!assembly) return null;
     assembly.items = db
@@ -525,7 +587,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     return assembly;
   });
 
-  ipcMain.handle('db:assemblies:save', (_event, assembly: any) => {
+  safeHandle('db:assemblies:save', (_event, assembly: any) => {
     const saveAssembly = db.transaction(() => {
       let assemblyId: number;
 
@@ -534,7 +596,6 @@ export function registerIpcHandlers(db: Database.Database): void {
           `UPDATE assemblies SET name = ?, description = ?, unit = ?, notes = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`
         ).run(assembly.name, assembly.description, assembly.unit, assembly.notes, assembly.id);
         assemblyId = assembly.id;
-        // Clear existing items and re-insert
         db.prepare('DELETE FROM assembly_items WHERE assembly_id = ?').run(assemblyId);
       } else {
         const result = db
@@ -543,7 +604,6 @@ export function registerIpcHandlers(db: Database.Database): void {
         assemblyId = Number(result.lastInsertRowid);
       }
 
-      // Insert items
       const insertItem = db.prepare(
         'INSERT INTO assembly_items (assembly_id, material_id, quantity, notes) VALUES (?, ?, ?, ?)'
       );
@@ -557,12 +617,14 @@ export function registerIpcHandlers(db: Database.Database): void {
     return saveAssembly();
   });
 
-  ipcMain.handle('db:assemblies:delete', (_event, id: number) => {
+  safeHandle('db:assemblies:delete', (_event, id: number) => {
     return db.prepare('UPDATE assemblies SET is_active = 0 WHERE id = ?').run(id);
   });
 
   // ================================================================
   // DATABASE BACKUP / RESTORE
+  // These keep their existing { success, error } return shape
+  // because the renderer UI already reads it. Logging is added.
   // ================================================================
 
   ipcMain.handle('db:export', async () => {
@@ -574,20 +636,22 @@ export function registerIpcHandlers(db: Database.Database): void {
     if (result.canceled || !result.filePath) return { success: false, canceled: true };
 
     try {
-      // Checkpoint WAL to flush pending writes into the main db file
       db.pragma('wal_checkpoint(TRUNCATE)');
       const srcPath = getDbPath();
       fs.copyFileSync(srcPath, result.filePath);
 
-      // Verify the backup file exists and matches the source size
       const srcSize = fs.statSync(srcPath).size;
       const destSize = fs.statSync(result.filePath).size;
       if (destSize !== srcSize) {
-        return { success: false, error: `Backup file size mismatch (expected ${srcSize}, got ${destSize})` };
+        const msg = `Backup file size mismatch (expected ${srcSize}, got ${destSize})`;
+        logger.error('db:export', msg);
+        return { success: false, error: msg };
       }
 
+      logger.info('db:export', `Backup saved to ${result.filePath} (${srcSize} bytes)`);
       return { success: true, path: result.filePath };
     } catch (err: any) {
+      logger.error('db:export', 'Backup failed', err.stack || err.message);
       return { success: false, error: err.message };
     }
   });
@@ -602,7 +666,6 @@ export function registerIpcHandlers(db: Database.Database): void {
 
     const backupPath = result.filePaths[0];
     try {
-      // Validate: open the backup file and check it has our app_settings table
       const BetterSqlite3 = require('better-sqlite3');
       const testDb = new BetterSqlite3(backupPath, { readonly: true });
       const hasSettings = testDb.prepare(
@@ -611,6 +674,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       testDb.close();
 
       if (!hasSettings) {
+        logger.warn('db:restore', `Rejected invalid backup file: ${backupPath}`);
         return { success: false, error: 'This file is not a valid BidSheet database.' };
       }
 
@@ -618,60 +682,53 @@ export function registerIpcHandlers(db: Database.Database): void {
       const walPath = dbPath + '-wal';
       const shmPath = dbPath + '-shm';
 
-      // Save a safety copy of the current DB before overwriting
       const safetyPath = dbPath + '.pre-restore';
       db.pragma('wal_checkpoint(TRUNCATE)');
       fs.copyFileSync(dbPath, safetyPath);
 
-      // Close current db so we can overwrite it
       db.close();
 
-      // Remove WAL/SHM sidecar files — leftover WAL from the old DB
-      // would corrupt the restored database
       try { fs.unlinkSync(walPath); } catch (_) {}
       try { fs.unlinkSync(shmPath); } catch (_) {}
 
-      // Copy backup over the main db file
       fs.copyFileSync(backupPath, dbPath);
 
-      // Verify size matches
       const srcSize = fs.statSync(backupPath).size;
       const destSize = fs.statSync(dbPath).size;
       if (destSize !== srcSize) {
-        // Restore failed — put the safety copy back
         fs.copyFileSync(safetyPath, dbPath);
         try { fs.unlinkSync(safetyPath); } catch (_) {}
-        return { success: false, error: 'Restore failed: file size mismatch after copy. Original database has been preserved.' };
+        const msg = 'Restore failed: file size mismatch after copy. Original database has been preserved.';
+        logger.error('db:restore', msg);
+        return { success: false, error: msg };
       }
 
-      // Clean up safety copy on success
       try { fs.unlinkSync(safetyPath); } catch (_) {}
 
-      // Relaunch the app so it picks up the new database
-      // (migrations will run on startup and handle any schema differences)
+      logger.info('db:restore', `Database restored from ${backupPath}. Relaunching.`);
+
       app.relaunch();
       app.exit(0);
 
       return { success: true };
     } catch (err: any) {
+      logger.error('db:restore', 'Restore failed', err.stack || err.message);
       return { success: false, error: err.message };
     }
   });
 
   // ================================================================
   // CSV PRICE IMPORT
+  // These also keep their existing return shapes with logging added.
   // ================================================================
 
-  // Shared CSV reading logic used by both dialog picker and drag-and-drop
   function readAndParseCsv(filePath: string): { headers: string[]; rows: Record<string, string>[]; fileName: string; error?: string } {
     const fileName = path.basename(filePath);
     try {
       let raw = fs.readFileSync(filePath, 'utf-8');
 
-      // Strip BOM if present
       if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
 
-      // Detect delimiter: tab-separated vs comma-separated
       const firstLine = raw.split(/\r?\n/)[0] || '';
       const delimiter = firstLine.includes('\t') ? '\t' : ',';
 
@@ -681,8 +738,10 @@ export function registerIpcHandlers(db: Database.Database): void {
       }
 
       const headers = Object.keys(rows[0]);
+      logger.info('csv:parse', `Parsed ${fileName}: ${rows.length} rows, ${headers.length} columns`);
       return { headers, rows, fileName };
     } catch (err: any) {
+      logger.error('csv:parse', `Failed to read ${fileName}`, err.stack || err.message);
       return { error: `Failed to read file: ${err.message}`, headers: [], rows: [], fileName };
     }
   }
@@ -699,8 +758,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     return readAndParseCsv(result.filePaths[0]);
   });
 
-  ipcMain.handle('db:csv:parse-path', (_event, filePath: string) => {
-    // Validate extension before reading
+  safeHandle('db:csv:parse-path', (_event, filePath: string) => {
     const ext = path.extname(filePath).toLowerCase();
     if (!['.csv', '.tsv', '.txt'].includes(ext)) {
       return { error: 'Unsupported file type. Use .csv, .tsv, or .txt files.', headers: [], rows: [], fileName: path.basename(filePath) };
@@ -742,10 +800,7 @@ export function registerIpcHandlers(db: Database.Database): void {
               continue;
             }
 
-            // Log price change for audit trail
             logPrice.run(u.materialId, existing.default_unit_cost, u.newPrice, source);
-
-            // Update material price (and optionally supplier/part#)
             updateMat.run(
               u.newPrice,
               u.supplier || null,
@@ -757,8 +812,10 @@ export function registerIpcHandlers(db: Database.Database): void {
         });
 
         importAll();
+        logger.info('csv:import', `Price import from "${source}": ${updated} updated, ${skipped} skipped`);
         return { updated, skipped };
       } catch (err: any) {
+        logger.error('csv:import', 'Price import failed', err.stack || err.message);
         return { error: err.message, updated: 0, skipped: 0 };
       }
     }
@@ -768,11 +825,11 @@ export function registerIpcHandlers(db: Database.Database): void {
   // SETTINGS
   // ================================================================
 
-  ipcMain.handle('db:settings:get', () => {
+  safeHandle('db:settings:get', () => {
     return db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
   });
 
-  ipcMain.handle('db:settings:save', (_event, settings: any) => {
+  safeHandle('db:settings:save', (_event, settings: any) => {
     return db
       .prepare(
         `UPDATE app_settings SET
@@ -789,6 +846,7 @@ export function registerIpcHandlers(db: Database.Database): void {
         settings.defaultTaxPercent, settings.defaultBondPercent
       );
   });
+
 }
 
 // ================================================================
@@ -809,7 +867,6 @@ function parseCsvString(raw: string, delimiter: string): Record<string, string>[
 
     if (inQuotes) {
       if (ch === '"') {
-        // Peek ahead: escaped quote ("") or end of quoted field
         if (i + 1 < raw.length && raw[i + 1] === '"') {
           field += '"';
           i += 2;
@@ -823,8 +880,6 @@ function parseCsvString(raw: string, delimiter: string): Record<string, string>[
       }
     } else {
       if (ch === '"' && field.length === 0) {
-        // Only enter quote mode at the START of a field (RFC 4180).
-        // A " mid-field (e.g. 8" pipe) is a literal character.
         inQuotes = true;
         i++;
       } else if (ch === delimiter) {
@@ -832,7 +887,6 @@ function parseCsvString(raw: string, delimiter: string): Record<string, string>[
         field = '';
         i++;
       } else if (ch === '\r') {
-        // CRLF or bare CR
         current.push(field.trim());
         field = '';
         rows.push(current);
@@ -852,15 +906,13 @@ function parseCsvString(raw: string, delimiter: string): Record<string, string>[
     }
   }
 
-  // Last field / last row
   if (field || current.length > 0) {
     current.push(field.trim());
     rows.push(current);
   }
 
-  // Filter out completely empty rows
   const nonEmpty = rows.filter((r) => r.some((cell) => cell.length > 0));
-  if (nonEmpty.length < 2) return []; // need header + at least one data row
+  if (nonEmpty.length < 2) return [];
 
   const headers = nonEmpty[0];
   const dataRows: Record<string, string>[] = [];

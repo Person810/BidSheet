@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { SetupWizard } from './components/SetupWizard';
+import { ToastContainer } from './components/Toast';
+import { useToastStore } from './stores/toast-store';
 import { Dashboard } from './pages/Dashboard';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { LaborPage } from './pages/LaborPage';
@@ -22,6 +24,23 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [setupComplete, setSetupComplete] = useState(false);
   const [activeModules, setActiveModules] = useState<TradeModule[]>([]);
+  const addToast = useToastStore((s) => s.addToast);
+
+  // Global safety net: catch any unhandled IPC rejections and show a toast
+  // so errors never vanish silently. Pages can still catch their own errors
+  // for more specific messaging -- this only fires for truly uncaught ones.
+  useEffect(() => {
+    const handler = (e: PromiseRejectionEvent) => {
+      // Electron IPC errors come through as Error objects with user-friendly
+      // messages (set by safeHandle in ipc-handlers.ts)
+      const msg = e.reason?.message || String(e.reason || 'An unexpected error occurred.');
+      addToast(msg, 'error');
+      // Prevent the default browser console error -- we've handled it
+      e.preventDefault();
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, [addToast]);
 
   useEffect(() => {
     window.api.isSetupComplete().then((complete) => {
@@ -49,7 +68,12 @@ export function App() {
   }
 
   if (!setupComplete) {
-    return <SetupWizard onComplete={() => setSetupComplete(true)} />;
+    return (
+      <>
+        <SetupWizard onComplete={() => setSetupComplete(true)} />
+        <ToastContainer />
+      </>
+    );
   }
 
   // Collect all tool routes from active modules (empty for now, ready for trench profiler etc.)
@@ -126,6 +150,7 @@ export function App() {
             })}
           </Routes>
         </main>
+        <ToastContainer />
       </div>
     </HashRouter>
   );

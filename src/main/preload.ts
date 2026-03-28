@@ -66,4 +66,8 @@ contextBridge.exposeInMainWorld('api', {
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),
   restoreDatabase: () => ipcRenderer.invoke('db:restore'),
+
+  // ---- App Info ----
+  getLogDir: () => ipcRenderer.invoke('app:log-dir'),
+
 });
