@@ -10,6 +10,13 @@ import { SettingsPage } from './pages/SettingsPage';
 import { AssembliesPage } from './pages/AssembliesPage';
 import { getActiveModules } from './modules';
 import type { TradeModule } from './modules';
+import { TrenchProfiler } from './modules/underground';
+
+// Maps tool route paths to their components.
+// Add new entries here as tools are built.
+const TOOL_COMPONENTS: Record<string, React.FC> = {
+  '/tools/trench-profiler': TrenchProfiler,
+};
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -83,7 +90,7 @@ export function App() {
             {/* Trade module tools -- only renders when modules have tools registered */}
             {modulesWithTools.map((mod) => (
               <li key={mod.id}>
-                <div className="nav-section-label">{mod.icon} {mod.name}</div>
+                <div className="nav-section-label">{mod.icon ? `${mod.icon} ` : ''}{mod.name}</div>
                 <ul className="nav-links-nested">
                   {mod.tools.map((tool) => (
                     <li key={tool.id}>
@@ -110,9 +117,13 @@ export function App() {
             <Route path="/settings" element={<SettingsPage />} />
 
             {/* Trade module tool routes -- populated when tools are added to manifests */}
-            {moduleToolRoutes.map((rt) => (
-              <Route key={rt.key} path={rt.path} element={<div>TODO: {rt.tool.name}</div>} />
-            ))}
+            {moduleToolRoutes.map((rt) => {
+              const Comp = TOOL_COMPONENTS[rt.path];
+              return (
+                <Route key={rt.key} path={rt.path}
+                  element={Comp ? <Comp /> : <div>TODO: {rt.tool.name}</div>} />
+              );
+            })}
           </Routes>
         </main>
       </div>
