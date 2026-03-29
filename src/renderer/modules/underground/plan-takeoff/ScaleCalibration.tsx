@@ -21,6 +21,7 @@ type CalibrationStep = 'pick-p1' | 'pick-p2' | 'input-distance' | 'confirm';
 
 /** Compute scale in engineering format: "1\" = X'" */
 export function formatScale(pxPerFt: number): string {
+  if (!pxPerFt || pxPerFt <= 0) return 'No scale';
   const ftPerInch = 72 / pxPerFt;
   const rounded = Math.round(ftPerInch);
   if (rounded > 0 && Math.abs(ftPerInch - rounded) < 0.5) {
@@ -75,7 +76,7 @@ export function useScaleCalibration({
 
   const handleDistanceSubmit = useCallback(() => {
     const ft = parseFloat(distanceInput);
-    if (!point1 || !point2 || !ft || ft <= 0) return;
+    if (!point1 || !point2 || !isFinite(ft) || ft <= 0) return;
     const distPx = pixelDistance(point1, point2);
     const pxPerFt = distPx / ft;
     setComputedPxPerFt(pxPerFt);
@@ -192,7 +193,7 @@ export function useScaleCalibration({
           />
           <span style={{ color: 'var(--text-secondary)' }}>ft</span>
           <button className="btn btn-primary btn-sm" onClick={handleDistanceSubmit}
-            disabled={!distanceInput || parseFloat(distanceInput) <= 0}>
+            disabled={!distanceInput || !isFinite(parseFloat(distanceInput)) || parseFloat(distanceInput) <= 0}>
             OK
           </button>
           <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>

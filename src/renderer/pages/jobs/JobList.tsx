@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToastStore } from '../../stores/toast-store';
 
 interface JobListProps {
   onOpenJob: (id: number) => void;
 }
 
 export function JobList({ onOpenJob }: JobListProps) {
+  const addToast = useToastStore((s) => s.addToast);
   const [jobs, setJobs] = useState<any[]>([]);
   const [filter, setFilter] = useState<string>('');
   const [showCreate, setShowCreate] = useState(false);
@@ -14,9 +16,13 @@ export function JobList({ onOpenJob }: JobListProps) {
   });
 
   const loadJobs = useCallback(async () => {
-    const j = filter ? await window.api.getJobs(filter) : await window.api.getJobs();
-    setJobs(j);
-  }, [filter]);
+    try {
+      const j = filter ? await window.api.getJobs(filter) : await window.api.getJobs();
+      setJobs(j);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to load jobs.', 'error');
+    }
+  }, [filter, addToast]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 

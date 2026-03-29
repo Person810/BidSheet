@@ -65,6 +65,7 @@ export function AssembliesPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [formItems, setFormItems] = useState<FormItem[]>([]);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // ---- Data loading ----
 
@@ -163,21 +164,26 @@ export function AssembliesPage() {
     if (!form.name.trim()) return;
     if (formItems.length === 0) return;
 
-    await window.api.saveAssembly({
-      id: editingId || undefined,
-      name: form.name.trim(),
-      description: form.description.trim() || null,
-      unit: form.unit,
-      notes: form.notes.trim() || null,
-      items: formItems.map((fi) => ({
-        materialId: fi.materialId,
-        quantity: fi.quantity,
-        notes: fi.notes || null,
-      })),
-    });
+    setIsSaving(true);
+    try {
+      await window.api.saveAssembly({
+        id: editingId || undefined,
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        unit: form.unit,
+        notes: form.notes.trim() || null,
+        items: formItems.map((fi) => ({
+          materialId: fi.materialId,
+          quantity: fi.quantity,
+          notes: fi.notes || null,
+        })),
+      });
 
-    closeModal();
-    loadAssemblies();
+      closeModal();
+      loadAssemblies();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // ---- Delete ----
@@ -482,9 +488,9 @@ export function AssembliesPage() {
               <button
                 className="btn btn-primary"
                 onClick={handleSave}
-                disabled={!form.name.trim() || formItems.length === 0}
+                disabled={!form.name.trim() || formItems.length === 0 || isSaving}
               >
-                {editingId ? 'Save Changes' : 'Create Assembly'}
+                {isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Assembly'}
               </button>
             </div>
           </div>

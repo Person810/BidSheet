@@ -104,6 +104,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (db) {
     try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
       db.close();
     } catch (err: any) {
       logger.warn('db', 'Error closing database', err.message);

@@ -52,6 +52,7 @@ export function MaterialsPage() {
   const [form, setForm] = useState({ ...EMPTY_MATERIAL });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const loadCategories = useCallback(async () => {
     const cats = await window.api.getMaterialCategories();
@@ -109,23 +110,28 @@ export function MaterialsPage() {
   };
 
   const handleSave = async () => {
-    const payload = {
-      id: editingMaterial?.id,
-      name: form.name,
-      description: form.description || null,
-      unit: form.unit,
-      defaultUnitCost: form.defaultUnitCost,
-      supplier: form.supplier || null,
-      partNumber: form.partNumber || null,
-      notes: form.notes || null,
-      aliases: form.aliases || null,
-      categoryId: form.categoryId,
-      isActive: form.isActive,
-    };
+    setIsSaving(true);
+    try {
+      const payload = {
+        id: editingMaterial?.id,
+        name: form.name,
+        description: form.description || null,
+        unit: form.unit,
+        defaultUnitCost: form.defaultUnitCost,
+        supplier: form.supplier || null,
+        partNumber: form.partNumber || null,
+        notes: form.notes || null,
+        aliases: form.aliases || null,
+        categoryId: form.categoryId,
+        isActive: form.isActive,
+      };
 
-    await window.api.saveMaterial(payload);
-    setShowModal(false);
-    loadMaterials();
+      await window.api.saveMaterial(payload);
+      setShowModal(false);
+      loadMaterials();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -400,9 +406,9 @@ export function MaterialsPage() {
               <button
                 className="btn btn-primary"
                 onClick={handleSave}
-                disabled={!form.name.trim() || !form.categoryId}
+                disabled={!form.name.trim() || !form.categoryId || isSaving}
               >
-                {editingMaterial ? 'Save Changes' : 'Add Material'}
+                {isSaving ? 'Saving...' : editingMaterial ? 'Save Changes' : 'Add Material'}
               </button>
             </div>
           </div>

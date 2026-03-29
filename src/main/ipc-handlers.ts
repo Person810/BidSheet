@@ -890,11 +890,17 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:csv:parse-path', (_event, filePath: string) => {
-    const ext = path.extname(filePath).toLowerCase();
-    if (!['.csv', '.tsv', '.txt'].includes(ext)) {
-      return { error: 'Unsupported file type. Use .csv, .tsv, or .txt files.', headers: [], rows: [], fileName: path.basename(filePath) };
+    // Resolve to absolute and verify the file actually exists on disk
+    // (prevents path traversal via relative segments like ../)
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      return { error: 'File not found.', headers: [], rows: [], fileName: path.basename(resolved) };
     }
-    return readAndParseCsv(filePath);
+    const ext = path.extname(resolved).toLowerCase();
+    if (!['.csv', '.tsv', '.txt'].includes(ext)) {
+      return { error: 'Unsupported file type. Use .csv, .tsv, or .txt files.', headers: [], rows: [], fileName: path.basename(resolved) };
+    }
+    return readAndParseCsv(resolved);
   });
 
   ipcMain.handle(
@@ -981,6 +987,10 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:takeoff-settings:save', (_event, settings: any) => {
+    // Sanitize pdf_path: only store absolute paths (from native file dialog)
+    if (settings.pdf_path) {
+      settings.pdf_path = path.resolve(settings.pdf_path);
+    }
     return db.prepare(`
       INSERT INTO takeoff_job_settings
         (job_id, pdf_path, scale_px_per_ft, scale_point1_x, scale_point1_y,

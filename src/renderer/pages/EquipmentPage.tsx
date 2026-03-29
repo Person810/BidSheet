@@ -46,6 +46,7 @@ export function EquipmentPage() {
   const [editing, setEditing] = useState<EquipmentItem | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const loadEquipment = useCallback(async () => {
     const items = await window.api.getEquipment();
@@ -95,22 +96,27 @@ export function EquipmentPage() {
   };
 
   const handleSave = async () => {
-    const payload = {
-      id: editing?.id,
-      name: form.name,
-      category: form.category,
-      hourlyRate: form.hourlyRate,
-      dailyRate: form.dailyRate ? parseFloat(form.dailyRate) : null,
-      mobilizationCost: form.mobilizationCost,
-      fuelCostPerHour: form.fuelCostPerHour ? parseFloat(form.fuelCostPerHour) : null,
-      notes: form.notes || null,
-      aliases: form.aliases || null,
-      isOwned: form.isOwned,
-      isActive: form.isActive,
-    };
-    await window.api.saveEquipment(payload);
-    setShowModal(false);
-    loadEquipment();
+    setIsSaving(true);
+    try {
+      const payload = {
+        id: editing?.id,
+        name: form.name,
+        category: form.category,
+        hourlyRate: form.hourlyRate,
+        dailyRate: form.dailyRate ? parseFloat(form.dailyRate) : null,
+        mobilizationCost: form.mobilizationCost,
+        fuelCostPerHour: form.fuelCostPerHour ? parseFloat(form.fuelCostPerHour) : null,
+        notes: form.notes || null,
+        aliases: form.aliases || null,
+        isOwned: form.isOwned,
+        isActive: form.isActive,
+      };
+      await window.api.saveEquipment(payload);
+      setShowModal(false);
+      loadEquipment();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -401,9 +407,9 @@ export function EquipmentPage() {
               <button
                 className="btn btn-primary"
                 onClick={handleSave}
-                disabled={!form.name.trim() || !form.category}
+                disabled={!form.name.trim() || !form.category || isSaving}
               >
-                {editing ? 'Save Changes' : 'Add Equipment'}
+                {isSaving ? 'Saving...' : editing ? 'Save Changes' : 'Add Equipment'}
               </button>
             </div>
           </div>

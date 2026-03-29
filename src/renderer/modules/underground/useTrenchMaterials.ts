@@ -18,19 +18,23 @@ export function useTrenchMaterials() {
 
   useEffect(() => {
     async function load() {
-      const allPipe: any[] = [];
-      for (const cat of PIPE_CATEGORIES) {
-        const rows = await window.api.getMaterialsByCategoryName(cat);
-        allPipe.push(...rows);
-      }
-      // Only include pipe materials with LF unit and name starting with size + quote
-      const filtered = allPipe.filter(
-        (m) => m.unit === 'LF' && /^\d+['"]/.test(m.name)
-      );
-      setPipeMaterials(materialsToAutocomplete(filtered));
+      try {
+        const allPipe: any[] = [];
+        for (const cat of PIPE_CATEGORIES) {
+          const rows = await window.api.getMaterialsByCategoryName(cat);
+          allPipe.push(...rows);
+        }
+        // Only include pipe materials with LF unit and name starting with size + quote
+        const filtered = allPipe.filter(
+          (m) => m.unit === 'LF' && /^\d+['"]/.test(m.name)
+        );
+        setPipeMaterials(materialsToAutocomplete(filtered));
 
-      const bedding = await window.api.getMaterialsByCategoryName(BEDDING_CATEGORY);
-      setBeddingMaterials(materialsToAutocomplete(bedding));
+        const bedding = await window.api.getMaterialsByCategoryName(BEDDING_CATEGORY);
+        setBeddingMaterials(materialsToAutocomplete(bedding));
+      } catch (err) {
+        console.error('Failed to load trench materials:', err);
+      }
     }
     load();
   }, []);

@@ -4,6 +4,7 @@ import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency } from './helpers';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
+import { useToastStore } from '../../stores/toast-store';
 
 // Lock icon SVGs -- inline to avoid any import dependency
 const LockClosedIcon = () => (
@@ -28,6 +29,7 @@ interface JobDetailProps {
 }
 
 export function JobDetail({ jobId, onBack, onOpenJob }: JobDetailProps) {
+  const addToast = useToastStore((s) => s.addToast);
   const [job, setJob] = useState<any>(null);
   const [sections, setSections] = useState<any[]>([]);
   const [lineItems, setLineItems] = useState<Record<number, any[]>>({});
@@ -77,54 +79,58 @@ export function JobDetail({ jobId, onBack, onOpenJob }: JobDetailProps) {
   };
 
   const loadJob = useCallback(async () => {
-    const [j, s, mats, cr, pr, eq, set, asm] = await Promise.all([
-      window.api.getJob(jobId),
-      window.api.getBidSections(jobId),
-      window.api.getMaterials(),
-      window.api.getCrewTemplates(),
-      window.api.getProductionRates(),
-      window.api.getEquipment(),
-      window.api.getSettings(),
-      window.api.getAssemblies(),
-    ]);
-    setJob(j);
-    setSections(s);
-    setMaterials(mats);
-    setCrews(cr);
-    setProductionRates(pr);
-    setEquipment(eq);
-    setSettings(set);
-    setAssemblies(asm);
-    const items: Record<number, any[]> = {};
-    for (const sec of s) {
-      items[sec.id] = await window.api.getBidLineItems(sec.id);
-    }
-    setLineItems(items);
-    const sum = await window.api.getBidSummary(jobId);
-    setSummary(sum);
-
-    // Load change orders if this is a parent job
-    if (!j.parent_job_id) {
-      const cos = await window.api.getChangeOrders(jobId);
-      setChangeOrders(cos);
-      const cosums: Record<number, any> = {};
-      for (const co of cos) {
-        cosums[co.id] = await window.api.getBidSummary(co.id);
+    try {
+      const [j, s, mats, cr, pr, eq, set, asm] = await Promise.all([
+        window.api.getJob(jobId),
+        window.api.getBidSections(jobId),
+        window.api.getMaterials(),
+        window.api.getCrewTemplates(),
+        window.api.getProductionRates(),
+        window.api.getEquipment(),
+        window.api.getSettings(),
+        window.api.getAssemblies(),
+      ]);
+      setJob(j);
+      setSections(s);
+      setMaterials(mats);
+      setCrews(cr);
+      setProductionRates(pr);
+      setEquipment(eq);
+      setSettings(set);
+      setAssemblies(asm);
+      const items: Record<number, any[]> = {};
+      for (const sec of s) {
+        items[sec.id] = await window.api.getBidLineItems(sec.id);
       }
-      setCoSummaries(cosums);
-    } else {
-      setChangeOrders([]);
-      setCoSummaries({});
-    }
+      setLineItems(items);
+      const sum = await window.api.getBidSummary(jobId);
+      setSummary(sum);
 
-    // Load parent job if this is a CO
-    if (j.parent_job_id) {
-      const p = await window.api.getJob(j.parent_job_id);
-      setParentJob(p);
-    } else {
-      setParentJob(null);
+      // Load change orders if this is a parent job
+      if (!j.parent_job_id) {
+        const cos = await window.api.getChangeOrders(jobId);
+        setChangeOrders(cos);
+        const cosums: Record<number, any> = {};
+        for (const co of cos) {
+          cosums[co.id] = await window.api.getBidSummary(co.id);
+        }
+        setCoSummaries(cosums);
+      } else {
+        setChangeOrders([]);
+        setCoSummaries({});
+      }
+
+      // Load parent job if this is a CO
+      if (j.parent_job_id) {
+        const p = await window.api.getJob(j.parent_job_id);
+        setParentJob(p);
+      } else {
+        setParentJob(null);
+      }
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to load job data.', 'error');
     }
-  }, [jobId]);
+  }, [jobId, addToast]);
 
   useEffect(() => {
     loadJob();

@@ -21,6 +21,26 @@ const TOOL_COMPONENTS: Record<string, React.FC> = {
   '/tools/plan-takeoff': PlanTakeoff,
 };
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16 }}>
+          <h2>Something went wrong</h2>
+          <p className="text-muted">An unexpected error occurred.</p>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function App() {
   const [loading, setLoading] = useState(true);
   const [setupComplete, setSetupComplete] = useState(false);
@@ -142,6 +162,7 @@ export function App() {
           </ul>
         </nav>
         <main className="main-content">
+          <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/jobs" element={<JobsPage />} />
@@ -160,6 +181,7 @@ export function App() {
               );
             })}
           </Routes>
+          </ErrorBoundary>
         </main>
         <ToastContainer />
       </div>

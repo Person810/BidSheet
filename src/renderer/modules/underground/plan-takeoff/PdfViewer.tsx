@@ -121,6 +121,10 @@ export function PdfViewer({
           const visCtx = visibleCanvas.getContext('2d');
           if (visCtx) visCtx.drawImage(offscreen, 0, 0);
 
+          // Release the offscreen canvas so GC can reclaim its backing memory
+          offscreen.width = 0;
+          offscreen.height = 0;
+
           setRenderedScale(targetScale);
           resolve();
         });
