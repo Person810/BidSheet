@@ -3,6 +3,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency } from './helpers';
+import { TrenchProfileList } from './TrenchProfileList';
 
 // Lock icon SVGs -- inline to avoid any import dependency
 const LockClosedIcon = () => (
@@ -207,6 +208,7 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
         productionRateId: item.production_rate_id || 0,
         laborHours: item.labor_hours,
         laborCostPerHour: item.labor_cost_per_hour,
+        equipmentId: item.equipment_id || 0,
         equipmentHours: item.equipment_hours,
         equipmentCostPerHour: item.equipment_cost_per_hour,
         subcontractorCost: item.subcontractor_cost,
@@ -232,6 +234,7 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
       productionRateId: lineForm.productionRateId || null,
       laborHours: lineForm.laborHours,
       laborCostPerHour: lineForm.laborCostPerHour,
+      equipmentId: lineForm.equipmentId || null,
       equipmentCostPerHour: lineForm.equipmentCostPerHour,
       equipmentHours: lineForm.equipmentHours,
       subcontractorCost: lineForm.subcontractorCost,
@@ -458,6 +461,9 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
           )}
         </div>
       ))}
+
+      {/* Trench Profiles */}
+      <TrenchProfileList jobId={jobId} />
 
       {/* Print summary footer */}
       {summary && (

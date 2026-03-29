@@ -103,18 +103,18 @@ export function FuzzyAutocomplete({
 
   // Sync display value with selected item
   useEffect(() => {
-    if (value) {
+    if (value !== null && value !== undefined && value !== 0 && value !== '') {
       const selected = items.find((item) => item.id === value);
       if (selected) {
         setInputValue(selected.label);
-      }
-    } else {
-      // If allowManualEntry and value is null/0, show empty
-      if (allowManualEntry) {
+      } else {
+        // item not found in list -- clear display so it doesn't show stale text
         setInputValue('');
       }
+    } else {
+      setInputValue('');
     }
-  }, [value, items, allowManualEntry]);
+  }, [value, items]);
 
   const updateFiltered = useCallback(
     (query: string) => {
@@ -131,10 +131,11 @@ export function FuzzyAutocomplete({
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
         // Restore display value if nothing was picked
-        if (value) {
+        if (value !== null && value !== undefined && value !== 0 && value !== '') {
           const selected = items.find((item) => item.id === value);
           if (selected) setInputValue(selected.label);
-        } else if (allowManualEntry) {
+          else setInputValue('');
+        } else {
           setInputValue('');
         }
       }

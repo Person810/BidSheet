@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import path from 'path';
 import { initializeDatabase } from './database';
 import { registerIpcHandlers } from './ipc-handlers';
@@ -34,6 +34,8 @@ process.on('unhandledRejection', (reason: any) => {
 // ================================================================
 // Window
 // ================================================================
+
+Menu.setApplicationMenu(null);
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({

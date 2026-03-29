@@ -116,10 +116,13 @@ export function LineItemModal({
       if (eq) {
         setLineForm((prev: any) => ({
           ...prev,
+          equipmentId: eq.id,
           equipmentCostPerHour: eq.hourly_rate,
           equipmentHours: prev.laborHours || prev.equipmentHours,
         }));
       }
+    } else {
+      setLineForm((prev: any) => ({ ...prev, equipmentId: 0 }));
     }
   };
 
@@ -245,7 +248,7 @@ export function LineItemModal({
               <label>Pick Equipment (optional)</label>
               <FuzzyAutocomplete
                 items={equipmentItems}
-                value={null}
+                value={lineForm.equipmentId || null}
                 onSelect={(item) => onEquipmentSelect(item)}
                 placeholder="Search equipment... (e.g. excavator, backhoe)"
                 allowManualEntry

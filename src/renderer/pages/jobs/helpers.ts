@@ -9,6 +9,7 @@ export function emptyLineForm() {
     productionRateId: 0,
     laborHours: 0,
     laborCostPerHour: 0,
+    equipmentId: 0,
     equipmentHours: 0,
     equipmentCostPerHour: 0,
     subcontractorCost: 0,

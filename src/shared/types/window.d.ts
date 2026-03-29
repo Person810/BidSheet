@@ -39,6 +39,12 @@ declare global {
       deleteBidLineItem: (id: number) => Promise<any>;
       getBidSummary: (jobId: number) => Promise<any>;
 
+      // Trench Profiles
+      getTrenchProfiles: (jobId: number) => Promise<any[]>;
+      saveTrenchProfile: (profile: any) => Promise<any>;
+      deleteTrenchProfile: (id: number) => Promise<any>;
+      reorderTrenchProfiles: (items: any[]) => Promise<any>;
+
       // Assemblies
       getAssemblies: () => Promise<any[]>;
       getAssembly: (id: number) => Promise<any>;

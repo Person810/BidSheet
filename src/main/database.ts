@@ -144,6 +144,12 @@ function runMigrations(db: Database.Database): void {
   if (version < 5) {
     migrateV5(db);
   }
+  if (version < 6) {
+    migrateV6(db);
+  }
+  if (version < 7) {
+    migrateV7(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -431,5 +437,40 @@ function migrateV5(db: Database.Database): void {
   db.exec(`
     ALTER TABLE app_settings ADD COLUMN auto_lock_on_close INTEGER NOT NULL DEFAULT 1;
     INSERT INTO schema_version (version) VALUES (5);
+  `);
+}
+
+// V6: equipment_id FK on bid_line_items so selected equipment persists when editing
+function migrateV6(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE bid_line_items ADD COLUMN equipment_id INTEGER REFERENCES equipment(id);
+    INSERT INTO schema_version (version) VALUES (6);
+  `);
+}
+
+// V7: trench_profiles table for per-job underground takeoffs
+function migrateV7(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE trench_profiles (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      label           TEXT NOT NULL DEFAULT '',
+      pipe_size_in    REAL NOT NULL DEFAULT 8,
+      pipe_material   TEXT NOT NULL DEFAULT 'PVC',
+      start_depth_ft  REAL NOT NULL DEFAULT 4,
+      grade_pct       REAL NOT NULL DEFAULT 2.0,
+      run_length_lf   REAL NOT NULL DEFAULT 100,
+      trench_width_ft REAL NOT NULL DEFAULT 3,
+      bench_width_ft  REAL NOT NULL DEFAULT 0,
+      bedding_type    TEXT NOT NULL DEFAULT 'crushed_stone',
+      backfill_type   TEXT NOT NULL DEFAULT 'Native Material',
+      sort_order      INTEGER NOT NULL DEFAULT 0,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX idx_trench_profiles_job ON trench_profiles(job_id);
+
+    INSERT INTO schema_version (version) VALUES (7);
   `);
 }

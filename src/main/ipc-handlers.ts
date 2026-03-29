@@ -413,16 +413,16 @@ export function registerIpcHandlers(db: Database.Database): void {
             section_id, job_id, description, quantity, unit, sort_order,
             material_id, material_unit_cost, material_total,
             crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
-            equipment_cost_per_hour, equipment_hours, equipment_total,
+            equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
             subcontractor_cost, unit_cost, total_cost, notes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
         for (const item of items) {
           insertItem.run(
             newSectionId, newJobId, item.description, item.quantity, item.unit, item.sort_order,
             item.material_id, item.material_unit_cost, item.material_total,
             item.crew_template_id, item.production_rate_id, item.labor_hours, item.labor_cost_per_hour, item.labor_total,
-            item.equipment_cost_per_hour, item.equipment_hours, item.equipment_total,
+            item.equipment_id || null, item.equipment_cost_per_hour, item.equipment_hours, item.equipment_total,
             item.subcontractor_cost, item.unit_cost, item.total_cost, item.notes
           );
         }
@@ -515,7 +515,7 @@ export function registerIpcHandlers(db: Database.Database): void {
             section_id = ?, job_id = ?, description = ?, quantity = ?, unit = ?, sort_order = ?,
             material_id = ?, material_unit_cost = ?, material_total = ?,
             crew_template_id = ?, production_rate_id = ?, labor_hours = ?, labor_cost_per_hour = ?, labor_total = ?,
-            equipment_cost_per_hour = ?, equipment_hours = ?, equipment_total = ?,
+            equipment_id = ?, equipment_cost_per_hour = ?, equipment_hours = ?, equipment_total = ?,
             subcontractor_cost = ?, unit_cost = ?, total_cost = ?, notes = ?
           WHERE id = ?`
         )
@@ -523,7 +523,7 @@ export function registerIpcHandlers(db: Database.Database): void {
           item.sectionId, item.jobId, item.description, item.quantity, item.unit, item.sortOrder,
           item.materialId, item.materialUnitCost, materialTotal,
           item.crewTemplateId, item.productionRateId, item.laborHours, item.laborCostPerHour, laborTotal,
-          item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
+          item.equipmentId || null, item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
           item.subcontractorCost || 0, unitCost, totalCost, item.notes,
           item.id
         );
@@ -534,15 +534,15 @@ export function registerIpcHandlers(db: Database.Database): void {
             section_id, job_id, description, quantity, unit, sort_order,
             material_id, material_unit_cost, material_total,
             crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
-            equipment_cost_per_hour, equipment_hours, equipment_total,
+            equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
             subcontractor_cost, unit_cost, total_cost, notes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           item.sectionId, item.jobId, item.description, item.quantity, item.unit, item.sortOrder,
           item.materialId, item.materialUnitCost, materialTotal,
           item.crewTemplateId, item.productionRateId, item.laborHours, item.laborCostPerHour, laborTotal,
-          item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
+          item.equipmentId || null, item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
           item.subcontractorCost || 0, unitCost, totalCost, item.notes
         );
     }
@@ -550,6 +550,57 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:line-items:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM bid_line_items WHERE id = ?').run(id);
+  });
+
+  // ================================================================
+  // TRENCH PROFILES
+  // ================================================================
+
+  safeHandle('db:trench-profiles:list', (_event, jobId: number) => {
+    return db.prepare('SELECT * FROM trench_profiles WHERE job_id = ? ORDER BY sort_order, id').all(jobId);
+  });
+
+  safeHandle('db:trench-profiles:save', (_event, profile: any) => {
+    if (profile.id) {
+      db.prepare(
+        `UPDATE trench_profiles SET label = ?, pipe_size_in = ?, pipe_material = ?, start_depth_ft = ?,
+          grade_pct = ?, run_length_lf = ?, trench_width_ft = ?, bench_width_ft = ?,
+          bedding_type = ?, backfill_type = ?, sort_order = ?,
+          updated_at = datetime('now', 'localtime')
+        WHERE id = ?`
+      ).run(
+        profile.label, profile.pipeSizeIn, profile.pipeMaterial, profile.startDepthFt,
+        profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
+        profile.beddingType, profile.backfillType, profile.sortOrder ?? 0,
+        profile.id
+      );
+      return { id: profile.id };
+    } else {
+      const result = db.prepare(
+        `INSERT INTO trench_profiles (job_id, label, pipe_size_in, pipe_material, start_depth_ft,
+          grade_pct, run_length_lf, trench_width_ft, bench_width_ft, bedding_type, backfill_type, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        profile.jobId, profile.label, profile.pipeSizeIn, profile.pipeMaterial, profile.startDepthFt,
+        profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
+        profile.beddingType, profile.backfillType, profile.sortOrder ?? 0
+      );
+      return { id: Number(result.lastInsertRowid) };
+    }
+  });
+
+  safeHandle('db:trench-profiles:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM trench_profiles WHERE id = ?').run(id);
+  });
+
+  safeHandle('db:trench-profiles:reorder', (_event, items: { id: number; sortOrder: number }[]) => {
+    const update = db.prepare('UPDATE trench_profiles SET sort_order = ? WHERE id = ?');
+    const reorder = db.transaction(() => {
+      for (const item of items) {
+        update.run(item.sortOrder, item.id);
+      }
+    });
+    reorder();
   });
 
   // ================================================================

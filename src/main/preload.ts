@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld('api', {
 
   getBidSummary: (jobId: number) => ipcRenderer.invoke('db:jobs:summary', jobId),
 
+  // ---- Trench Profiles ----
+  getTrenchProfiles: (jobId: number) => ipcRenderer.invoke('db:trench-profiles:list', jobId),
+  saveTrenchProfile: (profile: any) => ipcRenderer.invoke('db:trench-profiles:save', profile),
+  deleteTrenchProfile: (id: number) => ipcRenderer.invoke('db:trench-profiles:delete', id),
+  reorderTrenchProfiles: (items: any[]) => ipcRenderer.invoke('db:trench-profiles:reorder', items),
+
   // ---- Assemblies ----
   getAssemblies: () => ipcRenderer.invoke('db:assemblies:list'),
   getAssembly: (id: number) => ipcRenderer.invoke('db:assemblies:get', id),
