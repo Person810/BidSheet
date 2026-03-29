@@ -10,6 +10,7 @@ declare global {
       saveMaterial: (material: any) => Promise<any>;
       deleteMaterial: (id: number) => Promise<any>;
       updateMaterialPrice: (id: number, newPrice: number, source: string) => Promise<any>;
+      getMaterialsByCategoryName: (name: string) => Promise<any[]>;
 
       // Labor
       getLaborRoles: () => Promise<any[]>;

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteMaterial: (id: number) => ipcRenderer.invoke('db:materials:delete', id),
   updateMaterialPrice: (id: number, newPrice: number, source: string) =>
     ipcRenderer.invoke('db:materials:update-price', id, newPrice, source),
+  getMaterialsByCategoryName: (name: string) => ipcRenderer.invoke('db:materials:list-by-category-name', name),
 
   // ---- Labor ----
   getLaborRoles: () => ipcRenderer.invoke('db:labor-roles:list'),

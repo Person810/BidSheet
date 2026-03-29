@@ -1,11 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-  PIPE_SIZES, PIPE_MATERIALS, BEDDING_TYPES, BACKFILL_TYPES,
-  type TrenchInput, type BeddingKey, type ValidationError,
+  parsePipeSizeFromName,
+  type TrenchInput, type ValidationError,
 } from '../../modules/underground/trenchCalc';
+import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
+import { NATIVE_MATERIAL_ITEM } from '../../modules/underground/useTrenchMaterials';
 
 interface FormData extends TrenchInput {
   label: string;
+  pipeMaterialId: number | string | null;
+  beddingMaterialId: number | string | null;
+  backfillMaterialId: number | string | null;
 }
 
 interface Props {
@@ -14,10 +19,20 @@ interface Props {
   onSave: () => void;
   onCancel: () => void;
   errors: ValidationError[];
+  pipeMaterials: AutocompleteItem[];
+  beddingMaterials: AutocompleteItem[];
 }
 
-export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors }: Props) {
+export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors, pipeMaterials, beddingMaterials }: Props) {
   const hasError = (field: string) => errors.some((e) => e.field === field);
+
+  const backfillItems = useMemo(
+    () => [NATIVE_MATERIAL_ITEM, ...beddingMaterials],
+    [beddingMaterials]
+  );
+
+  const selectedPipe = pipeMaterials.find((m) => m.id === form.pipeMaterialId);
+  const selectedBedding = beddingMaterials.find((m) => m.id === form.beddingMaterialId);
 
   return (
     <div style={{ padding: '12px 0' }}>
@@ -27,19 +42,33 @@ export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors }: 
           <input type="text" className="form-control" placeholder="e.g. MH-1 to MH-2"
             value={form.label} onChange={(e) => onChange('label', e.target.value)} />
         </div>
-        <div className="form-group">
-          <label>Pipe Size (in)</label>
-          <select className="form-control" value={form.pipeSizeIn}
-            onChange={(e) => onChange('pipeSizeIn', Number(e.target.value))}>
-            {PIPE_SIZES.map((s) => <option key={s} value={s}>{s}"</option>)}
-          </select>
-        </div>
-        <div className="form-group">
+        <div className="form-group" style={{ flex: 3 }}>
           <label>Pipe Material</label>
-          <select className="form-control" value={form.pipeMaterial}
-            onChange={(e) => onChange('pipeMaterial', e.target.value)}>
-            {PIPE_MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <FuzzyAutocomplete
+                items={pipeMaterials}
+                value={form.pipeMaterialId}
+                onSelect={(item) => {
+                  if (item) {
+                    onChange('pipeMaterialId', item.id);
+                    onChange('pipeMaterial', item.label);
+                    const size = parsePipeSizeFromName(item.label);
+                    if (size > 0) onChange('pipeSizeIn', size);
+                  } else {
+                    onChange('pipeMaterialId', null);
+                    onChange('pipeMaterial', '');
+                  }
+                }}
+                placeholder="Search pipe (e.g. 8 PVC)"
+              />
+            </div>
+            {selectedPipe && selectedPipe.detail && (
+              <span className="text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                {selectedPipe.detail}/{selectedPipe.detailSub || 'LF'}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -77,21 +106,51 @@ export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors }: 
             value={form.benchWidthFt} step="0.5" min="0"
             onChange={(e) => onChange('benchWidthFt', parseFloat(e.target.value) || 0)} />
         </div>
-        <div className="form-group">
-          <label>Bedding Type</label>
-          <select className="form-control" value={form.beddingType}
-            onChange={(e) => onChange('beddingType', e.target.value as BeddingKey)}>
-            {Object.entries(BEDDING_TYPES).map(([key, b]) => (
-              <option key={key} value={key}>{b.label}</option>
-            ))}
-          </select>
+        <div className="form-group" style={{ flex: 2 }}>
+          <label>Bedding Material</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <FuzzyAutocomplete
+                items={beddingMaterials}
+                value={form.beddingMaterialId}
+                onSelect={(item) => {
+                  onChange('beddingMaterialId', item ? item.id : null);
+                }}
+                placeholder="Search bedding..."
+              />
+            </div>
+            {selectedBedding && selectedBedding.detail && (
+              <span className="text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                {selectedBedding.detail}/{selectedBedding.detailSub || ''}
+              </span>
+            )}
+          </div>
         </div>
         <div className="form-group">
+          <label>Bedding Depth (ft)</label>
+          <input type="number" className={`form-control ${hasError('beddingDepthFt') ? 'input-error' : ''}`}
+            value={form.beddingDepthFt} step="0.25" min="0"
+            onChange={(e) => onChange('beddingDepthFt', parseFloat(e.target.value) || 0)} />
+        </div>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group" style={{ flex: 2 }}>
           <label>Backfill Type</label>
-          <select className="form-control" value={form.backfillType}
-            onChange={(e) => onChange('backfillType', e.target.value)}>
-            {BACKFILL_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
+          <FuzzyAutocomplete
+            items={backfillItems}
+            value={form.backfillMaterialId}
+            onSelect={(item) => {
+              if (item) {
+                onChange('backfillMaterialId', item.id);
+                onChange('backfillType', item.label);
+              } else {
+                onChange('backfillMaterialId', null);
+                onChange('backfillType', '');
+              }
+            }}
+            placeholder="Search backfill..."
+          />
         </div>
       </div>
 

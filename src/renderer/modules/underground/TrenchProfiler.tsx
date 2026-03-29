@@ -1,24 +1,30 @@
 import React, { useState, useMemo } from 'react';
 import {
-  PIPE_SIZES, PIPE_MATERIALS, BEDDING_TYPES, BACKFILL_TYPES,
-  calculateTrench, validateInput,
-  type TrenchInput, type BeddingKey,
+  calculateTrench, validateInput, parsePipeSizeFromName,
+  type TrenchInput,
 } from './trenchCalc';
+import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
+import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from './useTrenchMaterials';
 
 const DEFAULTS: TrenchInput = {
   pipeSizeIn: 8,
-  pipeMaterial: 'PVC',
+  pipeMaterial: '',
   startDepthFt: 4,
   gradePct: 2.0,
   runLengthLF: 100,
   trenchWidthFt: 3,
   benchWidthFt: 0,
-  beddingType: 'crushed_stone',
+  beddingDepthFt: 0.5,
   backfillType: 'Native Material',
 };
 
 export function TrenchProfiler() {
   const [input, setInput] = useState<TrenchInput>({ ...DEFAULTS });
+  const [pipeMaterialId, setPipeMaterialId] = useState<number | string | null>(null);
+  const [beddingMaterialId, setBeddingMaterialId] = useState<number | string | null>(null);
+  const [backfillMaterialId, setBackfillMaterialId] = useState<number | string | null>('native');
+
+  const { pipeMaterials, beddingMaterials } = useTrenchMaterials();
 
   const set = <K extends keyof TrenchInput>(field: K, value: TrenchInput[K]) =>
     setInput((prev) => ({ ...prev, [field]: value }));
@@ -28,7 +34,20 @@ export function TrenchProfiler() {
 
   const hasError = (field: string) => errors.some((e) => e.field === field);
 
-  const handleReset = () => setInput({ ...DEFAULTS });
+  const handleReset = () => {
+    setInput({ ...DEFAULTS });
+    setPipeMaterialId(null);
+    setBeddingMaterialId(null);
+    setBackfillMaterialId('native');
+  };
+
+  const backfillItems = useMemo(
+    () => [NATIVE_MATERIAL_ITEM, ...beddingMaterials],
+    [beddingMaterials]
+  );
+
+  const selectedPipe = pipeMaterials.find((m) => m.id === pipeMaterialId);
+  const selectedBedding = beddingMaterials.find((m) => m.id === beddingMaterialId);
 
   return (
     <div>
@@ -42,20 +61,32 @@ export function TrenchProfiler() {
         <div className="card" style={{ padding: 20 }}>
           <h3 style={{ marginBottom: 16, fontSize: 14, fontWeight: 600 }}>Run Inputs</h3>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>Pipe Size (in)</label>
-              <select className="form-control" value={input.pipeSizeIn}
-                onChange={(e) => set('pipeSizeIn', Number(e.target.value))}>
-                {PIPE_SIZES.map((s) => <option key={s} value={s}>{s}"</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Pipe Material</label>
-              <select className="form-control" value={input.pipeMaterial}
-                onChange={(e) => set('pipeMaterial', e.target.value)}>
-                {PIPE_MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
+          <div className="form-group">
+            <label>Pipe Material</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <FuzzyAutocomplete
+                  items={pipeMaterials}
+                  value={pipeMaterialId}
+                  onSelect={(item) => {
+                    if (item) {
+                      setPipeMaterialId(item.id);
+                      set('pipeMaterial', item.label);
+                      const size = parsePipeSizeFromName(item.label);
+                      if (size > 0) set('pipeSizeIn', size);
+                    } else {
+                      setPipeMaterialId(null);
+                      set('pipeMaterial', '');
+                    }
+                  }}
+                  placeholder="Search pipe (e.g. 8 PVC)"
+                />
+              </div>
+              {selectedPipe && selectedPipe.detail && (
+                <span className="text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                  {selectedPipe.detail}/{selectedPipe.detailSub || 'LF'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -97,22 +128,50 @@ export function TrenchProfiler() {
           </div>
 
           <div className="form-row">
-            <div className="form-group">
-              <label>Bedding Type</label>
-              <select className="form-control" value={input.beddingType}
-                onChange={(e) => set('beddingType', e.target.value as BeddingKey)}>
-                {Object.entries(BEDDING_TYPES).map(([key, b]) => (
-                  <option key={key} value={key}>{b.label}</option>
-                ))}
-              </select>
+            <div className="form-group" style={{ flex: 2 }}>
+              <label>Bedding Material</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <FuzzyAutocomplete
+                    items={beddingMaterials}
+                    value={beddingMaterialId}
+                    onSelect={(item) => {
+                      setBeddingMaterialId(item ? item.id : null);
+                    }}
+                    placeholder="Search bedding material..."
+                  />
+                </div>
+                {selectedBedding && selectedBedding.detail && (
+                  <span className="text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                    {selectedBedding.detail}/{selectedBedding.detailSub || ''}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="form-group">
-              <label>Backfill Type</label>
-              <select className="form-control" value={input.backfillType}
-                onChange={(e) => set('backfillType', e.target.value)}>
-                {BACKFILL_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
+              <label>Bedding Depth (ft)</label>
+              <input type="number" className={`form-control ${hasError('beddingDepthFt') ? 'input-error' : ''}`}
+                value={input.beddingDepthFt} step="0.25" min="0"
+                onChange={(e) => set('beddingDepthFt', parseFloat(e.target.value) || 0)} />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Backfill Type</label>
+            <FuzzyAutocomplete
+              items={backfillItems}
+              value={backfillMaterialId}
+              onSelect={(item) => {
+                if (item) {
+                  setBackfillMaterialId(item.id);
+                  set('backfillType', item.label);
+                } else {
+                  setBackfillMaterialId(null);
+                  set('backfillType', '');
+                }
+              }}
+              placeholder="Search backfill type..."
+            />
           </div>
 
           {errors.length > 0 && (
@@ -129,12 +188,13 @@ export function TrenchProfiler() {
           {result ? (
             <table className="data-table" style={{ fontSize: 13 }}>
               <tbody>
-                <Row label="Pipe" value={`${result.pipeLF} LF`} sub={`${input.pipeSizeIn}" ${input.pipeMaterial}`} />
+                <Row label="Pipe" value={`${result.pipeLF} LF`}
+                  sub={input.pipeMaterial || `${input.pipeSizeIn}"`} />
                 <Row label="Avg Trench Depth" value={`${result.avgDepthFt} ft`}
-                  sub={`${input.startDepthFt}' start \u2192 ${result.endDepthFt}' end`} />
+                  sub={`${input.startDepthFt}' start > ${result.endDepthFt}' end`} />
                 <Row label="Excavation" value={`${result.excavationCY} CY`} />
-                <Row label="Bedding" value={`${result.beddingTons} tons`}
-                  sub={`${result.beddingCY} CY ${BEDDING_TYPES[input.beddingType].label}`} />
+                <Row label="Bedding" value={`${result.beddingCY} CY`}
+                  sub={selectedBedding ? selectedBedding.label : ''} />
                 <Row label="Backfill" value={`${result.backfillCY} CY`} sub={input.backfillType} />
                 <Row label="Tracer Wire" value={`${result.tracerWireLF} LF`} />
                 <Row label="Warning Tape" value={`${result.warningTapeLF} LF`} />

@@ -3,7 +3,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency } from './helpers';
-import { TrenchProfileList } from './TrenchProfileList';
+import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 
 // Lock icon SVGs -- inline to avoid any import dependency
 const LockClosedIcon = () => (
@@ -298,6 +298,134 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
     loadJob();
   };
 
+  // ---- Convert trench profiles to bid sections ----
+  const handleConvertToBid = async (profileData: ConvertToBidProfile[]) => {
+    const tracerMat = materials.find((m: any) => m.name.toLowerCase().includes('tracer wire'));
+    const tapeMat = materials.find((m: any) => m.name.toLowerCase().includes('warning tape'));
+
+    // Aggregate pipe LF by material (different pipe sizes/types get separate line items)
+    const pipeByKey = new Map<string, { qty: number; materialId: number | null; name: string; labels: string[] }>();
+    let totalExcavationCY = 0;
+    const beddingByKey = new Map<string, { qty: number; materialId: number | null; name: string; unit: string; labels: string[] }>();
+    const backfillByKey = new Map<string, { qty: number; materialId: number | null; name: string; unit: string; labels: string[] }>();
+    let totalTracerLF = 0;
+    let totalTapeLF = 0;
+
+    for (const p of profileData) {
+      // Pipe -- group by material ID (or name for legacy)
+      const pipeKey = p.pipeMaterialId != null ? String(p.pipeMaterialId) : p.pipeMaterialName;
+      const pipeEntry = pipeByKey.get(pipeKey);
+      if (pipeEntry) {
+        pipeEntry.qty += p.pipeLF;
+        pipeEntry.labels.push(p.label);
+      } else {
+        pipeByKey.set(pipeKey, { qty: p.pipeLF, materialId: p.pipeMaterialId, name: p.pipeMaterialName, labels: [p.label] });
+      }
+
+      totalExcavationCY += p.excavationCY;
+
+      // Bedding -- group by material ID
+      const bedKey = p.beddingMaterialId != null ? String(p.beddingMaterialId) : p.beddingMaterialName;
+      const bedEntry = beddingByKey.get(bedKey);
+      if (bedEntry) {
+        bedEntry.qty += p.beddingCY;
+        bedEntry.labels.push(p.label);
+      } else {
+        beddingByKey.set(bedKey, { qty: p.beddingCY, materialId: p.beddingMaterialId, name: p.beddingMaterialName, unit: p.beddingMaterialUnit, labels: [p.label] });
+      }
+
+      // Backfill -- group by material ID
+      const bfKey = p.backfillMaterialId != null ? String(p.backfillMaterialId) : p.backfillMaterialName;
+      const bfEntry = backfillByKey.get(bfKey);
+      if (bfEntry) {
+        bfEntry.qty += p.backfillCY;
+        bfEntry.labels.push(p.label);
+      } else {
+        backfillByKey.set(bfKey, { qty: p.backfillCY, materialId: p.backfillMaterialId, name: p.backfillMaterialName, unit: p.backfillMaterialUnit, labels: [p.label] });
+      }
+
+      totalTracerLF += p.tracerWireLF;
+      totalTapeLF += p.warningTapeLF;
+    }
+
+    const allLabels = profileData.map((p) => p.label).join(', ');
+    const profileNote = `From trench profiles: ${allLabels}`;
+
+    // Create one bid section
+    const sectionResult = await window.api.saveBidSection({
+      jobId,
+      name: 'Trench Work',
+      sortOrder: sections.length,
+    });
+    const sectionId = Number(sectionResult.lastInsertRowid);
+    let sortOrder = 0;
+
+    const saveItem = (opts: { description: string; quantity: number; unit: string; materialId: number | null; materialUnitCost: number; notes: string }) =>
+      window.api.saveBidLineItem({
+        sectionId, jobId, sortOrder: sortOrder++,
+        description: opts.description, quantity: opts.quantity, unit: opts.unit,
+        materialId: opts.materialId, materialUnitCost: opts.materialUnitCost,
+        crewTemplateId: null, productionRateId: null,
+        laborHours: 0, laborCostPerHour: 0,
+        equipmentId: null, equipmentCostPerHour: 0, equipmentHours: 0,
+        subcontractorCost: 0, notes: opts.notes,
+      });
+
+    // Pipe line items (one per material type)
+    for (const entry of pipeByKey.values()) {
+      const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
+      await saveItem({
+        description: entry.name, quantity: entry.qty, unit: 'LF',
+        materialId: entry.materialId, materialUnitCost: mat?.default_unit_cost || 0,
+        notes: profileNote,
+      });
+    }
+
+    // Excavation (single total)
+    await saveItem({
+      description: 'Excavation', quantity: totalExcavationCY, unit: 'CY',
+      materialId: null, materialUnitCost: 0, notes: profileNote,
+    });
+
+    // Bedding line items (one per material type)
+    for (const entry of beddingByKey.values()) {
+      const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
+      const unitMismatch = mat && mat.unit !== 'CY' && mat.unit !== 'CYD';
+      await saveItem({
+        description: entry.name, quantity: entry.qty, unit: 'CY',
+        materialId: entry.materialId, materialUnitCost: 0,
+        notes: unitMismatch ? `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually` : profileNote,
+      });
+    }
+
+    // Backfill line items (one per material type)
+    for (const entry of backfillByKey.values()) {
+      const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
+      const unitMismatch = mat && mat.unit !== 'CY' && mat.unit !== 'CYD';
+      await saveItem({
+        description: entry.name, quantity: entry.qty, unit: 'CY',
+        materialId: entry.materialId, materialUnitCost: 0,
+        notes: unitMismatch ? `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually` : profileNote,
+      });
+    }
+
+    // Tracer Wire (single total)
+    await saveItem({
+      description: tracerMat?.name || 'Tracer Wire', quantity: totalTracerLF, unit: 'LF',
+      materialId: tracerMat?.id || null, materialUnitCost: tracerMat?.default_unit_cost || 0,
+      notes: profileNote,
+    });
+
+    // Warning Tape (single total)
+    await saveItem({
+      description: tapeMat?.name || 'Warning Tape', quantity: totalTapeLF, unit: 'LF',
+      materialId: tapeMat?.id || null, materialUnitCost: tapeMat?.default_unit_cost || 0,
+      notes: profileNote,
+    });
+
+    await loadJob();
+  };
+
   // ---- Print ----
   const handlePrint = () => {
     window.print();
@@ -463,7 +591,9 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
       ))}
 
       {/* Trench Profiles */}
-      <TrenchProfileList jobId={jobId} />
+      <TrenchProfileList jobId={jobId} onConvertToBid={(data) => new Promise<void>((resolve) => {
+        withLockCheck(async () => { await handleConvertToBid(data); resolve(); });
+      })} />
 
       {/* Print summary footer */}
       {summary && (

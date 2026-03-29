@@ -150,6 +150,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 7) {
     migrateV7(db);
   }
+  if (version < 8) {
+    migrateV8(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -472,5 +475,16 @@ function migrateV7(db: Database.Database): void {
     CREATE INDEX idx_trench_profiles_job ON trench_profiles(job_id);
 
     INSERT INTO schema_version (version) VALUES (7);
+  `);
+}
+
+function migrateV8(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE trench_profiles ADD COLUMN pipe_material_id INTEGER REFERENCES materials(id);
+    ALTER TABLE trench_profiles ADD COLUMN bedding_material_id INTEGER REFERENCES materials(id);
+    ALTER TABLE trench_profiles ADD COLUMN backfill_material_id INTEGER REFERENCES materials(id);
+    ALTER TABLE trench_profiles ADD COLUMN bedding_depth_ft REAL NOT NULL DEFAULT 0.5;
+
+    INSERT INTO schema_version (version) VALUES (8);
   `);
 }

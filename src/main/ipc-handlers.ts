@@ -114,6 +114,14 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM materials WHERE is_active = 1 ORDER BY name').all();
   });
 
+  safeHandle('db:materials:list-by-category-name', (_event, categoryName: string) => {
+    return db.prepare(
+      `SELECT m.*, mc.name as category_name FROM materials m
+       JOIN material_categories mc ON m.category_id = mc.id
+       WHERE mc.name = ? AND m.is_active = 1 ORDER BY m.name`
+    ).all(categoryName);
+  });
+
   safeHandle('db:materials:get', (_event, id: number) => {
     return db.prepare('SELECT * FROM materials WHERE id = ?').get(id);
   });
@@ -561,29 +569,38 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:trench-profiles:save', (_event, profile: any) => {
+    // Only store numeric IDs in the FK columns; string IDs like 'native' become NULL
+    const intOrNull = (v: any) => (typeof v === 'number' ? v : null);
+
     if (profile.id) {
       db.prepare(
         `UPDATE trench_profiles SET label = ?, pipe_size_in = ?, pipe_material = ?, start_depth_ft = ?,
           grade_pct = ?, run_length_lf = ?, trench_width_ft = ?, bench_width_ft = ?,
           bedding_type = ?, backfill_type = ?, sort_order = ?,
+          pipe_material_id = ?, bedding_material_id = ?, backfill_material_id = ?, bedding_depth_ft = ?,
           updated_at = datetime('now', 'localtime')
         WHERE id = ?`
       ).run(
-        profile.label, profile.pipeSizeIn, profile.pipeMaterial, profile.startDepthFt,
+        profile.label ?? '', profile.pipeSizeIn, profile.pipeMaterial ?? '', profile.startDepthFt,
         profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
-        profile.beddingType, profile.backfillType, profile.sortOrder ?? 0,
+        profile.beddingType ?? '', profile.backfillType ?? '', profile.sortOrder ?? 0,
+        intOrNull(profile.pipeMaterialId), intOrNull(profile.beddingMaterialId),
+        intOrNull(profile.backfillMaterialId), profile.beddingDepthFt ?? 0.5,
         profile.id
       );
       return { id: profile.id };
     } else {
       const result = db.prepare(
         `INSERT INTO trench_profiles (job_id, label, pipe_size_in, pipe_material, start_depth_ft,
-          grade_pct, run_length_lf, trench_width_ft, bench_width_ft, bedding_type, backfill_type, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          grade_pct, run_length_lf, trench_width_ft, bench_width_ft, bedding_type, backfill_type, sort_order,
+          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
-        profile.jobId, profile.label, profile.pipeSizeIn, profile.pipeMaterial, profile.startDepthFt,
+        profile.jobId, profile.label ?? '', profile.pipeSizeIn, profile.pipeMaterial ?? '', profile.startDepthFt,
         profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
-        profile.beddingType, profile.backfillType, profile.sortOrder ?? 0
+        profile.beddingType ?? '', profile.backfillType ?? '', profile.sortOrder ?? 0,
+        intOrNull(profile.pipeMaterialId), intOrNull(profile.beddingMaterialId),
+        intOrNull(profile.backfillMaterialId), profile.beddingDepthFt ?? 0.5
       );
       return { id: Number(result.lastInsertRowid) };
     }

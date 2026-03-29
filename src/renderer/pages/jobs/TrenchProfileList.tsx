@@ -1,26 +1,49 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   calculateTrench, validateInput,
-  type TrenchInput, type BeddingKey,
+  type TrenchInput,
 } from '../../modules/underground/trenchCalc';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TrenchProfileForm } from './TrenchProfileForm';
+import { useTrenchMaterials } from '../../modules/underground/useTrenchMaterials';
+
+export interface ConvertToBidProfile {
+  label: string;
+  pipeLF: number;
+  excavationCY: number;
+  beddingCY: number;
+  backfillCY: number;
+  tracerWireLF: number;
+  warningTapeLF: number;
+  pipeMaterialId: number | null;
+  pipeMaterialName: string;
+  beddingMaterialId: number | null;
+  beddingMaterialName: string;
+  beddingMaterialUnit: string;
+  backfillMaterialId: number | null;
+  backfillMaterialName: string;
+  backfillMaterialUnit: string;
+}
 
 interface Props {
   jobId: number;
+  onConvertToBid?: (profileData: ConvertToBidProfile[]) => Promise<void>;
 }
 
 const DEFAULTS = {
   label: '',
   pipeSizeIn: 8,
-  pipeMaterial: 'PVC',
+  pipeMaterial: '',
   startDepthFt: 4,
   gradePct: 2.0,
   runLengthLF: 100,
   trenchWidthFt: 3,
   benchWidthFt: 0,
-  beddingType: 'crushed_stone' as BeddingKey,
+  beddingDepthFt: 0.5,
   backfillType: 'Native Material',
+  pipeMaterialId: null as number | string | null,
+  beddingMaterialId: null as number | string | null,
+  backfillMaterialId: 'native' as number | string | null,
 };
 
 function rowToInput(row: any): TrenchInput {
@@ -32,16 +55,18 @@ function rowToInput(row: any): TrenchInput {
     runLengthLF: row.run_length_lf,
     trenchWidthFt: row.trench_width_ft,
     benchWidthFt: row.bench_width_ft,
-    beddingType: row.bedding_type as BeddingKey,
+    beddingDepthFt: row.bedding_depth_ft ?? 0.5,
     backfillType: row.backfill_type,
   };
 }
 
-export function TrenchProfileList({ jobId }: Props) {
+export function TrenchProfileList({ jobId, onConvertToBid }: Props) {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...DEFAULTS });
-  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
+
+  const { pipeMaterials, beddingMaterials } = useTrenchMaterials();
 
   const loadProfiles = useCallback(async () => {
     const rows = await window.api.getTrenchProfiles(jobId);
@@ -59,12 +84,12 @@ export function TrenchProfileList({ jobId }: Props) {
   }, [profiles]);
 
   const totals = useMemo(() => {
-    const t = { pipeLF: 0, excavationCY: 0, beddingTons: 0, backfillCY: 0, tracerWireLF: 0, warningTapeLF: 0 };
+    const t = { pipeLF: 0, excavationCY: 0, beddingCY: 0, backfillCY: 0, tracerWireLF: 0, warningTapeLF: 0 };
     for (const out of computed) {
       if (!out) continue;
       t.pipeLF += out.pipeLF;
       t.excavationCY += out.excavationCY;
-      t.beddingTons += out.beddingTons;
+      t.beddingCY += out.beddingCY;
       t.backfillCY += out.backfillCY;
       t.tracerWireLF += out.tracerWireLF;
       t.warningTapeLF += out.warningTapeLF;
@@ -82,7 +107,7 @@ export function TrenchProfileList({ jobId }: Props) {
     runLengthLF: form.runLengthLF,
     trenchWidthFt: form.trenchWidthFt,
     benchWidthFt: form.benchWidthFt,
-    beddingType: form.beddingType,
+    beddingDepthFt: form.beddingDepthFt,
     backfillType: form.backfillType,
   };
   const formErrors = editingId !== null ? validateInput(formInput) : [];
@@ -109,14 +134,22 @@ export function TrenchProfileList({ jobId }: Props) {
       runLengthLF: row.run_length_lf,
       trenchWidthFt: row.trench_width_ft,
       benchWidthFt: row.bench_width_ft,
-      beddingType: row.bedding_type as BeddingKey,
+      beddingDepthFt: row.bedding_depth_ft ?? 0.5,
       backfillType: row.backfill_type,
+      pipeMaterialId: row.pipe_material_id ?? null,
+      beddingMaterialId: row.bedding_material_id ?? null,
+      backfillMaterialId: row.backfill_material_id ?? (row.backfill_type === 'Native Material' ? 'native' : null),
     });
     setEditingId(row.id);
   };
 
   const saveProfile = async () => {
     if (editingId === null) return;
+
+    // Derive text labels for backward compat storage
+    const beddingLabel = beddingMaterials.find((m) => m.id === form.beddingMaterialId)?.label || '';
+    const backfillLabel = form.backfillType || '';
+
     await window.api.saveTrenchProfile({
       id: editingId,
       jobId,
@@ -128,8 +161,12 @@ export function TrenchProfileList({ jobId }: Props) {
       runLengthLF: form.runLengthLF,
       trenchWidthFt: form.trenchWidthFt,
       benchWidthFt: form.benchWidthFt,
-      beddingType: form.beddingType,
-      backfillType: form.backfillType,
+      beddingType: beddingLabel,
+      backfillType: backfillLabel,
+      beddingDepthFt: form.beddingDepthFt,
+      pipeMaterialId: typeof form.pipeMaterialId === 'number' ? form.pipeMaterialId : null,
+      beddingMaterialId: typeof form.beddingMaterialId === 'number' ? form.beddingMaterialId : null,
+      backfillMaterialId: typeof form.backfillMaterialId === 'number' ? form.backfillMaterialId : null,
     });
     setEditingId(null);
     await loadProfiles();
@@ -149,11 +186,64 @@ export function TrenchProfileList({ jobId }: Props) {
 
   const r2 = (n: number) => Math.round(n * 100) / 100;
 
+  const pipeDisplay = (row: any) => {
+    if (row.pipe_material_id) {
+      const mat = pipeMaterials.find((m) => m.id === row.pipe_material_id);
+      if (mat) return mat.label;
+    }
+    return `${row.pipe_size_in}" ${row.pipe_material}`;
+  };
+
+  const hasValidProfiles = computed.some((c) => c !== null);
+
+  const handleConvert = () => {
+    if (!onConvertToBid) return;
+    setConfirmState({
+      msg: 'Create bid sections from trench profiles? This will add new sections and line items for pipe, excavation, bedding, backfill, tracer wire, and warning tape. Existing sections are not affected.',
+      yesLabel: 'Create Sections',
+      variant: 'neutral',
+      onYes: async () => {
+        setConfirmState(null);
+        const data: ConvertToBidProfile[] = [];
+        profiles.forEach((row, idx) => {
+          const out = computed[idx];
+          if (!out) return;
+          const pipeMat = pipeMaterials.find((m) => m.id === row.pipe_material_id);
+          const beddingMat = beddingMaterials.find((m) => m.id === row.bedding_material_id);
+          const backfillMat = beddingMaterials.find((m) => m.id === row.backfill_material_id);
+          data.push({
+            label: row.label || `Run ${idx + 1}`,
+            pipeLF: out.pipeLF,
+            excavationCY: out.excavationCY,
+            beddingCY: out.beddingCY,
+            backfillCY: out.backfillCY,
+            tracerWireLF: out.tracerWireLF,
+            warningTapeLF: out.warningTapeLF,
+            pipeMaterialId: row.pipe_material_id ?? null,
+            pipeMaterialName: pipeMat?.label || row.pipe_material || 'Pipe',
+            beddingMaterialId: row.bedding_material_id ?? null,
+            beddingMaterialName: beddingMat?.label || row.bedding_type || 'Bedding',
+            beddingMaterialUnit: beddingMat?.detailSub || '',
+            backfillMaterialId: row.backfill_material_id ?? null,
+            backfillMaterialName: backfillMat?.label || row.backfill_type || 'Backfill',
+            backfillMaterialUnit: backfillMat?.detailSub || '',
+          });
+        });
+        await onConvertToBid(data);
+      },
+    });
+  };
+
   return (
     <div className="card mb-24">
       <div className="flex justify-between items-center mb-16">
         <h3 style={{ fontSize: 15 }}>Trench Profiles</h3>
-        <button className="btn btn-sm btn-primary no-print" onClick={addNew}>+ Profile</button>
+        <div className="flex gap-8 no-print">
+          {hasValidProfiles && onConvertToBid && (
+            <button className="btn btn-sm btn-secondary" onClick={handleConvert}>Convert to Bid</button>
+          )}
+          <button className="btn btn-sm btn-primary" onClick={addNew}>+ Profile</button>
+        </div>
       </div>
 
       {profiles.length === 0 ? (
@@ -167,7 +257,7 @@ export function TrenchProfileList({ jobId }: Props) {
               <th className="text-right">Size/Material</th>
               <th className="text-right">Avg Depth (ft)</th>
               <th className="text-right">Excavation (CY)</th>
-              <th className="text-right">Bedding (tons)</th>
+              <th className="text-right">Bedding (CY)</th>
               <th className="text-right">Backfill (CY)</th>
               <th className="no-print" style={{ width: 100 }}></th>
             </tr>
@@ -185,10 +275,10 @@ export function TrenchProfileList({ jobId }: Props) {
                       <span className="print-only">{row.label || `Run ${idx + 1}`}</span>
                     </td>
                     <td className="text-right">{out?.pipeLF ?? '--'}</td>
-                    <td className="text-right">{row.pipe_size_in}" {row.pipe_material}</td>
+                    <td className="text-right">{pipeDisplay(row)}</td>
                     <td className="text-right">{out?.avgDepthFt ?? '--'}</td>
                     <td className="text-right">{out?.excavationCY ?? '--'}</td>
-                    <td className="text-right">{out?.beddingTons ?? '--'}</td>
+                    <td className="text-right">{out?.beddingCY ?? '--'}</td>
                     <td className="text-right">{out?.backfillCY ?? '--'}</td>
                     <td className="no-print">
                       <div className="flex gap-8">
@@ -200,7 +290,8 @@ export function TrenchProfileList({ jobId }: Props) {
                   {editingId === row.id && (
                     <tr><td colSpan={8} style={{ padding: 0 }}>
                       <TrenchProfileForm form={form} onChange={handleChange}
-                        onSave={saveProfile} onCancel={() => setEditingId(null)} errors={formErrors} />
+                        onSave={saveProfile} onCancel={() => setEditingId(null)} errors={formErrors}
+                        pipeMaterials={pipeMaterials} beddingMaterials={beddingMaterials} />
                     </td></tr>
                   )}
                 </React.Fragment>
@@ -212,7 +303,7 @@ export function TrenchProfileList({ jobId }: Props) {
               <td></td>
               <td></td>
               <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.excavationCY)}</td>
-              <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.beddingTons)}</td>
+              <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.beddingCY)}</td>
               <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.backfillCY)}</td>
               <td></td>
             </tr>
@@ -228,7 +319,8 @@ export function TrenchProfileList({ jobId }: Props) {
 
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} yesLabel="Delete" variant="danger" />
+          onNo={() => setConfirmState(null)} yesLabel={confirmState.yesLabel || 'Delete'}
+          variant={confirmState.variant || 'danger'} />
       )}
     </div>
   );
