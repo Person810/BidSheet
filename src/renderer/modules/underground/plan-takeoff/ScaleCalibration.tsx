@@ -69,15 +69,18 @@ export function useScaleCalibration({
       setPoint1(p);
       setStep('pick-p2');
     } else if (step === 'pick-p2') {
+      // Reject if same location as point1 (e.g. double-click)
+      if (point1 && pixelDistance(point1, p) < 1) return;
       setPoint2(p);
       setStep('input-distance');
     }
-  }, [step]);
+  }, [step, point1]);
 
   const handleDistanceSubmit = useCallback(() => {
     const ft = parseFloat(distanceInput);
     if (!point1 || !point2 || !isFinite(ft) || ft <= 0) return;
     const distPx = pixelDistance(point1, point2);
+    if (distPx < 1) return; // points too close — would produce zero/near-zero scale
     const pxPerFt = distPx / ft;
     setComputedPxPerFt(pxPerFt);
     setStep('confirm');
