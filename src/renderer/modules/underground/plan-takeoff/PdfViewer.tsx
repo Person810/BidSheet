@@ -13,6 +13,8 @@ interface PdfViewerProps {
   pdfData: Uint8Array;
   pageNumber: number;
   scale: number;
+  /** Increment to reset pan to center (e.g. on fit-to-width). */
+  resetPanKey?: number;
   onDocLoaded: (totalPages: number) => void;
   onPageSizeKnown: (width: number, height: number) => void;
   onScaleChange: (scale: number) => void;
@@ -23,7 +25,7 @@ function clampScale(s: number): number {
 }
 
 export function PdfViewer({
-  pdfData, pageNumber, scale, onDocLoaded, onPageSizeKnown, onScaleChange,
+  pdfData, pageNumber, scale, resetPanKey, onDocLoaded, onPageSizeKnown, onScaleChange,
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -131,6 +133,14 @@ export function PdfViewer({
     setPanY(0);
     doRender(scale);
   }, [pageNumber]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // External reset-pan signal (e.g. fit-to-width)
+  useEffect(() => {
+    if (resetPanKey !== undefined && resetPanKey > 0) {
+      setPanX(0);
+      setPanY(0);
+    }
+  }, [resetPanKey]);
 
   // Scale change: debounced re-render (CSS transform covers the gap)
   useEffect(() => {

@@ -73,6 +73,9 @@ declare global {
       checkBackupReminder: () => Promise<{ needed: boolean; currentVersion: number; lastBackupVersion: number }>;
       dismissBackupReminder: () => Promise<any>;
 
+      // Plan Takeoff
+      openTakeoffPdf: () => Promise<{ filePath: string; data: ArrayBuffer } | null>;
+
       // App Info
       getLogDir: () => Promise<string>;
 

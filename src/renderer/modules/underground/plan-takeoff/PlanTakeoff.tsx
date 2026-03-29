@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
 
 export function PlanTakeoff() {
@@ -8,6 +8,7 @@ export function PlanTakeoff() {
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.0);
   const [loading, setLoading] = useState(false);
+  const [resetPanKey, setResetPanKey] = useState(0);
 
   // Track the PDF page's base size (at scale 1.0) for fit-to-width
   const pageSizeRef = useRef({ width: 0, height: 0 });
@@ -16,7 +17,7 @@ export function PlanTakeoff() {
   const handleLoadPlan = async () => {
     setLoading(true);
     try {
-      const result = await (window as any).api.openTakeoffPdf();
+      const result = await window.api.openTakeoffPdf();
       if (result?.filePath && result?.data) {
         setPdfPath(result.filePath);
         setPdfData(new Uint8Array(result.data));
@@ -46,15 +47,49 @@ export function PlanTakeoff() {
   const prevPage = () => setPageNum((p) => Math.max(1, p - 1));
   const nextPage = () => setPageNum((p) => Math.min(totalPages, p + 1));
 
-  const handleFitToWidth = () => {
+  const handleFitToWidth = useCallback(() => {
     const wrap = viewerWrapRef.current;
     if (!wrap || pageSizeRef.current.width === 0) return;
     const available = wrap.clientWidth - 24;
     const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, available / pageSizeRef.current.width));
     setScale(newScale);
-  };
+    setResetPanKey((k) => k + 1);
+  }, []);
 
   const zoomPercent = Math.round(scale * 100);
+
+  // Keyboard shortcuts: arrows for pages, +/- for zoom, Ctrl+0 for fit
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          setPageNum((p) => Math.max(1, p - 1));
+          break;
+        case 'ArrowRight':
+          setPageNum((p) => Math.min(totalPages, p + 1));
+          break;
+        case '=':
+        case '+':
+          setScale((s) => Math.min(MAX_SCALE, s + 0.1));
+          break;
+        case '-':
+          setScale((s) => Math.max(MIN_SCALE, s - 0.1));
+          break;
+        case '0':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            handleFitToWidth();
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [totalPages, handleFitToWidth]);
 
   // Empty state -- no PDF loaded yet
   if (!pdfData) {
@@ -134,6 +169,7 @@ export function PlanTakeoff() {
           pdfData={pdfData}
           pageNumber={pageNum}
           scale={scale}
+          resetPanKey={resetPanKey}
           onDocLoaded={handleDocLoaded}
           onPageSizeKnown={handlePageSizeKnown}
           onScaleChange={setScale}
