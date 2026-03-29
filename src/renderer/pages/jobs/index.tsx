@@ -21,6 +21,6 @@ export function JobsPage() {
   return view === 'list' ? (
     <JobList onOpenJob={openJob} />
   ) : (
-    <JobDetail jobId={selectedJobId!} onBack={backToList} />
+    <JobDetail jobId={selectedJobId!} onBack={backToList} onOpenJob={openJob} />
   );
 }

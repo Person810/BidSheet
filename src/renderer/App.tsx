@@ -53,6 +53,16 @@ export function App() {
           }
           setLoading(false);
         });
+
+        // Check if a backup reminder is needed after a database upgrade
+        window.api.checkBackupReminder().then((reminder) => {
+          if (reminder.needed) {
+            addToast(
+              'BidSheet has been updated. Your existing backups may be outdated. Head to Settings to make a fresh backup.',
+              'warn'
+            );
+          }
+        });
       } else {
         setLoading(false);
       }

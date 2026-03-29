@@ -24,13 +24,17 @@ const LockOpenIcon = () => (
 interface JobDetailProps {
   jobId: number;
   onBack: () => void;
+  onOpenJob: (id: number) => void;
 }
 
-export function JobDetail({ jobId, onBack }: JobDetailProps) {
+export function JobDetail({ jobId, onBack, onOpenJob }: JobDetailProps) {
   const [job, setJob] = useState<any>(null);
   const [sections, setSections] = useState<any[]>([]);
   const [lineItems, setLineItems] = useState<Record<number, any[]>>({});
   const [summary, setSummary] = useState<any>(null);
+  const [changeOrders, setChangeOrders] = useState<any[]>([]);
+  const [coSummaries, setCoSummaries] = useState<Record<number, any>>({});
+  const [parentJob, setParentJob] = useState<any>(null);
   const [showAddSection, setShowAddSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [showLineItemModal, setShowLineItemModal] = useState(false);
@@ -98,9 +102,34 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
     setLineItems(items);
     const sum = await window.api.getBidSummary(jobId);
     setSummary(sum);
+
+    // Load change orders if this is a parent job
+    if (!j.parent_job_id) {
+      const cos = await window.api.getChangeOrders(jobId);
+      setChangeOrders(cos);
+      const cosums: Record<number, any> = {};
+      for (const co of cos) {
+        cosums[co.id] = await window.api.getBidSummary(co.id);
+      }
+      setCoSummaries(cosums);
+    } else {
+      setChangeOrders([]);
+      setCoSummaries({});
+    }
+
+    // Load parent job if this is a CO
+    if (j.parent_job_id) {
+      const p = await window.api.getJob(j.parent_job_id);
+      setParentJob(p);
+    } else {
+      setParentJob(null);
+    }
   }, [jobId]);
 
-  useEffect(() => { loadJob(); }, [loadJob]);
+  useEffect(() => {
+    loadJob();
+    setLockBypassed(false);
+  }, [loadJob]);
 
   const updateStatus = async (status: string) => {
     if (!job) return;
@@ -426,9 +455,33 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
     await loadJob();
   };
 
+  // ---- Change Orders ----
+  const isChangeOrder = !!job?.parent_job_id;
+
+  const handleCreateCO = async () => {
+    const result = await window.api.createChangeOrder(jobId);
+    if (result?.newJobId) {
+      await loadJob();
+      onOpenJob(result.newJobId);
+    }
+  };
+
+  // Revised total: original bid + approved (won) COs
+  const approvedCOTotal = changeOrders
+    .filter((co) => co.status === 'won')
+    .reduce((sum, co) => sum + (coSummaries[co.id]?.grandTotal || 0), 0);
+  const revisedTotal = summary ? summary.grandTotal + approvedCOTotal : 0;
+
   // ---- Print ----
   const handlePrint = () => {
     window.print();
+  };
+
+  const statusBadge = (status: string) => {
+    const classes: Record<string, string> = {
+      draft: 'badge-draft', submitted: 'badge-submitted', won: 'badge-won', lost: 'badge-lost',
+    };
+    return <span className={`badge ${classes[status] || 'badge-draft'}`}>{status}</span>;
   };
 
   if (!job) return <p className="text-muted">Loading job...</p>;
@@ -437,8 +490,17 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
     <div className="job-detail-page">
       <div className="page-header no-print">
         <div>
-          <button className="btn btn-sm btn-secondary mb-16" onClick={onBack}>&#8592; Back to Jobs</button>
+          {isChangeOrder && parentJob ? (
+            <button className="btn btn-sm btn-secondary mb-16" onClick={() => onOpenJob(parentJob.id)}>
+              &#8592; Back to {parentJob.name}
+            </button>
+          ) : (
+            <button className="btn btn-sm btn-secondary mb-16" onClick={onBack}>&#8592; Back to Jobs</button>
+          )}
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            {isChangeOrder && (
+              <span className="badge badge-submitted" style={{ fontSize: 11 }}>CO #{job.change_order_number}</span>
+            )}
             <h2 style={{ margin: 0 }}>{job.name}</h2>
             <button className="btn btn-sm btn-secondary" onClick={openEditJob} style={{ fontSize: 12 }}>Edit</button>
           </div>
@@ -516,11 +578,22 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
             </div>
           </div>
           <div className="card" style={{ borderColor: 'var(--accent)' }}>
-            <div className="stat-label">Bid Total</div>
+            <div className="stat-label">{isChangeOrder ? 'CO Total' : 'Bid Total'}</div>
             <div className="stat-value" style={{ fontSize: 20, color: 'var(--accent)' }}>
               {formatCurrency(summary.grandTotal)}
             </div>
           </div>
+          {!isChangeOrder && approvedCOTotal > 0 && (
+            <div className="card" style={{ borderColor: 'var(--success)' }}>
+              <div className="stat-label">Revised Total</div>
+              <div className="stat-value" style={{ fontSize: 20, color: 'var(--success)' }}>
+                {formatCurrency(revisedTotal)}
+              </div>
+              <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
+                Original + Approved COs
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -594,6 +667,74 @@ export function JobDetail({ jobId, onBack }: JobDetailProps) {
       <TrenchProfileList jobId={jobId} onConvertToBid={(data) => new Promise<void>((resolve) => {
         withLockCheck(async () => { await handleConvertToBid(data); resolve(); });
       })} />
+
+      {/* Change Orders (parent jobs only) */}
+      {!isChangeOrder && (
+        <div className="card mb-24">
+          <div className="flex justify-between items-center mb-16">
+            <h3 style={{ fontSize: 15 }}>Change Orders</h3>
+            <button className="btn btn-sm btn-primary no-print" onClick={() => withLockCheck(handleCreateCO)}>+ Change Order</button>
+          </div>
+
+          {changeOrders.length === 0 ? (
+            <p className="text-muted" style={{ fontSize: 13 }}>No change orders. Click "+ Change Order" to create one.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>CO #</th>
+                  <th>Description</th>
+                  <th>Status</th>
+                  <th className="text-right">Direct Cost</th>
+                  <th className="text-right">Total</th>
+                  <th className="no-print" style={{ width: 80 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {changeOrders.map((co) => {
+                  const coSum = coSummaries[co.id];
+                  return (
+                    <tr key={co.id}>
+                      <td>
+                        <span className="badge badge-submitted" style={{ fontSize: 11 }}>#{co.change_order_number}</span>
+                      </td>
+                      <td>
+                        <span className="material-name-link no-print" onClick={() => onOpenJob(co.id)}>{co.name}</span>
+                        <span className="print-only">{co.name}</span>
+                      </td>
+                      <td>{statusBadge(co.status)}</td>
+                      <td className="text-right">{coSum ? formatCurrency(coSum.direct_cost_total) : '--'}</td>
+                      <td className="text-right" style={{ fontWeight: 600 }}>{coSum ? formatCurrency(coSum.grandTotal) : '--'}</td>
+                      <td className="no-print">
+                        <div className="flex gap-8">
+                          <button className="btn btn-sm btn-secondary" onClick={() => onOpenJob(co.id)}>Open</button>
+                          <button className="btn btn-sm btn-secondary" onClick={() => withLockCheck(() => {
+                            setConfirmState({
+                              msg: `Delete CO #${co.change_order_number} and all its bid data? This cannot be undone.`,
+                              onYes: async () => {
+                                setConfirmState(null);
+                                await window.api.deleteJob(co.id);
+                                loadJob();
+                              },
+                            });
+                          })}>&times;</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr>
+                  <td colSpan={4} className="text-right" style={{ fontWeight: 600 }}>COs Total</td>
+                  <td className="text-right" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                    {formatCurrency(changeOrders.reduce((s, co) => s + (coSummaries[co.id]?.grandTotal || 0), 0))}
+                  </td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {/* Print summary footer */}
       {summary && (

@@ -44,6 +44,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
       defaultHourlyRate: form.defaultHourlyRate,
       burdenMultiplier: form.burdenMultiplier,
       notes: form.notes || null,
+      aliases: form.aliases || null,
     });
     setShowModal(false);
     onRefresh();
@@ -58,6 +59,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
       defaultHourlyRate: num,
       burdenMultiplier: role.burden_multiplier,
       notes: role.notes,
+      aliases: role.aliases || null,
     });
     onRefresh();
   };

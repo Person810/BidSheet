@@ -32,6 +32,8 @@ declare global {
       saveJob: (job: any) => Promise<any>;
       deleteJob: (id: number) => Promise<any>;
       duplicateJob: (id: number) => Promise<any>;
+      getChangeOrders: (parentJobId: number) => Promise<any[]>;
+      createChangeOrder: (parentJobId: number) => Promise<any>;
       getBidSections: (jobId: number) => Promise<any[]>;
       saveBidSection: (section: any) => Promise<any>;
       deleteBidSection: (id: number) => Promise<any>;
@@ -68,6 +70,8 @@ declare global {
       // Backup/Restore
       exportDatabase: () => Promise<any>;
       restoreDatabase: () => Promise<any>;
+      checkBackupReminder: () => Promise<{ needed: boolean; currentVersion: number; lastBackupVersion: number }>;
+      dismissBackupReminder: () => Promise<any>;
 
       // App Info
       getLogDir: () => Promise<string>;

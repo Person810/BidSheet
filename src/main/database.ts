@@ -112,9 +112,12 @@ export function seedDatabase(
       insertEquip.run(name, equip.category, equip.hourlyRate, equip.mobilization, equip.isOwned ? 1 : 0, equip.notes);
     }
 
+    // Get current schema version to suppress backup reminder on fresh installs
+    const schemaVersion = (db.prepare('SELECT MAX(version) as v FROM schema_version').get() as any)?.v ?? 0;
+
     db.prepare(
-      'UPDATE app_settings SET setup_complete = 1, company_name = ?, trade_types = ? WHERE id = 1'
-    ).run(companyName, trades.join(','));
+      'UPDATE app_settings SET setup_complete = 1, company_name = ?, trade_types = ?, last_backup_schema_version = ? WHERE id = 1'
+    ).run(companyName, trades.join(','), schemaVersion);
   });
 
   seed();
@@ -152,6 +155,12 @@ function runMigrations(db: Database.Database): void {
   }
   if (version < 8) {
     migrateV8(db);
+  }
+  if (version < 9) {
+    migrateV9(db);
+  }
+  if (version < 10) {
+    migrateV10(db);
   }
 }
 
@@ -486,5 +495,26 @@ function migrateV8(db: Database.Database): void {
     ALTER TABLE trench_profiles ADD COLUMN bedding_depth_ft REAL NOT NULL DEFAULT 0.5;
 
     INSERT INTO schema_version (version) VALUES (8);
+  `);
+}
+
+// V9: Change orders -- child jobs linked to a parent
+function migrateV9(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE jobs ADD COLUMN parent_job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE;
+    ALTER TABLE jobs ADD COLUMN change_order_number INTEGER;
+
+    CREATE INDEX idx_jobs_parent ON jobs(parent_job_id);
+
+    INSERT INTO schema_version (version) VALUES (9);
+  `);
+}
+
+// V10: Track last backup schema version for post-migration backup reminders
+function migrateV10(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN last_backup_schema_version INTEGER NOT NULL DEFAULT 0;
+
+    INSERT INTO schema_version (version) VALUES (10);
   `);
 }

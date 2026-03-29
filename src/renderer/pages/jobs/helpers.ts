@@ -24,6 +24,7 @@ export function jobToPayload(job: any) {
     description: job.description, status: job.status, overheadPercent: job.overhead_percent,
     profitPercent: job.profit_percent, bondPercent: job.bond_percent,
     taxPercent: job.tax_percent, notes: job.notes, bidLocked: job.bid_locked === 1,
+    parentJobId: job.parent_job_id || null, changeOrderNumber: job.change_order_number || null,
   };
 }
 

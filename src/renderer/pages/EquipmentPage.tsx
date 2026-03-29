@@ -137,6 +137,7 @@ export function EquipmentPage() {
       mobilizationCost: field === 'mob' ? num : item.mobilization_cost,
       fuelCostPerHour: item.fuel_cost_per_hour,
       notes: item.notes,
+      aliases: item.aliases || null,
       isOwned: item.is_owned === 1,
       isActive: item.is_active === 1,
     };

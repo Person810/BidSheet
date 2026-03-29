@@ -344,9 +344,9 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:jobs:list', (_event, status?: string) => {
     if (status) {
-      return db.prepare('SELECT * FROM jobs WHERE status = ? ORDER BY updated_at DESC').all(status);
+      return db.prepare('SELECT * FROM jobs WHERE status = ? AND parent_job_id IS NULL ORDER BY updated_at DESC').all(status);
     }
-    return db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC').all();
+    return db.prepare('SELECT * FROM jobs WHERE parent_job_id IS NULL ORDER BY updated_at DESC').all();
   });
 
   safeHandle('db:jobs:get', (_event, id: number) => {
@@ -374,14 +374,15 @@ export function registerIpcHandlers(db: Database.Database): void {
     } else {
       return db
         .prepare(
-          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`
+          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, notes, parent_job_id, change_order_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           job.name, job.jobNumber, job.client, job.location,
           job.bidDate, job.startDate, job.description,
           job.overheadPercent, job.profitPercent, job.bondPercent,
-          job.taxPercent, job.notes
+          job.taxPercent, job.notes,
+          job.parentJobId || null, job.changeOrderNumber || null
         );
     }
   });
@@ -440,6 +441,42 @@ export function registerIpcHandlers(db: Database.Database): void {
     });
 
     return duplicate();
+  });
+
+  // ================================================================
+  // CHANGE ORDERS
+  // ================================================================
+
+  safeHandle('db:jobs:change-orders', (_event, parentJobId: number) => {
+    return db.prepare(
+      'SELECT * FROM jobs WHERE parent_job_id = ? ORDER BY change_order_number'
+    ).all(parentJobId);
+  });
+
+  safeHandle('db:jobs:create-change-order', (_event, parentJobId: number) => {
+    const parent = db.prepare('SELECT * FROM jobs WHERE id = ?').get(parentJobId) as any;
+    if (!parent) return null;
+
+    // Next CO number = max existing + 1
+    const maxCO = db.prepare(
+      'SELECT MAX(change_order_number) as max_co FROM jobs WHERE parent_job_id = ?'
+    ).get(parentJobId) as any;
+    const nextCO = (maxCO?.max_co || 0) + 1;
+
+    const result = db.prepare(
+      `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status,
+        overhead_percent, profit_percent, bond_percent, tax_percent, notes,
+        parent_job_id, change_order_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      `CO #${nextCO}`, parent.job_number, parent.client, parent.location,
+      null, null, null, parent.overhead_percent, parent.profit_percent,
+      parent.bond_percent, parent.tax_percent, null,
+      parentJobId, nextCO
+    );
+
+    logger.info('jobs', `Created change order #${nextCO} for job ${parentJobId}`);
+    return { newJobId: Number(result.lastInsertRowid), changeOrderNumber: nextCO };
   });
 
   safeHandle('db:jobs:summary', (_event, jobId: number) => {
@@ -717,6 +754,10 @@ export function registerIpcHandlers(db: Database.Database): void {
         return { success: false, error: msg };
       }
 
+      // Mark backup schema version as current so the reminder dismisses
+      const currentVersion = (db.prepare('SELECT MAX(version) as version FROM schema_version').get() as any)?.version ?? 0;
+      db.prepare('UPDATE app_settings SET last_backup_schema_version = ? WHERE id = 1').run(currentVersion);
+
       logger.info('db:export', `Backup saved to ${result.filePath} (${srcSize} bytes)`);
       return { success: true, path: result.filePath };
     } catch (err: any) {
@@ -896,6 +937,22 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:settings:get', () => {
     return db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
+  });
+
+  safeHandle('db:settings:backup-reminder-needed', () => {
+    const settings = db.prepare('SELECT last_backup_schema_version FROM app_settings WHERE id = 1').get() as any;
+    const currentVersion = (db.prepare('SELECT MAX(version) as version FROM schema_version').get() as any)?.version ?? 0;
+    return {
+      needed: currentVersion > (settings?.last_backup_schema_version ?? 0),
+      currentVersion,
+      lastBackupVersion: settings?.last_backup_schema_version ?? 0,
+    };
+  });
+
+  safeHandle('db:settings:dismiss-backup-reminder', () => {
+    const currentVersion = (db.prepare('SELECT MAX(version) as version FROM schema_version').get() as any)?.version ?? 0;
+    db.prepare('UPDATE app_settings SET last_backup_schema_version = ? WHERE id = 1').run(currentVersion);
+    return { success: true };
   });
 
   safeHandle('db:settings:save', (_event, settings: any) => {

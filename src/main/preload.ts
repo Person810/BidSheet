@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('api', {
   saveJob: (job: any) => ipcRenderer.invoke('db:jobs:save', job),
   deleteJob: (id: number) => ipcRenderer.invoke('db:jobs:delete', id),
   duplicateJob: (id: number) => ipcRenderer.invoke('db:jobs:duplicate', id),
+  getChangeOrders: (parentJobId: number) => ipcRenderer.invoke('db:jobs:change-orders', parentJobId),
+  createChangeOrder: (parentJobId: number) => ipcRenderer.invoke('db:jobs:create-change-order', parentJobId),
 
   getBidSections: (jobId: number) => ipcRenderer.invoke('db:bid-sections:list', jobId),
   saveBidSection: (section: any) => ipcRenderer.invoke('db:bid-sections:save', section),
@@ -73,6 +75,8 @@ contextBridge.exposeInMainWorld('api', {
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),
   restoreDatabase: () => ipcRenderer.invoke('db:restore'),
+  checkBackupReminder: () => ipcRenderer.invoke('db:settings:backup-reminder-needed'),
+  dismissBackupReminder: () => ipcRenderer.invoke('db:settings:dismiss-backup-reminder'),
 
   // ---- App Info ----
   getLogDir: () => ipcRenderer.invoke('app:log-dir'),
