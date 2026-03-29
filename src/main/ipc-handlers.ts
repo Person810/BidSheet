@@ -391,7 +391,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
   });
 
-  safeHandle('db:jobs:duplicate', (_event, id: number) => {
+  safeHandle('db:jobs:duplicate', (_event, id: number, newName?: string, newBidDate?: string) => {
     const duplicate = db.transaction(() => {
       const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as any;
       if (!job) return null;
@@ -402,13 +402,14 @@ export function registerIpcHandlers(db: Database.Database): void {
           VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`
         )
         .run(
-          job.name + ' (Copy)', job.job_number, job.client, job.location,
-          job.bid_date, job.start_date, job.description,
+          newName || job.name + ' (Copy)', job.job_number, job.client, job.location,
+          newBidDate ?? job.bid_date, job.start_date, job.description,
           job.overhead_percent, job.profit_percent, job.bond_percent,
           job.tax_percent, job.notes
         );
       const newJobId = Number(newJob.lastInsertRowid);
 
+      // Copy bid sections and line items
       const sections = db.prepare('SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
       for (const section of sections) {
         const newSection = db
@@ -437,6 +438,26 @@ export function registerIpcHandlers(db: Database.Database): void {
         }
       }
 
+      // Copy trench profiles
+      const profiles = db.prepare('SELECT * FROM trench_profiles WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
+      const insertProfile = db.prepare(
+        `INSERT INTO trench_profiles (
+          job_id, label, pipe_size_in, pipe_material, start_depth_ft,
+          grade_pct, run_length_lf, trench_width_ft, bench_width_ft,
+          bedding_type, backfill_type, sort_order,
+          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const p of profiles) {
+        insertProfile.run(
+          newJobId, p.label, p.pipe_size_in, p.pipe_material, p.start_depth_ft,
+          p.grade_pct, p.run_length_lf, p.trench_width_ft, p.bench_width_ft,
+          p.bedding_type, p.backfill_type, p.sort_order,
+          p.pipe_material_id, p.bedding_material_id, p.backfill_material_id, p.bedding_depth_ft
+        );
+      }
+
+      logger.info('jobs', `Duplicated job ${id} -> ${newJobId}`);
       return { newJobId };
     });
 
@@ -930,6 +951,30 @@ export function registerIpcHandlers(db: Database.Database): void {
       }
     }
   );
+
+  // ================================================================
+  // PLAN TAKEOFF
+  // ================================================================
+
+  ipcMain.handle('db:takeoff:open-pdf', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Plan Sheet PDF',
+      filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const filePath = result.filePaths[0];
+    try {
+      // Read the PDF into a buffer so the renderer can pass it directly
+      // to pdf.js.  This avoids file:// CORS issues in dev mode.
+      const data = fs.readFileSync(filePath);
+      return { filePath, data };
+    } catch (err: any) {
+      logger.error('takeoff:open-pdf', `Failed to read ${filePath}`, err.message);
+      return null;
+    }
+  });
 
   // ================================================================
   // SETTINGS

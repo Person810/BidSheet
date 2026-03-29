@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld('api', {
   getJob: (id: number) => ipcRenderer.invoke('db:jobs:get', id),
   saveJob: (job: any) => ipcRenderer.invoke('db:jobs:save', job),
   deleteJob: (id: number) => ipcRenderer.invoke('db:jobs:delete', id),
-  duplicateJob: (id: number) => ipcRenderer.invoke('db:jobs:duplicate', id),
+  duplicateJob: (id: number, newName?: string, newBidDate?: string) => ipcRenderer.invoke('db:jobs:duplicate', id, newName, newBidDate),
   getChangeOrders: (parentJobId: number) => ipcRenderer.invoke('db:jobs:change-orders', parentJobId),
   createChangeOrder: (parentJobId: number) => ipcRenderer.invoke('db:jobs:create-change-order', parentJobId),
 
@@ -71,6 +71,9 @@ contextBridge.exposeInMainWorld('api', {
   parseCsvPath: (filePath: string) => ipcRenderer.invoke('db:csv:parse-path', filePath),
   importPriceSheet: (updates: any[], source: string) =>
     ipcRenderer.invoke('db:materials:import-prices', updates, source),
+
+  // ---- Plan Takeoff ----
+  openTakeoffPdf: () => ipcRenderer.invoke('db:takeoff:open-pdf'),
 
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),

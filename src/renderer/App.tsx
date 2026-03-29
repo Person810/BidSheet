@@ -12,12 +12,13 @@ import { SettingsPage } from './pages/SettingsPage';
 import { AssembliesPage } from './pages/AssembliesPage';
 import { getActiveModules } from './modules';
 import type { TradeModule } from './modules';
-import { TrenchProfiler } from './modules/underground';
+import { TrenchProfiler, PlanTakeoff } from './modules/underground';
 
 // Maps tool route paths to their components.
 // Add new entries here as tools are built.
 const TOOL_COMPONENTS: Record<string, React.FC> = {
   '/tools/trench-profiler': TrenchProfiler,
+  '/tools/plan-takeoff': PlanTakeoff,
 };
 
 export function App() {

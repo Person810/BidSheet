@@ -49,8 +49,20 @@ export function JobList({ onOpenJob }: JobListProps) {
     });
   };
 
-  const handleDuplicate = async (id: number) => {
-    const result = await window.api.duplicateJob(id);
+  const [dupState, setDupState] = useState<{ jobId: number; name: string; bidDate: string } | null>(null);
+
+  const startDuplicate = (job: any) => {
+    setDupState({
+      jobId: job.id,
+      name: job.name + ' (Copy)',
+      bidDate: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const handleDuplicate = async () => {
+    if (!dupState) return;
+    const result = await window.api.duplicateJob(dupState.jobId, dupState.name, dupState.bidDate || null);
+    setDupState(null);
     if (result?.newJobId) {
       loadJobs();
       onOpenJob(result.newJobId);
@@ -114,8 +126,8 @@ export function JobList({ onOpenJob }: JobListProps) {
                 </td>
                 <td>
                   <div className="flex gap-8">
-                    <button className="btn btn-sm btn-secondary" onClick={() => handleDuplicate(job.id)}
-                      title="Duplicate this job">Copy</button>
+                    <button className="btn btn-sm btn-secondary" onClick={() => startDuplicate(job)}
+                      title="Duplicate this job as a template">Copy</button>
                     <button className="btn btn-sm btn-secondary" onClick={() => handleDelete(job.id)}>Delete</button>
                   </div>
                 </td>
@@ -128,6 +140,29 @@ export function JobList({ onOpenJob }: JobListProps) {
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
           onNo={() => setConfirmState(null)} />
+      )}
+
+      {dupState && (
+        <div className="modal-overlay" onClick={() => setDupState(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Copy Job as Template</h3>
+            <p className="text-muted" style={{ marginBottom: 16 }}>All sections, line items, markups, and trench profiles will be copied. The original job stays untouched.</p>
+            <div className="form-group">
+              <label>New Job Name</label>
+              <input type="text" className="form-control" value={dupState.name}
+                onChange={(e) => setDupState({ ...dupState, name: e.target.value })} autoFocus />
+            </div>
+            <div className="form-group">
+              <label>Bid Date</label>
+              <input type="date" className="form-control" value={dupState.bidDate}
+                onChange={(e) => setDupState({ ...dupState, bidDate: e.target.value })} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setDupState(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleDuplicate} disabled={!dupState.name.trim()}>Create Copy</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showCreate && (
