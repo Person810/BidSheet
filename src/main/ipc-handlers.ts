@@ -976,6 +976,39 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
+  safeHandle('db:takeoff-settings:get', (_event, jobId: number) => {
+    return db.prepare('SELECT * FROM takeoff_job_settings WHERE job_id = ?').get(jobId) || null;
+  });
+
+  safeHandle('db:takeoff-settings:save', (_event, settings: any) => {
+    return db.prepare(`
+      INSERT INTO takeoff_job_settings
+        (job_id, pdf_path, scale_px_per_ft, scale_point1_x, scale_point1_y,
+         scale_point2_x, scale_point2_y, scale_distance_ft, updated_at)
+      VALUES
+        (@job_id, @pdf_path, @scale_px_per_ft, @scale_point1_x, @scale_point1_y,
+         @scale_point2_x, @scale_point2_y, @scale_distance_ft, datetime('now','localtime'))
+      ON CONFLICT(job_id) DO UPDATE SET
+        pdf_path          = @pdf_path,
+        scale_px_per_ft   = @scale_px_per_ft,
+        scale_point1_x    = @scale_point1_x,
+        scale_point1_y    = @scale_point1_y,
+        scale_point2_x    = @scale_point2_x,
+        scale_point2_y    = @scale_point2_y,
+        scale_distance_ft = @scale_distance_ft,
+        updated_at        = datetime('now','localtime')
+    `).run({
+      job_id: settings.job_id,
+      pdf_path: settings.pdf_path ?? null,
+      scale_px_per_ft: settings.scale_px_per_ft ?? null,
+      scale_point1_x: settings.scale_point1_x ?? null,
+      scale_point1_y: settings.scale_point1_y ?? null,
+      scale_point2_x: settings.scale_point2_x ?? null,
+      scale_point2_y: settings.scale_point2_y ?? null,
+      scale_distance_ft: settings.scale_distance_ft ?? null,
+    });
+  });
+
   // ================================================================
   // SETTINGS
   // ================================================================

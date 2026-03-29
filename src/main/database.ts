@@ -162,6 +162,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 10) {
     migrateV10(db);
   }
+  if (version < 11) {
+    migrateV11(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -516,5 +519,28 @@ function migrateV10(db: Database.Database): void {
     ALTER TABLE app_settings ADD COLUMN last_backup_schema_version INTEGER NOT NULL DEFAULT 0;
 
     INSERT INTO schema_version (version) VALUES (10);
+  `);
+}
+
+// V11: Plan takeoff job settings (scale calibration, PDF path)
+function migrateV11(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_job_settings (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id            INTEGER NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE CASCADE,
+      pdf_path          TEXT,
+      scale_px_per_ft   REAL,
+      scale_point1_x    REAL,
+      scale_point1_y    REAL,
+      scale_point2_x    REAL,
+      scale_point2_y    REAL,
+      scale_distance_ft REAL,
+      created_at        TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at        TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX idx_takeoff_settings_job ON takeoff_job_settings(job_id);
+
+    INSERT INTO schema_version (version) VALUES (11);
   `);
 }

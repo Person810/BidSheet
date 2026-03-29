@@ -75,6 +75,8 @@ declare global {
 
       // Plan Takeoff
       openTakeoffPdf: () => Promise<{ filePath: string; data: ArrayBuffer } | null>;
+      getTakeoffSettings: (jobId: number) => Promise<any>;
+      saveTakeoffSettings: (settings: any) => Promise<any>;
 
       // App Info
       getLogDir: () => Promise<string>;

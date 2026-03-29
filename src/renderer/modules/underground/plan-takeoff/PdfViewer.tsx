@@ -15,6 +15,10 @@ interface PdfViewerProps {
   scale: number;
   /** Increment to reset pan to center (e.g. on fit-to-width). */
   resetPanKey?: number;
+  /** When false, mouse-drag panning is disabled (e.g. during calibration). Defaults to true. */
+  panEnabled?: boolean;
+  /** Fires when pan/zoom state changes so sibling overlays can stay in sync. */
+  onViewportChange?: (info: { panX: number; panY: number; renderedScale: number; cssZoom: number }) => void;
   onDocLoaded: (totalPages: number) => void;
   onPageSizeKnown: (width: number, height: number) => void;
   onScaleChange: (scale: number) => void;
@@ -25,7 +29,8 @@ function clampScale(s: number): number {
 }
 
 export function PdfViewer({
-  pdfData, pageNumber, scale, resetPanKey, onDocLoaded, onPageSizeKnown, onScaleChange,
+  pdfData, pageNumber, scale, resetPanKey, panEnabled = true, onViewportChange,
+  onDocLoaded, onPageSizeKnown, onScaleChange,
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -175,10 +180,10 @@ export function PdfViewer({
 
   // Pan handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !panEnabled) return;
     setIsPanning(true);
     panStartRef.current = { x: e.clientX, y: e.clientY, panX, panY };
-  }, [panX, panY]);
+  }, [panX, panY, panEnabled]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning) return;
@@ -187,6 +192,11 @@ export function PdfViewer({
   }, [isPanning]);
 
   const handleMouseUp = useCallback(() => setIsPanning(false), []);
+
+  // Notify parent of viewport state changes for overlay synchronization
+  useEffect(() => {
+    onViewportChange?.({ panX, panY, renderedScale, cssZoom });
+  }, [panX, panY, renderedScale, cssZoom, onViewportChange]);
 
   // Cleanup on unmount: destroy the PDF document and cancel pending work
   useEffect(() => {
@@ -207,7 +217,7 @@ export function PdfViewer({
       onMouseLeave={handleMouseUp}
       style={{
         flex: 1, overflow: 'hidden',
-        cursor: isPanning ? 'grabbing' : 'grab',
+        cursor: isPanning ? 'grabbing' : (panEnabled ? 'grab' : 'default'),
         background: 'var(--bg-secondary, #f0f0f0)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         position: 'relative', userSelect: 'none',

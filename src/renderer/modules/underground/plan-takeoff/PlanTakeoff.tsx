@@ -1,18 +1,46 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
+import { DrawingOverlay } from './DrawingOverlay';
+import { useScaleCalibration, formatScale } from './ScaleCalibration';
+import type { TakeoffJobSettings } from './types';
 
 export function PlanTakeoff() {
+  // -- Job context --
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [jobSettings, setJobSettings] = useState<TakeoffJobSettings | null>(null);
+
+  // -- PDF state --
   const [pdfPath, setPdfPath] = useState<string | null>(null);
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.0);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [resetPanKey, setResetPanKey] = useState(0);
 
-  // Track the PDF page's base size (at scale 1.0) for fit-to-width
+  // -- Viewport state (synced from PdfViewer for overlay) --
+  const [viewport, setViewport] = useState({ panX: 0, panY: 0, renderedScale: 1, cssZoom: 1 });
+
+  // -- Calibration --
+  const [calibrating, setCalibrating] = useState(false);
+
   const pageSizeRef = useRef({ width: 0, height: 0 });
   const viewerWrapRef = useRef<HTMLDivElement>(null);
+
+  // Load job list on mount
+  useEffect(() => {
+    window.api.getJobs().then(setJobs).catch(console.error);
+  }, []);
+
+  // Load settings when job changes
+  useEffect(() => {
+    if (!selectedJobId) { setJobSettings(null); return; }
+    window.api.getTakeoffSettings(selectedJobId).then((s: any) => {
+      setJobSettings(s || null);
+    }).catch(console.error);
+  }, [selectedJobId]);
 
   const handleLoadPlan = async () => {
     setLoading(true);
@@ -25,6 +53,13 @@ export function PlanTakeoff() {
         setTotalPages(0);
         setScale(1.0);
         setLoadError(false);
+
+        // Persist pdf_path if a job is selected
+        if (selectedJobId) {
+          const settings = { ...jobSettings, job_id: selectedJobId, pdf_path: result.filePath };
+          window.api.saveTakeoffSettings(settings).catch(console.error);
+          setJobSettings(settings as TakeoffJobSettings);
+        }
       }
     } catch (err) {
       console.error('Failed to open PDF:', err);
@@ -32,8 +67,6 @@ export function PlanTakeoff() {
       setLoading(false);
     }
   };
-
-  const [loadError, setLoadError] = useState(false);
 
   const handleDocLoaded = useCallback((pages: number) => {
     setTotalPages(pages);
@@ -56,12 +89,36 @@ export function PlanTakeoff() {
     setResetPanKey((k) => k + 1);
   }, []);
 
+  // Calibration hook
+  const calibration = useScaleCalibration({
+    active: calibrating,
+    pageWidth: pageSizeRef.current.width,
+    pageHeight: pageSizeRef.current.height,
+    existingSettings: jobSettings,
+    onComplete: async (result) => {
+      if (!selectedJobId) return;
+      const settings: TakeoffJobSettings = {
+        job_id: selectedJobId,
+        pdf_path: pdfPath,
+        scale_px_per_ft: result.pxPerFt,
+        scale_point1_x: result.point1.x,
+        scale_point1_y: result.point1.y,
+        scale_point2_x: result.point2.x,
+        scale_point2_y: result.point2.y,
+        scale_distance_ft: result.distanceFt,
+      };
+      await window.api.saveTakeoffSettings(settings);
+      setJobSettings(settings);
+      setCalibrating(false);
+    },
+    onCancel: () => setCalibrating(false),
+  });
+
   const zoomPercent = Math.round(scale * 100);
 
   // Keyboard shortcuts: arrows for pages, +/- for zoom, Ctrl+0 for fit
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't capture when typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
@@ -91,12 +148,32 @@ export function PlanTakeoff() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [totalPages, handleFitToWidth]);
 
+  const handleJobChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value ? Number(e.target.value) : null;
+    setSelectedJobId(id);
+    setCalibrating(false);
+  };
+
+  // Job selector (shared between empty state and toolbar)
+  const jobSelector = (
+    <select
+      className="form-control"
+      style={{ width: 200, fontSize: 13, padding: '4px 8px' }}
+      value={selectedJobId ?? ''}
+      onChange={handleJobChange}
+    >
+      <option value="">-- Select Job --</option>
+      {jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+    </select>
+  );
+
   // Empty state -- no PDF loaded yet
   if (!pdfData) {
     return (
       <div>
-        <div className="page-header">
-          <h2>Plan Takeoff</h2>
+        <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2 style={{ margin: 0 }}>Plan Takeoff</h2>
+          {jobSelector}
         </div>
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -121,6 +198,10 @@ export function PlanTakeoff() {
         borderBottom: '1px solid var(--border-color, #e0e0e0)',
         background: 'var(--bg-primary, #fff)', flexShrink: 0,
       }}>
+        {jobSelector}
+
+        <Separator />
+
         <button className="btn btn-secondary btn-sm" onClick={handleLoadPlan} disabled={loading}>
           Load Plan
         </button>
@@ -146,6 +227,23 @@ export function PlanTakeoff() {
           Fit
         </button>
 
+        <Separator />
+
+        {/* Scale calibration */}
+        <button
+          className={`btn btn-sm ${calibrating ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setCalibrating(!calibrating)}
+          disabled={!selectedJobId}
+          title={!selectedJobId ? 'Select a job first' : 'Calibrate the plan scale'}
+        >
+          Set Scale
+        </button>
+        {jobSettings?.scale_px_per_ft && !calibrating && (
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            {formatScale(jobSettings.scale_px_per_ft)}
+          </span>
+        )}
+
         <div style={{ flex: 1 }} />
 
         {/* File name */}
@@ -164,16 +262,32 @@ export function PlanTakeoff() {
       )}
 
       {/* Viewer area */}
-      <div ref={viewerWrapRef} style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <div ref={viewerWrapRef} style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         <PdfViewer
           pdfData={pdfData}
           pageNumber={pageNum}
           scale={scale}
           resetPanKey={resetPanKey}
+          panEnabled={!calibrating}
+          onViewportChange={setViewport}
           onDocLoaded={handleDocLoaded}
           onPageSizeKnown={handlePageSizeKnown}
           onScaleChange={setScale}
         />
+        <DrawingOverlay
+          pageWidth={pageSizeRef.current.width}
+          pageHeight={pageSizeRef.current.height}
+          panX={viewport.panX}
+          panY={viewport.panY}
+          cssZoom={viewport.cssZoom}
+          renderedScale={viewport.renderedScale}
+          scale={scale}
+          mode={calibration.overlayMode}
+          onPointClick={calibration.handlePointClick}
+        >
+          {calibration.svgContent}
+        </DrawingOverlay>
+        {calibration.panelContent}
       </div>
     </div>
   );
