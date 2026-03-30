@@ -2,6 +2,10 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
 import { DrawingOverlay } from './DrawingOverlay';
 import { useScaleCalibration, formatScale } from './ScaleCalibration';
+import { TrenchConfigModal } from './TrenchConfigModal';
+import { RunSummaryPanel } from './RunSummaryPanel';
+import { useRunManager } from './useRunManager';
+import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import type { TakeoffJobSettings } from './types';
 
 export function PlanTakeoff() {
@@ -26,8 +30,43 @@ export function PlanTakeoff() {
   // -- Calibration --
   const [calibrating, setCalibrating] = useState(false);
 
+  // -- Space-to-pan --
+  const [spaceHeld, setSpaceHeld] = useState(false);
+
   const pageSizeRef = useRef({ width: 0, height: 0 });
   const viewerWrapRef = useRef<HTMLDivElement>(null);
+
+  // Calibration hook
+  const calibration = useScaleCalibration({
+    active: calibrating,
+    pageWidth: pageSizeRef.current.width,
+    pageHeight: pageSizeRef.current.height,
+    existingSettings: jobSettings,
+    onComplete: async (result) => {
+      if (!selectedJobId) return;
+      const settings: TakeoffJobSettings = {
+        job_id: selectedJobId,
+        pdf_path: pdfPath,
+        scale_px_per_ft: result.pxPerFt,
+        scale_point1_x: result.point1.x,
+        scale_point1_y: result.point1.y,
+        scale_point2_x: result.point2.x,
+        scale_point2_y: result.point2.y,
+        scale_distance_ft: result.distanceFt,
+      };
+      await window.api.saveTakeoffSettings(settings);
+      setJobSettings(settings);
+      setCalibrating(false);
+    },
+    onCancel: () => setCalibrating(false),
+  });
+
+  // Run manager hook
+  const rm = useRunManager({
+    pageNum,
+    calibrating,
+    calibrationHandlePointClick: calibration.handlePointClick,
+  });
 
   // Load job list on mount
   useEffect(() => {
@@ -54,7 +93,6 @@ export function PlanTakeoff() {
         setScale(1.0);
         setLoadError(false);
 
-        // Persist pdf_path if a job is selected
         if (selectedJobId) {
           const settings = { ...jobSettings, job_id: selectedJobId, pdf_path: result.filePath };
           window.api.saveTakeoffSettings(settings).catch(console.error);
@@ -89,38 +127,41 @@ export function PlanTakeoff() {
     setResetPanKey((k) => k + 1);
   }, []);
 
-  // Calibration hook
-  const calibration = useScaleCalibration({
-    active: calibrating,
-    pageWidth: pageSizeRef.current.width,
-    pageHeight: pageSizeRef.current.height,
-    existingSettings: jobSettings,
-    onComplete: async (result) => {
-      if (!selectedJobId) return;
-      const settings: TakeoffJobSettings = {
-        job_id: selectedJobId,
-        pdf_path: pdfPath,
-        scale_px_per_ft: result.pxPerFt,
-        scale_point1_x: result.point1.x,
-        scale_point1_y: result.point1.y,
-        scale_point2_x: result.point2.x,
-        scale_point2_y: result.point2.y,
-        scale_distance_ft: result.distanceFt,
-      };
-      await window.api.saveTakeoffSettings(settings);
-      setJobSettings(settings);
-      setCalibrating(false);
-    },
-    onCancel: () => setCalibrating(false),
-  });
+  const handleViewerClick = useCallback((e: React.MouseEvent) => {
+    if (rm.isDrawing || !rm.selectedRunId) return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'line' || target.tagName === 'circle') return;
+    rm.handleRunSelect(null);
+  }, [rm]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (rm.isDrawing) rm.undoLastPoint();
+  }, [rm]);
+
+  // Overlay mode: calibration takes priority over drawing
+  const overlayMode = calibrating ? calibration.overlayMode : rm.overlayMode;
 
   const zoomPercent = Math.round(scale * 100);
+  const canAddRun = rm.canAddRun && !!jobSettings?.scale_px_per_ft && !!selectedJobId;
+  const showPanel = rm.runs.length > 0 || rm.isDrawing;
 
-  // Keyboard shortcuts: arrows for pages, +/- for zoom, Ctrl+0 for fit
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (e.key === ' ') {
+        e.preventDefault();
+        setSpaceHeld(true);
+        return;
+      }
+
+      if (e.key === 'Escape' && rm.isDrawing) {
+        rm.finishActiveRun();
+        return;
+      }
 
       switch (e.key) {
         case 'ArrowLeft':
@@ -144,9 +185,16 @@ export function PlanTakeoff() {
           break;
       }
     };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') setSpaceHeld(false);
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [totalPages, handleFitToWidth]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [totalPages, handleFitToWidth, rm]);
 
   const handleJobChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value ? Number(e.target.value) : null;
@@ -154,7 +202,6 @@ export function PlanTakeoff() {
     setCalibrating(false);
   };
 
-  // Job selector (shared between empty state and toolbar)
   const jobSelector = (
     <select
       className="form-control"
@@ -167,7 +214,7 @@ export function PlanTakeoff() {
     </select>
   );
 
-  // Empty state -- no PDF loaded yet
+  // Empty state
   if (!pdfData) {
     return (
       <div>
@@ -199,16 +246,12 @@ export function PlanTakeoff() {
         background: 'var(--bg-primary, #fff)', flexShrink: 0,
       }}>
         {jobSelector}
-
         <Separator />
-
         <button className="btn btn-secondary btn-sm" onClick={handleLoadPlan} disabled={loading}>
           Load Plan
         </button>
-
         <Separator />
 
-        {/* Page navigation */}
         <button className="btn btn-secondary btn-sm" onClick={prevPage}
           disabled={pageNum <= 1} title="Previous page">&larr;</button>
         <span style={{ fontSize: 13, minWidth: 80, textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -216,20 +259,16 @@ export function PlanTakeoff() {
         </span>
         <button className="btn btn-secondary btn-sm" onClick={nextPage}
           disabled={pageNum >= totalPages} title="Next page">&rarr;</button>
-
         <Separator />
 
-        {/* Zoom */}
         <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 48, textAlign: 'center' }}>
           {zoomPercent}%
         </span>
         <button className="btn btn-secondary btn-sm" onClick={handleFitToWidth} title="Fit to width">
           Fit
         </button>
-
         <Separator />
 
-        {/* Scale calibration */}
         <button
           className={`btn btn-sm ${calibrating ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setCalibrating(!calibrating)}
@@ -243,17 +282,31 @@ export function PlanTakeoff() {
             {formatScale(jobSettings.scale_px_per_ft)}
           </span>
         )}
+        <Separator />
+
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={rm.handleAddRun}
+          disabled={!canAddRun}
+          title={!jobSettings?.scale_px_per_ft ? 'Calibrate scale first' : !selectedJobId ? 'Select a job first' : 'Add a pipe run'}
+        >
+          Add Run
+        </button>
+
+        {rm.isDrawing && (
+          <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
+            Drawing &mdash; click to place, right-click to undo, Esc to finish
+          </span>
+        )}
 
         <div style={{ flex: 1 }} />
 
-        {/* File name */}
         <span className="text-muted" style={{ fontSize: 11, maxWidth: 300, overflow: 'hidden',
           textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl' }}>
           {pdfPath ? pdfPath.split(/[\\/]/).pop() : ''}
         </span>
       </div>
 
-      {/* Error banner */}
       {loadError && (
         <div style={{ padding: '10px 16px', background: 'rgba(239,68,68,0.1)',
           color: 'var(--danger, #ef4444)', fontSize: 13, textAlign: 'center' }}>
@@ -261,34 +314,76 @@ export function PlanTakeoff() {
         </div>
       )}
 
-      {/* Viewer area */}
-      <div ref={viewerWrapRef} style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
-        <PdfViewer
-          pdfData={pdfData}
-          pageNumber={pageNum}
-          scale={scale}
-          resetPanKey={resetPanKey}
-          panEnabled={!calibrating}
-          onViewportChange={setViewport}
-          onDocLoaded={handleDocLoaded}
-          onPageSizeKnown={handlePageSizeKnown}
-          onScaleChange={setScale}
-        />
-        <DrawingOverlay
-          pageWidth={pageSizeRef.current.width}
-          pageHeight={pageSizeRef.current.height}
-          panX={viewport.panX}
-          panY={viewport.panY}
-          cssZoom={viewport.cssZoom}
-          renderedScale={viewport.renderedScale}
-          scale={scale}
-          mode={calibration.overlayMode}
-          onPointClick={calibration.handlePointClick}
-        >
-          {calibration.svgContent}
-        </DrawingOverlay>
-        {calibration.panelContent}
+      {/* Viewer + summary panel */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+        <div ref={viewerWrapRef} onClick={handleViewerClick} onContextMenu={handleContextMenu}
+          style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+          <PdfViewer
+            pdfData={pdfData}
+            pageNumber={pageNum}
+            scale={scale}
+            resetPanKey={resetPanKey}
+            panEnabled={(!calibrating && !rm.isDrawing) || spaceHeld}
+            onViewportChange={setViewport}
+            onDocLoaded={handleDocLoaded}
+            onPageSizeKnown={handlePageSizeKnown}
+            onScaleChange={setScale}
+          />
+          <DrawingOverlay
+            pageWidth={pageSizeRef.current.width}
+            pageHeight={pageSizeRef.current.height}
+            panX={viewport.panX}
+            panY={viewport.panY}
+            cssZoom={viewport.cssZoom}
+            renderedScale={viewport.renderedScale}
+            scale={scale}
+            mode={overlayMode}
+            onPointClick={rm.handlePointClick}
+            runs={rm.pageRuns}
+            activeRunId={rm.activeRunId}
+            selectedRunId={rm.selectedRunId}
+            onRunSelect={rm.handleRunSelect}
+            mousePosition={rm.mousePos}
+            scalePxPerFt={jobSettings?.scale_px_per_ft}
+            onMouseMove={rm.handleMouseMove}
+            spaceHeld={spaceHeld}
+          >
+            {calibration.svgContent}
+          </DrawingOverlay>
+          {calibration.panelContent}
+        </div>
+
+        {showPanel && jobSettings?.scale_px_per_ft && (
+          <RunSummaryPanel
+            runs={rm.pageRuns}
+            allRuns={rm.runs}
+            activeRunId={rm.activeRunId}
+            selectedRunId={rm.selectedRunId}
+            scalePxPerFt={jobSettings.scale_px_per_ft}
+            pageNumber={pageNum}
+            onSelectRun={rm.handleRunSelect}
+            onEditRun={rm.handleEditRun}
+            onDeleteRun={rm.handleDeleteRun}
+          />
+        )}
       </div>
+
+      {rm.showConfigModal && (
+        <TrenchConfigModal
+          onConfirm={rm.handleConfigConfirm}
+          onCancel={rm.handleConfigCancel}
+          initialConfig={rm.editingConfig}
+          lastRunConfig={rm.lastRunConfig}
+        />
+      )}
+
+      {rm.pendingDeleteId !== null && (
+        <ConfirmDialog
+          message={`Delete "${rm.runs.find((r) => r.id === rm.pendingDeleteId)?.label || 'this run'}"? This cannot be undone.`}
+          onYes={rm.confirmDelete}
+          onNo={rm.cancelDelete}
+        />
+      )}
     </div>
   );
 }

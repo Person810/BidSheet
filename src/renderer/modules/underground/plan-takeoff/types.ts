@@ -17,3 +17,59 @@ export interface PdfPoint {
 
 /** Interaction mode for the drawing overlay */
 export type OverlayMode = 'none' | 'calibrate-p1' | 'calibrate-p2' | 'draw';
+
+export type UtilityType = 'sanitary' | 'storm' | 'water' | 'fiber' | 'other';
+
+/**
+ * A single pipe run on the plan.
+ *
+ * ID convention:
+ *   negative = local-only (not yet saved to DB)
+ *   positive = DB-assigned (INTEGER PRIMARY KEY AUTOINCREMENT)
+ */
+export interface TakeoffRun {
+  id: number;
+  label: string;
+  utilityType: UtilityType;
+  pipeSizeIn: number;
+  pipeMaterial: string;
+  pipeMaterialId: number | null;
+  startDepthFt: number;
+  gradePct: number;
+  trenchWidthFt: number;
+  benchWidthFt: number;
+  beddingType: string;
+  beddingDepthFt: number;
+  beddingMaterialId: number | null;
+  backfillType: string;
+  backfillMaterialId: number | null;
+  color: string;
+  pdfPage: number;
+  points: PdfPoint[];
+}
+
+/** Config fields shared between new-run and edit-run modals */
+export interface RunConfig {
+  label: string;
+  utilityType: UtilityType;
+  pipeSizeIn: number;
+  pipeMaterial: string;
+  pipeMaterialId: number | null;
+  startDepthFt: number;
+  gradePct: number;
+  trenchWidthFt: number;
+  benchWidthFt: number;
+  beddingType: string;
+  beddingDepthFt: number;
+  beddingMaterialId: number | null;
+  backfillType: string;
+  backfillMaterialId: number | null;
+}
+
+export const UTILITY_COLORS: Record<UtilityType, string> = {
+  sanitary: '#4CAF50',
+  storm: '#FF9800',
+  water: '#2196F3',
+  fiber: '#9C27B0',
+  other: '#607D8B',
+};

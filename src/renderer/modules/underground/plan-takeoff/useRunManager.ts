@@ -1,0 +1,213 @@
+import { useState, useCallback, useMemo } from 'react';
+import type { TakeoffRun, RunConfig, PdfPoint, OverlayMode } from './types';
+import { UTILITY_COLORS } from './types';
+
+/** Decrementing counter for local-only run IDs. Negative = unsaved. */
+let nextLocalId = -1;
+
+interface UseRunManagerOptions {
+  pageNum: number;
+  calibrating: boolean;
+  calibrationHandlePointClick: (point: PdfPoint) => void;
+}
+
+export interface RunManager {
+  // State
+  runs: TakeoffRun[];
+  activeRunId: number | null;
+  selectedRunId: number | null;
+  showConfigModal: boolean;
+  mousePos: PdfPoint | null;
+  isDrawing: boolean;
+  pendingDeleteId: number | null;
+
+  // Derived
+  pageRuns: TakeoffRun[];
+  overlayMode: OverlayMode;
+  lastRunConfig: RunConfig | null;
+  editingConfig: RunConfig | undefined;
+  canAddRun: boolean;
+
+  // Actions
+  handleAddRun: () => void;
+  handleConfigConfirm: (config: RunConfig) => void;
+  handleConfigCancel: () => void;
+  handlePointClick: (point: PdfPoint) => void;
+  handleRunSelect: (runId: number | null) => void;
+  handleEditRun: (runId: number) => void;
+  handleDeleteRun: (runId: number) => void;
+  handleMouseMove: (point: PdfPoint) => void;
+  undoLastPoint: () => void;
+  finishActiveRun: () => void;
+  confirmDelete: () => void;
+  cancelDelete: () => void;
+}
+
+function runToConfig(run: TakeoffRun): RunConfig {
+  return {
+    label: run.label,
+    utilityType: run.utilityType,
+    pipeSizeIn: run.pipeSizeIn,
+    pipeMaterial: run.pipeMaterial,
+    pipeMaterialId: run.pipeMaterialId,
+    startDepthFt: run.startDepthFt,
+    gradePct: run.gradePct,
+    trenchWidthFt: run.trenchWidthFt,
+    benchWidthFt: run.benchWidthFt,
+    beddingType: run.beddingType,
+    beddingDepthFt: run.beddingDepthFt,
+    beddingMaterialId: run.beddingMaterialId,
+    backfillType: run.backfillType,
+    backfillMaterialId: run.backfillMaterialId,
+  };
+}
+
+export function useRunManager({
+  pageNum, calibrating, calibrationHandlePointClick,
+}: UseRunManagerOptions): RunManager {
+  const [runs, setRuns] = useState<TakeoffRun[]>([]);
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [editingRunId, setEditingRunId] = useState<number | null>(null);
+  const [mousePos, setMousePos] = useState<PdfPoint | null>(null);
+
+  const isDrawing = activeRunId !== null;
+
+  // -- Finish / discard active run --
+
+  const finishActiveRun = useCallback(() => {
+    if (!activeRunId) return;
+    setRuns((prev) => {
+      const run = prev.find((r) => r.id === activeRunId);
+      if (!run || run.points.length < 2) return prev.filter((r) => r.id !== activeRunId);
+      return prev;
+    });
+    setActiveRunId(null);
+    setMousePos(null);
+  }, [activeRunId]);
+
+  // -- Modal --
+
+  const handleAddRun = useCallback(() => {
+    setEditingRunId(null);
+    setShowConfigModal(true);
+  }, []);
+
+  const handleConfigConfirm = useCallback((config: RunConfig) => {
+    if (editingRunId !== null) {
+      setRuns((prev) => prev.map((r) => {
+        if (r.id !== editingRunId) return r;
+        return { ...r, ...config, color: UTILITY_COLORS[config.utilityType] };
+      }));
+      setShowConfigModal(false);
+      setEditingRunId(null);
+      return;
+    }
+
+    const id = nextLocalId--;
+    const newRun: TakeoffRun = {
+      id,
+      ...config,
+      color: UTILITY_COLORS[config.utilityType],
+      pdfPage: pageNum,
+      points: [],
+    };
+    setRuns((prev) => [...prev, newRun]);
+    setActiveRunId(id);
+    setSelectedRunId(null);
+    setShowConfigModal(false);
+  }, [editingRunId, pageNum]);
+
+  const handleConfigCancel = useCallback(() => {
+    setShowConfigModal(false);
+    setEditingRunId(null);
+  }, []);
+
+  // -- Drawing --
+
+  const handlePointClick = useCallback((point: PdfPoint) => {
+    if (calibrating) {
+      calibrationHandlePointClick(point);
+      return;
+    }
+    if (!activeRunId) return;
+
+    setRuns((prev) => prev.map((r) =>
+      r.id === activeRunId ? { ...r, points: [...r.points, point] } : r
+    ));
+  }, [calibrating, calibrationHandlePointClick, activeRunId]);
+
+  const undoLastPoint = useCallback(() => {
+    if (!activeRunId) return;
+    setRuns((prev) => prev.map((r) => {
+      if (r.id !== activeRunId || r.points.length === 0) return r;
+      return { ...r, points: r.points.slice(0, -1) };
+    }));
+  }, [activeRunId]);
+
+  const handleMouseMove = useCallback((point: PdfPoint) => {
+    if (activeRunId) setMousePos(point);
+  }, [activeRunId]);
+
+  // -- Selection --
+
+  const handleRunSelect = useCallback((runId: number | null) => {
+    if (activeRunId) return;
+    setSelectedRunId(runId);
+  }, [activeRunId]);
+
+  // -- Edit / Delete --
+
+  const handleEditRun = useCallback((runId: number) => {
+    setEditingRunId(runId);
+    setShowConfigModal(true);
+  }, []);
+
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+
+  const handleDeleteRun = useCallback((runId: number) => {
+    setPendingDeleteId(runId);
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (pendingDeleteId === null) return;
+    setRuns((prev) => prev.filter((r) => r.id !== pendingDeleteId));
+    if (selectedRunId === pendingDeleteId) setSelectedRunId(null);
+    setPendingDeleteId(null);
+  }, [pendingDeleteId, selectedRunId]);
+
+  const cancelDelete = useCallback(() => {
+    setPendingDeleteId(null);
+  }, []);
+
+  // -- Derived --
+
+  const pageRuns = useMemo(() => runs.filter((r) => r.pdfPage === pageNum), [runs, pageNum]);
+
+  const overlayMode: OverlayMode = activeRunId ? 'draw' : 'none';
+
+  const lastRunConfig = useMemo((): RunConfig | null => {
+    if (runs.length === 0) return null;
+    const last = runs[runs.length - 1];
+    return { ...runToConfig(last), label: '' };
+  }, [runs]);
+
+  const editingConfig = useMemo((): RunConfig | undefined => {
+    if (editingRunId === null) return undefined;
+    const run = runs.find((r) => r.id === editingRunId);
+    if (!run) return undefined;
+    return runToConfig(run);
+  }, [editingRunId, runs]);
+
+  const canAddRun = !calibrating && !activeRunId;
+
+  return {
+    runs, activeRunId, selectedRunId, showConfigModal, mousePos, isDrawing,
+    pageRuns, overlayMode, lastRunConfig, editingConfig, canAddRun,
+    handleAddRun, handleConfigConfirm, handleConfigCancel,
+    handlePointClick, handleRunSelect, handleEditRun, handleDeleteRun,
+    handleMouseMove, undoLastPoint, finishActiveRun,
+    pendingDeleteId, confirmDelete, cancelDelete,
+  };
+}

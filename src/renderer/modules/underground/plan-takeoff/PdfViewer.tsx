@@ -164,6 +164,7 @@ export function PdfViewer({
   // Mouse wheel zoom -- focal point follows the cursor
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // prevent double-firing if a parent also has onWheel
     const newScale = clampScale(scale + (e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP));
     if (newScale === scale) return;
 
