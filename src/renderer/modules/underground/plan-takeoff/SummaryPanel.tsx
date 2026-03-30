@@ -17,6 +17,7 @@ interface SummaryPanelProps {
   selectedItemId: number | null;
   onSelectItem: (id: number | null) => void;
   onDeleteItem: (id: number) => void;
+  onSendItemsToBid?: () => void;
   activeTab: 'runs' | 'items';
   onTabChange: (tab: 'runs' | 'items') => void;
 }
@@ -51,7 +52,7 @@ export function SummaryPanel(props: SummaryPanelProps) {
   const {
     runs, allRuns, activeRunId, selectedRunId, scalePxPerFt, pageNumber,
     onSelectRun, onEditRun, onDeleteRun, onSendToProfiles,
-    items, selectedItemId, onSelectItem, onDeleteItem,
+    items, selectedItemId, onSelectItem, onDeleteItem, onSendItemsToBid,
     activeTab, onTabChange,
   } = props;
 
@@ -83,6 +84,8 @@ export function SummaryPanel(props: SummaryPanelProps) {
         <ItemsTabContent
           items={items} selectedItemId={selectedItemId}
           onSelectItem={onSelectItem} onDeleteItem={onDeleteItem}
+          onSendItemsToBid={onSendItemsToBid}
+          activeRunId={activeRunId}
         />
       )}
     </div>
@@ -204,9 +207,10 @@ interface MaterialGroup {
   itemIds: number[];
 }
 
-function ItemsTabContent({ items, selectedItemId, onSelectItem, onDeleteItem }: {
+function ItemsTabContent({ items, selectedItemId, onSelectItem, onDeleteItem, onSendItemsToBid, activeRunId }: {
   items: TakeoffItem[]; selectedItemId: number | null;
   onSelectItem: (id: number | null) => void; onDeleteItem: (id: number) => void;
+  onSendItemsToBid?: () => void; activeRunId: number | null;
 }) {
   const groups = useMemo(() => {
     const map = new Map<string, MaterialGroup>();
@@ -265,6 +269,12 @@ function ItemsTabContent({ items, selectedItemId, onSelectItem, onDeleteItem }: 
           </span>
         </div>
       ))}
+      {onSendItemsToBid && items.length > 0 && !activeRunId && (
+        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 12 }}
+          onClick={onSendItemsToBid}>
+          Send Items to Bid
+        </button>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import ItemPickerModal from './ItemPickerModal';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { useToastStore } from '../../../stores/toast-store';
 import { sendToProfiles } from './sendToProfiles';
+import { sendItemsToBid } from './sendItemsToBid';
 import type { TakeoffJobSettings, PdfPoint } from './types';
 
 export function PlanTakeoff() {
@@ -75,8 +76,9 @@ export function PlanTakeoff() {
   // Item manager hook
   const im = useItemManager({ jobId: selectedJobId, pageNum });
 
-  // Send to Trench Profiles
+  // Send to Trench Profiles / Send Items to Bid
   const [showSendConfirm, setShowSendConfirm] = useState(false);
+  const [showSendItemsConfirm, setShowSendItemsConfirm] = useState(false);
   const addToast = useToastStore((s) => s.addToast);
 
   const handleSendToProfiles = useCallback(async () => {
@@ -90,6 +92,18 @@ export function PlanTakeoff() {
       addToast('Failed to create trench profiles', 'error');
     }
   }, [selectedJobId, jobSettings, rm.runs, addToast]);
+
+  const handleSendItemsToBid = useCallback(async () => {
+    if (!selectedJobId) return;
+    setShowSendItemsConfirm(false);
+    try {
+      const count = await sendItemsToBid(im.items, selectedJobId);
+      addToast(`Created ${count} line items in "Fittings & Structures" section.`, 'success');
+    } catch (err) {
+      console.error('Send items to bid failed:', err);
+      addToast('Failed to send items to bid', 'error');
+    }
+  }, [selectedJobId, im.items, addToast]);
 
   // Load job list on mount
   useEffect(() => {
@@ -339,6 +353,7 @@ export function PlanTakeoff() {
             onEditRun={rm.handleEditRun}
             onDeleteRun={rm.handleDeleteRun}
             onSendToProfiles={() => setShowSendConfirm(true)}
+            onSendItemsToBid={() => setShowSendItemsConfirm(true)}
             items={im.pageItems}
             selectedItemId={im.selectedItemId}
             onSelectItem={im.selectItem}
@@ -365,6 +380,16 @@ export function PlanTakeoff() {
           onCancel={rm.handleConfigCancel}
           initialConfig={rm.editingConfig}
           lastRunConfig={rm.lastRunConfig}
+        />
+      )}
+
+      {showSendItemsConfirm && (
+        <ConfirmDialog
+          message={`Send ${im.items.length} item${im.items.length !== 1 ? 's' : ''} to bid? This will create a "Fittings & Structures" section with line items grouped by material.`}
+          onYes={handleSendItemsToBid}
+          onNo={() => setShowSendItemsConfirm(false)}
+          yesLabel="Send to Bid"
+          variant="neutral"
         />
       )}
 
