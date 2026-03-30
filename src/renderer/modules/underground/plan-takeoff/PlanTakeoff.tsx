@@ -6,6 +6,8 @@ import { TrenchConfigModal } from './TrenchConfigModal';
 import { RunSummaryPanel } from './RunSummaryPanel';
 import { useRunManager } from './useRunManager';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import { useToastStore } from '../../../stores/toast-store';
+import { sendToProfiles } from './sendToProfiles';
 import type { TakeoffJobSettings } from './types';
 
 export function PlanTakeoff() {
@@ -63,10 +65,27 @@ export function PlanTakeoff() {
 
   // Run manager hook
   const rm = useRunManager({
+    jobId: selectedJobId,
     pageNum,
     calibrating,
     calibrationHandlePointClick: calibration.handlePointClick,
   });
+
+  // Send to Trench Profiles
+  const [showSendConfirm, setShowSendConfirm] = useState(false);
+  const addToast = useToastStore((s) => s.addToast);
+
+  const handleSendToProfiles = useCallback(async () => {
+    if (!selectedJobId || !jobSettings?.scale_px_per_ft) return;
+    setShowSendConfirm(false);
+    try {
+      const count = await sendToProfiles(rm.runs, selectedJobId, jobSettings.scale_px_per_ft);
+      addToast(`Created ${count} trench profiles. View them on the job page.`, 'success');
+    } catch (err) {
+      console.error('Send to trench profiles failed:', err);
+      addToast('Failed to create trench profiles', 'error');
+    }
+  }, [selectedJobId, jobSettings, rm.runs, addToast]);
 
   // Load job list on mount
   useEffect(() => {
@@ -364,9 +383,20 @@ export function PlanTakeoff() {
             onSelectRun={rm.handleRunSelect}
             onEditRun={rm.handleEditRun}
             onDeleteRun={rm.handleDeleteRun}
+            onSendToProfiles={() => setShowSendConfirm(true)}
           />
         )}
       </div>
+
+      {showSendConfirm && (
+        <ConfirmDialog
+          message={`Send ${rm.runs.filter((r) => r.points.length >= 2).length} runs to Trench Profiles? You can review and edit them on the job page before converting to a bid.`}
+          onYes={handleSendToProfiles}
+          onNo={() => setShowSendConfirm(false)}
+          yesLabel="Send"
+          variant="neutral"
+        />
+      )}
 
       {rm.showConfigModal && (
         <TrenchConfigModal

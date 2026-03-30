@@ -77,6 +77,9 @@ declare global {
       openTakeoffPdf: () => Promise<{ filePath: string; data: ArrayBuffer } | null>;
       getTakeoffSettings: (jobId: number) => Promise<any>;
       saveTakeoffSettings: (settings: any) => Promise<any>;
+      listTakeoffRuns: (jobId: number) => Promise<any[]>;
+      saveTakeoffRun: (run: any) => Promise<any>;
+      deleteTakeoffRun: (id: number) => Promise<any>;
 
       // App Info
       getLogDir: () => Promise<string>;

@@ -76,6 +76,9 @@ contextBridge.exposeInMainWorld('api', {
   openTakeoffPdf: () => ipcRenderer.invoke('db:takeoff:open-pdf'),
   getTakeoffSettings: (jobId: number) => ipcRenderer.invoke('db:takeoff-settings:get', jobId),
   saveTakeoffSettings: (settings: any) => ipcRenderer.invoke('db:takeoff-settings:save', settings),
+  listTakeoffRuns: (jobId: number) => ipcRenderer.invoke('db:takeoff-runs:list', jobId),
+  saveTakeoffRun: (run: any) => ipcRenderer.invoke('db:takeoff-runs:save', run),
+  deleteTakeoffRun: (id: number) => ipcRenderer.invoke('db:takeoff-runs:delete', id),
 
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),

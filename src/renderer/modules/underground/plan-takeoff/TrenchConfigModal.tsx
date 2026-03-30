@@ -126,6 +126,11 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
               }}
               placeholder="Search pipe (e.g. 8 PVC)"
             />
+            {!pipeMaterialId && config.pipeMaterial === '' && (
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 4 }}>
+                No pipe material selected. Send to Bid won't include material pricing.
+              </div>
+            )}
           </div>
           <div className="form-group" style={{ flex: 1 }}>
             <label className="form-label">Pipe Size (in)</label>

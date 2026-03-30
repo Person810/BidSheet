@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import type { TakeoffRun, RunConfig, PdfPoint, OverlayMode } from './types';
 import { UTILITY_COLORS } from './types';
 
@@ -6,6 +6,7 @@ import { UTILITY_COLORS } from './types';
 let nextLocalId = -1;
 
 interface UseRunManagerOptions {
+  jobId: number | null;
   pageNum: number;
   calibrating: boolean;
   calibrationHandlePointClick: (point: PdfPoint) => void;
@@ -63,7 +64,7 @@ function runToConfig(run: TakeoffRun): RunConfig {
 }
 
 export function useRunManager({
-  pageNum, calibrating, calibrationHandlePointClick,
+  jobId, pageNum, calibrating, calibrationHandlePointClick,
 }: UseRunManagerOptions): RunManager {
   const [runs, setRuns] = useState<TakeoffRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
@@ -74,6 +75,16 @@ export function useRunManager({
 
   const isDrawing = activeRunId !== null;
 
+  // Load runs from DB when job changes
+  useEffect(() => {
+    if (!jobId) { setRuns([]); return; }
+    window.api.listTakeoffRuns(jobId).then((loaded: TakeoffRun[]) => {
+      setRuns(loaded);
+      setActiveRunId(null);
+      setSelectedRunId(null);
+    }).catch(console.error);
+  }, [jobId]);
+
   // -- Finish / discard active run --
 
   const finishActiveRun = useCallback(() => {
@@ -81,11 +92,20 @@ export function useRunManager({
     setRuns((prev) => {
       const run = prev.find((r) => r.id === activeRunId);
       if (!run || run.points.length < 2) return prev.filter((r) => r.id !== activeRunId);
+
+      // Save completed run to DB
+      if (jobId && run.points.length >= 2) {
+        const payload = { ...run, jobId, sortOrder: prev.indexOf(run) };
+        window.api.saveTakeoffRun(payload).then((result: { id: number }) => {
+          setRuns((cur) => cur.map((r) => r.id === activeRunId ? { ...r, id: result.id } : r));
+        }).catch(console.error);
+      }
+
       return prev;
     });
     setActiveRunId(null);
     setMousePos(null);
-  }, [activeRunId]);
+  }, [activeRunId, jobId]);
 
   // -- Modal --
 
@@ -96,10 +116,22 @@ export function useRunManager({
 
   const handleConfigConfirm = useCallback((config: RunConfig) => {
     if (editingRunId !== null) {
-      setRuns((prev) => prev.map((r) => {
-        if (r.id !== editingRunId) return r;
-        return { ...r, ...config, color: UTILITY_COLORS[config.utilityType] };
-      }));
+      setRuns((prev) => {
+        const updated = prev.map((r) => {
+          if (r.id !== editingRunId) return r;
+          return { ...r, ...config, color: UTILITY_COLORS[config.utilityType] };
+        });
+
+        // Persist config change for saved runs
+        if (editingRunId > 0 && jobId) {
+          const run = updated.find((r) => r.id === editingRunId);
+          if (run) {
+            window.api.saveTakeoffRun({ ...run, jobId, sortOrder: updated.indexOf(run) }).catch(console.error);
+          }
+        }
+
+        return updated;
+      });
       setShowConfigModal(false);
       setEditingRunId(null);
       return;
@@ -172,6 +204,9 @@ export function useRunManager({
 
   const confirmDelete = useCallback(() => {
     if (pendingDeleteId === null) return;
+    if (pendingDeleteId > 0) {
+      window.api.deleteTakeoffRun(pendingDeleteId).catch(console.error);
+    }
     setRuns((prev) => prev.filter((r) => r.id !== pendingDeleteId));
     if (selectedRunId === pendingDeleteId) setSelectedRunId(null);
     setPendingDeleteId(null);

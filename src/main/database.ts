@@ -165,6 +165,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 11) {
     migrateV11(db);
   }
+  if (version < 12) {
+    migrateV12(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -542,5 +545,47 @@ function migrateV11(db: Database.Database): void {
     CREATE INDEX idx_takeoff_settings_job ON takeoff_job_settings(job_id);
 
     INSERT INTO schema_version (version) VALUES (11);
+  `);
+}
+
+function migrateV12(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_runs (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      label           TEXT NOT NULL DEFAULT '',
+      utility_type    TEXT NOT NULL DEFAULT 'sanitary',
+      pipe_size_in    REAL NOT NULL DEFAULT 8,
+      pipe_material   TEXT NOT NULL DEFAULT 'PVC',
+      start_depth_ft  REAL NOT NULL DEFAULT 4,
+      grade_pct       REAL NOT NULL DEFAULT 2.0,
+      trench_width_ft REAL NOT NULL DEFAULT 3,
+      bench_width_ft  REAL NOT NULL DEFAULT 0,
+      bedding_type    TEXT NOT NULL DEFAULT '#57 Stone',
+      bedding_depth_ft REAL NOT NULL DEFAULT 0.5,
+      backfill_type   TEXT NOT NULL DEFAULT 'Native',
+      pipe_material_id    INTEGER REFERENCES materials(id),
+      bedding_material_id INTEGER REFERENCES materials(id),
+      backfill_material_id INTEGER REFERENCES materials(id),
+      color           TEXT NOT NULL DEFAULT '#2196F3',
+      sort_order      INTEGER NOT NULL DEFAULT 0,
+      pdf_page        INTEGER NOT NULL DEFAULT 1,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX idx_takeoff_runs_job ON takeoff_runs(job_id);
+
+    CREATE TABLE takeoff_points (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id      INTEGER NOT NULL REFERENCES takeoff_runs(id) ON DELETE CASCADE,
+      x_px        REAL NOT NULL,
+      y_px        REAL NOT NULL,
+      sort_order  INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX idx_takeoff_points_run ON takeoff_points(run_id);
+
+    INSERT INTO schema_version (version) VALUES (12);
   `);
 }

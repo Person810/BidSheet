@@ -1019,6 +1019,92 @@ export function registerIpcHandlers(db: Database.Database): void {
     });
   });
 
+  // ---- Takeoff Runs ----
+
+  safeHandle('db:takeoff-runs:list', (_event, jobId: number) => {
+    const runs = db.prepare('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY sort_order').all(jobId) as any[];
+    const pointsStmt = db.prepare('SELECT x_px, y_px FROM takeoff_points WHERE run_id = ? ORDER BY sort_order');
+    return runs.map((r) => ({
+      id: r.id,
+      label: r.label,
+      utilityType: r.utility_type,
+      pipeSizeIn: r.pipe_size_in,
+      pipeMaterial: r.pipe_material,
+      pipeMaterialId: r.pipe_material_id,
+      startDepthFt: r.start_depth_ft,
+      gradePct: r.grade_pct,
+      trenchWidthFt: r.trench_width_ft,
+      benchWidthFt: r.bench_width_ft,
+      beddingType: r.bedding_type,
+      beddingDepthFt: r.bedding_depth_ft,
+      beddingMaterialId: r.bedding_material_id,
+      backfillType: r.backfill_type,
+      backfillMaterialId: r.backfill_material_id,
+      color: r.color,
+      pdfPage: r.pdf_page,
+      points: (pointsStmt.all(r.id) as any[]).map((p) => ({ x: p.x_px, y: p.y_px })),
+    }));
+  });
+
+  safeHandle('db:takeoff-runs:save', (_event, run: any) => {
+    const saveTx = db.transaction(() => {
+      let runId: number;
+      if (run.id && run.id > 0) {
+        db.prepare(`
+          UPDATE takeoff_runs SET
+            label = ?, utility_type = ?, pipe_size_in = ?, pipe_material = ?,
+            pipe_material_id = ?, start_depth_ft = ?, grade_pct = ?,
+            trench_width_ft = ?, bench_width_ft = ?, bedding_type = ?,
+            bedding_depth_ft = ?, bedding_material_id = ?, backfill_type = ?,
+            backfill_material_id = ?, color = ?, sort_order = ?, pdf_page = ?,
+            updated_at = datetime('now','localtime')
+          WHERE id = ?
+        `).run(
+          run.label, run.utilityType, run.pipeSizeIn, run.pipeMaterial,
+          run.pipeMaterialId ?? null, run.startDepthFt, run.gradePct,
+          run.trenchWidthFt, run.benchWidthFt, run.beddingType,
+          run.beddingDepthFt, run.beddingMaterialId ?? null, run.backfillType,
+          run.backfillMaterialId ?? null, run.color, run.sortOrder ?? 0, run.pdfPage,
+          run.id
+        );
+        runId = run.id;
+      } else {
+        const result = db.prepare(`
+          INSERT INTO takeoff_runs
+            (job_id, label, utility_type, pipe_size_in, pipe_material,
+             pipe_material_id, start_depth_ft, grade_pct,
+             trench_width_ft, bench_width_ft, bedding_type,
+             bedding_depth_ft, bedding_material_id, backfill_type,
+             backfill_material_id, color, sort_order, pdf_page)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          run.jobId, run.label, run.utilityType, run.pipeSizeIn, run.pipeMaterial,
+          run.pipeMaterialId ?? null, run.startDepthFt, run.gradePct,
+          run.trenchWidthFt, run.benchWidthFt, run.beddingType,
+          run.beddingDepthFt, run.beddingMaterialId ?? null, run.backfillType,
+          run.backfillMaterialId ?? null, run.color, run.sortOrder ?? 0, run.pdfPage
+        );
+        runId = Number(result.lastInsertRowid);
+      }
+
+      // Replace points
+      db.prepare('DELETE FROM takeoff_points WHERE run_id = ?').run(runId);
+      const insertPt = db.prepare('INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)');
+      if (run.points) {
+        for (let i = 0; i < run.points.length; i++) {
+          insertPt.run(runId, run.points[i].x, run.points[i].y, i);
+        }
+      }
+
+      return { id: runId };
+    });
+    return saveTx();
+  });
+
+  safeHandle('db:takeoff-runs:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM takeoff_runs WHERE id = ?').run(id);
+  });
+
   // ================================================================
   // SETTINGS
   // ================================================================

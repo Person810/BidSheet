@@ -12,6 +12,7 @@ interface RunSummaryPanelProps {
   onSelectRun: (runId: number | null) => void;
   onEditRun: (runId: number) => void;
   onDeleteRun: (runId: number) => void;
+  onSendToProfiles?: () => void;
 }
 
 function computeRunLengthLF(points: PdfPoint[], scalePxPerFt: number): number {
@@ -40,7 +41,7 @@ function buildTrenchInput(run: TakeoffRun, runLengthLF: number): TrenchInput {
 
 export function RunSummaryPanel({
   runs, allRuns, activeRunId, selectedRunId, scalePxPerFt, pageNumber,
-  onSelectRun, onEditRun, onDeleteRun,
+  onSelectRun, onEditRun, onDeleteRun, onSendToProfiles,
 }: RunSummaryPanelProps) {
   const focusedRun = runs.find((r) => r.id === (activeRunId ?? selectedRunId));
 
@@ -64,6 +65,8 @@ export function RunSummaryPanel({
           allRuns={allRuns}
           scalePxPerFt={scalePxPerFt}
           onSelect={onSelectRun}
+          onSendToProfiles={onSendToProfiles}
+          activeRunId={activeRunId}
         />
       )}
     </div>
@@ -137,12 +140,15 @@ function RunDetail({ run, scalePxPerFt, isActive, onEdit, onDelete }: {
 
 /* ---- Run list (no selection) ---- */
 
-function RunList({ runs, allRuns, scalePxPerFt, onSelect }: {
+function RunList({ runs, allRuns, scalePxPerFt, onSelect, onSendToProfiles, activeRunId }: {
   runs: TakeoffRun[];
   allRuns: TakeoffRun[];
   scalePxPerFt: number;
   onSelect: (id: number) => void;
+  onSendToProfiles?: () => void;
+  activeRunId: number | null;
 }) {
+  const hasCompletedRuns = allRuns.some((r) => r.points.length >= 2);
   return (
     <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -177,6 +183,15 @@ function RunList({ runs, allRuns, scalePxPerFt, onSelect }: {
           </div>
         );
       })}
+      {onSendToProfiles && hasCompletedRuns && !activeRunId && (
+        <button
+          className="btn btn-primary btn-sm"
+          style={{ width: '100%', marginTop: 12 }}
+          onClick={onSendToProfiles}
+        >
+          Send to Trench Profiles
+        </button>
+      )}
     </div>
   );
 }
