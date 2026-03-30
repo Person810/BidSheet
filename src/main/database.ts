@@ -168,6 +168,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 12) {
     migrateV12(db);
   }
+  if (version < 13) {
+    migrateV13(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -587,5 +590,26 @@ function migrateV12(db: Database.Database): void {
     CREATE INDEX idx_takeoff_points_run ON takeoff_points(run_id);
 
     INSERT INTO schema_version (version) VALUES (12);
+  `);
+}
+
+function migrateV13(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_items (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      material_id INTEGER REFERENCES materials(id),
+      x_px        REAL NOT NULL,
+      y_px        REAL NOT NULL,
+      quantity    INTEGER NOT NULL DEFAULT 1,
+      label       TEXT NOT NULL DEFAULT '',
+      pdf_page    INTEGER NOT NULL DEFAULT 1,
+      near_run_id INTEGER REFERENCES takeoff_runs(id) ON DELETE SET NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX idx_takeoff_items_job ON takeoff_items(job_id);
+
+    INSERT INTO schema_version (version) VALUES (13);
   `);
 }

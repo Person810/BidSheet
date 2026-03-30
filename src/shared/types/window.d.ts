@@ -80,6 +80,9 @@ declare global {
       listTakeoffRuns: (jobId: number) => Promise<any[]>;
       saveTakeoffRun: (run: any) => Promise<any>;
       deleteTakeoffRun: (id: number) => Promise<any>;
+      listTakeoffItems: (jobId: number) => Promise<any[]>;
+      saveTakeoffItem: (item: any) => Promise<any>;
+      deleteTakeoffItem: (id: number) => Promise<any>;
 
       // App Info
       getLogDir: () => Promise<string>;

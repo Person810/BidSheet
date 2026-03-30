@@ -16,7 +16,7 @@ export interface PdfPoint {
 }
 
 /** Interaction mode for the drawing overlay */
-export type OverlayMode = 'none' | 'calibrate-p1' | 'calibrate-p2' | 'draw';
+export type OverlayMode = 'none' | 'calibrate-p1' | 'calibrate-p2' | 'draw' | 'place-item';
 
 export type UtilityType = 'sanitary' | 'storm' | 'water' | 'fiber' | 'other';
 
@@ -64,6 +64,24 @@ export interface RunConfig {
   beddingMaterialId: number | null;
   backfillType: string;
   backfillMaterialId: number | null;
+}
+
+/**
+ * A single count item (fitting, structure, valve, etc.) placed on the plan.
+ *
+ * ID convention: same as TakeoffRun (negative = local-only, positive = DB).
+ */
+export interface TakeoffItem {
+  id: number;
+  jobId: number;
+  materialId: number | null;
+  materialName: string;
+  xPx: number;
+  yPx: number;
+  quantity: number;
+  label: string;
+  pdfPage: number;
+  nearRunId: number | null;
 }
 
 export const UTILITY_COLORS: Record<UtilityType, string> = {

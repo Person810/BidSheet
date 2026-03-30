@@ -1105,6 +1105,59 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM takeoff_runs WHERE id = ?').run(id);
   });
 
+  // ---- Takeoff Items (count items: fittings, structures, valves) ----
+
+  safeHandle('db:takeoff-items:list', (_event, jobId: number) => {
+    const items = db.prepare(`
+      SELECT ti.*, m.name AS material_name
+      FROM takeoff_items ti
+      LEFT JOIN materials m ON m.id = ti.material_id
+      WHERE ti.job_id = ?
+      ORDER BY ti.pdf_page, ti.id
+    `).all(jobId) as any[];
+    return items.map((i) => ({
+      id: i.id,
+      jobId: i.job_id,
+      materialId: i.material_id,
+      materialName: i.material_name || 'Unknown',
+      xPx: i.x_px,
+      yPx: i.y_px,
+      quantity: i.quantity,
+      label: i.label,
+      pdfPage: i.pdf_page,
+      nearRunId: i.near_run_id,
+    }));
+  });
+
+  safeHandle('db:takeoff-items:save', (_event, item: any) => {
+    if (item.id && item.id > 0) {
+      db.prepare(`
+        UPDATE takeoff_items SET
+          material_id = ?, x_px = ?, y_px = ?, quantity = ?,
+          label = ?, pdf_page = ?, near_run_id = ?
+        WHERE id = ?
+      `).run(
+        item.materialId, item.xPx, item.yPx, item.quantity ?? 1,
+        item.label ?? '', item.pdfPage, item.nearRunId ?? null, item.id
+      );
+      return { id: item.id };
+    } else {
+      const result = db.prepare(`
+        INSERT INTO takeoff_items
+          (job_id, material_id, x_px, y_px, quantity, label, pdf_page, near_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        item.jobId, item.materialId, item.xPx, item.yPx,
+        item.quantity ?? 1, item.label ?? '', item.pdfPage, item.nearRunId ?? null
+      );
+      return { id: Number(result.lastInsertRowid) };
+    }
+  });
+
+  safeHandle('db:takeoff-items:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM takeoff_items WHERE id = ?').run(id);
+  });
+
   // ================================================================
   // SETTINGS
   // ================================================================

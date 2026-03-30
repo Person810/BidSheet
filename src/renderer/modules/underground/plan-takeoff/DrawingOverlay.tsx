@@ -1,5 +1,7 @@
 import React, { useCallback } from 'react';
-import type { PdfPoint, OverlayMode, TakeoffRun } from './types';
+import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem } from './types';
+import type { PlacingMaterial } from './useItemManager';
+import ItemSymbols from './ItemSymbols';
 
 interface DrawingOverlayProps {
   pageWidth: number;
@@ -20,6 +22,10 @@ interface DrawingOverlayProps {
   scalePxPerFt?: number | null;
   onMouseMove?: (point: PdfPoint) => void;
   spaceHeld?: boolean;
+  items?: TakeoffItem[];
+  selectedItemId?: number | null;
+  onItemSelect?: (id: number | null) => void;
+  placingMaterial?: PlacingMaterial | null;
 }
 
 function screenToPdf(
@@ -38,6 +44,7 @@ export function DrawingOverlay({
   mode, onPointClick, children,
   runs = [], activeRunId, selectedRunId, onRunSelect, mousePosition, scalePxPerFt,
   onMouseMove, spaceHeld,
+  items = [], selectedItemId, onItemSelect, placingMaterial,
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
 
@@ -96,6 +103,14 @@ export function DrawingOverlay({
           onSelect={onRunSelect}
         />
       ))}
+      <ItemSymbols
+        items={items}
+        selectedItemId={selectedItemId ?? null}
+        labelSize={labelSize}
+        onSelect={onItemSelect!}
+        ghostPosition={mode === 'place-item' ? mousePosition ?? null : null}
+        placingMaterial={placingMaterial ?? null}
+      />
       {children}
     </svg>
   );

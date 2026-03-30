@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld('api', {
   listTakeoffRuns: (jobId: number) => ipcRenderer.invoke('db:takeoff-runs:list', jobId),
   saveTakeoffRun: (run: any) => ipcRenderer.invoke('db:takeoff-runs:save', run),
   deleteTakeoffRun: (id: number) => ipcRenderer.invoke('db:takeoff-runs:delete', id),
+  listTakeoffItems: (jobId: number) => ipcRenderer.invoke('db:takeoff-items:list', jobId),
+  saveTakeoffItem: (item: any) => ipcRenderer.invoke('db:takeoff-items:save', item),
+  deleteTakeoffItem: (id: number) => ipcRenderer.invoke('db:takeoff-items:delete', id),
 
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),
