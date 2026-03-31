@@ -98,6 +98,13 @@ declare global {
       // App Info
       getLogDir: () => Promise<string>;
 
+      // Updates
+      checkForUpdate: () => Promise<any>;
+      downloadUpdate: () => Promise<boolean>;
+      installUpdate: () => Promise<void>;
+      getAppVersion: () => Promise<string>;
+      onUpdateStatus: (callback: (data: any) => void) => () => void;
+
     };
   }
 }

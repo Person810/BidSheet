@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import path from 'path';
 import { initializeDatabase } from './database';
 import { registerIpcHandlers } from './ipc-handlers';
+import { initAutoUpdater } from './updater';
 import { logger } from './logger';
 import type Database from 'better-sqlite3';
 
@@ -93,6 +94,11 @@ app.whenReady().then(() => {
   ipcMain.handle('app:log-dir', () => logger.getLogDir());
 
   createWindow();
+
+  // Start auto-updater (checks GitHub Releases for new versions)
+  if (mainWindow) {
+    initAutoUpdater(mainWindow);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

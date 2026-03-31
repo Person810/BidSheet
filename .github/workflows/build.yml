@@ -43,6 +43,8 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
+            release/*.yml
+            release/*.yaml
 
   release:
     needs: build
