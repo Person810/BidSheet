@@ -498,6 +498,22 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     }
   };
 
+  // ---- PDF Export ----
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const handleExportPdf = async () => {
+    setPdfExporting(true);
+    try {
+      const result = await window.api.exportBidPdf(jobId);
+      if (result.success && result.filePath) {
+        addToast(`PDF saved to ${result.filePath}`, 'success');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'PDF export failed', 'error');
+    } finally {
+      setPdfExporting(false);
+    }
+  };
+
   const statusBadge = (status: string) => {
     const classes: Record<string, string> = {
       draft: 'badge-draft', submitted: 'badge-submitted', won: 'badge-won', lost: 'badge-lost',
@@ -544,6 +560,9 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
           </button>
           <button className="btn btn-secondary" onClick={handlePrint}>Print Bid</button>
+          <button className="btn btn-secondary" onClick={handleExportPdf} disabled={pdfExporting}>
+            {pdfExporting ? 'Generating...' : 'Export PDF'}
+          </button>
           <button className="btn btn-secondary" onClick={handleExportQB}>QB Export</button>
           {job.status === 'draft' && (
             <button className="btn btn-secondary" onClick={() => updateStatus('submitted')}>Mark Submitted</button>

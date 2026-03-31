@@ -1,4 +1,4 @@
-import { ipcMain, dialog, app } from 'electron';
+import { ipcMain, dialog, app, BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { getDbPath } from './database';
@@ -938,6 +938,96 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // ================================================================
+  // PDF BID EXPORT
+  // ================================================================
+
+  ipcMain.handle('jobs:export-pdf', async (_event, jobId: number) => {
+    try {
+      const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
+      if (!job) throw new Error('Job not found.');
+
+      const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get() as any;
+
+      const sections = db.prepare(
+        'SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order'
+      ).all(jobId) as any[];
+
+      const lineItemsBySection: Record<number, any[]> = {};
+      for (const section of sections) {
+        lineItemsBySection[section.id] = db.prepare(
+          'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
+        ).all(section.id) as any[];
+      }
+
+      const totals = db.prepare(
+        `SELECT
+          COALESCE(SUM(material_total), 0) as material_total,
+          COALESCE(SUM(labor_total), 0) as labor_total,
+          COALESCE(SUM(equipment_total), 0) as equipment_total,
+          COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
+          COALESCE(SUM(total_cost), 0) as direct_cost_total
+        FROM bid_line_items WHERE job_id = ?`
+      ).get(jobId) as any;
+
+      const directCost = totals.direct_cost_total;
+      const overheadPct = job.overhead_percent || 0;
+      const profitPct = job.profit_percent || 0;
+      const bondPct = job.bond_percent || 0;
+      const taxPct = job.tax_percent || 0;
+      const overhead = directCost * (overheadPct / 100);
+      const profit = directCost * (profitPct / 100);
+      const bond = directCost * (bondPct / 100);
+      const tax = totals.material_total * (taxPct / 100);
+      const grandTotal = directCost + overhead + profit + bond + tax;
+
+      const html = buildBidPdfHtml({
+        job, settings, sections, lineItemsBySection, totals,
+        overhead, profit, bond, tax, grandTotal,
+        overheadPct, profitPct, bondPct, taxPct,
+      });
+
+      // Create hidden BrowserWindow for PDF generation
+      const win = new BrowserWindow({
+        show: false,
+        width: 816,
+        height: 1056,
+        webPreferences: { offscreen: true },
+      });
+
+      await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+
+      // Small delay to ensure rendering is complete
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const pdfBuffer = await win.webContents.printToPDF({
+        printBackground: true,
+        pageSize: 'Letter',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
+
+      win.destroy();
+
+      const safeName = (job.job_number || job.name || 'bid').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const result = await dialog.showSaveDialog({
+        title: 'Save Bid PDF',
+        defaultPath: `${safeName}-bid.pdf`,
+        filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+      });
+
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+      }
+
+      fs.writeFileSync(result.filePath, pdfBuffer);
+      logger.info('jobs:export-pdf', `Exported job ${jobId} to ${result.filePath}`);
+      return { success: true, filePath: result.filePath };
+    } catch (err: any) {
+      logger.error('jobs:export-pdf', 'PDF export failed', err.stack || err.message);
+      throw new Error(err.message || 'PDF export failed.');
+    }
+  });
+
+  // ================================================================
   // CSV PRICE IMPORT
   // These also keep their existing return shapes with logging added.
   // ================================================================
@@ -1342,6 +1432,245 @@ export function registerIpcHandlers(db: Database.Database): void {
       );
   });
 
+}
+
+// ================================================================
+// PDF HTML TEMPLATE BUILDER
+// ================================================================
+
+function fmtCurrency(val: number): string {
+  return val.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function escHtml(str: string): string {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+interface PdfData {
+  job: any;
+  settings: any;
+  sections: any[];
+  lineItemsBySection: Record<number, any[]>;
+  totals: any;
+  overhead: number;
+  profit: number;
+  bond: number;
+  tax: number;
+  grandTotal: number;
+  overheadPct: number;
+  profitPct: number;
+  bondPct: number;
+  taxPct: number;
+}
+
+function buildBidPdfHtml(data: PdfData): string {
+  const { job, settings, sections, lineItemsBySection, totals,
+    overhead, profit, bond, tax, grandTotal,
+    overheadPct, profitPct, bondPct, taxPct } = data;
+
+  const companyName = escHtml(settings?.company_name || '');
+  const companyAddress = escHtml(settings?.company_address || '');
+  const companyPhone = escHtml(settings?.company_phone || '');
+  const companyEmail = escHtml(settings?.company_email || '');
+  const companyLogo = settings?.company_logo || '';
+  const hasLogo = companyLogo.startsWith('data:');
+
+  const bidDate = job.bid_date
+    ? new Date(job.bid_date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : '';
+
+  // Build line items HTML
+  let tableRows = '';
+  for (const section of sections) {
+    const items = lineItemsBySection[section.id] || [];
+    // Section header row
+    tableRows += `<tr class="section-header"><td colspan="5">${escHtml(section.name)}</td></tr>\n`;
+
+    let sectionTotal = 0;
+    items.forEach((item: any, idx: number) => {
+      const rowClass = idx % 2 === 1 ? ' class="stripe"' : '';
+      sectionTotal += item.total_cost || 0;
+      tableRows += `<tr${rowClass}>
+        <td class="desc">${escHtml(item.description)}</td>
+        <td class="center">${escHtml(item.unit)}</td>
+        <td class="center">${item.quantity}</td>
+        <td class="right">${fmtCurrency(item.unit_cost)}</td>
+        <td class="right">${fmtCurrency(item.total_cost)}</td>
+      </tr>\n`;
+    });
+
+    // Section subtotal
+    tableRows += `<tr class="section-subtotal">
+      <td colspan="3"></td>
+      <td class="right subtotal-label">Subtotal</td>
+      <td class="right subtotal-val">${fmtCurrency(sectionTotal)}</td>
+    </tr>\n`;
+  }
+
+  // Summary rows (omit zero-percent rows)
+  let summaryRows = '';
+  summaryRows += `<tr><td class="sum-label">Subtotal</td><td class="sum-val">${fmtCurrency(totals.direct_cost_total)}</td></tr>`;
+  if (overheadPct > 0) {
+    summaryRows += `<tr><td class="sum-label">Overhead (${overheadPct}%)</td><td class="sum-val">${fmtCurrency(overhead)}</td></tr>`;
+  }
+  if (profitPct > 0) {
+    summaryRows += `<tr><td class="sum-label">Profit (${profitPct}%)</td><td class="sum-val">${fmtCurrency(profit)}</td></tr>`;
+  }
+  if (bondPct > 0) {
+    summaryRows += `<tr><td class="sum-label">Bond (${bondPct}%)</td><td class="sum-val">${fmtCurrency(bond)}</td></tr>`;
+  }
+  if (taxPct > 0) {
+    summaryRows += `<tr><td class="sum-label">Sales Tax (${taxPct}%)</td><td class="sum-val">${fmtCurrency(tax)}</td></tr>`;
+  }
+  summaryRows += `<tr class="total-row"><td class="sum-label">TOTAL BID AMOUNT</td><td class="sum-val">${fmtCurrency(grandTotal)}</td></tr>`;
+
+  // Header right-side info parts
+  const infoParts: string[] = [];
+  if (companyAddress) infoParts.push(companyAddress);
+  if (companyPhone) infoParts.push(companyPhone);
+  if (companyEmail) infoParts.push(companyEmail);
+
+  // Logo or company name in header
+  const headerLeft = hasLogo
+    ? `<img src="${companyLogo}" style="max-height:48px;max-width:160px;object-fit:contain;" />`
+    : `<span style="color:#fff;font-weight:bold;font-size:15px;">${companyName}</span>`;
+
+  const headerLeftRow2 = hasLogo
+    ? `<span style="color:#E8A020;font-size:9px;">Underground Utility Contractor</span><br/><span style="color:#fff;font-weight:bold;font-size:12px;">${companyName}</span>`
+    : `<span style="color:#E8A020;font-size:9px;">Underground Utility Contractor</span>`;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  @page { size: Letter; margin: 0.65in; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #1A1A2E;
+    font-size: 9px;
+    line-height: 1.4;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .header-table { width: 100%; border-collapse: collapse; background: #1A1A2E; }
+  .header-table td { padding: 10px 14px; vertical-align: middle; }
+  .header-right { text-align: right; color: #fff; font-size: 8px; }
+  .gold-rule { border: none; border-top: 3px solid #E8A020; margin: 0; }
+  .bid-title { font-weight: bold; color: #1A1A2E; font-size: 11px; margin: 8px 0 6px 0; }
+
+  .info-strip { width: 100%; border-collapse: collapse; background: #F8F9FA; border-bottom: 1.5px solid #E8A020; }
+  .info-strip td { padding: 6px 10px; vertical-align: top; }
+  .info-label { font-size: 7.5px; color: #7F8C8D; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+  .info-value { font-size: 9px; color: #1A1A2E; }
+
+  .items-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .items-table th {
+    background: #1A1A2E; color: #fff; font-weight: bold; font-size: 8px;
+    padding: 5px 6px; text-align: center; border: 0.25px solid #D5D8DC;
+  }
+  .items-table th.left { text-align: left; }
+  .items-table td { padding: 5px 6px; border: 0.25px solid #D5D8DC; font-size: 8.5px; }
+  .items-table .desc { text-align: left; padding-left: 12px; width: 44%; }
+  .items-table .center { text-align: center; }
+  .items-table .right { text-align: right; }
+
+  .items-table .section-header td {
+    background: #424949; color: #fff; font-weight: bold; font-size: 9px;
+    padding: 5px 8px; border-top: 1px solid #E8A020;
+  }
+  .items-table tr.stripe td { background: #EAECEE; }
+  .items-table .section-subtotal td {
+    background: #F8F9FA; border-top: 0.5px solid #E8A020;
+  }
+  .subtotal-label { font-weight: bold; color: #424949; font-size: 8.5px; }
+  .subtotal-val { font-weight: bold; font-size: 8.5px; }
+
+  .col-unit { width: 8%; }
+  .col-qty { width: 10%; }
+  .col-uprice { width: 19%; }
+  .col-amount { width: 19%; }
+
+  .summary-wrap { display: flex; justify-content: flex-end; margin-top: 14px; }
+  .summary-table { width: 40%; border-collapse: collapse; }
+  .summary-table td { padding: 4px 8px; font-size: 9px; }
+  .sum-label { text-align: right; color: #424949; }
+  .sum-val { text-align: right; font-weight: 500; }
+  .summary-table .total-row td {
+    background: #1A1A2E; color: #fff; font-weight: bold; font-size: 11px;
+    border-top: 2px solid #E8A020; padding: 6px 8px;
+  }
+
+  .footer-rule { border: none; border-top: 1px solid #D5D8DC; margin: 20px 0 6px 0; }
+  .footer-note { font-size: 7.5px; color: #7F8C8D; }
+</style>
+</head>
+<body>
+
+<table class="header-table">
+  <tr>
+    <td>${headerLeft}</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>${headerLeftRow2}</td>
+    <td class="header-right">${infoParts.join(' | ')}</td>
+  </tr>
+</table>
+<hr class="gold-rule"/>
+<div class="bid-title">BID PROPOSAL</div>
+
+<table class="info-strip">
+  <tr>
+    <td>
+      <div class="info-label">Project Name</div>
+      <div class="info-value">${escHtml(job.name)}</div>
+    </td>
+    <td>
+      <div class="info-label">Owner / Client</div>
+      <div class="info-value">${escHtml(job.client || '')}</div>
+    </td>
+    <td>
+      <div class="info-label">Bid Number</div>
+      <div class="info-value">${escHtml(job.job_number || '')}</div>
+    </td>
+    <td>
+      <div class="info-label">Date Submitted</div>
+      <div class="info-value">${escHtml(bidDate)}</div>
+    </td>
+  </tr>
+</table>
+
+<table class="items-table">
+  <thead>
+    <tr>
+      <th class="left" style="width:44%">Description</th>
+      <th class="col-unit">Unit</th>
+      <th class="col-qty">Qty</th>
+      <th class="col-uprice">Unit Price</th>
+      <th class="col-amount">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${tableRows}
+  </tbody>
+</table>
+
+<div class="summary-wrap">
+  <table class="summary-table">
+    ${summaryRows}
+  </table>
+</div>
+
+<hr class="footer-rule"/>
+<div class="footer-note">
+  This bid is valid for 60 days from date of submission. Unit prices include all labor, materials, equipment, and incidentals unless noted. Permit fees by owner.
+</div>
+
+</body>
+</html>`;
 }
 
 // ================================================================
