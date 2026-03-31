@@ -880,6 +880,64 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // ================================================================
+  // QUICKBOOKS CSV EXPORT
+  // ================================================================
+
+  ipcMain.handle('export:quickbooks-csv', async (_event, jobId: number) => {
+    const { generateEstimateCSV } = await import('./csv-export');
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
+    if (!job) return { success: false, error: 'Job not found.' };
+
+    const sections = db.prepare('SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order').all(jobId) as any[];
+
+    const lineItemsBySection: Record<number, any[]> = {};
+    for (const section of sections) {
+      lineItemsBySection[section.id] = db
+        .prepare('SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order')
+        .all(section.id) as any[];
+    }
+
+    // Calculate summary (same logic as db:jobs:summary)
+    const totals = db.prepare(
+      `SELECT
+        COALESCE(SUM(material_total), 0) as material_total,
+        COALESCE(SUM(labor_total), 0) as labor_total,
+        COALESCE(SUM(equipment_total), 0) as equipment_total,
+        COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
+        COALESCE(SUM(total_cost), 0) as direct_cost_total
+      FROM bid_line_items WHERE job_id = ?`
+    ).get(jobId) as any;
+
+    const directCost = totals.direct_cost_total;
+    const summary = {
+      overhead: directCost * (job.overhead_percent / 100),
+      profit: directCost * (job.profit_percent / 100),
+      bond: directCost * ((job.bond_percent || 0) / 100),
+      tax: totals.material_total * ((job.tax_percent || 0) / 100),
+    };
+
+    const csvContent = generateEstimateCSV({ job, sections, lineItemsBySection, summary });
+
+    const safeName = (job.job_number || job.name || 'estimate').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Estimate to QuickBooks CSV',
+      defaultPath: `${safeName}-quickbooks.csv`,
+      filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+
+    try {
+      fs.writeFileSync(result.filePath, csvContent, 'utf-8');
+      logger.info('export:quickbooks-csv', `Exported job ${jobId} to ${result.filePath}`);
+      return { success: true, path: result.filePath };
+    } catch (err: any) {
+      logger.error('export:quickbooks-csv', 'Export failed', err.stack || err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ================================================================
   // CSV PRICE IMPORT
   // These also keep their existing return shapes with logging added.
   // ================================================================

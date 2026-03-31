@@ -70,6 +70,9 @@ declare global {
       parseCsvPath: (filePath: string) => Promise<any>;
       importPriceSheet: (updates: any[], source: string) => Promise<any>;
 
+      // Export
+      exportQuickBooksCSV: (jobId: number) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+
       // Backup/Restore
       exportDatabase: () => Promise<any>;
       restoreDatabase: () => Promise<any>;
