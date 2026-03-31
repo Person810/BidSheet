@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatDateLocal } from './jobs/helpers';
 
 export function Dashboard() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -112,7 +113,7 @@ export function Dashboard() {
                   <td style={{ fontWeight: 500 }}>{job.name}</td>
                   <td className="text-muted">{job.client || '--'}</td>
                   <td className="text-muted">
-                    {job.bid_date ? new Date(job.bid_date).toLocaleDateString() : '--'}
+                    {job.bid_date ? formatDateLocal(job.bid_date) : '--'}
                   </td>
                   <td>{statusBadge(job.status)}</td>
                 </tr>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toast-store';
+import { formatDateLocal } from './helpers';
 
 interface JobListProps {
   onOpenJob: (id: number) => void;
@@ -124,7 +125,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                 <td className="text-muted">{job.job_number || '--'}</td>
                 <td>{job.client || '--'}</td>
                 <td className="text-muted">
-                  {job.bid_date ? new Date(job.bid_date).toLocaleDateString() : '--'}
+                  {job.bid_date ? formatDateLocal(job.bid_date) : '--'}
                 </td>
                 <td>{statusBadge(job.status)}</td>
                 <td className="text-muted" style={{ fontSize: 12 }}>

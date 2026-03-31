@@ -29,5 +29,14 @@ export function jobToPayload(job: any) {
 }
 
 export function formatCurrency(val: number) {
-  return val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  return (val ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
+/** Parse a YYYY-MM-DD date string without timezone shift. */
+export function formatDateLocal(dateStr: string): string {
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(+match[1], +match[2] - 1, +match[3]).toLocaleDateString();
+  }
+  return new Date(dateStr).toLocaleDateString();
 }

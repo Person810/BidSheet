@@ -11,7 +11,7 @@ export function computeRunLengthLF(points: PdfPoint[], scalePxPerFt: number): nu
     const dy = points[i].y - points[i - 1].y;
     totalPx += Math.sqrt(dx * dx + dy * dy);
   }
-  return totalPx / scalePxPerFt;
+  return scalePxPerFt > 0 ? totalPx / scalePxPerFt : 0;
 }
 
 /** Maximum trench depth across the run (start vs end). */

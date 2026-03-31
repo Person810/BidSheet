@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
-import { emptyLineForm, jobToPayload, formatCurrency } from './helpers';
+import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
 
@@ -286,9 +286,9 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         msg: 'Delete this line item?',
         onYes: async () => {
           setConfirmState(null);
-          setLockBypassed(false);
           await window.api.deleteBidLineItem(id);
-          loadJob();
+          await loadJob();
+          setLockBypassed(false);
         },
       });
     });
@@ -531,7 +531,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
             {job.client && <span>{job.client}</span>}
             {job.location && <span> &middot; {job.location}</span>}
-            {job.bid_date && <span> &middot; Due {new Date(job.bid_date).toLocaleDateString()}</span>}
+            {job.bid_date && <span> &middot; Due {formatDateLocal(job.bid_date)}</span>}
           </div>
         </div>
         <div className="flex gap-8">
@@ -573,7 +573,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           {job.job_number && <div>Job #: {job.job_number}</div>}
           <div>Client: {job.client || '--'}</div>
           {job.location && <div>Location: {job.location}</div>}
-          {job.bid_date && <div>Bid Date: {new Date(job.bid_date).toLocaleDateString()}</div>}
+          {job.bid_date && <div>Bid Date: {formatDateLocal(job.bid_date)}</div>}
         </div>
       </div>
 
