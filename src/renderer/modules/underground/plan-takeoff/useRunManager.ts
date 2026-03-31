@@ -1,9 +1,6 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { TakeoffRun, RunConfig, PdfPoint, OverlayMode } from './types';
 import { UTILITY_COLORS } from './types';
-
-/** Decrementing counter for local-only run IDs. Negative = unsaved. */
-let nextLocalId = -1;
 
 interface UseRunManagerOptions {
   jobId: number | null;
@@ -66,6 +63,7 @@ function runToConfig(run: TakeoffRun): RunConfig {
 export function useRunManager({
   jobId, pageNum, calibrating, calibrationHandlePointClick,
 }: UseRunManagerOptions): RunManager {
+  const nextLocalId = useRef(-1);
   const [runs, setRuns] = useState<TakeoffRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -137,7 +135,7 @@ export function useRunManager({
       return;
     }
 
-    const id = nextLocalId--;
+    const id = nextLocalId.current--;
     const newRun: TakeoffRun = {
       id,
       ...config,

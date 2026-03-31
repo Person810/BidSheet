@@ -1,8 +1,5 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { TakeoffItem, PdfPoint } from './types';
-
-/** Decrementing counter for local-only item IDs. Negative = unsaved. */
-let nextLocalId = -1;
 
 interface UseItemManagerOptions {
   jobId: number | null;
@@ -29,6 +26,7 @@ export interface ItemManager {
 export function useItemManager({
   jobId, pageNum,
 }: UseItemManagerOptions): ItemManager {
+  const nextLocalId = useRef(-1);
   const [items, setItems] = useState<TakeoffItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
@@ -50,7 +48,7 @@ export function useItemManager({
   ) => {
     if (!jobId) return;
 
-    const localId = nextLocalId--;
+    const localId = nextLocalId.current--;
     const newItem: TakeoffItem = {
       id: localId,
       jobId,
