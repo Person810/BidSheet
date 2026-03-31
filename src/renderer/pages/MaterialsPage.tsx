@@ -40,7 +40,7 @@ const EMPTY_MATERIAL = {
   isActive: true,
 };
 
-const UNITS = ['LF', 'EA', 'CYD', 'SY', 'TON', 'VF', 'LS', 'GAL', 'SF', 'HR'];
+import { UNITS } from '../../shared/constants/units';
 
 export function MaterialsPage() {
   const [categories, setCategories] = useState<Category[]>([]);

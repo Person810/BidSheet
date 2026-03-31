@@ -4,6 +4,7 @@ import {
   laborRolesToAutocomplete,
 } from '../../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToastStore } from '../../stores/toast-store';
 
 interface LaborRole {
   id: number;
@@ -38,6 +39,7 @@ interface CrewTemplatesTabProps {
 }
 
 export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabProps) {
+  const addToast = useToastStore((s) => s.addToast);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<CrewTemplate | null>(null);
   const [form, setForm] = useState({ name: '', description: '', members: [] as { laborRoleId: number; quantity: number }[] });
@@ -80,14 +82,18 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
   };
 
   const handleSave = async () => {
-    await window.api.saveCrewTemplate({
-      id: editing?.id,
-      name: form.name,
-      description: form.description || null,
-      members: form.members,
-    });
-    setShowModal(false);
-    onRefresh();
+    try {
+      await window.api.saveCrewTemplate({
+        id: editing?.id,
+        name: form.name,
+        description: form.description || null,
+        members: form.members,
+      });
+      setShowModal(false);
+      onRefresh();
+    } catch (err: any) {
+      addToast(err.message || 'Failed to save crew template.', 'error');
+    }
   };
 
   const handleDelete = () => {
@@ -103,7 +109,7 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
           await window.api.deleteCrewTemplate(crewId);
           onRefresh();
         } catch (err: any) {
-          alert(err.message || 'Failed to delete crew template.');
+          addToast(err.message || 'Failed to delete crew template.', 'error');
         }
       },
     });

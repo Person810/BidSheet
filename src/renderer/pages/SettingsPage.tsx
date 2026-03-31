@@ -8,6 +8,7 @@ export function SettingsPage() {
     companyAddress: '',
     companyPhone: '',
     companyEmail: '',
+    companyTagline: '',
     defaultOverheadPercent: 10,
     defaultProfitPercent: 10,
     defaultTaxPercent: 0,
@@ -28,6 +29,7 @@ export function SettingsPage() {
           companyAddress: s.company_address || '',
           companyPhone: s.company_phone || '',
           companyEmail: s.company_email || '',
+          companyTagline: s.company_tagline || '',
           defaultOverheadPercent: s.default_overhead_percent,
           defaultProfitPercent: s.default_profit_percent,
           defaultTaxPercent: s.default_tax_percent || 0,
@@ -46,6 +48,7 @@ export function SettingsPage() {
       companyAddress: settings.companyAddress || null,
       companyPhone: settings.companyPhone || null,
       companyEmail: settings.companyEmail || null,
+      companyTagline: settings.companyTagline || null,
       companyLogo: null,
       defaultOverheadPercent: settings.defaultOverheadPercent,
       defaultProfitPercent: settings.defaultProfitPercent,
@@ -125,6 +128,18 @@ export function SettingsPage() {
               value={settings.companyEmail}
               onChange={(e) => update('companyEmail', e.target.value)}
               placeholder="bids@company.com"
+            />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group" style={{ flex: 1 }}>
+            <label>Tagline (shown on PDF exports)</label>
+            <input
+              type="text"
+              className="form-control"
+              value={settings.companyTagline}
+              onChange={(e) => update('companyTagline', e.target.value)}
+              placeholder="e.g. Underground Utility Contractor"
             />
           </div>
         </div>
