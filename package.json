@@ -42,6 +42,13 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Person810",
+        "repo": "BidSheet"
+      }
+    ],
     "linux": {
       "target": [
         {

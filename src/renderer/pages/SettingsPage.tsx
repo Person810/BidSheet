@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { UpdateBanner } from '../components/UpdateBanner';
 
 export function SettingsPage() {
   const [settings, setSettings] = useState({
@@ -238,6 +239,14 @@ export function SettingsPage() {
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
           onNo={() => setConfirmState(null)} yesLabel="Restore" />
       )}
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>App Updates</h3>
+        <p className="text-muted mb-16">
+          BidSheet checks for updates automatically on launch. You can also check manually below.
+        </p>
+        <UpdateBanner />
+      </div>
 
       <div className="card">
         <h3 style={{ marginBottom: 16 }}>Trade Configuration</h3>

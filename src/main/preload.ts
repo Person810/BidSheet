@@ -103,4 +103,16 @@ contextBridge.exposeInMainWorld('api', {
   // ---- App Info ----
   getLogDir: () => ipcRenderer.invoke('app:log-dir'),
 
+  // ---- Updates ----
+  checkForUpdate: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  getAppVersion: () => ipcRenderer.invoke('updater:get-version'),
+  onUpdateStatus: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('update-status', handler);
+    // Return a cleanup function
+    return () => ipcRenderer.removeListener('update-status', handler);
+  },
+
 });
