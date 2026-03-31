@@ -994,18 +994,21 @@ export function registerIpcHandlers(db: Database.Database): void {
         webPreferences: { offscreen: true },
       });
 
-      await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+      let pdfBuffer: Buffer;
+      try {
+        await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 
-      // Small delay to ensure rendering is complete
-      await new Promise((resolve) => setTimeout(resolve, 300));
+        // Small delay to ensure rendering is complete
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
-      const pdfBuffer = await win.webContents.printToPDF({
-        printBackground: true,
-        pageSize: 'Letter',
-        margins: { top: 0, bottom: 0, left: 0, right: 0 },
-      });
-
-      win.destroy();
+        pdfBuffer = await win.webContents.printToPDF({
+          printBackground: true,
+          pageSize: 'Letter',
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        });
+      } finally {
+        win.destroy();
+      }
 
       const safeName = (job.job_number || job.name || 'bid').replace(/[^a-zA-Z0-9_-]/g, '_');
       const result = await dialog.showSaveDialog({
@@ -1493,7 +1496,7 @@ function buildBidPdfHtml(data: PdfData): string {
       tableRows += `<tr${rowClass}>
         <td class="desc">${escHtml(item.description)}</td>
         <td class="center">${escHtml(item.unit)}</td>
-        <td class="center">${item.quantity}</td>
+        <td class="center">${escHtml(String(item.quantity))}</td>
         <td class="right">${fmtCurrency(item.unit_cost)}</td>
         <td class="right">${fmtCurrency(item.total_cost)}</td>
       </tr>\n`;
@@ -1532,7 +1535,7 @@ function buildBidPdfHtml(data: PdfData): string {
 
   // Logo or company name in header
   const headerLeft = hasLogo
-    ? `<img src="${companyLogo}" style="max-height:48px;max-width:160px;object-fit:contain;" />`
+    ? `<img src="${escHtml(companyLogo)}" style="max-height:48px;max-width:160px;object-fit:contain;" />`
     : `<span style="color:#fff;font-weight:bold;font-size:15px;">${companyName}</span>`;
 
   const headerLeftRow2 = hasLogo
