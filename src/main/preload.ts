@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteBidLineItem: (id: number) => ipcRenderer.invoke('db:line-items:delete', id),
 
   getBidSummary: (jobId: number) => ipcRenderer.invoke('db:jobs:summary', jobId),
+  getBidSummaryBatch: (jobIds: number[]) => ipcRenderer.invoke('db:jobs:summary-batch', jobIds),
 
   // ---- Trench Profiles ----
   getTrenchProfiles: (jobId: number) => ipcRenderer.invoke('db:trench-profiles:list', jobId),

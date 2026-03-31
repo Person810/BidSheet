@@ -1,14 +1,6 @@
 import React, { useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-
-interface LaborRole {
-  id: number;
-  name: string;
-  default_hourly_rate: number;
-  burden_multiplier: number;
-  notes: string | null;
-  aliases: string | null;
-}
+import type { LaborRole } from '../../../shared/types/labor';
 
 interface LaborRolesTabProps {
   roles: LaborRole[];

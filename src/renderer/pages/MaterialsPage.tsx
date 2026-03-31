@@ -3,6 +3,7 @@ import {
   FuzzyAutocomplete,
   categoriesToAutocomplete,
 } from '../components/FuzzyAutocomplete';
+import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CsvImportModal } from '../components/CsvImportModal';
 
@@ -152,9 +153,6 @@ export function MaterialsPage() {
     loadMaterials();
   };
 
-  const formatCurrency = (val: number) => {
-    return val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  };
 
   const categoryItems = categoriesToAutocomplete(categories);
 

@@ -564,6 +564,51 @@ export function registerIpcHandlers(db: Database.Database): void {
     };
   });
 
+  safeHandle('db:jobs:summary-batch', (_event, jobIds: number[]) => {
+    if (!jobIds.length) return [];
+    const placeholders = jobIds.map(() => '?').join(',');
+
+    const jobs = db.prepare(`SELECT * FROM jobs WHERE id IN (${placeholders})`).all(...jobIds) as any[];
+    const jobMap = new Map(jobs.map((j: any) => [j.id, j]));
+
+    const totalsRows = db.prepare(
+      `SELECT job_id,
+        COALESCE(SUM(material_total), 0) as material_total,
+        COALESCE(SUM(labor_total), 0) as labor_total,
+        COALESCE(SUM(equipment_total), 0) as equipment_total,
+        COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
+        COALESCE(SUM(total_cost), 0) as direct_cost_total
+      FROM bid_line_items WHERE job_id IN (${placeholders}) GROUP BY job_id`
+    ).all(...jobIds) as any[];
+    const totalsMap = new Map(totalsRows.map((t: any) => [t.job_id, t]));
+
+    return jobIds.map((id) => {
+      const job = jobMap.get(id);
+      if (!job) return null;
+
+      const totals = totalsMap.get(id) || {
+        material_total: 0, labor_total: 0, equipment_total: 0,
+        subcontractor_total: 0, direct_cost_total: 0,
+      };
+
+      const directCost = totals.direct_cost_total;
+      const overhead = directCost * (job.overhead_percent / 100);
+      const profit = directCost * (job.profit_percent / 100);
+      const bond = directCost * ((job.bond_percent || 0) / 100);
+      const tax = totals.material_total * ((job.tax_percent || 0) / 100);
+
+      return {
+        jobId: id,
+        ...totals,
+        overhead,
+        profit,
+        bond,
+        tax,
+        grandTotal: directCost + overhead + profit + bond + tax,
+      };
+    }).filter(Boolean);
+  });
+
   // ================================================================
   // BID SECTIONS
   // ================================================================

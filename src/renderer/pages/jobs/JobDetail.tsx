@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
-import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
+import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal, statusBadge } from './helpers';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
 
@@ -514,12 +514,6 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     }
   };
 
-  const statusBadge = (status: string) => {
-    const classes: Record<string, string> = {
-      draft: 'badge-draft', submitted: 'badge-submitted', won: 'badge-won', lost: 'badge-lost',
-    };
-    return <span className={`badge ${classes[status] || 'badge-draft'}`}>{status}</span>;
-  };
 
   if (!job) return <p className="text-muted">Loading job...</p>;
 

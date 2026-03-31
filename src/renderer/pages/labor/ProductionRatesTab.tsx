@@ -4,23 +4,7 @@ import {
   crewsToAutocomplete,
 } from '../../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-
-interface CrewMember {
-  id: number;
-  crew_template_id: number;
-  labor_role_id: number;
-  quantity: number;
-  role_name: string;
-  default_hourly_rate: number;
-  burden_multiplier: number;
-}
-
-interface CrewTemplate {
-  id: number;
-  name: string;
-  description: string | null;
-  members: CrewMember[];
-}
+import type { CrewMember, CrewTemplate } from '../../../shared/types/labor';
 
 interface ProductionRate {
   id: number;
