@@ -90,6 +90,9 @@ contextBridge.exposeInMainWorld('api', {
   saveTakeoffItem: (item: any) => ipcRenderer.invoke('db:takeoff-items:save', item),
   deleteTakeoffItem: (id: number) => ipcRenderer.invoke('db:takeoff-items:delete', id),
 
+  // ---- Export ----
+  exportQuickBooksCSV: (jobId: number) => ipcRenderer.invoke('export:quickbooks-csv', jobId),
+
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),
   restoreDatabase: () => ipcRenderer.invoke('db:restore'),

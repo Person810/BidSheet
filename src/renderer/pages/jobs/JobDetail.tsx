@@ -484,6 +484,20 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     window.print();
   };
 
+  // ---- QuickBooks Export ----
+  const handleExportQB = async () => {
+    try {
+      const result = await window.api.exportQuickBooksCSV(jobId);
+      if (result.success) {
+        addToast(`Exported to ${result.path}`, 'success');
+      } else if (result.error) {
+        addToast(result.error, 'error');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Export failed', 'error');
+    }
+  };
+
   const statusBadge = (status: string) => {
     const classes: Record<string, string> = {
       draft: 'badge-draft', submitted: 'badge-submitted', won: 'badge-won', lost: 'badge-lost',
@@ -530,6 +544,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
           </button>
           <button className="btn btn-secondary" onClick={handlePrint}>Print Bid</button>
+          <button className="btn btn-secondary" onClick={handleExportQB}>QB Export</button>
           {job.status === 'draft' && (
             <button className="btn btn-secondary" onClick={() => updateStatus('submitted')}>Mark Submitted</button>
           )}
