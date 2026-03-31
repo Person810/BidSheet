@@ -3,6 +3,7 @@ import {
   FuzzyAutocomplete,
   crewsToAutocomplete,
 } from '../../components/FuzzyAutocomplete';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface CrewMember {
   id: number;
@@ -50,6 +51,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
     notes: '',
   });
 
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
   const UNITS = ['LF', 'EA', 'CYD', 'VF', 'SY', 'TON'];
   const crewItems = crewsToAutocomplete(crews);
 
@@ -91,6 +93,25 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
     });
     setShowModal(false);
     onRefresh();
+  };
+
+  const handleDelete = () => {
+    if (!editing) return;
+    const rateId = editing.id;
+    const rateDesc = editing.description;
+    setShowModal(false);
+    setConfirmState({
+      msg: `Delete "${rateDesc}"? This cannot be undone.`,
+      onYes: async () => {
+        setConfirmState(null);
+        try {
+          await window.api.deleteProductionRate(rateId);
+          onRefresh();
+        } catch (err: any) {
+          alert(err.message || 'Failed to delete production rate.');
+        }
+      },
+    });
   };
 
   return (
@@ -231,6 +252,11 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
               />
             </div>
             <div className="modal-actions">
+              {editing && (
+                <button className="btn btn-danger" onClick={handleDelete} style={{ marginRight: 'auto' }}>
+                  Delete Rate
+                </button>
+              )}
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
               <button
                 className="btn btn-primary"
@@ -242,6 +268,10 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
             </div>
           </div>
         </div>
+      )}
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
       )}
     </div>
   );

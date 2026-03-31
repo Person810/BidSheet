@@ -33,7 +33,7 @@ export function seedDatabase(
 ): void {
   const seed = db.transaction(() => {
     const categoryMap = new Map<string, string>();
-    const allMaterials: { category: string; name: string; unit: string; price: number; description?: string }[] = [];
+    const allMaterials: { category: string; name: string; unit: string; price: number; description?: string; aliases?: string }[] = [];
     const laborMap = new Map<string, { rate: number; burden: number; notes: string }>();
     const equipmentMap = new Map<string, { category: string; hourlyRate: number; mobilization: number; isOwned: boolean; notes: string }>();
 
@@ -55,6 +55,7 @@ export function seedDatabase(
             unit: mat.unit,
             price: includeBallparkPrices ? mat.ballparkPrice : 0,
             description: mat.description,
+            aliases: mat.aliases,
           });
         }
       }
@@ -89,12 +90,12 @@ export function seedDatabase(
     const catIdByName = new Map(catRows.map((r) => [r.name, r.id]));
 
     const insertMat = db.prepare(
-      'INSERT INTO materials (category_id, name, description, unit, default_unit_cost) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO materials (category_id, name, description, unit, default_unit_cost, aliases) VALUES (?, ?, ?, ?, ?, ?)'
     );
     for (const mat of allMaterials) {
       const catId = catIdByName.get(mat.category);
       if (catId) {
-        insertMat.run(catId, mat.name, mat.description || null, mat.unit, mat.price);
+        insertMat.run(catId, mat.name, mat.description || null, mat.unit, mat.price, mat.aliases || null);
       }
     }
 
@@ -170,6 +171,9 @@ function runMigrations(db: Database.Database): void {
   }
   if (version < 13) {
     migrateV13(db);
+  }
+  if (version < 14) {
+    migrateV14(db);
   }
 }
 
@@ -611,5 +615,27 @@ function migrateV13(db: Database.Database): void {
     CREATE INDEX idx_takeoff_items_job ON takeoff_items(job_id);
 
     INSERT INTO schema_version (version) VALUES (13);
+  `);
+}
+
+// V14: Per-page scale calibration (replaces single scale in takeoff_job_settings)
+function migrateV14(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_page_scales (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      page_number     INTEGER NOT NULL,
+      scale_px_per_ft REAL NOT NULL,
+      scale_point1_x  REAL,
+      scale_point1_y  REAL,
+      scale_point2_x  REAL,
+      scale_point2_y  REAL,
+      scale_distance_ft REAL,
+      UNIQUE(job_id, page_number)
+    );
+
+    CREATE INDEX idx_takeoff_page_scales_job ON takeoff_page_scales(job_id);
+
+    INSERT INTO schema_version (version) VALUES (14);
   `);
 }

@@ -11,11 +11,5 @@ export const undergroundModule: TradeModule = {
       path: '/tools/trench-profiler',
       icon: '',
     },
-    {
-      id: 'plan-takeoff',
-      name: 'Plan Takeoff',
-      path: '/tools/plan-takeoff',
-      icon: '',
-    },
   ],
 };

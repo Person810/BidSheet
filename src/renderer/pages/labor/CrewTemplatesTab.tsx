@@ -3,6 +3,7 @@ import {
   FuzzyAutocomplete,
   laborRolesToAutocomplete,
 } from '../../components/FuzzyAutocomplete';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface LaborRole {
   id: number;
@@ -40,6 +41,7 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<CrewTemplate | null>(null);
   const [form, setForm] = useState({ name: '', description: '', members: [] as { laborRoleId: number; quantity: number }[] });
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   const roleItems = laborRolesToAutocomplete(roles);
 
@@ -86,6 +88,25 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
     });
     setShowModal(false);
     onRefresh();
+  };
+
+  const handleDelete = () => {
+    if (!editing) return;
+    const crewId = editing.id;
+    const crewName = editing.name;
+    setShowModal(false);
+    setConfirmState({
+      msg: `Delete crew "${crewName}"? This cannot be undone.`,
+      onYes: async () => {
+        setConfirmState(null);
+        try {
+          await window.api.deleteCrewTemplate(crewId);
+          onRefresh();
+        } catch (err: any) {
+          alert(err.message || 'Failed to delete crew template.');
+        }
+      },
+    });
   };
 
   const getCrewCostPerHour = (crew: CrewTemplate) => {
@@ -223,6 +244,11 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
             </div>
 
             <div className="modal-actions">
+              {editing && (
+                <button className="btn btn-danger" onClick={handleDelete} style={{ marginRight: 'auto' }}>
+                  Delete Crew
+                </button>
+              )}
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim()}>
                 {editing ? 'Save Changes' : 'Add Crew'}
@@ -230,6 +256,10 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
             </div>
           </div>
         </div>
+      )}
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
       )}
     </div>
   );

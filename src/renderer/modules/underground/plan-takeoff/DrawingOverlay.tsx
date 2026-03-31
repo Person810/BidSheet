@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem } from './types';
-import type { PlacingMaterial } from './useItemManager';
 import ItemSymbols from './ItemSymbols';
+import { getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT } from './takeoffUtils';
 
 interface DrawingOverlayProps {
   pageWidth: number;
@@ -25,7 +25,8 @@ interface DrawingOverlayProps {
   items?: TakeoffItem[];
   selectedItemId?: number | null;
   onItemSelect?: (id: number | null) => void;
-  placingMaterial?: PlacingMaterial | null;
+  /** Fired when user right-clicks a run line or vertex */
+  onRunContextMenu?: (runId: number, point: PdfPoint) => void;
 }
 
 function screenToPdf(
@@ -44,7 +45,7 @@ export function DrawingOverlay({
   mode, onPointClick, children,
   runs = [], activeRunId, selectedRunId, onRunSelect, mousePosition, scalePxPerFt,
   onMouseMove, spaceHeld,
-  items = [], selectedItemId, onItemSelect, placingMaterial,
+  items = [], selectedItemId, onItemSelect, onRunContextMenu,
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
 
@@ -101,6 +102,12 @@ export function DrawingOverlay({
           scalePxPerFt={scalePxPerFt ?? 1}
           mousePosition={run.id === activeRunId ? mousePosition : null}
           onSelect={onRunSelect}
+          onContextMenu={onRunContextMenu}
+          pageWidth={pageWidth}
+          pageHeight={pageHeight}
+          panX={panX}
+          panY={panY}
+          scale={scale}
         />
       ))}
       <ItemSymbols
@@ -108,8 +115,6 @@ export function DrawingOverlay({
         selectedItemId={selectedItemId ?? null}
         labelSize={labelSize}
         onSelect={onItemSelect!}
-        ghostPosition={mode === 'place-item' ? mousePosition ?? null : null}
-        placingMaterial={placingMaterial ?? null}
       />
       {children}
     </svg>
@@ -118,7 +123,7 @@ export function DrawingOverlay({
 
 /* ---- Per-run SVG rendering ---- */
 
-function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePosition, onSelect }: {
+function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePosition, onSelect, onContextMenu, pageWidth, pageHeight, panX, panY, scale }: {
   run: TakeoffRun;
   isSelected: boolean;
   isActive: boolean;
@@ -126,6 +131,12 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
   scalePxPerFt: number;
   mousePosition?: PdfPoint | null;
   onSelect?: (id: number | null) => void;
+  onContextMenu?: (runId: number, point: PdfPoint) => void;
+  pageWidth: number;
+  pageHeight: number;
+  panX: number;
+  panY: number;
+  scale: number;
 }) {
   const pts = run.points;
   const strokeW = isSelected || isActive ? 3 : 2;
@@ -135,6 +146,17 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
   const handleRunClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onSelect && !isActive) onSelect(run.id);
+  };
+
+  const handleRunContextMenu = (e: React.MouseEvent) => {
+    if (!onContextMenu || isActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const container = (e.currentTarget as SVGElement).closest('svg')?.parentElement;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const point = screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale);
+    onContextMenu(run.id, point);
   };
 
   return (
@@ -151,6 +173,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
               vectorEffect="non-scaling-stroke"
               style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
               onClick={handleRunClick}
+              onContextMenu={handleRunContextMenu}
             />
             {/* Hit area (wider invisible line for easier clicking) */}
             <line
@@ -159,6 +182,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
               vectorEffect="non-scaling-stroke"
               style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
               onClick={handleRunClick}
+              onContextMenu={handleRunContextMenu}
             />
             <SegmentLabel
               p1={prev} p2={p} scalePxPerFt={scalePxPerFt}
@@ -193,8 +217,25 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
           vectorEffect="non-scaling-stroke"
           style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
           onClick={handleRunClick}
+          onContextMenu={handleRunContextMenu}
         />
       ))}
+
+      {/* Shoring depth warning */}
+      {!isActive && pts.length >= 2 &&
+        getMaxDepthFt(run, scalePxPerFt) > SHORING_DEPTH_THRESHOLD_FT && (
+        <g transform={`translate(${pts[0].x}, ${pts[0].y})`} style={{ pointerEvents: 'none' }}>
+          <polygon
+            points={`0,${-labelSize * 1.4} ${labelSize * 0.7},0 ${-labelSize * 0.7},0`}
+            fill="#f59e0b" stroke="#fff" strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+          <text x={0} y={-labelSize * 0.35} textAnchor="middle"
+            fontSize={labelSize * 0.7} fill="#fff" fontWeight={700}
+            style={{ userSelect: 'none' }}>!</text>
+          <title>Depth exceeds 5 ft — shoring may be required (OSHA 1926 Subpart P)</title>
+        </g>
+      )}
 
       {/* Selection glow */}
       {isSelected && pts.length > 1 && (

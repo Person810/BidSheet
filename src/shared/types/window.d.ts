@@ -15,11 +15,14 @@ declare global {
       // Labor
       getLaborRoles: () => Promise<any[]>;
       saveLaborRole: (role: any) => Promise<any>;
+      deleteLaborRole: (id: number) => Promise<any>;
       getCrewTemplates: () => Promise<any[]>;
       getCrewTemplate: (id: number) => Promise<any>;
       saveCrewTemplate: (template: any) => Promise<any>;
+      deleteCrewTemplate: (id: number) => Promise<any>;
       getProductionRates: () => Promise<any[]>;
       saveProductionRate: (rate: any) => Promise<any>;
+      deleteProductionRate: (id: number) => Promise<any>;
 
       // Equipment
       getEquipment: () => Promise<any[]>;
@@ -75,8 +78,12 @@ declare global {
 
       // Plan Takeoff
       openTakeoffPdf: () => Promise<{ filePath: string; data: ArrayBuffer } | null>;
+      readTakeoffPdf: (filePath: string) => Promise<{ data: ArrayBuffer } | null>;
       getTakeoffSettings: (jobId: number) => Promise<any>;
       saveTakeoffSettings: (settings: any) => Promise<any>;
+      getPageScale: (jobId: number, pageNumber: number) => Promise<any>;
+      savePageScale: (data: any) => Promise<any>;
+      listPageScales: (jobId: number) => Promise<any[]>;
       listTakeoffRuns: (jobId: number) => Promise<any[]>;
       saveTakeoffRun: (run: any) => Promise<any>;
       deleteTakeoffRun: (id: number) => Promise<any>;

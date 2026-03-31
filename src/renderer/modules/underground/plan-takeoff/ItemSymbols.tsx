@@ -1,6 +1,5 @@
 import React from 'react';
-import type { TakeoffItem, PdfPoint } from './types';
-import type { PlacingMaterial } from './useItemManager';
+import type { TakeoffItem } from './types';
 
 const ITEM_COLOR = '#e91e63';
 const ITEM_GLOW = 'rgba(233,30,99,0.3)';
@@ -10,8 +9,6 @@ interface ItemSymbolsProps {
   selectedItemId: number | null;
   labelSize: number;
   onSelect: (id: number | null) => void;
-  ghostPosition: PdfPoint | null;
-  placingMaterial: PlacingMaterial | null;
 }
 
 function truncate(s: string, max: number): string {
@@ -19,7 +16,7 @@ function truncate(s: string, max: number): string {
 }
 
 export default function ItemSymbols({
-  items, selectedItemId, labelSize, onSelect, ghostPosition, placingMaterial,
+  items, selectedItemId, labelSize, onSelect,
 }: ItemSymbolsProps) {
   const r = Math.max(labelSize * 0.45, 4);
 
@@ -60,27 +57,6 @@ export default function ItemSymbols({
           </g>
         );
       })}
-
-      {/* Ghost diamond at cursor during placement */}
-      {ghostPosition && placingMaterial && (
-        <g opacity={0.5}>
-          <rect
-            x={ghostPosition.x - r} y={ghostPosition.y - r}
-            width={r * 2} height={r * 2}
-            transform={`rotate(45 ${ghostPosition.x} ${ghostPosition.y})`}
-            fill={ITEM_COLOR} stroke="#fff" strokeWidth={1.2}
-            vectorEffect="non-scaling-stroke"
-            pointerEvents="none"
-          />
-          <text
-            x={ghostPosition.x} y={ghostPosition.y + r + labelSize * 0.9}
-            textAnchor="middle" fontSize={labelSize * 0.6}
-            fill="var(--text-primary, #333)" pointerEvents="none"
-          >
-            {truncate(placingMaterial.name, 15)}
-          </text>
-        </g>
-      )}
     </g>
   );
 }

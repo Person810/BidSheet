@@ -64,7 +64,10 @@ function safeHandle(
     try {
       return fn(event, ...args);
     } catch (err: any) {
-      const friendly = friendlyMessage(err);
+      // Errors thrown deliberately (no .code) already have user-friendly
+      // messages -- pass them through. System errors (SQLite, fs) carry a
+      // .code and need translation.
+      const friendly = err.code ? friendlyMessage(err) : (err.message || friendlyMessage(err));
       logger.error(channel, friendly, err.stack || err.message);
       throw new Error(friendly);
     }
@@ -205,6 +208,14 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
+  safeHandle('db:labor-roles:delete', (_event, id: number) => {
+    const refs = db.prepare('SELECT COUNT(*) as count FROM crew_members WHERE labor_role_id = ?').get(id) as any;
+    if (refs.count > 0) {
+      throw new Error('Remove this role from all crew templates first.');
+    }
+    return db.prepare('DELETE FROM labor_roles WHERE id = ?').run(id);
+  });
+
   // ================================================================
   // CREW TEMPLATES
   // ================================================================
@@ -268,6 +279,18 @@ export function registerIpcHandlers(db: Database.Database): void {
     return saveTemplate();
   });
 
+  safeHandle('db:crew-templates:delete', (_event, id: number) => {
+    const bidRefs = db.prepare('SELECT COUNT(*) as count FROM bid_line_items WHERE crew_template_id = ?').get(id) as any;
+    if (bidRefs.count > 0) {
+      throw new Error('Remove this crew from all bid line items first.');
+    }
+    const prodRefs = db.prepare('SELECT COUNT(*) as count FROM production_rates WHERE crew_template_id = ?').get(id) as any;
+    if (prodRefs.count > 0) {
+      throw new Error('Delete the production rates using this crew first.');
+    }
+    return db.prepare('DELETE FROM crew_templates WHERE id = ?').run(id);
+  });
+
   // ================================================================
   // PRODUCTION RATES
   // ================================================================
@@ -297,6 +320,14 @@ export function registerIpcHandlers(db: Database.Database): void {
         )
         .run(rate.description, rate.crewTemplateId, rate.unit, rate.ratePerHour, rate.conditions, rate.notes);
     }
+  });
+
+  safeHandle('db:production-rates:delete', (_event, id: number) => {
+    const refs = db.prepare('SELECT COUNT(*) as count FROM bid_line_items WHERE production_rate_id = ?').get(id) as any;
+    if (refs.count > 0) {
+      throw new Error('Remove this production rate from all bid line items first.');
+    }
+    return db.prepare('DELETE FROM production_rates WHERE id = ?').run(id);
   });
 
   // ================================================================
@@ -982,6 +1013,16 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
+  safeHandle('db:takeoff:read-pdf', (_event, filePath: string) => {
+    try {
+      const data = fs.readFileSync(filePath);
+      return { data };
+    } catch (err: any) {
+      logger.error('takeoff:read-pdf', `Failed to read ${filePath}`, err.message);
+      return null;
+    }
+  });
+
   safeHandle('db:takeoff-settings:get', (_event, jobId: number) => {
     return db.prepare('SELECT * FROM takeoff_job_settings WHERE job_id = ?').get(jobId) || null;
   });
@@ -1017,6 +1058,47 @@ export function registerIpcHandlers(db: Database.Database): void {
       scale_point2_y: settings.scale_point2_y ?? null,
       scale_distance_ft: settings.scale_distance_ft ?? null,
     });
+  });
+
+  // ---- Takeoff Page Scales ----
+
+  safeHandle('db:takeoff-page-scale:get', (_event, jobId: number, pageNumber: number) => {
+    return db.prepare(
+      'SELECT * FROM takeoff_page_scales WHERE job_id = ? AND page_number = ?'
+    ).get(jobId, pageNumber) || null;
+  });
+
+  safeHandle('db:takeoff-page-scale:save', (_event, data: any) => {
+    return db.prepare(`
+      INSERT INTO takeoff_page_scales
+        (job_id, page_number, scale_px_per_ft, scale_point1_x, scale_point1_y,
+         scale_point2_x, scale_point2_y, scale_distance_ft)
+      VALUES
+        (@job_id, @page_number, @scale_px_per_ft, @scale_point1_x, @scale_point1_y,
+         @scale_point2_x, @scale_point2_y, @scale_distance_ft)
+      ON CONFLICT(job_id, page_number) DO UPDATE SET
+        scale_px_per_ft   = @scale_px_per_ft,
+        scale_point1_x    = @scale_point1_x,
+        scale_point1_y    = @scale_point1_y,
+        scale_point2_x    = @scale_point2_x,
+        scale_point2_y    = @scale_point2_y,
+        scale_distance_ft = @scale_distance_ft
+    `).run({
+      job_id: data.job_id,
+      page_number: data.page_number,
+      scale_px_per_ft: data.scale_px_per_ft,
+      scale_point1_x: data.scale_point1_x ?? null,
+      scale_point1_y: data.scale_point1_y ?? null,
+      scale_point2_x: data.scale_point2_x ?? null,
+      scale_point2_y: data.scale_point2_y ?? null,
+      scale_distance_ft: data.scale_distance_ft ?? null,
+    });
+  });
+
+  safeHandle('db:takeoff-page-scale:list', (_event, jobId: number) => {
+    return db.prepare(
+      'SELECT page_number, scale_px_per_ft FROM takeoff_page_scales WHERE job_id = ?'
+    ).all(jobId) as any[];
   });
 
   // ---- Takeoff Runs ----

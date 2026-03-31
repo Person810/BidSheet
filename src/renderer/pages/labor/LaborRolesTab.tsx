@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface LaborRole {
   id: number;
@@ -18,6 +19,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<LaborRole | null>(null);
   const [form, setForm] = useState({ name: '', defaultHourlyRate: 0, burdenMultiplier: 1.35, notes: '', aliases: '' });
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   const openAdd = () => {
     setEditing(null);
@@ -48,6 +50,25 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
     });
     setShowModal(false);
     onRefresh();
+  };
+
+  const handleDelete = () => {
+    if (!editing) return;
+    const roleId = editing.id;
+    const roleName = editing.name;
+    setShowModal(false);
+    setConfirmState({
+      msg: `Delete "${roleName}"? This cannot be undone.`,
+      onYes: async () => {
+        setConfirmState(null);
+        try {
+          await window.api.deleteLaborRole(roleId);
+          onRefresh();
+        } catch (err: any) {
+          alert(err.message || 'Failed to delete role.');
+        }
+      },
+    });
   };
 
   const handleRateChange = async (role: LaborRole, value: string) => {
@@ -188,6 +209,11 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
               </div>
             </div>
             <div className="modal-actions">
+              {editing && (
+                <button className="btn btn-danger" onClick={handleDelete} style={{ marginRight: 'auto' }}>
+                  Delete Role
+                </button>
+              )}
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim()}>
                 {editing ? 'Save Changes' : 'Add Role'}
@@ -195,6 +221,10 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
             </div>
           </div>
         </div>
+      )}
+      {confirmState && (
+        <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
+          onNo={() => setConfirmState(null)} />
       )}
     </div>
   );

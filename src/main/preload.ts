@@ -15,11 +15,14 @@ contextBridge.exposeInMainWorld('api', {
   // ---- Labor ----
   getLaborRoles: () => ipcRenderer.invoke('db:labor-roles:list'),
   saveLaborRole: (role: any) => ipcRenderer.invoke('db:labor-roles:save', role),
+  deleteLaborRole: (id: number) => ipcRenderer.invoke('db:labor-roles:delete', id),
   getCrewTemplates: () => ipcRenderer.invoke('db:crew-templates:list'),
   getCrewTemplate: (id: number) => ipcRenderer.invoke('db:crew-templates:get', id),
   saveCrewTemplate: (template: any) => ipcRenderer.invoke('db:crew-templates:save', template),
+  deleteCrewTemplate: (id: number) => ipcRenderer.invoke('db:crew-templates:delete', id),
   getProductionRates: () => ipcRenderer.invoke('db:production-rates:list'),
   saveProductionRate: (rate: any) => ipcRenderer.invoke('db:production-rates:save', rate),
+  deleteProductionRate: (id: number) => ipcRenderer.invoke('db:production-rates:delete', id),
 
   // ---- Equipment ----
   getEquipment: () => ipcRenderer.invoke('db:equipment:list'),
@@ -74,8 +77,12 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- Plan Takeoff ----
   openTakeoffPdf: () => ipcRenderer.invoke('db:takeoff:open-pdf'),
+  readTakeoffPdf: (filePath: string) => ipcRenderer.invoke('db:takeoff:read-pdf', filePath),
   getTakeoffSettings: (jobId: number) => ipcRenderer.invoke('db:takeoff-settings:get', jobId),
   saveTakeoffSettings: (settings: any) => ipcRenderer.invoke('db:takeoff-settings:save', settings),
+  getPageScale: (jobId: number, pageNumber: number) => ipcRenderer.invoke('db:takeoff-page-scale:get', jobId, pageNumber),
+  savePageScale: (data: any) => ipcRenderer.invoke('db:takeoff-page-scale:save', data),
+  listPageScales: (jobId: number) => ipcRenderer.invoke('db:takeoff-page-scale:list', jobId),
   listTakeoffRuns: (jobId: number) => ipcRenderer.invoke('db:takeoff-runs:list', jobId),
   saveTakeoffRun: (run: any) => ipcRenderer.invoke('db:takeoff-runs:save', run),
   deleteTakeoffRun: (id: number) => ipcRenderer.invoke('db:takeoff-runs:delete', id),

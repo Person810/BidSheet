@@ -5,10 +5,8 @@ function Separator() {
 }
 
 interface TakeoffToolbarProps {
-  // Job
-  jobs: any[];
-  selectedJobId: number | null;
-  onJobChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  // Navigation
+  onBack: () => void;
   // PDF
   onLoadPlan: () => void;
   loading: boolean;
@@ -29,25 +27,18 @@ interface TakeoffToolbarProps {
   canAddRun: boolean;
   onAddRun: () => void;
   isDrawing: boolean;
-  // Items
-  canPlaceItem: boolean;
-  onPlaceItem: () => void;
-  isPlacing: boolean;
-  placingMaterialName: string | null;
-  onDonePlacing: () => void;
   // File info
   pdfFilename: string;
 }
 
 export default function TakeoffToolbar(props: TakeoffToolbarProps) {
   const {
-    jobs, selectedJobId, onJobChange,
+    onBack,
     onLoadPlan, loading,
     pageNum, totalPages, onPrevPage, onNextPage,
     zoomPercent, onFitToWidth,
     calibrating, onToggleCalibrate, canCalibrate, scaleDisplay,
     canAddRun, onAddRun, isDrawing,
-    canPlaceItem, onPlaceItem, isPlacing, placingMaterialName, onDonePlacing,
     pdfFilename,
   } = props;
 
@@ -57,15 +48,9 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       borderBottom: '1px solid var(--border-color, #e0e0e0)',
       background: 'var(--bg-primary, #fff)', flexShrink: 0,
     }}>
-      <select
-        className="form-control"
-        style={{ width: 200, fontSize: 13, padding: '4px 8px' }}
-        value={selectedJobId ?? ''}
-        onChange={onJobChange}
-      >
-        <option value="">-- Select Job --</option>
-        {jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
-      </select>
+      <button className="btn btn-secondary btn-sm" onClick={onBack}>
+        &#8592; Back to Job
+      </button>
       <Separator />
 
       <button className="btn btn-secondary btn-sm" onClick={onLoadPlan} disabled={loading}>
@@ -94,7 +79,7 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
         className={`btn btn-sm ${calibrating ? 'btn-primary' : 'btn-secondary'}`}
         onClick={onToggleCalibrate}
         disabled={!canCalibrate}
-        title={!canCalibrate ? 'Select a job first' : 'Calibrate the plan scale'}
+        title="Calibrate the plan scale"
       >
         Set Scale
       </button>
@@ -118,36 +103,6 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
         <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
           Drawing &mdash; click to place, right-click to undo, Esc to finish
         </span>
-      )}
-
-      {!isDrawing && !isPlacing && (
-        <>
-          <Separator />
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={onPlaceItem}
-            disabled={!canPlaceItem}
-            title={!canPlaceItem ? 'Calibrate scale first' : 'Place a count item'}
-          >
-            Place Item
-          </button>
-        </>
-      )}
-
-      {isPlacing && placingMaterialName && (
-        <>
-          <Separator />
-          <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
-            Placing: {placingMaterialName}
-          </span>
-          <button className="btn btn-secondary btn-sm" onClick={onDonePlacing}
-            style={{ marginLeft: 4, fontSize: 11 }}>
-            Done
-          </button>
-          <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginLeft: 4 }}>
-            Click to place &middot; Esc to finish
-          </span>
-        </>
       )}
 
       <div style={{ flex: 1 }} />

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { calculateTrench, type TrenchInput } from '../trenchCalc';
-import type { TakeoffRun, TakeoffItem, PdfPoint } from './types';
+import type { TakeoffRun, TakeoffItem } from './types';
+import { computeRunLengthLF, getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT } from './takeoffUtils';
 
 interface SummaryPanelProps {
   runs: TakeoffRun[];
@@ -20,16 +21,6 @@ interface SummaryPanelProps {
   onSendItemsToBid?: () => void;
   activeTab: 'runs' | 'items';
   onTabChange: (tab: 'runs' | 'items') => void;
-}
-
-function computeRunLengthLF(points: PdfPoint[], scalePxPerFt: number): number {
-  let totalPx = 0;
-  for (let i = 1; i < points.length; i++) {
-    const dx = points[i].x - points[i - 1].x;
-    const dy = points[i].y - points[i - 1].y;
-    totalPx += Math.sqrt(dx * dx + dy * dy);
-  }
-  return totalPx / scalePxPerFt;
 }
 
 function buildTrenchInput(run: TakeoffRun, runLengthLF: number): TrenchInput {
@@ -159,6 +150,7 @@ function RunDetail({ run, scalePxPerFt, isActive, onEdit, onDelete }: {
   onEdit: () => void; onDelete: () => void;
 }) {
   const runLengthLF = computeRunLengthLF(run.points, scalePxPerFt);
+  const maxDepth = getMaxDepthFt(run, scalePxPerFt);
   const result = runLengthLF > 0 ? calculateTrench(buildTrenchInput(run, runLengthLF)) : null;
 
   return (
@@ -188,6 +180,13 @@ function RunDetail({ run, scalePxPerFt, isActive, onEdit, onDelete }: {
           </>)}
         </tbody>
       </table>
+      {maxDepth > SHORING_DEPTH_THRESHOLD_FT && (
+        <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 4,
+          background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)',
+          fontSize: 11, color: '#d97706' }}>
+          &#9888; Max depth {maxDepth.toFixed(1)}&apos; exceeds {SHORING_DEPTH_THRESHOLD_FT}&apos; &mdash; shoring may be required
+        </div>
+      )}
       {!isActive && (
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onEdit}>Edit Config</button>

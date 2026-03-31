@@ -1,28 +1,40 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import type { PdfPoint, OverlayMode, TakeoffJobSettings } from './types';
+import type { PdfPoint, OverlayMode } from './types';
 
-export interface CalibrationResult {
-  point1: PdfPoint;
-  point2: PdfPoint;
-  distanceFt: number;
+/** PDF standard: 72 points per inch */
+const PDF_PTS_PER_INCH = 72;
+
+/** Common civil plan scales */
+const COMMON_SCALES = [10, 20, 30, 40, 50, 60, 100];
+
+export interface ScaleResult {
   pxPerFt: number;
+  /** Only present for two-point calibration */
+  point1?: PdfPoint;
+  point2?: PdfPoint;
+  distanceFt?: number;
 }
 
 interface UseScaleCalibrationOptions {
   active: boolean;
   pageWidth: number;
   pageHeight: number;
-  existingSettings: TakeoffJobSettings | null;
-  onComplete: (result: CalibrationResult) => void;
+  onComplete: (result: ScaleResult) => void;
   onCancel: () => void;
 }
 
-type CalibrationStep = 'pick-p1' | 'pick-p2' | 'input-distance' | 'confirm';
+type CalibrationStep =
+  | 'choose-method'
+  | 'pick-p1'
+  | 'pick-p2'
+  | 'input-distance'
+  | 'confirm'
+  | 'direct-entry';
 
-/** Compute scale in engineering format: "1\" = X'" */
+/** Compute scale in engineering format: 1" = X' */
 export function formatScale(pxPerFt: number): string {
   if (!pxPerFt || pxPerFt <= 0) return 'No scale';
-  const ftPerInch = 72 / pxPerFt;
+  const ftPerInch = PDF_PTS_PER_INCH / pxPerFt;
   const rounded = Math.round(ftPerInch);
   if (rounded > 0 && Math.abs(ftPerInch - rounded) < 0.5) {
     return `1\u2033 = ${rounded}\u2032`;
@@ -37,39 +49,45 @@ function pixelDistance(p1: PdfPoint, p2: PdfPoint): number {
 }
 
 export function useScaleCalibration({
-  active, pageWidth, pageHeight, existingSettings, onComplete, onCancel,
+  active, pageWidth, pageHeight, onComplete, onCancel,
 }: UseScaleCalibrationOptions) {
-  const [step, setStep] = useState<CalibrationStep>('pick-p1');
+  const [step, setStep] = useState<CalibrationStep>('choose-method');
   const [point1, setPoint1] = useState<PdfPoint | null>(null);
   const [point2, setPoint2] = useState<PdfPoint | null>(null);
   const [distanceInput, setDistanceInput] = useState('');
   const [computedPxPerFt, setComputedPxPerFt] = useState<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [directInput, setDirectInput] = useState('');
+  const distInputRef = useRef<HTMLInputElement>(null);
+  const directInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state when calibration activates
   useEffect(() => {
     if (active) {
-      setStep('pick-p1');
+      setStep('choose-method');
       setPoint1(null);
       setPoint2(null);
       setDistanceInput('');
       setComputedPxPerFt(null);
+      setDirectInput('');
     }
   }, [active]);
 
-  // Focus the distance input when we reach that step
+  // Focus inputs when reaching relevant steps
   useEffect(() => {
     if (step === 'input-distance') {
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimeout(() => distInputRef.current?.focus(), 50);
+    } else if (step === 'direct-entry') {
+      setTimeout(() => directInputRef.current?.focus(), 50);
     }
   }, [step]);
+
+  // -- Two-point calibration handlers --
 
   const handlePointClick = useCallback((p: PdfPoint) => {
     if (step === 'pick-p1') {
       setPoint1(p);
       setStep('pick-p2');
     } else if (step === 'pick-p2') {
-      // Reject if same location as point1 (e.g. double-click)
       if (point1 && pixelDistance(point1, p) < 1) return;
       setPoint2(p);
       setStep('input-distance');
@@ -80,19 +98,19 @@ export function useScaleCalibration({
     const ft = parseFloat(distanceInput);
     if (!point1 || !point2 || !isFinite(ft) || ft <= 0) return;
     const distPx = pixelDistance(point1, point2);
-    if (distPx < 1) return; // points too close — would produce zero/near-zero scale
+    if (distPx < 1) return;
     const pxPerFt = distPx / ft;
     setComputedPxPerFt(pxPerFt);
     setStep('confirm');
   }, [distanceInput, point1, point2]);
 
-  const handleAccept = useCallback(() => {
+  const handleAcceptTwoPoint = useCallback(() => {
     if (!point1 || !point2 || !computedPxPerFt) return;
     onComplete({
+      pxPerFt: computedPxPerFt,
       point1,
       point2,
       distanceFt: parseFloat(distanceInput),
-      pxPerFt: computedPxPerFt,
     });
   }, [point1, point2, computedPxPerFt, distanceInput, onComplete]);
 
@@ -104,11 +122,23 @@ export function useScaleCalibration({
     setComputedPxPerFt(null);
   }, []);
 
-  const handleCancel = useCallback(() => {
-    onCancel();
-  }, [onCancel]);
+  // -- Direct entry handlers --
 
-  // Escape key cancels calibration
+  const handlePresetClick = useCallback((ftPerInch: number) => {
+    onComplete({ pxPerFt: PDF_PTS_PER_INCH / ftPerInch });
+  }, [onComplete]);
+
+  const handleDirectSubmit = useCallback(() => {
+    const ftPerInch = parseFloat(directInput);
+    if (!isFinite(ftPerInch) || ftPerInch <= 0) return;
+    onComplete({ pxPerFt: PDF_PTS_PER_INCH / ftPerInch });
+  }, [directInput, onComplete]);
+
+  // -- Shared --
+
+  const handleCancel = useCallback(() => onCancel(), [onCancel]);
+
+  // Escape key cancels
   useEffect(() => {
     if (!active) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -128,13 +158,7 @@ export function useScaleCalibration({
     else if (step === 'pick-p2') overlayMode = 'calibrate-p2';
   }
 
-  // -- SVG content (calibration markers + line) --
-  // Circle radius in PDF-native units -- we want ~6px on screen, so divide by scale.
-  // Using vectorEffect="non-scaling-stroke" keeps strokes constant, but circle r
-  // is a geometric attribute so we handle constant-size circles differently:
-  // we use a fixed radius and rely on the viewBox to handle it. Since the SVG
-  // viewBox matches the PDF page, a radius of ~4 PDF units looks good at common
-  // plan scales (e.g., a 3000x2000 pt page).
+  // -- SVG calibration markers --
   const markerRadius = Math.max(3, Math.min(6, pageWidth / 200));
 
   const svgContent = active ? (
@@ -158,63 +182,132 @@ export function useScaleCalibration({
   ) : null;
 
   // -- Floating panel content --
-  const panelContent = active ? (
-    <div style={{
-      position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
-      background: 'var(--bg-primary, #fff)', border: '1px solid var(--border-color, #e0e0e0)',
-      borderRadius: 8, padding: '10px 16px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      zIndex: 10, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13,
-    }}>
-      {step === 'pick-p1' && (
-        <>
-          <span style={{ fontWeight: 500 }}>Set Scale:</span>
-          <span>Click the first point on a known dimension</span>
-          <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
-        </>
-      )}
-      {step === 'pick-p2' && (
-        <>
-          <span style={{ fontWeight: 500 }}>Set Scale:</span>
-          <span>Click the second point</span>
-          <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
-        </>
-      )}
-      {step === 'input-distance' && (
-        <>
-          <span style={{ fontWeight: 500 }}>Distance between points:</span>
-          <input
-            ref={inputRef}
-            type="number"
-            className="form-control"
-            style={{ width: 80, padding: '4px 8px' }}
-            value={distanceInput}
-            onChange={(e) => setDistanceInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleDistanceSubmit(); }}
-            placeholder="0"
-            min="0.01"
-            step="any"
-          />
-          <span style={{ color: 'var(--text-secondary)' }}>ft</span>
-          <button className="btn btn-primary btn-sm" onClick={handleDistanceSubmit}
-            disabled={!distanceInput || !isFinite(parseFloat(distanceInput)) || parseFloat(distanceInput) <= 0}>
-            OK
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
-        </>
-      )}
-      {step === 'confirm' && computedPxPerFt && (
-        <>
-          <span style={{ fontWeight: 500 }}>Scale: {formatScale(computedPxPerFt)}</span>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-            ({computedPxPerFt.toFixed(1)} px/ft)
-          </span>
-          <button className="btn btn-primary btn-sm" onClick={handleAccept}>Accept</button>
-          <button className="btn btn-secondary btn-sm" onClick={handleRedo}>Redo</button>
-          <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
-        </>
-      )}
-    </div>
-  ) : null;
+
+  const panelStyle: React.CSSProperties = {
+    position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+    background: 'var(--bg-primary, #fff)', border: '1px solid var(--border-color, #e0e0e0)',
+    borderRadius: 8, padding: '10px 16px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    zIndex: 10, fontSize: 13,
+  };
+
+  const inlineStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10 };
+
+  let panelContent: React.ReactNode = null;
+
+  if (active) {
+    if (step === 'choose-method') {
+      panelContent = (
+        <div style={panelStyle}>
+          <div style={inlineStyle}>
+            <span style={{ fontWeight: 500 }}>Set Scale:</span>
+            <button className="btn btn-primary btn-sm" onClick={() => setStep('pick-p1')}>
+              Click Two Points
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStep('direct-entry')}>
+              Enter Scale
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
+          </div>
+        </div>
+      );
+    } else if (step === 'pick-p1') {
+      panelContent = (
+        <div style={panelStyle}>
+          <div style={inlineStyle}>
+            <span style={{ fontWeight: 500 }}>Set Scale:</span>
+            <span>Click the first point on a known dimension</span>
+            <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
+          </div>
+        </div>
+      );
+    } else if (step === 'pick-p2') {
+      panelContent = (
+        <div style={panelStyle}>
+          <div style={inlineStyle}>
+            <span style={{ fontWeight: 500 }}>Set Scale:</span>
+            <span>Click the second point</span>
+            <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
+          </div>
+        </div>
+      );
+    } else if (step === 'input-distance') {
+      panelContent = (
+        <div style={panelStyle}>
+          <div style={inlineStyle}>
+            <span style={{ fontWeight: 500 }}>Distance between points:</span>
+            <input
+              ref={distInputRef}
+              type="number"
+              className="form-control"
+              style={{ width: 80, padding: '4px 8px' }}
+              value={distanceInput}
+              onChange={(e) => setDistanceInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleDistanceSubmit(); }}
+              placeholder="0"
+              min="0.01"
+              step="any"
+            />
+            <span style={{ color: 'var(--text-secondary)' }}>ft</span>
+            <button className="btn btn-primary btn-sm" onClick={handleDistanceSubmit}
+              disabled={!distanceInput || !isFinite(parseFloat(distanceInput)) || parseFloat(distanceInput) <= 0}>
+              OK
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
+          </div>
+        </div>
+      );
+    } else if (step === 'confirm' && computedPxPerFt) {
+      panelContent = (
+        <div style={panelStyle}>
+          <div style={inlineStyle}>
+            <span style={{ fontWeight: 500 }}>Scale: {formatScale(computedPxPerFt)}</span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+              ({computedPxPerFt.toFixed(1)} px/ft)
+            </span>
+            <button className="btn btn-primary btn-sm" onClick={handleAcceptTwoPoint}>Accept</button>
+            <button className="btn btn-secondary btn-sm" onClick={handleRedo}>Redo</button>
+            <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
+          </div>
+        </div>
+      );
+    } else if (step === 'direct-entry') {
+      panelContent = (
+        <div style={panelStyle}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>Enter Drawing Scale</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {COMMON_SCALES.map((ft) => (
+              <button key={ft} className="btn btn-secondary btn-sm"
+                style={{ fontSize: 12 }}
+                onClick={() => handlePresetClick(ft)}>
+                1&quot; = {ft}&apos;
+              </button>
+            ))}
+          </div>
+          <div style={inlineStyle}>
+            <span style={{ color: 'var(--text-secondary)' }}>Custom: 1&quot; =</span>
+            <input
+              ref={directInputRef}
+              type="number"
+              className="form-control"
+              style={{ width: 72, padding: '4px 8px' }}
+              value={directInput}
+              onChange={(e) => setDirectInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleDirectSubmit(); }}
+              placeholder="0"
+              min="0.01"
+              step="any"
+            />
+            <span style={{ color: 'var(--text-secondary)' }}>ft</span>
+            <button className="btn btn-primary btn-sm" onClick={handleDirectSubmit}
+              disabled={!directInput || !isFinite(parseFloat(directInput)) || parseFloat(directInput) <= 0}>
+              Apply
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={handleCancel}>Cancel</button>
+          </div>
+        </div>
+      );
+    }
+  }
 
   return {
     overlayMode,

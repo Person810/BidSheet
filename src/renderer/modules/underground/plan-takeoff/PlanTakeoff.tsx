@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
 import { DrawingOverlay } from './DrawingOverlay';
 import { useScaleCalibration, formatScale } from './ScaleCalibration';
+import type { ScaleResult } from './ScaleCalibration';
 import { TrenchConfigModal } from './TrenchConfigModal';
 import { SummaryPanel } from './SummaryPanel';
 import { useRunManager } from './useRunManager';
@@ -14,10 +15,12 @@ import { sendToProfiles } from './sendToProfiles';
 import { sendItemsToBid } from './sendItemsToBid';
 import type { TakeoffJobSettings, PdfPoint } from './types';
 
-export function PlanTakeoff() {
-  // -- Job context --
-  const [jobs, setJobs] = useState<any[]>([]);
-  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+interface PlanTakeoffProps {
+  jobId: number;
+  onBack: () => void;
+}
+
+export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const [jobSettings, setJobSettings] = useState<TakeoffJobSettings | null>(null);
 
   // -- PDF state --
@@ -34,7 +37,11 @@ export function PlanTakeoff() {
   const [calibrating, setCalibrating] = useState(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
 
-  const [showItemPicker, setShowItemPicker] = useState(false);
+  // -- Per-page scale --
+  const [pageScalePxPerFt, setPageScalePxPerFt] = useState<number | null>(null);
+
+  // -- Item placement via right-click on runs --
+  const [pendingItemPlacement, setPendingItemPlacement] = useState<{ runId: number; point: PdfPoint; pipeSizeIn?: number } | null>(null);
   const [summaryTab, setSummaryTab] = useState<'runs' | 'items'>('runs');
 
   const pageSizeRef = useRef({ width: 0, height: 0 });
@@ -45,21 +52,19 @@ export function PlanTakeoff() {
     active: calibrating,
     pageWidth: pageSizeRef.current.width,
     pageHeight: pageSizeRef.current.height,
-    existingSettings: jobSettings,
-    onComplete: async (result) => {
-      if (!selectedJobId) return;
-      const settings: TakeoffJobSettings = {
-        job_id: selectedJobId,
-        pdf_path: pdfPath,
+    onComplete: async (result: ScaleResult) => {
+      // Save per-page scale
+      await window.api.savePageScale({
+        job_id: jobId,
+        page_number: pageNum,
         scale_px_per_ft: result.pxPerFt,
-        scale_point1_x: result.point1.x,
-        scale_point1_y: result.point1.y,
-        scale_point2_x: result.point2.x,
-        scale_point2_y: result.point2.y,
-        scale_distance_ft: result.distanceFt,
-      };
-      await window.api.saveTakeoffSettings(settings);
-      setJobSettings(settings);
+        scale_point1_x: result.point1?.x ?? null,
+        scale_point1_y: result.point1?.y ?? null,
+        scale_point2_x: result.point2?.x ?? null,
+        scale_point2_y: result.point2?.y ?? null,
+        scale_distance_ft: result.distanceFt ?? null,
+      });
+      setPageScalePxPerFt(result.pxPerFt);
       setCalibrating(false);
     },
     onCancel: () => setCalibrating(false),
@@ -67,14 +72,14 @@ export function PlanTakeoff() {
 
   // Run manager hook
   const rm = useRunManager({
-    jobId: selectedJobId,
+    jobId,
     pageNum,
     calibrating,
     calibrationHandlePointClick: calibration.handlePointClick,
   });
 
   // Item manager hook
-  const im = useItemManager({ jobId: selectedJobId, pageNum });
+  const im = useItemManager({ jobId, pageNum });
 
   // Send to Trench Profiles / Send Items to Bid
   const [showSendConfirm, setShowSendConfirm] = useState(false);
@@ -82,41 +87,52 @@ export function PlanTakeoff() {
   const addToast = useToastStore((s) => s.addToast);
 
   const handleSendToProfiles = useCallback(async () => {
-    if (!selectedJobId || !jobSettings?.scale_px_per_ft) return;
     setShowSendConfirm(false);
     try {
-      const count = await sendToProfiles(rm.runs, selectedJobId, jobSettings.scale_px_per_ft);
+      const count = await sendToProfiles(rm.runs, jobId);
       addToast(`Created ${count} trench profiles. View them on the job page.`, 'success');
     } catch (err) {
       console.error('Send to trench profiles failed:', err);
       addToast('Failed to create trench profiles', 'error');
     }
-  }, [selectedJobId, jobSettings, rm.runs, addToast]);
+  }, [jobId, rm.runs, addToast]);
 
   const handleSendItemsToBid = useCallback(async () => {
-    if (!selectedJobId) return;
     setShowSendItemsConfirm(false);
     try {
-      const count = await sendItemsToBid(im.items, selectedJobId);
+      const count = await sendItemsToBid(im.items, jobId);
       addToast(`Created ${count} line items in "Fittings & Structures" section.`, 'success');
     } catch (err) {
       console.error('Send items to bid failed:', err);
       addToast('Failed to send items to bid', 'error');
     }
-  }, [selectedJobId, im.items, addToast]);
+  }, [jobId, im.items, addToast]);
 
-  // Load job list on mount
+  // Load settings on mount
   useEffect(() => {
-    window.api.getJobs().then(setJobs).catch(console.error);
-  }, []);
-
-  // Load settings when job changes
-  useEffect(() => {
-    if (!selectedJobId) { setJobSettings(null); return; }
-    window.api.getTakeoffSettings(selectedJobId).then((s: any) => {
+    window.api.getTakeoffSettings(jobId).then((s: any) => {
       setJobSettings(s || null);
     }).catch(console.error);
-  }, [selectedJobId]);
+  }, [jobId]);
+
+  // Load per-page scale when page changes
+  useEffect(() => {
+    window.api.getPageScale(jobId, pageNum).then((row: any) => {
+      setPageScalePxPerFt(row?.scale_px_per_ft ?? null);
+    }).catch(console.error);
+  }, [jobId, pageNum]);
+
+  // Auto-load PDF from saved path
+  useEffect(() => {
+    if (!jobSettings?.pdf_path || pdfData) return;
+    setPdfPath(jobSettings.pdf_path);
+    setLoading(true);
+    window.api.readTakeoffPdf(jobSettings.pdf_path).then((result: any) => {
+      if (result?.data) {
+        setPdfData(new Uint8Array(result.data));
+      }
+    }).catch(console.error).finally(() => setLoading(false));
+  }, [jobSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadPlan = async () => {
     setLoading(true);
@@ -130,11 +146,9 @@ export function PlanTakeoff() {
         setScale(1.0);
         setLoadError(false);
 
-        if (selectedJobId) {
-          const settings = { ...jobSettings, job_id: selectedJobId, pdf_path: result.filePath };
-          window.api.saveTakeoffSettings(settings).catch(console.error);
-          setJobSettings(settings as TakeoffJobSettings);
-        }
+        const settings = { ...jobSettings, job_id: jobId, pdf_path: result.filePath };
+        window.api.saveTakeoffSettings(settings).catch(console.error);
+        setJobSettings(settings as TakeoffJobSettings);
       }
     } catch (err) {
       console.error('Failed to open PDF:', err);
@@ -164,7 +178,7 @@ export function PlanTakeoff() {
   }, []);
 
   const handleViewerClick = useCallback((e: React.MouseEvent) => {
-    if (rm.isDrawing || im.isPlacing) return;
+    if (rm.isDrawing) return;
     const target = e.target as HTMLElement;
     if (['line', 'circle', 'rect', 'polygon'].includes(target.tagName)) return;
     rm.handleRunSelect(null);
@@ -173,43 +187,34 @@ export function PlanTakeoff() {
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (im.isPlacing) { im.cancelPlacing(); return; }
     if (rm.isDrawing) rm.undoLastPoint();
-  }, [rm, im]);
+  }, [rm]);
 
-  // Unified point click dispatcher
-  const handlePointClick = useCallback((point: PdfPoint) => {
-    if (calibrating) {
-      calibration.handlePointClick(point);
-    } else if (im.isPlacing) {
-      im.placeItem(point, pageNum);
-    } else {
-      rm.handlePointClick(point);
-    }
-  }, [calibrating, calibration, im, rm, pageNum]);
+  // Right-click on a run line or vertex opens the item picker
+  const handleRunContextMenu = useCallback((runId: number, point: PdfPoint) => {
+    if (rm.isDrawing || calibrating) return;
+    const run = rm.pageRuns.find((r) => r.id === runId);
+    setPendingItemPlacement({ runId, point, pipeSizeIn: run?.pipeSizeIn });
+  }, [rm.isDrawing, rm.pageRuns, calibrating]);
 
-  // Unified mouse move
-  const handleOverlayMouseMove = useCallback((point: PdfPoint) => {
-    if (im.isPlacing) im.handleMouseMove(point);
-    else rm.handleMouseMove(point);
-  }, [im, rm]);
+  // Material selected from picker -- place item at the stored location
+  const handleItemPickerSelect = useCallback((material: { id: number; name: string }) => {
+    if (!pendingItemPlacement) return;
+    im.addItemAtPoint(material, pendingItemPlacement.point, pageNum, pendingItemPlacement.runId);
+    setPendingItemPlacement(null);
+    setSummaryTab('items');
+  }, [pendingItemPlacement, im, pageNum]);
 
-  // Overlay mode: calibration > item placement > drawing
-  const overlayMode = calibrating
-    ? calibration.overlayMode
-    : im.isPlacing
-      ? im.overlayMode
-      : rm.overlayMode;
+  // Overlay mode: calibration > drawing
+  const overlayMode = calibrating ? calibration.overlayMode : rm.overlayMode;
 
   const zoomPercent = Math.round(scale * 100);
-  const canAddRun = rm.canAddRun && !im.isPlacing && !!jobSettings?.scale_px_per_ft && !!selectedJobId;
-  const canPlaceItem = !calibrating && !rm.isDrawing && !im.isPlacing
-    && !!jobSettings?.scale_px_per_ft && !!selectedJobId;
-  const showPanel = rm.runs.length > 0 || rm.isDrawing || im.items.length > 0 || im.isPlacing;
+  const canAddRun = rm.canAddRun && !!pageScalePxPerFt;
+  const showPanel = rm.runs.length > 0 || rm.isDrawing || im.items.length > 0;
+
   useEffect(() => {
     if (rm.isDrawing) setSummaryTab('runs');
-    else if (im.isPlacing) setSummaryTab('items');
-  }, [rm.isDrawing, im.isPlacing]);
+  }, [rm.isDrawing]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -224,7 +229,7 @@ export function PlanTakeoff() {
       }
 
       if (e.key === 'Escape') {
-        if (im.isPlacing) { im.cancelPlacing(); return; }
+        if (pendingItemPlacement) { setPendingItemPlacement(null); return; }
         if (rm.isDrawing) { rm.finishActiveRun(); return; }
       }
 
@@ -247,42 +252,34 @@ export function PlanTakeoff() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [totalPages, handleFitToWidth, rm, im]);
+  }, [totalPages, handleFitToWidth, rm, pendingItemPlacement]);
 
-  const handleJobChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value ? Number(e.target.value) : null;
-    setSelectedJobId(id);
-    setCalibrating(false);
-  };
-
-  const scaleDisplay = jobSettings?.scale_px_per_ft ? formatScale(jobSettings.scale_px_per_ft) : null;
-  const toolbarProps = { jobs, selectedJobId, onJobChange: handleJobChange,
+  const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
+  const toolbarProps = {
+    onBack,
     onLoadPlan: handleLoadPlan, loading, pageNum, totalPages, onPrevPage: prevPage,
     onNextPage: nextPage, zoomPercent, onFitToWidth: handleFitToWidth, calibrating,
-    onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: !!selectedJobId,
+    onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: true,
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,
-    canPlaceItem, onPlaceItem: () => setShowItemPicker(true), isPlacing: im.isPlacing,
-    placingMaterialName: im.placingMaterial?.name ?? null, onDonePlacing: im.cancelPlacing,
-    pdfFilename: pdfPath ? pdfPath.split(/[\\/]/).pop() || '' : '' };
+    pdfFilename: pdfPath ? pdfPath.split(/[\\/]/).pop() || '' : '',
+  };
 
   if (!pdfData) return (
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button className="btn btn-sm btn-secondary" onClick={onBack}>&#8592; Back to Job</button>
         <h2 style={{ margin: 0 }}>Plan Takeoff</h2>
-        <select className="form-control" style={{ width: 200, fontSize: 13, padding: '4px 8px' }}
-          value={selectedJobId ?? ''} onChange={handleJobChange}>
-          <option value="">-- Select Job --</option>
-          {jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
-        </select>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', height: 'calc(100vh - 160px)', gap: 16 }}>
         <p className="text-muted" style={{ fontSize: 15, marginBottom: 8 }}>
-          Load a plan sheet PDF to start measuring pipe runs.
+          {loading ? 'Loading plan...' : 'Load a plan sheet PDF to start measuring pipe runs.'}
         </p>
-        <button className="btn btn-primary" onClick={handleLoadPlan} disabled={loading}>
-          {loading ? 'Opening...' : 'Load Plan'}
-        </button>
+        {!loading && (
+          <button className="btn btn-primary" onClick={handleLoadPlan}>
+            Load Plan
+          </button>
+        )}
       </div>
     </div>
   );
@@ -307,7 +304,7 @@ export function PlanTakeoff() {
             pageNumber={pageNum}
             scale={scale}
             resetPanKey={resetPanKey}
-            panEnabled={(!calibrating && !rm.isDrawing && !im.isPlacing) || spaceHeld}
+            panEnabled={(!calibrating && !rm.isDrawing) || spaceHeld}
             onViewportChange={setViewport}
             onDocLoaded={handleDocLoaded}
             onPageSizeKnown={handlePageSizeKnown}
@@ -322,32 +319,32 @@ export function PlanTakeoff() {
             renderedScale={viewport.renderedScale}
             scale={scale}
             mode={overlayMode}
-            onPointClick={handlePointClick}
+            onPointClick={rm.handlePointClick}
             runs={rm.pageRuns}
             activeRunId={rm.activeRunId}
             selectedRunId={rm.selectedRunId}
             onRunSelect={rm.handleRunSelect}
-            mousePosition={im.isPlacing ? im.mousePos : rm.mousePos}
-            scalePxPerFt={jobSettings?.scale_px_per_ft}
-            onMouseMove={handleOverlayMouseMove}
+            mousePosition={rm.mousePos}
+            scalePxPerFt={pageScalePxPerFt}
+            onMouseMove={rm.handleMouseMove}
             spaceHeld={spaceHeld}
             items={im.pageItems}
             selectedItemId={im.selectedItemId}
             onItemSelect={im.selectItem}
-            placingMaterial={im.placingMaterial}
+            onRunContextMenu={handleRunContextMenu}
           >
             {calibration.svgContent}
           </DrawingOverlay>
           {calibration.panelContent}
         </div>
 
-        {showPanel && jobSettings?.scale_px_per_ft && (
+        {showPanel && pageScalePxPerFt && (
           <SummaryPanel
             runs={rm.pageRuns}
             allRuns={rm.runs}
             activeRunId={rm.activeRunId}
             selectedRunId={rm.selectedRunId}
-            scalePxPerFt={jobSettings.scale_px_per_ft}
+            scalePxPerFt={pageScalePxPerFt}
             pageNumber={pageNum}
             onSelectRun={rm.handleRunSelect}
             onEditRun={rm.handleEditRun}
@@ -409,14 +406,12 @@ export function PlanTakeoff() {
         />
       )}
 
-      {showItemPicker && (
+      {pendingItemPlacement && (
         <ItemPickerModal
           items={im.items}
-          onSelect={(material) => {
-            setShowItemPicker(false);
-            im.startPlacing(material);
-          }}
-          onCancel={() => setShowItemPicker(false)}
+          onSelect={handleItemPickerSelect}
+          onCancel={() => setPendingItemPlacement(null)}
+          contextPipeSizeIn={pendingItemPlacement.pipeSizeIn}
         />
       )}
     </div>

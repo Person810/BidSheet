@@ -2,7 +2,13 @@ export interface TakeoffJobSettings {
   id?: number;
   job_id: number;
   pdf_path: string | null;
-  scale_px_per_ft: number | null;
+}
+
+/** Per-page scale calibration data */
+export interface PageScale {
+  job_id: number;
+  page_number: number;
+  scale_px_per_ft: number;
   scale_point1_x: number | null;
   scale_point1_y: number | null;
   scale_point2_x: number | null;
@@ -16,7 +22,7 @@ export interface PdfPoint {
 }
 
 /** Interaction mode for the drawing overlay */
-export type OverlayMode = 'none' | 'calibrate-p1' | 'calibrate-p2' | 'draw' | 'place-item';
+export type OverlayMode = 'none' | 'calibrate-p1' | 'calibrate-p2' | 'draw';
 
 export type UtilityType = 'sanitary' | 'storm' | 'water' | 'fiber' | 'other';
 

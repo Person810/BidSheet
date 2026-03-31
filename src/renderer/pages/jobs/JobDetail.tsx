@@ -26,9 +26,10 @@ interface JobDetailProps {
   jobId: number;
   onBack: () => void;
   onOpenJob: (id: number) => void;
+  onOpenTakeoff?: () => void;
 }
 
-export function JobDetail({ jobId, onBack, onOpenJob }: JobDetailProps) {
+export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetailProps) {
   const addToast = useToastStore((s) => s.addToast);
   const [job, setJob] = useState<any>(null);
   const [sections, setSections] = useState<any[]>([]);
@@ -509,6 +510,9 @@ export function JobDetail({ jobId, onBack, onOpenJob }: JobDetailProps) {
             )}
             <h2 style={{ margin: 0 }}>{job.name}</h2>
             <button className="btn btn-sm btn-secondary" onClick={openEditJob} style={{ fontSize: 12 }}>Edit</button>
+            {onOpenTakeoff && (
+              <button className="btn btn-sm btn-secondary" onClick={onOpenTakeoff} style={{ fontSize: 12 }}>Plan Takeoff</button>
+            )}
           </div>
           <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
             {job.client && <span>{job.client}</span>}
