@@ -68,18 +68,17 @@ function escapeField(value: string): string {
   return value;
 }
 
-/** Format a date string (ISO or YYYY-MM-DD) as MM/DD/YYYY for QuickBooks. */
+/** Format a date string (YYYY-MM-DD or ISO) as MM/DD/YYYY for QuickBooks. */
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) {
-    const now = new Date();
-    return `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
+  // Parse YYYY-MM-DD directly to avoid timezone shift from Date constructor
+  if (dateStr) {
+    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      return `${match[2]}/${match[3]}/${match[1]}`;
+    }
   }
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) {
-    const now = new Date();
-    return `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
-  }
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+  const now = new Date();
+  return `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
 }
 
 /** Format a number to 2 decimal places. */
@@ -139,7 +138,7 @@ export function generateEstimateCSV(data: CSVExportData): string {
         : item.description;
       lines.push(buildRow(
         customer, invoiceNo, date, location, memo,
-        desc, fmt(item.quantity), fmt(item.unit_cost), fmt(item.total_cost),
+        desc, fmt(item.quantity), fmt(item.unit_cost || 0), fmt(item.total_cost || 0),
       ));
     }
   }
