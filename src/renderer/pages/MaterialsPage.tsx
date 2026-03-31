@@ -227,10 +227,16 @@ export function MaterialsPage() {
           <tbody>
             {filteredMaterials.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-muted" style={{ textAlign: 'center', padding: 32 }}>
-                  {searchTerm
-                    ? 'No materials match your search.'
-                    : 'No materials in this category. Click "+ Add Material" to get started.'}
+                <td colSpan={7} style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-muted)' }}>
+                  {searchTerm ? (
+                    <p style={{ fontSize: 13 }}>No materials match your search.</p>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: 16, marginBottom: 12 }}>No materials in this category</p>
+                      <p style={{ fontSize: 13, marginBottom: 20 }}>Click below to add your first material.</p>
+                      <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Material</button>
+                    </>
+                  )}
                 </td>
               </tr>
             ) : (

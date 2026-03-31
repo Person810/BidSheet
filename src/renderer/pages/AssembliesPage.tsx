@@ -242,8 +242,16 @@ export function AssembliesPage() {
 
       {/* List */}
       {filtered.length === 0 ? (
-        <div className="empty-state">
-          <p>{assemblies.length === 0 ? 'No assemblies yet. Create one to get started.' : 'No matches.'}</p>
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-muted)' }}>
+          {assemblies.length === 0 ? (
+            <>
+              <p style={{ fontSize: 16, marginBottom: 12 }}>No assemblies yet</p>
+              <p style={{ fontSize: 13, marginBottom: 20 }}>Create reusable item templates to speed up bid entry.</p>
+              <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create Assembly</button>
+            </>
+          ) : (
+            <p style={{ fontSize: 13 }}>No matches.</p>
+          )}
         </div>
       ) : (
         <div className="assembly-list">

@@ -213,10 +213,16 @@ export function EquipmentPage() {
         <tbody>
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={7} className="text-muted" style={{ textAlign: 'center', padding: 32 }}>
-                {searchTerm || filterCategory
-                  ? 'No equipment matches your filter.'
-                  : 'No equipment yet. Click "+ Add Equipment" to get started.'}
+              <td colSpan={7} style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-muted)' }}>
+                {searchTerm || filterCategory ? (
+                  <p style={{ fontSize: 13 }}>No equipment matches your filter.</p>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 16, marginBottom: 12 }}>No equipment yet</p>
+                    <p style={{ fontSize: 13, marginBottom: 20 }}>Add your first piece of equipment to start building bids.</p>
+                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Equipment</button>
+                  </>
+                )}
               </td>
             </tr>
           ) : (

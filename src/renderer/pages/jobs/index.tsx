@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { JobList } from './JobList';
 import { JobDetail } from './JobDetail';
 import { PlanTakeoff } from '../../modules/underground/plan-takeoff/PlanTakeoff';
@@ -8,6 +9,15 @@ type View = 'list' | 'detail' | 'takeoff';
 export function JobsPage() {
   const [view, setView] = useState<View>('list');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (openId) {
+      openJob(Number(openId));
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams]);
 
   const openJob = (id: number) => {
     setSelectedJobId(id);

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export function Dashboard() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     drafts: 0,
     submitted: 0,
@@ -108,7 +110,8 @@ export function Dashboard() {
             </thead>
             <tbody>
               {recentJobs.map((job: any) => (
-                <tr key={job.id}>
+                <tr key={job.id} className="clickable-row" title="Open job"
+                    onClick={() => navigate(`/jobs?open=${job.id}`)}>
                   <td style={{ fontWeight: 500 }}>{job.name}</td>
                   <td className="text-muted">{job.client || '--'}</td>
                   <td className="text-muted">

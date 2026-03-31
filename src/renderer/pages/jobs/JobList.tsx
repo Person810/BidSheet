@@ -117,9 +117,9 @@ export function JobList({ onOpenJob }: JobListProps) {
             </tr>
           ) : (
             jobs.map((job) => (
-              <tr key={job.id}>
+              <tr key={job.id} className="clickable-row" onClick={() => onOpenJob(job.id)}>
                 <td>
-                  <span className="material-name-link" onClick={() => onOpenJob(job.id)}>{job.name}</span>
+                  <span className="material-name-link">{job.name}</span>
                 </td>
                 <td className="text-muted">{job.job_number || '--'}</td>
                 <td>{job.client || '--'}</td>
@@ -132,9 +132,9 @@ export function JobList({ onOpenJob }: JobListProps) {
                 </td>
                 <td>
                   <div className="flex gap-8">
-                    <button className="btn btn-sm btn-secondary" onClick={() => startDuplicate(job)}
+                    <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); startDuplicate(job); }}
                       title="Duplicate this job as a template">Copy</button>
-                    <button className="btn btn-sm btn-secondary" onClick={() => handleDelete(job.id)}>Delete</button>
+                    <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); handleDelete(job.id); }}>Delete</button>
                   </div>
                 </td>
               </tr>

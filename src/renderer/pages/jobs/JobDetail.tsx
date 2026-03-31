@@ -509,7 +509,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
               <span className="badge badge-submitted" style={{ fontSize: 11 }}>CO #{job.change_order_number}</span>
             )}
             <h2 style={{ margin: 0 }}>{job.name}</h2>
-            <button className="btn btn-sm btn-secondary" onClick={openEditJob} style={{ fontSize: 12 }}>Edit</button>
+            <button className="btn btn-ghost" onClick={openEditJob}>Edit</button>
             {onOpenTakeoff && (
               <button className="btn btn-sm btn-secondary" onClick={onOpenTakeoff} style={{ fontSize: 12 }}>Plan Takeoff</button>
             )}

@@ -14,11 +14,15 @@ export function ConfirmDialog({ message, onYes, onNo, yesLabel = 'Delete', varia
     : {};
 
   return (
-    <div className="modal-overlay" onClick={onNo} style={{ zIndex: 10000 }}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
-        <h3>Confirm</h3>
-        <p style={{ margin: '16px 0 24px', lineHeight: 1.5 }}>{message}</p>
-        <div className="modal-actions">
+    <div className="modal-backdrop" onClick={onNo} style={{ zIndex: 10000 }}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
+        <div className="modal-header">
+          <h3 style={{ margin: 0 }}>Confirm</h3>
+        </div>
+        <div className="modal-body">
+          <p style={{ lineHeight: 1.5 }}>{message}</p>
+        </div>
+        <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onNo} autoFocus>Cancel</button>
           <button className="btn btn-primary" onClick={onYes} style={yesStyle}>{yesLabel}</button>
         </div>

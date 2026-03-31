@@ -109,7 +109,15 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
           </tr>
         </thead>
         <tbody>
-          {roles.map((role) => (
+          {roles.length === 0 ? (
+            <tr>
+              <td colSpan={6} style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-muted)' }}>
+                <p style={{ fontSize: 16, marginBottom: 12 }}>No labor roles yet</p>
+                <p style={{ fontSize: 13, marginBottom: 20 }}>Add roles like Operator or Laborer to assign to bids.</p>
+                <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Role</button>
+              </td>
+            </tr>
+          ) : roles.map((role) => (
             <tr key={role.id}>
               <td>
                 <span className="material-name-link" onClick={() => openEdit(role)}>
@@ -142,6 +150,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
             </tr>
           ))}
         </tbody>
+
       </table>
 
       {showModal && (

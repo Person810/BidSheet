@@ -159,8 +159,10 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
           </div>
         ))}
         {crews.length === 0 && (
-          <div className="card">
-            <p className="text-muted">No crew templates yet. Click "+ Add Crew" to build your first crew composition.</p>
+          <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: 16, marginBottom: 12 }}>No crew templates yet</p>
+            <p style={{ fontSize: 13, marginBottom: 20 }}>Build a template to quickly staff a bid.</p>
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Crew</button>
           </div>
         )}
       </div>

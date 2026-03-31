@@ -161,6 +161,19 @@ body {
   font-size: 12px;
 }
 
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 /* ---- Tables ---- */
 
 .data-table {
@@ -191,6 +204,16 @@ body {
 }
 
 .data-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+.data-table tr.clickable-row {
+  cursor: pointer;
+}
+.data-table tr.clickable-row:hover td {
+  background: var(--bg-hover);
+}
+.data-table tr.clickable-row:active td {
   background: var(--bg-tertiary);
 }
 
@@ -243,6 +266,7 @@ body {
 .form-control:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .form-row {
@@ -619,6 +643,7 @@ body {
   outline: none;
   border-color: var(--accent);
   background: var(--bg-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 /* ============================================================
