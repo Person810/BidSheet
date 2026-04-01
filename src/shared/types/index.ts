@@ -23,40 +23,10 @@ export interface Material {
 }
 
 // ============================================================
-// LABOR TYPES
+// LABOR TYPES — canonical definitions in ./labor.ts
 // ============================================================
 
-export interface LaborRole {
-  id: number;
-  name: string;           // "Operator", "Pipe Layer", "Laborer", "Foreman"
-  defaultHourlyRate: number;
-  burdenMultiplier: number; // e.g. 1.35 for benefits/taxes/insurance
-  notes?: string;
-}
-
-export interface CrewTemplate {
-  id: number;
-  name: string;           // e.g. "4-Man Pipe Crew", "2-Man Service Crew"
-  description?: string;
-  members: CrewMember[];
-}
-
-export interface CrewMember {
-  id: number;
-  crewTemplateId: number;
-  laborRoleId: number;
-  quantity: number;        // e.g. 2 laborers
-}
-
-export interface ProductionRate {
-  id: number;
-  description: string;    // e.g. "8\" PVC SDR-35 @ 4-6' depth"
-  crewTemplateId: number;
-  unit: string;            // "LF", "EA", "VF" (vertical feet)
-  ratePerHour: number;     // units installed per hour
-  conditions?: string;     // "Normal soil", "Rock", "High water table"
-  notes?: string;
-}
+export type { LaborRole, CrewTemplate, CrewMember } from './labor';
 
 // ============================================================
 // EQUIPMENT TYPES

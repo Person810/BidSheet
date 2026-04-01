@@ -34,7 +34,7 @@ declare global {
       getJob: (id: number) => Promise<any>;
       saveJob: (job: any) => Promise<any>;
       deleteJob: (id: number) => Promise<any>;
-      duplicateJob: (id: number) => Promise<any>;
+      duplicateJob: (id: number, newName?: string, newBidDate?: string | null) => Promise<any>;
       getChangeOrders: (parentJobId: number) => Promise<any[]>;
       createChangeOrder: (parentJobId: number) => Promise<any>;
       getBidSections: (jobId: number) => Promise<any[]>;
