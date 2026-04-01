@@ -70,6 +70,10 @@ declare global {
       parseCsvPath: (filePath: string) => Promise<any>;
       importPriceSheet: (updates: any[], source: string) => Promise<any>;
 
+      // Export
+      exportQuickBooksCSV: (jobId: number) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+      exportBidPdf: (jobId: number) => Promise<{ success: boolean; filePath?: string; canceled?: boolean }>;
+
       // Backup/Restore
       exportDatabase: () => Promise<any>;
       restoreDatabase: () => Promise<any>;
@@ -93,6 +97,13 @@ declare global {
 
       // App Info
       getLogDir: () => Promise<string>;
+
+      // Updates
+      checkForUpdate: () => Promise<any>;
+      downloadUpdate: () => Promise<boolean>;
+      installUpdate: () => Promise<void>;
+      getAppVersion: () => Promise<string>;
+      onUpdateStatus: (callback: (data: any) => void) => () => void;
 
     };
   }

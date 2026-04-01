@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
-import { emptyLineForm, jobToPayload, formatCurrency } from './helpers';
+import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
 
@@ -286,9 +286,9 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         msg: 'Delete this line item?',
         onYes: async () => {
           setConfirmState(null);
-          setLockBypassed(false);
           await window.api.deleteBidLineItem(id);
-          loadJob();
+          await loadJob();
+          setLockBypassed(false);
         },
       });
     });
@@ -484,6 +484,36 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     window.print();
   };
 
+  // ---- QuickBooks Export ----
+  const handleExportQB = async () => {
+    try {
+      const result = await window.api.exportQuickBooksCSV(jobId);
+      if (result.success) {
+        addToast(`Exported to ${result.path}`, 'success');
+      } else if (result.error) {
+        addToast(result.error, 'error');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Export failed', 'error');
+    }
+  };
+
+  // ---- PDF Export ----
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const handleExportPdf = async () => {
+    setPdfExporting(true);
+    try {
+      const result = await window.api.exportBidPdf(jobId);
+      if (result.success && result.filePath) {
+        addToast(`PDF saved to ${result.filePath}`, 'success');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'PDF export failed', 'error');
+    } finally {
+      setPdfExporting(false);
+    }
+  };
+
   const statusBadge = (status: string) => {
     const classes: Record<string, string> = {
       draft: 'badge-draft', submitted: 'badge-submitted', won: 'badge-won', lost: 'badge-lost',
@@ -517,7 +547,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
             {job.client && <span>{job.client}</span>}
             {job.location && <span> &middot; {job.location}</span>}
-            {job.bid_date && <span> &middot; Due {new Date(job.bid_date).toLocaleDateString()}</span>}
+            {job.bid_date && <span> &middot; Due {formatDateLocal(job.bid_date)}</span>}
           </div>
         </div>
         <div className="flex gap-8">
@@ -530,6 +560,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
           </button>
           <button className="btn btn-secondary" onClick={handlePrint}>Print Bid</button>
+          <button className="btn btn-secondary" onClick={handleExportPdf} disabled={pdfExporting}>
+            {pdfExporting ? 'Generating...' : 'Export PDF'}
+          </button>
+          <button className="btn btn-secondary" onClick={handleExportQB}>QB Export</button>
           {job.status === 'draft' && (
             <button className="btn btn-secondary" onClick={() => updateStatus('submitted')}>Mark Submitted</button>
           )}
@@ -558,7 +592,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           {job.job_number && <div>Job #: {job.job_number}</div>}
           <div>Client: {job.client || '--'}</div>
           {job.location && <div>Location: {job.location}</div>}
-          {job.bid_date && <div>Bid Date: {new Date(job.bid_date).toLocaleDateString()}</div>}
+          {job.bid_date && <div>Bid Date: {formatDateLocal(job.bid_date)}</div>}
         </div>
       </div>
 
