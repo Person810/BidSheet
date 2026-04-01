@@ -1,5 +1,5 @@
 import { autoUpdater, UpdateInfo } from 'electron-updater';
-import { BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { logger } from './logger';
 
 /**
@@ -8,8 +8,13 @@ import { logger } from './logger';
  * and compares the current app version against the latest GitHub Release tag.
  */
 export function initAutoUpdater(mainWindow: BrowserWindow): void {
+  // Version handler always works (dev and production)
+  ipcMain.handle('updater:get-version', () => {
+    return app.getVersion();
+  });
+
   // Don't run updater in dev mode
-  if (!require('electron').app.isPackaged) {
+  if (!app.isPackaged) {
     logger.info('updater', 'Skipping auto-updater in dev mode');
     return;
   }
@@ -92,10 +97,6 @@ export function initAutoUpdater(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('updater:install', () => {
     autoUpdater.quitAndInstall(false, true);
-  });
-
-  ipcMain.handle('updater:get-version', () => {
-    return require('electron').app.getVersion();
   });
 
   // Check for updates on launch (after a short delay so the window loads first)
