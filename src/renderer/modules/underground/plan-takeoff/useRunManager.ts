@@ -147,7 +147,7 @@ export function useRunManager({
     setActiveRunId(id);
     setSelectedRunId(null);
     setShowConfigModal(false);
-  }, [editingRunId, pageNum]);
+  }, [editingRunId, pageNum, jobId]);
 
   const handleConfigCancel = useCallback(() => {
     setShowConfigModal(false);

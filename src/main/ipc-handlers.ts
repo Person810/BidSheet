@@ -1265,11 +1265,21 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:takeoff:read-pdf', (_event, filePath: string) => {
+    const resolved = path.resolve(filePath);
+    const ext = path.extname(resolved).toLowerCase();
+    if (ext !== '.pdf') {
+      logger.warn('takeoff:read-pdf', `Rejected non-PDF file: ${resolved}`);
+      return null;
+    }
+    if (!fs.existsSync(resolved)) {
+      logger.warn('takeoff:read-pdf', `File not found: ${resolved}`);
+      return null;
+    }
     try {
-      const data = fs.readFileSync(filePath);
+      const data = fs.readFileSync(resolved);
       return { data };
     } catch (err: any) {
-      logger.error('takeoff:read-pdf', `Failed to read ${filePath}`, err.message);
+      logger.error('takeoff:read-pdf', `Failed to read ${resolved}`, err.message);
       return null;
     }
   });
