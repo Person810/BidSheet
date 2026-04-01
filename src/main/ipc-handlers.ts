@@ -595,20 +595,12 @@ export function registerIpcHandlers(db: Database.Database): void {
         subcontractor_total: 0, direct_cost_total: 0,
       };
 
-      const directCost = totals.direct_cost_total;
-      const overhead = directCost * (job.overhead_percent / 100);
-      const profit = directCost * (job.profit_percent / 100);
-      const bond = directCost * ((job.bond_percent || 0) / 100);
-      const tax = totals.material_total * ((job.tax_percent || 0) / 100);
+      const summary = computeBidSummary(totals, job);
 
       return {
         jobId: id,
         ...totals,
-        overhead,
-        profit,
-        bond,
-        tax,
-        grandTotal: directCost + overhead + profit + bond + tax,
+        ...summary,
       };
     }).filter(Boolean);
   });
