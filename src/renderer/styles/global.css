@@ -242,6 +242,97 @@ body {
   color: var(--danger);
 }
 
+/* ---- Dense bid grid ---- */
+.bid-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bid-grid th {
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary);
+  z-index: 2;
+}
+
+.bid-grid td {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(58, 63, 74, 0.5);
+  font-size: 12px;
+}
+
+.bid-grid-section-row {
+  background: var(--bg-tertiary);
+  cursor: pointer;
+}
+
+.bid-grid-section-row td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bid-grid-section-row td:first-child {
+  border-left: 3px solid var(--accent);
+}
+
+.bid-grid-section-row:hover {
+  background: var(--bg-hover);
+}
+
+.bid-grid-item-row:hover td {
+  background: var(--bg-hover);
+}
+
+.bid-grid-item-row {
+  cursor: pointer;
+}
+
+.bid-grid-item-desc {
+  padding-left: 24px !important;
+}
+
+.bid-grid-inline-action {
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-weight: 500;
+  padding: 0;
+  margin-left: 8px;
+}
+
+.bid-grid-inline-action:hover {
+  text-decoration: underline;
+}
+
+.bid-grid-footer {
+  background: var(--bg-secondary);
+  border-top: 2px solid var(--border);
+}
+
+.bid-grid-footer td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(58, 63, 74, 0.5);
+  font-size: 12px;
+}
+
+.bid-grid-footer-total td {
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
 /* ---- Forms ---- */
 
 .form-group {

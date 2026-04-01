@@ -3,6 +3,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal, statusBadge } from './helpers';
+import { BidGrid } from './BidGrid';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
 
@@ -600,116 +601,23 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         </div>
       </div>
 
-      {/* Bid Summary */}
-      {summary && (
-        <div className="card-grid mb-24">
-          <div className="card">
-            <div className="stat-label">Material</div>
-            <div className="stat-value" style={{ fontSize: 18 }}>{formatCurrency(summary.material_total)}</div>
-          </div>
-          <div className="card">
-            <div className="stat-label">Labor</div>
-            <div className="stat-value" style={{ fontSize: 18 }}>{formatCurrency(summary.labor_total)}</div>
-          </div>
-          <div className="card">
-            <div className="stat-label">Equipment</div>
-            <div className="stat-value" style={{ fontSize: 18 }}>{formatCurrency(summary.equipment_total)}</div>
-          </div>
-          <div className="card">
-            <div className="stat-label">Direct Cost</div>
-            <div className="stat-value" style={{ fontSize: 18 }}>{formatCurrency(summary.direct_cost_total)}</div>
-          </div>
-          <div className="card">
-            <div className="stat-label">OH + Profit + Bond + Tax</div>
-            <div className="stat-value" style={{ fontSize: 18 }}>
-              {formatCurrency(summary.overhead + summary.profit + summary.bond + summary.tax)}
-            </div>
-          </div>
-          <div className="card" style={{ borderColor: 'var(--accent)' }}>
-            <div className="stat-label">{isChangeOrder ? 'CO Total' : 'Bid Total'}</div>
-            <div className="stat-value" style={{ fontSize: 20, color: 'var(--accent)' }}>
-              {formatCurrency(summary.grandTotal)}
-            </div>
-          </div>
-          {!isChangeOrder && approvedCOTotal > 0 && (
-            <div className="card" style={{ borderColor: 'var(--success)' }}>
-              <div className="stat-label">Revised Total</div>
-              <div className="stat-value" style={{ fontSize: 20, color: 'var(--success)' }}>
-                {formatCurrency(revisedTotal)}
-              </div>
-              <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
-                Original + Approved COs
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Sections and Line Items */}
-      {sections.map((section) => (
-        <div key={section.id} className="card mb-24">
-          <div className="flex justify-between items-center mb-16">
-            <h3 style={{ fontSize: 15 }}>{section.name}</h3>
-            <div className="flex gap-8 no-print">
-              <button className="btn btn-sm btn-primary" onClick={() => openAddLineItem(section.id)}>+ Line Item</button>
-              {assemblies.length > 0 && (
-                <button className="btn btn-sm btn-secondary" onClick={() => openAssemblyPicker(section.id)}>+ Assembly</button>
-              )}
-              <button className="btn btn-sm btn-secondary" onClick={() => deleteSection(section.id)}>Remove Section</button>
-            </div>
-          </div>
-          {(lineItems[section.id] || []).length === 0 ? (
-            <p className="text-muted" style={{ fontSize: 13 }}>No line items. Click "+ Line Item" to add one.</p>
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th className="text-right">Qty</th>
-                  <th>Unit</th>
-                  <th className="text-right">Material</th>
-                  <th className="text-right">Labor</th>
-                  <th className="text-right">Equipment</th>
-                  <th className="text-right">Total</th>
-                  <th className="text-right">Unit Cost</th>
-                  <th className="no-print" style={{ width: 80 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(lineItems[section.id] || []).map((item: any) => (
-                  <tr key={item.id}>
-                    <td>
-                      <span className="material-name-link no-print" onClick={() => openEditLineItem(item)}>
-                        {item.description}
-                      </span>
-                      <span className="print-only">{item.description}</span>
-                    </td>
-                    <td className="text-right">{item.quantity}</td>
-                    <td>{item.unit}</td>
-                    <td className="text-right">{formatCurrency(item.material_total)}</td>
-                    <td className="text-right">{formatCurrency(item.labor_total)}</td>
-                    <td className="text-right">{formatCurrency(item.equipment_total)}</td>
-                    <td className="text-right" style={{ fontWeight: 600 }}>{formatCurrency(item.total_cost)}</td>
-                    <td className="text-right text-muted">
-                      {item.quantity > 0 ? formatCurrency(item.unit_cost) : '--'}
-                    </td>
-                    <td className="no-print">
-                      <button className="btn btn-sm btn-secondary" onClick={() => deleteLineItem(item.id)}>&#215;</button>
-                    </td>
-                  </tr>
-                ))}
-                <tr>
-                  <td colSpan={6} className="text-right" style={{ fontWeight: 600 }}>Section Total</td>
-                  <td className="text-right" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                    {formatCurrency((lineItems[section.id] || []).reduce((s: number, i: any) => s + i.total_cost, 0))}
-                  </td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-        </div>
-      ))}
+      {/* Bid Grid: sections, line items, and summary */}
+      <BidGrid
+        sections={sections}
+        lineItems={lineItems}
+        summary={summary}
+        job={job}
+        isLocked={isLocked}
+        onAddLineItem={openAddLineItem}
+        onEditLineItem={openEditLineItem}
+        onDeleteLineItem={deleteLineItem}
+        onDeleteSection={deleteSection}
+        onOpenAssemblyPicker={openAssemblyPicker}
+        hasAssemblies={assemblies.length > 0}
+        approvedCOTotal={approvedCOTotal}
+        revisedTotal={revisedTotal}
+        isChangeOrder={isChangeOrder}
+      />
 
       {/* Trench Profiles */}
       <TrenchProfileList jobId={jobId} onConvertToBid={(data) => new Promise<void>((resolve) => {
@@ -781,24 +689,6 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
               </tbody>
             </table>
           )}
-        </div>
-      )}
-
-      {/* Print summary footer */}
-      {summary && (
-        <div className="print-only print-summary-table">
-          <table className="data-table">
-            <tbody>
-              <tr><td>Direct Cost (Material + Labor + Equipment + Sub)</td><td className="text-right">{formatCurrency(summary.direct_cost_total)}</td></tr>
-              <tr><td>Overhead ({job.overhead_percent}%)</td><td className="text-right">{formatCurrency(summary.overhead)}</td></tr>
-              <tr><td>Profit ({job.profit_percent}%)</td><td className="text-right">{formatCurrency(summary.profit)}</td></tr>
-              {summary.bond > 0 && <tr><td>Bond ({job.bond_percent}%)</td><td className="text-right">{formatCurrency(summary.bond)}</td></tr>}
-              {summary.tax > 0 && <tr><td>Sales Tax ({job.tax_percent}%)</td><td className="text-right">{formatCurrency(summary.tax)}</td></tr>}
-              <tr style={{ fontWeight: 700, fontSize: 16 }}>
-                <td>BID TOTAL</td><td className="text-right">{formatCurrency(summary.grandTotal)}</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       )}
 
