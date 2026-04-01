@@ -1069,6 +1069,75 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
+  // ---- Print Bid (via PDF pipeline) ----
+  safeHandle('jobs:print-bid', async (_event, jobId: number) => {
+    try {
+      const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
+      if (!job) throw new Error('Job not found.');
+
+      const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get() as any;
+
+      const sections = db.prepare(
+        'SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order'
+      ).all(jobId) as any[];
+
+      const lineItemsBySection: Record<number, any[]> = {};
+      for (const section of sections) {
+        lineItemsBySection[section.id] = db.prepare(
+          'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
+        ).all(section.id) as any[];
+      }
+
+      const totals = db.prepare(
+        `SELECT
+          COALESCE(SUM(material_total), 0) as material_total,
+          COALESCE(SUM(labor_total), 0) as labor_total,
+          COALESCE(SUM(equipment_total), 0) as equipment_total,
+          COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
+          COALESCE(SUM(total_cost), 0) as direct_cost_total
+        FROM bid_line_items WHERE job_id = ?`
+      ).get(jobId) as any;
+
+      const summary = computeBidSummary(totals, job);
+      const overheadPct = job.overhead_percent || 0;
+      const profitPct = job.profit_percent || 0;
+      const bondPct = job.bond_percent || 0;
+      const taxPct = job.tax_percent || 0;
+
+      const html = buildBidPdfHtml({
+        job, settings, sections, lineItemsBySection, totals,
+        overhead: summary.overhead, profit: summary.profit,
+        bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
+        overheadPct, profitPct, bondPct, taxPct,
+      });
+
+      const win = new BrowserWindow({
+        show: false,
+        width: 816,
+        height: 1056,
+        webPreferences: { offscreen: true },
+      });
+
+      try {
+        await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        const success = await new Promise<boolean>((resolve) => {
+          win.webContents.print({ printBackground: true }, (printed) => {
+            resolve(printed);
+          });
+        });
+
+        return { success };
+      } finally {
+        win.destroy();
+      }
+    } catch (err: any) {
+      logger.error('jobs:print-bid', 'Print failed', err.stack || err.message);
+      throw new Error(err.message || 'Print failed.');
+    }
+  });
+
   // ================================================================
   // CSV PRICE IMPORT
   // These also keep their existing return shapes with logging added.

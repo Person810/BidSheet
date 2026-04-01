@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('api', {
   // ---- Export ----
   exportQuickBooksCSV: (jobId: number) => ipcRenderer.invoke('export:quickbooks-csv', jobId),
   exportBidPdf: (jobId: number) => ipcRenderer.invoke('jobs:export-pdf', jobId),
+  printBid: (jobId: number) => ipcRenderer.invoke('jobs:print-bid', jobId),
 
   // ---- Backup/Restore ----
   exportDatabase: () => ipcRenderer.invoke('db:export'),

@@ -74,6 +74,7 @@ declare global {
       // Export
       exportQuickBooksCSV: (jobId: number) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
       exportBidPdf: (jobId: number) => Promise<{ success: boolean; filePath?: string; canceled?: boolean }>;
+      printBid: (jobId: number) => Promise<{ success: boolean }>;
 
       // Backup/Restore
       exportDatabase: () => Promise<any>;

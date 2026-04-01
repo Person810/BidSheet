@@ -480,8 +480,16 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const revisedTotal = summary ? summary.grandTotal + approvedCOTotal : 0;
 
   // ---- Print ----
-  const handlePrint = () => {
-    window.print();
+  const [printing, setPrinting] = useState(false);
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      await window.api.printBid(jobId);
+    } catch (err: any) {
+      addToast(err.message || 'Print failed', 'error');
+    } finally {
+      setPrinting(false);
+    }
   };
 
   // ---- QuickBooks Export ----
@@ -553,7 +561,9 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           >
             {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
           </button>
-          <button className="btn btn-secondary" onClick={handlePrint}>Print Bid</button>
+          <button className="btn btn-secondary" onClick={handlePrint} disabled={printing}>
+            {printing ? 'Printing...' : 'Print Bid'}
+          </button>
           <button className="btn btn-secondary" onClick={handleExportPdf} disabled={pdfExporting}>
             {pdfExporting ? 'Generating...' : 'Export PDF'}
           </button>
