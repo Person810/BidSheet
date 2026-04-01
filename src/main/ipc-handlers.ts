@@ -615,13 +615,14 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:bid-sections:save', (_event, section: any) => {
     if (section.id) {
-      return db
-        .prepare('UPDATE bid_sections SET name = ?, sort_order = ? WHERE id = ?')
+      db.prepare('UPDATE bid_sections SET name = ?, sort_order = ? WHERE id = ?')
         .run(section.name, section.sortOrder, section.id);
+      return { id: section.id };
     } else {
-      return db
+      const result = db
         .prepare('INSERT INTO bid_sections (job_id, name, sort_order) VALUES (?, ?, ?)')
         .run(section.jobId, section.name, section.sortOrder);
+      return { id: Number(result.lastInsertRowid) };
     }
   });
 
@@ -1592,9 +1593,13 @@ function buildBidPdfHtml(data: PdfData): string {
   const companyLogo = settings?.company_logo || '';
   const hasLogo = companyLogo.startsWith('data:');
 
-  const bidDate = job.bid_date
-    ? new Date(job.bid_date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-    : '';
+  let bidDate = '';
+  if (job.bid_date) {
+    const m = job.bid_date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    bidDate = m
+      ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : job.bid_date;
+  }
 
   // Build line items HTML
   let tableRows = '';

@@ -45,7 +45,7 @@ export async function sendItemsToBid(
     name: 'Fittings & Structures',
     sortOrder: sections.length,
   });
-  const sectionId = Number(sectionResult.lastInsertRowid);
+  const sectionId = sectionResult.id;
 
   let sortOrder = 0;
   for (const g of groups.values()) {

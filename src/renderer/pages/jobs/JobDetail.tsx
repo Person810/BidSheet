@@ -394,7 +394,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       name: 'Trench Work',
       sortOrder: sections.length,
     });
-    const sectionId = Number(sectionResult.lastInsertRowid);
+    const sectionId = sectionResult.id;
     let sortOrder = 0;
 
     const saveItem = (opts: { description: string; quantity: number; unit: string; materialId: number | null; materialUnitCost: number; notes: string }) =>
