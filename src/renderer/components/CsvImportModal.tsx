@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { formatCurrency } from '../pages/jobs/helpers';
 
 // ============================================================
 // Types
@@ -306,8 +307,6 @@ export function CsvImportModal({
     ? previewRows.filter((r) => !r.matchedMaterial)
     : previewRows;
 
-  const formatCurrency = (val: number) =>
-    val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
   // ============================================================
   // Render

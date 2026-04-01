@@ -3,6 +3,7 @@ import {
   FuzzyAutocomplete,
   simpleListToAutocomplete,
 } from '../components/FuzzyAutocomplete';
+import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface EquipmentItem {
@@ -151,10 +152,6 @@ export function EquipmentPage() {
     loadEquipment();
   };
 
-  const formatCurrency = (val: number | null) => {
-    if (val == null) return '--';
-    return val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  };
 
   return (
     <div>

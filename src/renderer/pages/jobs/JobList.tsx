@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toast-store';
-import { formatDateLocal } from './helpers';
+import { formatDateLocal, statusBadge } from './helpers';
 
 interface JobListProps {
   onOpenJob: (id: number) => void;
@@ -76,12 +76,6 @@ export function JobList({ onOpenJob }: JobListProps) {
     }
   };
 
-  const statusBadge = (status: string) => {
-    const classes: Record<string, string> = {
-      draft: 'badge-draft', submitted: 'badge-submitted', won: 'badge-won', lost: 'badge-lost',
-    };
-    return <span className={`badge ${classes[status] || 'badge-draft'}`}>{status}</span>;
-  };
 
   return (
     <div>
