@@ -6,6 +6,7 @@ import { logger } from './logger';
 import type Database from 'better-sqlite3';
 import { isSetupComplete, seedDatabase } from './database';
 import { TradeType } from '../shared/constants/seed-data';
+import { computeBidSummary } from '../shared/bidCalc';
 
 // ================================================================
 // Error handling utilities
@@ -558,20 +559,12 @@ export function registerIpcHandlers(db: Database.Database): void {
       )
       .get(jobId) as any;
 
-    const directCost = totals.direct_cost_total;
-    const overhead = directCost * (job.overhead_percent / 100);
-    const profit = directCost * (job.profit_percent / 100);
-    const bond = directCost * ((job.bond_percent || 0) / 100);
-    const tax = totals.material_total * ((job.tax_percent || 0) / 100);
+    const summary = computeBidSummary(totals, job);
 
     return {
       jobId,
       ...totals,
-      overhead,
-      profit,
-      bond,
-      tax,
-      grandTotal: directCost + overhead + profit + bond + tax,
+      ...summary,
     };
   });
 
@@ -796,7 +789,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // because the renderer UI already reads it. Logging is added.
   // ================================================================
 
-  ipcMain.handle('db:export', async () => {
+  safeHandle('db:export', async () => {
     const result = await dialog.showSaveDialog({
       title: 'Export Database Backup',
       defaultPath: `BidSheet-backup-${new Date().toISOString().slice(0, 10)}.db`,
@@ -829,7 +822,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
-  ipcMain.handle('db:restore', async () => {
+  safeHandle('db:restore', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Restore Database from Backup',
       filters: [{ name: 'SQLite Database', extensions: ['db'] }],
@@ -894,7 +887,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // QUICKBOOKS CSV EXPORT
   // ================================================================
 
-  ipcMain.handle('export:quickbooks-csv', async (_event, jobId: number) => {
+  safeHandle('export:quickbooks-csv', async (_event, jobId: number) => {
     const { generateEstimateCSV } = await import('./csv-export');
 
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
@@ -920,13 +913,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       FROM bid_line_items WHERE job_id = ?`
     ).get(jobId) as any;
 
-    const directCost = totals.direct_cost_total;
-    const summary = {
-      overhead: directCost * (job.overhead_percent / 100),
-      profit: directCost * (job.profit_percent / 100),
-      bond: directCost * ((job.bond_percent || 0) / 100),
-      tax: totals.material_total * ((job.tax_percent || 0) / 100),
-    };
+    const summary = computeBidSummary(totals, job);
 
     const csvContent = generateEstimateCSV({ job, sections, lineItemsBySection, summary });
 
@@ -952,7 +939,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // PDF BID EXPORT
   // ================================================================
 
-  ipcMain.handle('jobs:export-pdf', async (_event, jobId: number) => {
+  safeHandle('jobs:export-pdf', async (_event, jobId: number) => {
     try {
       const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
       if (!job) throw new Error('Job not found.');
@@ -980,20 +967,16 @@ export function registerIpcHandlers(db: Database.Database): void {
         FROM bid_line_items WHERE job_id = ?`
       ).get(jobId) as any;
 
-      const directCost = totals.direct_cost_total;
+      const summary = computeBidSummary(totals, job);
       const overheadPct = job.overhead_percent || 0;
       const profitPct = job.profit_percent || 0;
       const bondPct = job.bond_percent || 0;
       const taxPct = job.tax_percent || 0;
-      const overhead = directCost * (overheadPct / 100);
-      const profit = directCost * (profitPct / 100);
-      const bond = directCost * (bondPct / 100);
-      const tax = totals.material_total * (taxPct / 100);
-      const grandTotal = directCost + overhead + profit + bond + tax;
 
       const html = buildBidPdfHtml({
         job, settings, sections, lineItemsBySection, totals,
-        overhead, profit, bond, tax, grandTotal,
+        overhead: summary.overhead, profit: summary.profit,
+        bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
         overheadPct, profitPct, bondPct, taxPct,
       });
 
@@ -1070,7 +1053,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   }
 
-  ipcMain.handle('db:csv:open', async () => {
+  safeHandle('db:csv:open', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Select Price Sheet CSV',
       filters: [
@@ -1096,7 +1079,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     return readAndParseCsv(resolved);
   });
 
-  ipcMain.handle(
+  safeHandle(
     'db:materials:import-prices',
     (
       _event,
@@ -1155,7 +1138,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // PLAN TAKEOFF
   // ================================================================
 
-  ipcMain.handle('db:takeoff:open-pdf', async () => {
+  safeHandle('db:takeoff:open-pdf', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Select Plan Sheet PDF',
       filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
