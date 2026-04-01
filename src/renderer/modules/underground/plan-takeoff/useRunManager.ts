@@ -65,6 +65,8 @@ export function useRunManager({
 }: UseRunManagerOptions): RunManager {
   const nextLocalId = useRef(-1);
   const [runs, setRuns] = useState<TakeoffRun[]>([]);
+  const runsRef = useRef<TakeoffRun[]>([]);
+  runsRef.current = runs;
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -87,20 +89,20 @@ export function useRunManager({
 
   const finishActiveRun = useCallback(() => {
     if (!activeRunId) return;
-    setRuns((prev) => {
-      const run = prev.find((r) => r.id === activeRunId);
-      if (!run || run.points.length < 2) return prev.filter((r) => r.id !== activeRunId);
+    const localId = activeRunId;
 
-      // Save completed run to DB
-      if (jobId && run.points.length >= 2) {
-        const payload = { ...run, jobId, sortOrder: prev.indexOf(run) };
-        window.api.saveTakeoffRun(payload).then((result: { id: number }) => {
-          setRuns((cur) => cur.map((r) => r.id === activeRunId ? { ...r, id: result.id } : r));
-        }).catch(console.error);
-      }
+    const run = runsRef.current.find((r) => r.id === localId);
+    if (!run || run.points.length < 2) {
+      // Discard incomplete run
+      setRuns((prev) => prev.filter((r) => r.id !== localId));
+    } else if (jobId) {
+      // Save completed run to DB (outside state updater to avoid double-fire in strict mode)
+      const payload = { ...run, jobId, sortOrder: runsRef.current.indexOf(run) };
+      window.api.saveTakeoffRun(payload).then((result: { id: number }) => {
+        setRuns((cur) => cur.map((r) => r.id === localId ? { ...r, id: result.id } : r));
+      }).catch(console.error);
+    }
 
-      return prev;
-    });
     setActiveRunId(null);
     setMousePos(null);
   }, [activeRunId, jobId]);
