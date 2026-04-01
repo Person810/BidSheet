@@ -5,32 +5,7 @@ import {
 } from '../../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toast-store';
-
-interface LaborRole {
-  id: number;
-  name: string;
-  default_hourly_rate: number;
-  burden_multiplier: number;
-  notes: string | null;
-  aliases: string | null;
-}
-
-interface CrewMember {
-  id: number;
-  crew_template_id: number;
-  labor_role_id: number;
-  quantity: number;
-  role_name: string;
-  default_hourly_rate: number;
-  burden_multiplier: number;
-}
-
-interface CrewTemplate {
-  id: number;
-  name: string;
-  description: string | null;
-  members: CrewMember[];
-}
+import type { LaborRole, CrewMember, CrewTemplate } from '../../../shared/types/labor';
 
 interface CrewTemplatesTabProps {
   crews: CrewTemplate[];

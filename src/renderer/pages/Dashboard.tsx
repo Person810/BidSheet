@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatDateLocal } from './jobs/helpers';
+import { formatDateLocal, formatCurrency, statusBadge } from './jobs/helpers';
 
 export function Dashboard() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -27,12 +27,15 @@ export function Dashboard() {
         const lost = allJobs.filter((j: any) => j.status === 'lost').length;
         const decided = won + lost;
 
-        // Get bid totals for submitted + won jobs
+        // Get bid totals for submitted + won jobs (single batch IPC call)
         let totalVolume = 0;
-        for (const job of allJobs) {
-          if (job.status === 'submitted' || job.status === 'won') {
-            const summary = await window.api.getBidSummary(job.id);
-            if (summary) totalVolume += summary.grandTotal;
+        const bidJobIds = allJobs
+          .filter((j: any) => j.status === 'submitted' || j.status === 'won')
+          .map((j: any) => j.id);
+        if (bidJobIds.length > 0) {
+          const summaries = await window.api.getBidSummaryBatch(bidJobIds);
+          for (const s of summaries) {
+            if (s) totalVolume += s.grandTotal;
           }
         }
 
@@ -50,19 +53,7 @@ export function Dashboard() {
 
   const recentJobs = jobs.slice(0, 10);
 
-  const statusBadge = (status: string) => {
-    const classes: Record<string, string> = {
-      draft: 'badge-draft',
-      submitted: 'badge-submitted',
-      won: 'badge-won',
-      lost: 'badge-lost',
-      archived: 'badge-draft',
-    };
-    return <span className={`badge ${classes[status] || 'badge-draft'}`}>{status}</span>;
-  };
 
-  const formatCurrency = (val: number) =>
-    val.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
   return (
     <div>

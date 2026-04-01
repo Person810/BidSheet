@@ -44,6 +44,7 @@ declare global {
       saveBidLineItem: (item: any) => Promise<any>;
       deleteBidLineItem: (id: number) => Promise<any>;
       getBidSummary: (jobId: number) => Promise<any>;
+      getBidSummaryBatch: (jobIds: number[]) => Promise<any[]>;
 
       // Trench Profiles
       getTrenchProfiles: (jobId: number) => Promise<any[]>;

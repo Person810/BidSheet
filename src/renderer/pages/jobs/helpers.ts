@@ -1,3 +1,16 @@
+import React from 'react';
+
+export function statusBadge(status: string) {
+  const classes: Record<string, string> = {
+    draft: 'badge-draft',
+    submitted: 'badge-submitted',
+    won: 'badge-won',
+    lost: 'badge-lost',
+    archived: 'badge-draft',
+  };
+  return React.createElement('span', { className: `badge ${classes[status] || 'badge-draft'}` }, status);
+}
+
 export function emptyLineForm() {
   return {
     description: '',
@@ -28,8 +41,9 @@ export function jobToPayload(job: any) {
   };
 }
 
-export function formatCurrency(val: number) {
-  return (val ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+export function formatCurrency(val: number | null | undefined, opts?: { maximumFractionDigits?: number }) {
+  if (val == null) return '--';
+  return (val ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', ...opts });
 }
 
 /** Parse a YYYY-MM-DD date string without timezone shift. */
