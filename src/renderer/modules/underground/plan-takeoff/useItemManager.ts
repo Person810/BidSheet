@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import type { TakeoffItem, PdfPoint } from './types';
 
 interface UseItemManagerOptions {
@@ -23,10 +23,12 @@ export interface ItemManager {
   cancelDelete: () => void;
 }
 
+// Module-scoped counter so local IDs are unique across remounts
+let globalNextLocalId = -1;
+
 export function useItemManager({
   jobId, pageNum,
 }: UseItemManagerOptions): ItemManager {
-  const nextLocalId = useRef(-1);
   const [items, setItems] = useState<TakeoffItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
@@ -48,7 +50,7 @@ export function useItemManager({
   ) => {
     if (!jobId) return;
 
-    const localId = nextLocalId.current--;
+    const localId = globalNextLocalId--;
     const newItem: TakeoffItem = {
       id: localId,
       jobId,

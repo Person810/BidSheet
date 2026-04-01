@@ -60,10 +60,12 @@ function runToConfig(run: TakeoffRun): RunConfig {
   };
 }
 
+// Module-scoped counter so local IDs are unique across remounts
+let globalNextLocalId = -1;
+
 export function useRunManager({
   jobId, pageNum, calibrating, calibrationHandlePointClick,
 }: UseRunManagerOptions): RunManager {
-  const nextLocalId = useRef(-1);
   const [runs, setRuns] = useState<TakeoffRun[]>([]);
   const runsRef = useRef<TakeoffRun[]>([]);
   runsRef.current = runs;
@@ -137,7 +139,7 @@ export function useRunManager({
       return;
     }
 
-    const id = nextLocalId.current--;
+    const id = globalNextLocalId--;
     const newRun: TakeoffRun = {
       id,
       ...config,
