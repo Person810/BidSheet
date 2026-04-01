@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToastStore } from '../../stores/toast-store';
 
 interface LaborRole {
   id: number;
@@ -16,6 +17,7 @@ interface LaborRolesTabProps {
 }
 
 export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
+  const addToast = useToastStore((s) => s.addToast);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<LaborRole | null>(null);
   const [form, setForm] = useState({ name: '', defaultHourlyRate: 0, burdenMultiplier: 1.35, notes: '', aliases: '' });
@@ -40,16 +42,20 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
   };
 
   const handleSave = async () => {
-    await window.api.saveLaborRole({
-      id: editing?.id,
-      name: form.name,
-      defaultHourlyRate: form.defaultHourlyRate,
-      burdenMultiplier: form.burdenMultiplier,
-      notes: form.notes || null,
-      aliases: form.aliases || null,
-    });
-    setShowModal(false);
-    onRefresh();
+    try {
+      await window.api.saveLaborRole({
+        id: editing?.id,
+        name: form.name,
+        defaultHourlyRate: form.defaultHourlyRate,
+        burdenMultiplier: form.burdenMultiplier,
+        notes: form.notes || null,
+        aliases: form.aliases || null,
+      });
+      setShowModal(false);
+      onRefresh();
+    } catch (err: any) {
+      addToast(err.message || 'Failed to save role.', 'error');
+    }
   };
 
   const handleDelete = () => {
@@ -65,7 +71,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
           await window.api.deleteLaborRole(roleId);
           onRefresh();
         } catch (err: any) {
-          alert(err.message || 'Failed to delete role.');
+          addToast(err.message || 'Failed to delete role.', 'error');
         }
       },
     });

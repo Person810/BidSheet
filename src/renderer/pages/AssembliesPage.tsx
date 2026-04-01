@@ -43,7 +43,7 @@ interface FormItem {
   notes: string;
 }
 
-const UNITS = ['LF', 'EA', 'CYD', 'SY', 'TON', 'VF', 'LS', 'GAL', 'SF', 'HR'];
+import { UNITS } from '../../shared/constants/units';
 
 const EMPTY_FORM = {
   name: '',
@@ -354,19 +354,16 @@ export function AssembliesPage() {
 
       {/* ---- Modal ---- */}
       {showModal && (
-        <div className="modal-backdrop" onClick={closeModal}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div
-            className="modal-content"
+            className="modal"
             onClick={(e) => e.stopPropagation()}
             tabIndex={-1}
             style={{ maxWidth: 700, width: '95%', outline: 'none' }}
           >
-            <div className="modal-header">
-              <h3>{editingId ? 'Edit Assembly' : 'New Assembly'}</h3>
-              <button className="modal-close" onClick={closeModal}>×</button>
-            </div>
+            <h3>{editingId ? 'Edit Assembly' : 'New Assembly'}</h3>
 
-            <div className="modal-body">
+            <div>
               {/* Name + Unit row */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 <div>
@@ -491,7 +488,7 @@ export function AssembliesPage() {
               </div>
             </div>
 
-            <div className="modal-footer">
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
               <button className="btn" onClick={closeModal}>Cancel</button>
               <button
                 className="btn btn-primary"

@@ -175,6 +175,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 14) {
     migrateV14(db);
   }
+  if (version < 15) {
+    migrateV15(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -637,5 +640,13 @@ function migrateV14(db: Database.Database): void {
     CREATE INDEX idx_takeoff_page_scales_job ON takeoff_page_scales(job_id);
 
     INSERT INTO schema_version (version) VALUES (14);
+  `);
+}
+
+// V15: Company tagline for PDF export (replaces hardcoded "Underground Utility Contractor")
+function migrateV15(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN company_tagline TEXT DEFAULT '';
+    INSERT INTO schema_version (version) VALUES (15);
   `);
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, dialog, Menu } from 'electron';
 import path from 'path';
 import { initializeDatabase } from './database';
 import { registerIpcHandlers } from './ipc-handlers';
@@ -89,9 +89,6 @@ app.whenReady().then(() => {
 
   // Register IPC handlers so renderer can talk to the database
   registerIpcHandlers(db);
-
-  // Expose log directory path to renderer for the Settings page
-  ipcMain.handle('app:log-dir', () => logger.getLogDir());
 
   createWindow();
 

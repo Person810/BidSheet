@@ -1393,6 +1393,10 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
   });
 
+  safeHandle('app:log-dir', () => {
+    return logger.getLogDir();
+  });
+
   safeHandle('db:settings:backup-reminder-needed', () => {
     const settings = db.prepare('SELECT last_backup_schema_version FROM app_settings WHERE id = 1').get() as any;
     const currentVersion = (db.prepare('SELECT MAX(version) as version FROM schema_version').get() as any)?.version ?? 0;
@@ -1414,7 +1418,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       .prepare(
         `UPDATE app_settings SET
           company_name = ?, company_address = ?, company_phone = ?,
-          company_email = ?, company_logo = ?,
+          company_email = ?, company_tagline = ?, company_logo = ?,
           default_overhead_percent = ?, default_profit_percent = ?,
           default_tax_percent = ?, default_bond_percent = ?,
           auto_lock_on_close = ?
@@ -1422,7 +1426,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       )
       .run(
         settings.companyName, settings.companyAddress, settings.companyPhone,
-        settings.companyEmail, settings.companyLogo,
+        settings.companyEmail, settings.companyTagline, settings.companyLogo,
         settings.defaultOverheadPercent, settings.defaultProfitPercent,
         settings.defaultTaxPercent, settings.defaultBondPercent,
         settings.autoLockOnClose ? 1 : 0
@@ -1532,9 +1536,13 @@ function buildBidPdfHtml(data: PdfData): string {
     ? `<img src="${escHtml(companyLogo)}" style="max-height:48px;max-width:160px;object-fit:contain;" />`
     : `<span style="color:#fff;font-weight:bold;font-size:15px;">${companyName}</span>`;
 
+  const companyTagline = escHtml(settings?.company_tagline || '');
+  const taglineHtml = companyTagline
+    ? `<span style="color:#E8A020;font-size:9px;">${companyTagline}</span>`
+    : '';
   const headerLeftRow2 = hasLogo
-    ? `<span style="color:#E8A020;font-size:9px;">Underground Utility Contractor</span><br/><span style="color:#fff;font-weight:bold;font-size:12px;">${companyName}</span>`
-    : `<span style="color:#E8A020;font-size:9px;">Underground Utility Contractor</span>`;
+    ? `${taglineHtml}${taglineHtml ? '<br/>' : ''}<span style="color:#fff;font-weight:bold;font-size:12px;">${companyName}</span>`
+    : taglineHtml;
 
   return `<!DOCTYPE html>
 <html>

@@ -4,6 +4,8 @@ import {
   crewsToAutocomplete,
 } from '../../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToastStore } from '../../stores/toast-store';
+import { UNITS } from '../../../shared/constants/units';
 
 interface CrewMember {
   id: number;
@@ -40,6 +42,7 @@ interface ProductionRatesTabProps {
 }
 
 export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesTabProps) {
+  const addToast = useToastStore((s) => s.addToast);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<ProductionRate | null>(null);
   const [form, setForm] = useState({
@@ -52,7 +55,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
   });
 
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
-  const UNITS = ['LF', 'EA', 'CYD', 'VF', 'SY', 'TON'];
+
   const crewItems = crewsToAutocomplete(crews);
 
   const openAdd = () => {
@@ -82,17 +85,21 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
   };
 
   const handleSave = async () => {
-    await window.api.saveProductionRate({
-      id: editing?.id,
-      description: form.description,
-      crewTemplateId: form.crewTemplateId,
-      unit: form.unit,
-      ratePerHour: form.ratePerHour,
-      conditions: form.conditions || null,
-      notes: form.notes || null,
-    });
-    setShowModal(false);
-    onRefresh();
+    try {
+      await window.api.saveProductionRate({
+        id: editing?.id,
+        description: form.description,
+        crewTemplateId: form.crewTemplateId,
+        unit: form.unit,
+        ratePerHour: form.ratePerHour,
+        conditions: form.conditions || null,
+        notes: form.notes || null,
+      });
+      setShowModal(false);
+      onRefresh();
+    } catch (err: any) {
+      addToast(err.message || 'Failed to save production rate.', 'error');
+    }
   };
 
   const handleDelete = () => {
@@ -108,7 +115,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
           await window.api.deleteProductionRate(rateId);
           onRefresh();
         } catch (err: any) {
-          alert(err.message || 'Failed to delete production rate.');
+          addToast(err.message || 'Failed to delete production rate.', 'error');
         }
       },
     });
