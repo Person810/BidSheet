@@ -510,6 +510,56 @@ export function registerIpcHandlers(db: Database.Database): void {
         );
       }
 
+      // Copy takeoff page scales
+      const scales = db.prepare('SELECT * FROM takeoff_page_scales WHERE job_id = ?').all(id) as any[];
+      const insertScale = db.prepare(
+        `INSERT INTO takeoff_page_scales (job_id, page_number, scale_px_per_ft, scale_point1_x, scale_point1_y, scale_point2_x, scale_point2_y, scale_distance_ft)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const s of scales) {
+        insertScale.run(newJobId, s.page_number, s.scale_px_per_ft, s.scale_point1_x, s.scale_point1_y, s.scale_point2_x, s.scale_point2_y, s.scale_distance_ft);
+      }
+
+      // Copy takeoff runs and their points
+      const runs = db.prepare('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
+      const insertRun = db.prepare(
+        `INSERT INTO takeoff_runs (job_id, label, utility_type, pipe_size_in, pipe_material, pipe_material_id, start_depth_ft, grade_pct, trench_width_ft, bench_width_ft, bedding_type, bedding_depth_ft, bedding_material_id, backfill_type, backfill_material_id, color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const insertPt = db.prepare('INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)');
+      for (const r of runs) {
+        const newRun = insertRun.run(
+          newJobId, r.label, r.utility_type, r.pipe_size_in, r.pipe_material, r.pipe_material_id,
+          r.start_depth_ft, r.grade_pct, r.trench_width_ft, r.bench_width_ft, r.bedding_type,
+          r.bedding_depth_ft, r.bedding_material_id, r.backfill_type, r.backfill_material_id,
+          r.color, r.sort_order, r.pdf_page
+        );
+        const newRunId = Number(newRun.lastInsertRowid);
+        const points = db.prepare('SELECT * FROM takeoff_points WHERE run_id = ? ORDER BY sort_order').all(r.id) as any[];
+        for (const pt of points) {
+          insertPt.run(newRunId, pt.x_px, pt.y_px, pt.sort_order);
+        }
+      }
+
+      // Copy takeoff items
+      const takeoffItems = db.prepare('SELECT * FROM takeoff_items WHERE job_id = ?').all(id) as any[];
+      const insertTakeoffItem = db.prepare(
+        `INSERT INTO takeoff_items (job_id, material_id, x_px, y_px, quantity, label, pdf_page, near_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const ti of takeoffItems) {
+        insertTakeoffItem.run(newJobId, ti.material_id, ti.x_px, ti.y_px, ti.quantity, ti.label, ti.pdf_page, null);
+      }
+
+      // Copy takeoff job settings (PDF path, legacy scale)
+      const takeoffSettings = db.prepare('SELECT * FROM takeoff_job_settings WHERE job_id = ?').get(id) as any;
+      if (takeoffSettings) {
+        db.prepare(
+          `INSERT INTO takeoff_job_settings (job_id, pdf_path, scale_px_per_ft, scale_point1_x, scale_point1_y, scale_point2_x, scale_point2_y, scale_distance_ft)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(newJobId, takeoffSettings.pdf_path, takeoffSettings.scale_px_per_ft, takeoffSettings.scale_point1_x, takeoffSettings.scale_point1_y, takeoffSettings.scale_point2_x, takeoffSettings.scale_point2_y, takeoffSettings.scale_distance_ft);
+      }
+
       logger.info('jobs', `Duplicated job ${id} -> ${newJobId}`);
       return { newJobId };
     });
@@ -912,9 +962,11 @@ export function registerIpcHandlers(db: Database.Database): void {
       if (destSize !== srcSize) {
         fs.copyFileSync(safetyPath, dbPath);
         try { fs.unlinkSync(safetyPath); } catch (_) {}
-        const msg = 'Restore failed: file size mismatch after copy. Original database has been preserved.';
-        logger.error('db:restore', msg);
-        return { success: false, error: msg };
+        logger.error('db:restore', 'File size mismatch after copy. Original restored. Relaunching.');
+        // DB connection is closed — must relaunch to recover
+        app.relaunch();
+        app.exit(0);
+        return { success: false, error: 'Restore failed: file size mismatch. Original database has been preserved. The app will restart.' };
       }
 
       try { fs.unlinkSync(safetyPath); } catch (_) {}
@@ -926,7 +978,18 @@ export function registerIpcHandlers(db: Database.Database): void {
 
       return { success: true };
     } catch (err: any) {
-      logger.error('db:restore', 'Restore failed', err.stack || err.message);
+      // DB connection is closed — restore the safety backup and relaunch
+      logger.error('db:restore', 'Restore failed, relaunching with original DB', err.stack || err.message);
+      try {
+        const dbPath = getDbPath();
+        const safetyPath = dbPath + '.pre-restore';
+        if (fs.existsSync(safetyPath)) {
+          fs.copyFileSync(safetyPath, dbPath);
+          try { fs.unlinkSync(safetyPath); } catch (_) {}
+        }
+      } catch (_) {}
+      app.relaunch();
+      app.exit(0);
       return { success: false, error: err.message };
     }
   });
