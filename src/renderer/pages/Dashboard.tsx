@@ -131,7 +131,7 @@ export function Dashboard() {
           <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 4 }}>
             {dueSoonJobs.map((j: any) => {
               const d = daysUntilBid(j.bid_date);
-              return `${j.name} (${d}d)`;
+              return `${j.name} (${d === 0 ? 'Today' : d + 'd'})`;
             }).join(' \u00b7 ')}
           </span>
         </div>
@@ -168,7 +168,7 @@ export function Dashboard() {
                             {formatDateLocal(job.bid_date)}
                           </span>
                           {isUrgent && (
-                            <span className="due-soon-badge">{d}d</span>
+                            <span className="due-soon-badge">{d === 0 ? 'Today' : d + 'd'}</span>
                           )}
                         </>
                       ) : '--'}

@@ -4,10 +4,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('api', {
   // ---- Materials ----
   getMaterialCategories: () => ipcRenderer.invoke('db:material-categories:list'),
-  getMaterials: (categoryId?: number) => ipcRenderer.invoke('db:materials:list', categoryId),
+  getMaterials: (categoryId?: number, includeInactive?: boolean) => ipcRenderer.invoke('db:materials:list', categoryId, includeInactive),
   getMaterial: (id: number) => ipcRenderer.invoke('db:materials:get', id),
   saveMaterial: (material: any) => ipcRenderer.invoke('db:materials:save', material),
   deleteMaterial: (id: number) => ipcRenderer.invoke('db:materials:delete', id),
+  restoreMaterial: (id: number) => ipcRenderer.invoke('db:materials:restore', id),
   updateMaterialPrice: (id: number, newPrice: number, source: string) =>
     ipcRenderer.invoke('db:materials:update-price', id, newPrice, source),
   getMaterialsByCategoryName: (name: string) => ipcRenderer.invoke('db:materials:list-by-category-name', name),
@@ -25,9 +26,10 @@ contextBridge.exposeInMainWorld('api', {
   deleteProductionRate: (id: number) => ipcRenderer.invoke('db:production-rates:delete', id),
 
   // ---- Equipment ----
-  getEquipment: () => ipcRenderer.invoke('db:equipment:list'),
+  getEquipment: (includeInactive?: boolean) => ipcRenderer.invoke('db:equipment:list', includeInactive),
   saveEquipment: (equip: any) => ipcRenderer.invoke('db:equipment:save', equip),
   deleteEquipment: (id: number) => ipcRenderer.invoke('db:equipment:delete', id),
+  restoreEquipment: (id: number) => ipcRenderer.invoke('db:equipment:restore', id),
 
   // ---- Jobs / Bids ----
   getJobs: (status?: string) => ipcRenderer.invoke('db:jobs:list', status),

@@ -54,6 +54,7 @@ export function MaterialsPage() {
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadCategories = useCallback(async () => {
     const cats = await window.api.getMaterialCategories();
@@ -65,10 +66,10 @@ export function MaterialsPage() {
 
   const loadMaterials = useCallback(async () => {
     const mats = selectedCategory
-      ? await window.api.getMaterials(selectedCategory)
-      : await window.api.getMaterials();
+      ? await window.api.getMaterials(selectedCategory, showArchived)
+      : await window.api.getMaterials(undefined, showArchived);
     setMaterials(mats);
-  }, [selectedCategory]);
+  }, [selectedCategory, showArchived]);
 
   useEffect(() => {
     loadCategories();
@@ -135,6 +136,11 @@ export function MaterialsPage() {
     }
   };
 
+  const handleRestore = async (id: number) => {
+    await window.api.restoreMaterial(id);
+    loadMaterials();
+  };
+
   const handleDelete = async (id: number) => {
     setConfirmState({
       msg: 'Remove this material from the catalog?',
@@ -197,6 +203,10 @@ export function MaterialsPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            <label className="flex gap-4 items-center" style={{ fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} style={{ width: 14, height: 14 }} />
+              Show archived
+            </label>
             <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
               Import Prices
             </button>
@@ -239,7 +249,7 @@ export function MaterialsPage() {
               </tr>
             ) : (
               filteredMaterials.map((mat) => (
-                <tr key={mat.id}>
+                <tr key={mat.id} style={mat.is_active === 0 ? { opacity: 0.5 } : {}}>
                   <td>
                     <span
                       className="material-name-link"
@@ -247,6 +257,9 @@ export function MaterialsPage() {
                     >
                       {mat.name}
                     </span>
+                    {mat.is_active === 0 && (
+                      <span className="badge badge-draft" style={{ marginLeft: 8, fontSize: 10 }}>archived</span>
+                    )}
                     {mat.description && (
                       <span className="text-muted" style={{ marginLeft: 8, fontSize: 12 }}>
                         {mat.description}
@@ -275,13 +288,23 @@ export function MaterialsPage() {
                       : '--'}
                   </td>
                   <td>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => handleDelete(mat.id)}
-                      title="Remove"
-                    >
-                      Remove
-                    </button>
+                    {mat.is_active === 0 ? (
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => handleRestore(mat.id)}
+                        title="Restore"
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => handleDelete(mat.id)}
+                        title="Remove"
+                      >
+                        Remove
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))

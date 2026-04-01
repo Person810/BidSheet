@@ -48,11 +48,12 @@ export function EquipmentPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadEquipment = useCallback(async () => {
-    const items = await window.api.getEquipment();
+    const items = await window.api.getEquipment(showArchived);
     setEquipment(items);
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => {
     loadEquipment();
@@ -120,6 +121,11 @@ export function EquipmentPage() {
     }
   };
 
+  const handleRestore = async (id: number) => {
+    await window.api.restoreEquipment(id);
+    loadEquipment();
+  };
+
   const handleDelete = async (id: number) => {
     setConfirmState({
       msg: 'Remove this equipment from the catalog?',
@@ -166,6 +172,10 @@ export function EquipmentPage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          <label className="flex gap-4 items-center" style={{ fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} style={{ width: 14, height: 14 }} />
+            Show archived
+          </label>
           <button className="btn btn-primary" onClick={openAdd}>
             + Add Equipment
           </button>
@@ -224,11 +234,14 @@ export function EquipmentPage() {
             </tr>
           ) : (
             filtered.map((item) => (
-              <tr key={item.id}>
+              <tr key={item.id} style={item.is_active === 0 ? { opacity: 0.5 } : {}}>
                 <td>
                   <span className="material-name-link" onClick={() => openEdit(item)}>
                     {item.name}
                   </span>
+                  {item.is_active === 0 && (
+                    <span className="badge badge-draft" style={{ marginLeft: 8, fontSize: 10 }}>archived</span>
+                  )}
                   {item.notes && (
                     <span className="text-muted" style={{ marginLeft: 8, fontSize: 12 }}>
                       {item.notes}
@@ -271,12 +284,21 @@ export function EquipmentPage() {
                   />
                 </td>
                 <td>
-                  <button
-                    className="btn btn-sm btn-secondary"
-                    onClick={() => handleDelete(item.id)}
-                  >
-                    Remove
-                  </button>
+                  {item.is_active === 0 ? (
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => handleRestore(item.id)}
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => handleDelete(item.id)}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </td>
               </tr>
             ))

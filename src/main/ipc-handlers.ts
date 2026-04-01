@@ -120,13 +120,14 @@ export function registerIpcHandlers(db: Database.Database): void {
   // MATERIALS
   // ================================================================
 
-  safeHandle('db:materials:list', (_event, categoryId?: number) => {
+  safeHandle('db:materials:list', (_event, categoryId?: number, includeInactive?: boolean) => {
+    const activeFilter = includeInactive ? '' : 'AND is_active = 1';
     if (categoryId) {
       return db
-        .prepare('SELECT * FROM materials WHERE category_id = ? AND is_active = 1 ORDER BY name')
+        .prepare(`SELECT * FROM materials WHERE category_id = ? ${activeFilter} ORDER BY name`)
         .all(categoryId);
     }
-    return db.prepare('SELECT * FROM materials WHERE is_active = 1 ORDER BY name').all();
+    return db.prepare(`SELECT * FROM materials WHERE 1=1 ${activeFilter} ORDER BY name`).all();
   });
 
   safeHandle('db:materials:list-by-category-name', (_event, categoryName: string) => {
@@ -173,6 +174,10 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:materials:delete', (_event, id: number) => {
     return db.prepare('UPDATE materials SET is_active = 0 WHERE id = ?').run(id);
+  });
+
+  safeHandle('db:materials:restore', (_event, id: number) => {
+    return db.prepare('UPDATE materials SET is_active = 1 WHERE id = ?').run(id);
   });
 
   safeHandle(
@@ -346,8 +351,9 @@ export function registerIpcHandlers(db: Database.Database): void {
   // EQUIPMENT
   // ================================================================
 
-  safeHandle('db:equipment:list', () => {
-    return db.prepare('SELECT * FROM equipment WHERE is_active = 1 ORDER BY category, name').all();
+  safeHandle('db:equipment:list', (_event, includeInactive?: boolean) => {
+    const activeFilter = includeInactive ? '' : 'WHERE is_active = 1';
+    return db.prepare(`SELECT * FROM equipment ${activeFilter} ORDER BY category, name`).all();
   });
 
   safeHandle('db:equipment:save', (_event, equip: any) => {
@@ -379,6 +385,10 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:equipment:delete', (_event, id: number) => {
     return db.prepare('UPDATE equipment SET is_active = 0 WHERE id = ?').run(id);
+  });
+
+  safeHandle('db:equipment:restore', (_event, id: number) => {
+    return db.prepare('UPDATE equipment SET is_active = 1 WHERE id = ?').run(id);
   });
 
   // ================================================================
