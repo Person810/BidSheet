@@ -23,7 +23,18 @@ function friendlyMessage(err: any): string {
   if (code === 'SQLITE_BUSY' || msg.includes('database is locked')) {
     return 'Database is busy. Try again in a moment.';
   }
-  if (code === 'SQLITE_CONSTRAINT' || msg.includes('UNIQUE constraint')) {
+  if (code === 'SQLITE_CONSTRAINT' || msg.includes('UNIQUE constraint') || msg.includes('FOREIGN KEY constraint')) {
+    if (msg.includes('UNIQUE constraint')) {
+      const match = msg.match(/UNIQUE constraint failed: (\w+)\.(\w+)/);
+      if (match) {
+        const field = match[2].replace(/_/g, ' ');
+        return `A record with that ${field} already exists.`;
+      }
+      return 'A record with those values already exists. Check for duplicates.';
+    }
+    if (msg.includes('FOREIGN KEY constraint')) {
+      return 'This record is referenced by other data and cannot be modified.';
+    }
     return 'This record conflicts with existing data. Check for duplicates.';
   }
   if (code === 'SQLITE_CORRUPT' || msg.includes('database disk image is malformed')) {
