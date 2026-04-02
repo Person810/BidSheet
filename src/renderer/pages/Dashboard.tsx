@@ -65,16 +65,11 @@ export function Dashboard() {
           winRate: decided > 0 ? Math.round((won / decided) * 100) : 0,
         });
 
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
         const dueSoon = allJobs.filter((j: any) => {
           if (j.status !== 'draft' && j.status !== 'submitted') return false;
           if (!j.bid_date) return false;
-          const match = j.bid_date.match(/^(\d{4})-(\d{2})-(\d{2})/);
-          if (!match) return false;
-          const bidDate = new Date(+match[1], +match[2] - 1, +match[3]);
-          const daysUntil = Math.ceil((bidDate.getTime() - now.getTime()) / 86400000);
-          return daysUntil >= 0 && daysUntil <= 7;
+          const d = daysUntilBid(j.bid_date);
+          return d !== null && d >= 0 && d <= 7;
         });
         setDueSoonJobs(dueSoon);
       }

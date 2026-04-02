@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { calcCrewCostPerHour } from '../../shared/crewCost';
 
 // ============================================================
 // FUZZY AUTOCOMPLETE COMPONENT
@@ -330,10 +331,7 @@ export function materialsToAutocomplete(materials: any[]): AutocompleteItem[] {
 
 export function crewsToAutocomplete(crews: any[]): AutocompleteItem[] {
   return crews.map((c) => {
-    const costPerHour = (c.members || []).reduce(
-      (sum: number, m: any) => sum + m.quantity * m.default_hourly_rate * m.burden_multiplier,
-      0
-    );
+    const costPerHour = calcCrewCostPerHour(c);
     return {
       id: c.id,
       label: c.name,

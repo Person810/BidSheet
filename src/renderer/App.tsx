@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { SetupWizard } from './components/SetupWizard';
 import { ToastContainer } from './components/Toast';
 import { useToastStore } from './stores/toast-store';
@@ -271,7 +271,7 @@ export function App() {
               const Comp = TOOL_COMPONENTS[rt.path];
               return (
                 <Route key={rt.key} path={rt.path}
-                  element={Comp ? <Comp /> : <div>TODO: {rt.tool.name}</div>} />
+                  element={Comp ? <Comp /> : <Navigate to="/" replace />} />
               );
             })}
           </Routes>
