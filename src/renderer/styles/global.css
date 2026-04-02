@@ -338,6 +338,7 @@ body {
   display: flex;
   gap: 0;
   border-bottom: 2px solid var(--border);
+  margin-bottom: 16px;
 }
 
 .job-tab {
