@@ -2,6 +2,10 @@
   "name": "bidsheet",
   "version": "0.1.0",
   "description": "Open source underground utility estimating software for subcontractors",
+  "author": {
+    "name": "Person810",
+    "email": "person810@users.noreply.github.com"
+  },
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
