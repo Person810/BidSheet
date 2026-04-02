@@ -7,7 +7,8 @@
       "Bash(do echo:*)",
       "Read(//c/Users/lmwil/Desktop/new/BidSheet/BidSheet/**)",
       "Bash(done)",
-      "Bash(grep -B5 -A10 \"if \\(e.key === ''Escape''\\)\" /c/Users/lmwil/Desktop/new/BidSheet/BidSheet/src/renderer/modules/underground/plan-takeoff/PlanTakeoff.tsx)"
+      "Bash(grep -B5 -A10 \"if \\(e.key === ''Escape''\\)\" /c/Users/lmwil/Desktop/new/BidSheet/BidSheet/src/renderer/modules/underground/plan-takeoff/PlanTakeoff.tsx)",
+      "Bash(npx vite:*)"
     ]
   }
 }

@@ -39,6 +39,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [changeOrders, setChangeOrders] = useState<any[]>([]);
   const [coSummaries, setCoSummaries] = useState<Record<number, any>>({});
   const [parentJob, setParentJob] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'changes'>('estimate');
+  const [profileCount, setProfileCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [showLineItemModal, setShowLineItemModal] = useState(false);
@@ -107,6 +109,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       setLineItems(items);
       const sum = await window.api.getBidSummary(jobId);
       setSummary(sum);
+      const profs = await window.api.getTrenchProfiles(jobId);
+      setProfileCount(profs.length);
 
       // Load change orders if this is a parent job
       if (!j.parent_job_id) {
@@ -137,6 +141,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   useEffect(() => {
     loadJob();
     setLockBypassed(false);
+    setActiveTab('estimate');
   }, [loadJob]);
 
   const updateStatus = async (status: string) => {
@@ -601,7 +606,24 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         </div>
       </div>
 
-      {/* Bid Grid: sections, line items, and summary */}
+      {/* Tab strip */}
+      <div className="job-tabs no-print">
+        <button className={`job-tab ${activeTab === 'estimate' ? 'job-tab-active' : ''}`}
+          onClick={() => setActiveTab('estimate')}>Estimate</button>
+        <button className={`job-tab ${activeTab === 'profiles' ? 'job-tab-active' : ''}`}
+          onClick={() => setActiveTab('profiles')}>
+          Profiles {profileCount > 0 && <span className="job-tab-count">{profileCount}</span>}
+        </button>
+        {!isChangeOrder && (
+          <button className={`job-tab ${activeTab === 'changes' ? 'job-tab-active' : ''}`}
+            onClick={() => setActiveTab('changes')}>
+            Changes {changeOrders.length > 0 && <span className="job-tab-count">{changeOrders.length}</span>}
+          </button>
+        )}
+      </div>
+
+      {/* Estimate tab */}
+      {activeTab === 'estimate' && (<>
       <BidGrid
         sections={sections}
         lineItems={lineItems}
@@ -619,13 +641,35 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         isChangeOrder={isChangeOrder}
       />
 
-      {/* Trench Profiles */}
-      <TrenchProfileList jobId={jobId} onConvertToBid={(data) => new Promise<void>((resolve) => {
-        withLockCheck(async () => { await handleConvertToBid(data); resolve(); });
-      })} />
+      {/* Add Section */}
+      <div className="no-print" style={{ padding: '10px 0' }}>
+        {showAddSection ? (
+          <div className="card mb-24">
+            <div className="flex gap-8 items-center">
+              <input type="text" className="form-control" value={newSectionName}
+                onChange={(e) => setNewSectionName(e.target.value)}
+                placeholder='e.g. Sanitary Sewer, Water Main, Mobilization' autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter') addSection(); }}
+                style={{ flex: 1 }} />
+              <button className="btn btn-primary" onClick={addSection} disabled={!newSectionName.trim()}>Add</button>
+              <button className="btn btn-secondary" onClick={() => setShowAddSection(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
+        )}
+      </div>
+      </>)}
 
-      {/* Change Orders (parent jobs only) */}
-      {!isChangeOrder && (
+      {/* Profiles tab */}
+      {activeTab === 'profiles' && (
+        <TrenchProfileList jobId={jobId} onProfileCountChange={setProfileCount} onConvertToBid={(data) => new Promise<void>((resolve) => {
+          withLockCheck(async () => { await handleConvertToBid(data); resolve(); });
+        })} />
+      )}
+
+      {/* Changes tab */}
+      {activeTab === 'changes' && !isChangeOrder && (
         <div className="card mb-24">
           <div className="flex justify-between items-center mb-16">
             <h3 style={{ fontSize: 15 }}>Change Orders</h3>
@@ -691,25 +735,6 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           )}
         </div>
       )}
-
-      {/* Add Section */}
-      <div className="no-print">
-        {showAddSection ? (
-          <div className="card mb-24">
-            <div className="flex gap-8 items-center">
-              <input type="text" className="form-control" value={newSectionName}
-                onChange={(e) => setNewSectionName(e.target.value)}
-                placeholder='e.g. Sanitary Sewer, Water Main, Mobilization' autoFocus
-                onKeyDown={(e) => { if (e.key === 'Enter') addSection(); }}
-                style={{ flex: 1 }} />
-              <button className="btn btn-primary" onClick={addSection} disabled={!newSectionName.trim()}>Add</button>
-              <button className="btn btn-secondary" onClick={() => setShowAddSection(false)}>Cancel</button>
-            </div>
-          </div>
-        ) : (
-          <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
-        )}
-      </div>
 
       {/* Line Item Modal */}
       {showLineItemModal && (

@@ -28,6 +28,7 @@ export interface ConvertToBidProfile {
 interface Props {
   jobId: number;
   onConvertToBid?: (profileData: ConvertToBidProfile[]) => Promise<void>;
+  onProfileCountChange?: (count: number) => void;
 }
 
 const DEFAULTS = {
@@ -60,7 +61,7 @@ function rowToInput(row: any): TrenchInput {
   };
 }
 
-export function TrenchProfileList({ jobId, onConvertToBid }: Props) {
+export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange }: Props) {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...DEFAULTS });
@@ -71,7 +72,8 @@ export function TrenchProfileList({ jobId, onConvertToBid }: Props) {
   const loadProfiles = useCallback(async () => {
     const rows = await window.api.getTrenchProfiles(jobId);
     setProfiles(rows);
-  }, [jobId]);
+    onProfileCountChange?.(rows.length);
+  }, [jobId, onProfileCountChange]);
 
   useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
@@ -235,9 +237,12 @@ export function TrenchProfileList({ jobId, onConvertToBid }: Props) {
   };
 
   return (
-    <div className="card mb-24">
-      <div className="flex justify-between items-center mb-16">
-        <h3 style={{ fontSize: 15 }}>Trench Profiles</h3>
+    <div>
+      <div className="flex justify-between items-center" style={{ padding: '8px 8px 6px' }}>
+        <span className="text-muted" style={{ fontSize: 12 }}>
+          {profiles.length} profile{profiles.length !== 1 ? 's' : ''}
+          {profiles.length > 0 && <> &middot; {r2(totals.pipeLF)} LF total</>}
+        </span>
         <div className="flex gap-8 no-print">
           {hasValidProfiles && onConvertToBid && (
             <button className="btn btn-sm btn-secondary" onClick={handleConvert}>Convert to Bid</button>
@@ -249,7 +254,7 @@ export function TrenchProfileList({ jobId, onConvertToBid }: Props) {
       {profiles.length === 0 ? (
         <p className="text-muted" style={{ fontSize: 13 }}>No trench profiles. Click "+ Profile" to add one.</p>
       ) : (
-        <table className="data-table">
+        <table className="bid-grid">
           <thead>
             <tr>
               <th>Label</th>
@@ -308,13 +313,14 @@ export function TrenchProfileList({ jobId, onConvertToBid }: Props) {
               <td></td>
             </tr>
           </tbody>
+          <tfoot className="bid-grid-footer">
+            <tr>
+              <td colSpan={8} className="text-muted" style={{ fontSize: 11 }}>
+                Tracer Wire: {r2(totals.tracerWireLF)} LF &middot; Warning Tape: {r2(totals.warningTapeLF)} LF
+              </td>
+            </tr>
+          </tfoot>
         </table>
-      )}
-
-      {profiles.length > 0 && (
-        <div className="text-muted" style={{ fontSize: 12, marginTop: 8 }}>
-          Tracer Wire: {r2(totals.tracerWireLF)} LF | Warning Tape: {r2(totals.warningTapeLF)} LF
-        </div>
       )}
 
       {confirmState && (

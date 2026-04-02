@@ -10,6 +10,7 @@ interface JobListProps {
 export function JobList({ onOpenJob }: JobListProps) {
   const addToast = useToastStore((s) => s.addToast);
   const [jobs, setJobs] = useState<any[]>([]);
+  const [jobCOs, setJobCOs] = useState<Record<number, any[]>>({});
   const [filter, setFilter] = useState<string>('');
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
@@ -20,6 +21,12 @@ export function JobList({ onOpenJob }: JobListProps) {
     try {
       const j = filter ? await window.api.getJobs(filter) : await window.api.getJobs();
       setJobs(j);
+      const coMap: Record<number, any[]> = {};
+      for (const job of j) {
+        const cos = await window.api.getChangeOrders(job.id);
+        if (cos.length > 0) coMap[job.id] = cos;
+      }
+      setJobCOs(coMap);
     } catch (err: any) {
       addToast(err?.message || 'Failed to load jobs.', 'error');
     }
@@ -46,8 +53,10 @@ export function JobList({ onOpenJob }: JobListProps) {
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   const handleDelete = async (id: number) => {
+    const coCount = jobCOs[id]?.length || 0;
+    const coWarning = coCount > 0 ? ` This will also delete ${coCount} change order${coCount !== 1 ? 's' : ''}.` : '';
     setConfirmState({
-      msg: 'Delete this job and all its bid data? This cannot be undone.',
+      msg: `Delete this job and all its bid data?${coWarning} This cannot be undone.`,
       onYes: async () => {
         setConfirmState(null);
         await window.api.deleteJob(id);
@@ -112,27 +121,54 @@ export function JobList({ onOpenJob }: JobListProps) {
             </tr>
           ) : (
             jobs.map((job) => (
-              <tr key={job.id} className="clickable-row" onClick={() => onOpenJob(job.id)}>
-                <td>
-                  <span className="material-name-link">{job.name}</span>
-                </td>
-                <td className="text-muted">{job.job_number || '--'}</td>
-                <td>{job.client || '--'}</td>
-                <td className="text-muted">
-                  {job.bid_date ? formatDateLocal(job.bid_date) : '--'}
-                </td>
-                <td>{statusBadge(job.status)}</td>
-                <td className="text-muted" style={{ fontSize: 12 }}>
-                  {new Date(job.updated_at).toLocaleDateString()}
-                </td>
-                <td>
-                  <div className="flex gap-8">
-                    <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); startDuplicate(job); }}
-                      title="Duplicate this job as a template">Copy</button>
-                    <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); handleDelete(job.id); }}>Delete</button>
-                  </div>
-                </td>
-              </tr>
+              <React.Fragment key={job.id}>
+                <tr className="clickable-row" onClick={() => onOpenJob(job.id)}>
+                  <td>
+                    <span className="material-name-link">{job.name}</span>
+                    {(jobCOs[job.id]?.length || 0) > 0 && (
+                      <span className="text-muted" style={{ fontSize: 11, marginLeft: 8 }}>
+                        {jobCOs[job.id].length} CO{jobCOs[job.id].length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </td>
+                  <td className="text-muted">{job.job_number || '--'}</td>
+                  <td>{job.client || '--'}</td>
+                  <td className="text-muted">
+                    {job.bid_date ? formatDateLocal(job.bid_date) : '--'}
+                  </td>
+                  <td>{statusBadge(job.status)}</td>
+                  <td className="text-muted" style={{ fontSize: 12 }}>
+                    {new Date(job.updated_at).toLocaleDateString()}
+                  </td>
+                  <td>
+                    <div className="flex gap-8">
+                      <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); startDuplicate(job); }}
+                        title="Duplicate this job as a template">Copy</button>
+                      <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); handleDelete(job.id); }}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+                {(jobCOs[job.id] || []).map((co) => (
+                  <tr key={`co-${co.id}`} className="co-sub-row clickable-row" onClick={() => onOpenJob(co.id)}>
+                    <td className="co-sub-row-name">
+                      <span className="badge badge-submitted" style={{ fontSize: 10, padding: '1px 6px', marginRight: 6 }}>
+                        #{co.change_order_number}
+                      </span>
+                      {co.name}
+                    </td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td>{statusBadge(co.status)}</td>
+                    <td className="text-muted" style={{ fontSize: 12 }}>
+                      {new Date(co.updated_at).toLocaleDateString()}
+                    </td>
+                    <td>
+                      <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); onOpenJob(co.id); }}>Open</button>
+                    </td>
+                  </tr>
+                ))}
+              </React.Fragment>
             ))
           )}
         </tbody>
