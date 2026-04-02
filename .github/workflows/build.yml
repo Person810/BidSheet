@@ -44,8 +44,8 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
-            release/*.yml
-            release/*.yaml
+            release/latest.yml
+            release/latest-linux.yml
 
   release:
     needs: build
