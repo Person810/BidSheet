@@ -39,7 +39,7 @@ export function useItemManager({
     window.api.listTakeoffItems(jobId).then((loaded: TakeoffItem[]) => {
       setItems(loaded);
       setSelectedItemId(null);
-    }).catch(console.error);
+    });
   }, [jobId]);
 
   const addItemAtPoint = useCallback((
@@ -69,7 +69,7 @@ export function useItemManager({
     // Save immediately to DB
     window.api.saveTakeoffItem(newItem).then((result: { id: number }) => {
       setItems((cur) => cur.map((i) => i.id === localId ? { ...i, id: result.id } : i));
-    }).catch(console.error);
+    });
   }, [jobId]);
 
   const selectItem = useCallback((id: number | null) => {
@@ -86,7 +86,7 @@ export function useItemManager({
     setItems((prev) => prev.filter((i) => i.id !== id));
     if (selectedItemId === id) setSelectedItemId(null);
     if (id > 0) {
-      window.api.deleteTakeoffItem(id).catch(console.error);
+      window.api.deleteTakeoffItem(id);
     }
     setPendingDeleteId(null);
   }, [pendingDeleteId, selectedItemId]);

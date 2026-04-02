@@ -38,8 +38,7 @@ export function SettingsPage() {
           autoLockOnClose: s.auto_lock_on_close !== 0,
         });
       }
-      setLoading(false);
-    });
+    }).finally(() => setLoading(false));
   }, []);
 
   const handleSave = async () => {

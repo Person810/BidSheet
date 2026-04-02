@@ -7,6 +7,7 @@ import {
   equipmentToAutocomplete,
 } from '../../components/FuzzyAutocomplete';
 import { formatCurrency } from './helpers';
+import { calcCrewCostPerHour } from '../../../shared/crewCost';
 
 interface LineItemModalProps {
   lineForm: any;
@@ -59,9 +60,7 @@ export function LineItemModal({
     if (item) {
       const crew = crews.find((c: any) => c.id === item.id);
       if (crew) {
-        const costPerHour = crew.members.reduce(
-          (sum: number, m: any) => sum + m.quantity * m.default_hourly_rate * m.burden_multiplier, 0
-        );
+        const costPerHour = calcCrewCostPerHour(crew);
         setLineForm((prev: any) => ({
           ...prev,
           crewTemplateId: crew.id,
@@ -81,9 +80,7 @@ export function LineItemModal({
         const hours = rate.rate_per_hour > 0 ? lineForm.quantity / rate.rate_per_hour : 0;
         const crew = crews.find((c: any) => c.id === rate.crew_template_id);
         const costPerHour = crew
-          ? crew.members.reduce(
-              (sum: number, m: any) => sum + m.quantity * m.default_hourly_rate * m.burden_multiplier, 0
-            )
+          ? calcCrewCostPerHour(crew)
           : lineForm.laborCostPerHour;
         setLineForm((prev: any) => ({
           ...prev,

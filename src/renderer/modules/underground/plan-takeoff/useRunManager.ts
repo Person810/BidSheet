@@ -84,7 +84,7 @@ export function useRunManager({
       setRuns(loaded);
       setActiveRunId(null);
       setSelectedRunId(null);
-    }).catch(console.error);
+    });
   }, [jobId]);
 
   // -- Finish / discard active run --
@@ -102,7 +102,7 @@ export function useRunManager({
       const payload = { ...run, jobId, sortOrder: runsRef.current.indexOf(run) };
       window.api.saveTakeoffRun(payload).then((result: { id: number }) => {
         setRuns((cur) => cur.map((r) => r.id === localId ? { ...r, id: result.id } : r));
-      }).catch(console.error);
+      });
     }
 
     setActiveRunId(null);
@@ -128,7 +128,7 @@ export function useRunManager({
         if (editingRunId > 0 && jobId) {
           const run = updated.find((r) => r.id === editingRunId);
           if (run) {
-            window.api.saveTakeoffRun({ ...run, jobId, sortOrder: updated.indexOf(run) }).catch(console.error);
+            window.api.saveTakeoffRun({ ...run, jobId, sortOrder: updated.indexOf(run) });
           }
         }
 
@@ -207,7 +207,7 @@ export function useRunManager({
   const confirmDelete = useCallback(() => {
     if (pendingDeleteId === null) return;
     if (pendingDeleteId > 0) {
-      window.api.deleteTakeoffRun(pendingDeleteId).catch(console.error);
+      window.api.deleteTakeoffRun(pendingDeleteId);
     }
     setRuns((prev) => prev.filter((r) => r.id !== pendingDeleteId));
     if (selectedRunId === pendingDeleteId) setSelectedRunId(null);
