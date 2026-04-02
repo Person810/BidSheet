@@ -53,19 +53,23 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     pageWidth: pageSizeRef.current.width,
     pageHeight: pageSizeRef.current.height,
     onComplete: async (result: ScaleResult) => {
-      // Save per-page scale
-      await window.api.savePageScale({
-        job_id: jobId,
-        page_number: pageNum,
-        scale_px_per_ft: result.pxPerFt,
-        scale_point1_x: result.point1?.x ?? null,
-        scale_point1_y: result.point1?.y ?? null,
-        scale_point2_x: result.point2?.x ?? null,
-        scale_point2_y: result.point2?.y ?? null,
-        scale_distance_ft: result.distanceFt ?? null,
-      });
-      setPageScalePxPerFt(result.pxPerFt);
-      setCalibrating(false);
+      try {
+        await window.api.savePageScale({
+          job_id: jobId,
+          page_number: pageNum,
+          scale_px_per_ft: result.pxPerFt,
+          scale_point1_x: result.point1?.x ?? null,
+          scale_point1_y: result.point1?.y ?? null,
+          scale_point2_x: result.point2?.x ?? null,
+          scale_point2_y: result.point2?.y ?? null,
+          scale_distance_ft: result.distanceFt ?? null,
+        });
+        setPageScalePxPerFt(result.pxPerFt);
+      } catch (err) {
+        addToast('Failed to save scale calibration', 'error');
+      } finally {
+        setCalibrating(false);
+      }
     },
     onCancel: () => setCalibrating(false),
   });
@@ -112,27 +116,29 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   useEffect(() => {
     window.api.getTakeoffSettings(jobId).then((s: any) => {
       setJobSettings(s || null);
-    }).catch(console.error);
+    });
   }, [jobId]);
 
   // Load per-page scale when page changes
   useEffect(() => {
     window.api.getPageScale(jobId, pageNum).then((row: any) => {
       setPageScalePxPerFt(row?.scale_px_per_ft ?? null);
-    }).catch(console.error);
+    });
   }, [jobId, pageNum]);
 
   // Auto-load PDF from saved path
   useEffect(() => {
-    if (!jobSettings?.pdf_path || pdfData) return;
+    if (!jobSettings?.pdf_path) return;
+    // Already loaded this exact path — skip
+    if (pdfPath === jobSettings.pdf_path) return;
     setPdfPath(jobSettings.pdf_path);
     setLoading(true);
     window.api.readTakeoffPdf(jobSettings.pdf_path).then((result: any) => {
       if (result?.data) {
         setPdfData(new Uint8Array(result.data));
       }
-    }).catch(console.error).finally(() => setLoading(false));
-  }, [jobSettings]); // eslint-disable-line react-hooks/exhaustive-deps
+    }).finally(() => setLoading(false));
+  }, [jobSettings, pdfPath]);
 
   const handleLoadPlan = async () => {
     setLoading(true);
@@ -147,7 +153,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         setLoadError(false);
 
         const settings = { ...jobSettings, job_id: jobId, pdf_path: result.filePath };
-        window.api.saveTakeoffSettings(settings).catch(console.error);
+        window.api.saveTakeoffSettings(settings);
         setJobSettings(settings as TakeoffJobSettings);
       }
     } catch (err) {
