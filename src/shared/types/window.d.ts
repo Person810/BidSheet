@@ -93,6 +93,7 @@ declare global {
       listTakeoffRuns: (jobId: number) => Promise<any[]>;
       saveTakeoffRun: (run: any) => Promise<any>;
       deleteTakeoffRun: (id: number) => Promise<any>;
+      updateTakeoffPoint: (data: { runId: number; sortOrder: number; invertElev: number | null; rimElev: number | null; structureType: string | null }) => Promise<any>;
       listTakeoffItems: (jobId: number) => Promise<any[]>;
       saveTakeoffItem: (item: any) => Promise<any>;
       deleteTakeoffItem: (id: number) => Promise<any>;

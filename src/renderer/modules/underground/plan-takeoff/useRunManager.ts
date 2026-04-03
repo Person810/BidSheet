@@ -9,6 +9,8 @@ interface UseRunManagerOptions {
   calibrationHandlePointClick: (point: PdfPoint) => void;
 }
 
+export type InteractionMode = 'normal' | 'moveVertex';
+
 export interface RunManager {
   // State
   runs: TakeoffRun[];
@@ -18,6 +20,9 @@ export interface RunManager {
   mousePos: PdfPoint | null;
   isDrawing: boolean;
   pendingDeleteId: number | null;
+  interactionMode: InteractionMode;
+  movingVertex: { runId: number; vertexIndex: number } | null;
+  movePreviewPos: PdfPoint | null;
 
   // Derived
   pageRuns: TakeoffRun[];
@@ -39,6 +44,11 @@ export interface RunManager {
   finishActiveRun: () => void;
   confirmDelete: () => void;
   cancelDelete: () => void;
+  updateVertexElevation: (runId: number, vertexIndex: number, data: { invertElev: number | null; rimElev: number | null; structureType: string | null }) => void;
+  startMoveVertex: (runId: number, vertexIndex: number) => void;
+  cancelMoveVertex: () => void;
+  deleteVertex: (runId: number, vertexIndex: number) => void;
+  addVertexOnSegment: (runId: number, segmentIndex: number, point: PdfPoint) => void;
 }
 
 function runToConfig(run: TakeoffRun): RunConfig {
@@ -74,6 +84,9 @@ export function useRunManager({
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [editingRunId, setEditingRunId] = useState<number | null>(null);
   const [mousePos, setMousePos] = useState<PdfPoint | null>(null);
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>('normal');
+  const [movingVertex, setMovingVertex] = useState<{ runId: number; vertexIndex: number } | null>(null);
+  const [movePreviewPos, setMovePreviewPos] = useState<PdfPoint | null>(null);
 
   const isDrawing = activeRunId !== null;
 
@@ -165,12 +178,37 @@ export function useRunManager({
       calibrationHandlePointClick(point);
       return;
     }
+
+    // Move vertex: confirm placement
+    if (interactionMode === 'moveVertex' && movingVertex) {
+      const { runId, vertexIndex } = movingVertex;
+      setRuns((prev) => prev.map((r) => {
+        if (r.id !== runId) return r;
+        const newPoints = [...r.points];
+        newPoints[vertexIndex] = { ...newPoints[vertexIndex], x: point.x, y: point.y };
+        return { ...r, points: newPoints };
+      }));
+      // Persist
+      if (runId > 0 && jobId) {
+        const run = runsRef.current.find((r) => r.id === runId);
+        if (run) {
+          const updatedPoints = [...run.points];
+          updatedPoints[vertexIndex] = { ...updatedPoints[vertexIndex], x: point.x, y: point.y };
+          window.api.saveTakeoffRun({ ...run, points: updatedPoints, jobId, sortOrder: runsRef.current.indexOf(run) });
+        }
+      }
+      setInteractionMode('normal');
+      setMovingVertex(null);
+      setMovePreviewPos(null);
+      return;
+    }
+
     if (!activeRunId) return;
 
     setRuns((prev) => prev.map((r) =>
       r.id === activeRunId ? { ...r, points: [...r.points, point] } : r
     ));
-  }, [calibrating, calibrationHandlePointClick, activeRunId]);
+  }, [calibrating, calibrationHandlePointClick, activeRunId, interactionMode, movingVertex, jobId]);
 
   const undoLastPoint = useCallback(() => {
     if (!activeRunId) return;
@@ -182,7 +220,8 @@ export function useRunManager({
 
   const handleMouseMove = useCallback((point: PdfPoint) => {
     if (activeRunId) setMousePos(point);
-  }, [activeRunId]);
+    if (interactionMode === 'moveVertex') setMovePreviewPos(point);
+  }, [activeRunId, interactionMode]);
 
   // -- Selection --
 
@@ -222,7 +261,7 @@ export function useRunManager({
 
   const pageRuns = useMemo(() => runs.filter((r) => r.pdfPage === pageNum), [runs, pageNum]);
 
-  const overlayMode: OverlayMode = activeRunId ? 'draw' : 'none';
+  const overlayMode: OverlayMode = activeRunId ? 'draw' : interactionMode === 'moveVertex' ? 'draw' : 'none';
 
   const lastRunConfig = useMemo((): RunConfig | null => {
     if (runs.length === 0) return null;
@@ -239,12 +278,82 @@ export function useRunManager({
 
   const canAddRun = !calibrating && !activeRunId;
 
+  // -- Vertex manipulation --
+
+  const startMoveVertex = useCallback((runId: number, vertexIndex: number) => {
+    setInteractionMode('moveVertex');
+    setMovingVertex({ runId, vertexIndex });
+    setMovePreviewPos(null);
+  }, []);
+
+  const cancelMoveVertex = useCallback(() => {
+    setInteractionMode('normal');
+    setMovingVertex(null);
+    setMovePreviewPos(null);
+  }, []);
+
+  const deleteVertex = useCallback((runId: number, vertexIndex: number) => {
+    const run = runsRef.current.find((r) => r.id === runId);
+    if (!run) return;
+
+    if (run.points.length <= 2) {
+      // Deleting from a 2-point run deletes the whole run
+      handleDeleteRun(runId);
+      return;
+    }
+
+    const newPoints = run.points.filter((_, i) => i !== vertexIndex);
+    const updatedRun = { ...run, points: newPoints };
+    setRuns((prev) => prev.map((r) => r.id === runId ? updatedRun : r));
+    if (runId > 0 && jobId) {
+      window.api.saveTakeoffRun({ ...updatedRun, jobId, sortOrder: runsRef.current.indexOf(run) });
+    }
+  }, [handleDeleteRun, jobId]);
+
+  const addVertexOnSegment = useCallback((runId: number, segmentIndex: number, point: PdfPoint) => {
+    const run = runsRef.current.find((r) => r.id === runId);
+    if (!run) return;
+
+    const newPoints = [...run.points];
+    newPoints.splice(segmentIndex + 1, 0, { x: point.x, y: point.y });
+    const updatedRun = { ...run, points: newPoints };
+    setRuns((prev) => prev.map((r) => r.id === runId ? updatedRun : r));
+    if (runId > 0 && jobId) {
+      window.api.saveTakeoffRun({ ...updatedRun, jobId, sortOrder: runsRef.current.indexOf(run) });
+    }
+  }, [jobId]);
+
+  // -- Vertex elevation update --
+
+  const updateVertexElevation = useCallback((runId: number, vertexIndex: number, data: { invertElev: number | null; rimElev: number | null; structureType: string | null }) => {
+    setRuns((prev) => prev.map((r) => {
+      if (r.id !== runId) return r;
+      const newPoints = [...r.points];
+      newPoints[vertexIndex] = { ...newPoints[vertexIndex], ...data };
+      return { ...r, points: newPoints };
+    }));
+
+    // Persist to DB if run is saved
+    if (runId > 0) {
+      window.api.updateTakeoffPoint({
+        runId,
+        sortOrder: vertexIndex,
+        invertElev: data.invertElev,
+        rimElev: data.rimElev,
+        structureType: data.structureType,
+      });
+    }
+  }, []);
+
   return {
     runs, activeRunId, selectedRunId, showConfigModal, mousePos, isDrawing,
+    interactionMode, movingVertex, movePreviewPos,
     pageRuns, overlayMode, lastRunConfig, editingConfig, canAddRun,
     handleAddRun, handleConfigConfirm, handleConfigCancel,
     handlePointClick, handleRunSelect, handleEditRun, handleDeleteRun,
     handleMouseMove, undoLastPoint, finishActiveRun,
     pendingDeleteId, confirmDelete, cancelDelete,
+    updateVertexElevation,
+    startMoveVertex, cancelMoveVertex, deleteVertex, addVertexOnSegment,
   };
 }

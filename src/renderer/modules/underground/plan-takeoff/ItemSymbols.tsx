@@ -9,6 +9,7 @@ interface ItemSymbolsProps {
   selectedItemId: number | null;
   labelSize: number;
   onSelect: (id: number | null) => void;
+  onContextMenu?: (itemId: number, screenX: number, screenY: number) => void;
 }
 
 function truncate(s: string, max: number): string {
@@ -16,7 +17,7 @@ function truncate(s: string, max: number): string {
 }
 
 export default function ItemSymbols({
-  items, selectedItemId, labelSize, onSelect,
+  items, selectedItemId, labelSize, onSelect, onContextMenu,
 }: ItemSymbolsProps) {
   const r = Math.max(labelSize * 0.45, 4);
 
@@ -45,6 +46,11 @@ export default function ItemSymbols({
               vectorEffect="non-scaling-stroke"
               style={{ cursor: 'pointer', pointerEvents: 'auto' }}
               onClick={(e) => { e.stopPropagation(); onSelect(item.id); }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onContextMenu?.(item.id, e.clientX, e.clientY);
+              }}
             />
             {/* Material name label */}
             <text

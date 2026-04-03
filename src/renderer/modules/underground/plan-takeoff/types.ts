@@ -21,6 +21,13 @@ export interface PdfPoint {
   y: number; // PDF-native y coordinate (at scale=1)
 }
 
+/** A vertex in a takeoff run — extends PdfPoint with optional elevation data */
+export interface TakeoffVertex extends PdfPoint {
+  invertElev?: number | null;
+  rimElev?: number | null;
+  structureType?: string | null;
+}
+
 /** Interaction mode for the drawing overlay */
 export type OverlayMode = 'none' | 'calibrate-p1' | 'calibrate-p2' | 'draw';
 
@@ -51,7 +58,7 @@ export interface TakeoffRun {
   backfillMaterialId: number | null;
   color: string;
   pdfPage: number;
-  points: PdfPoint[];
+  points: TakeoffVertex[];
 }
 
 /** Config fields shared between new-run and edit-run modals */
@@ -88,6 +95,18 @@ export interface TakeoffItem {
   label: string;
   pdfPage: number;
   nearRunId: number | null;
+}
+
+export interface ContextMenuState {
+  x: number;
+  y: number;
+  targetType: 'vertex' | 'segment' | 'fitting' | 'countItem' | 'canvas';
+  targetId: number | null;       // run ID or item ID
+  targetData: {
+    vertexIndex?: number;
+    segmentIndex?: number;
+    pdfPoint?: PdfPoint;
+  };
 }
 
 export const UTILITY_COLORS: Record<UtilityType, string> = {

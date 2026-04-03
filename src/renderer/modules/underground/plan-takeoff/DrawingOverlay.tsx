@@ -25,8 +25,15 @@ interface DrawingOverlayProps {
   items?: TakeoffItem[];
   selectedItemId?: number | null;
   onItemSelect?: (id: number | null) => void;
-  /** Fired when user right-clicks a run line or vertex */
-  onRunContextMenu?: (runId: number, point: PdfPoint) => void;
+  /** Fired when user right-clicks a vertex */
+  onVertexContextMenu?: (runId: number, vertexIndex: number, screenX: number, screenY: number) => void;
+  /** Fired when user right-clicks a segment */
+  onSegmentContextMenu?: (runId: number, segmentIndex: number, screenX: number, screenY: number, pdfPoint: PdfPoint) => void;
+  /** Fired when user right-clicks an item (fitting or count item) */
+  onItemContextMenu?: (itemId: number, screenX: number, screenY: number) => void;
+  /** Move-vertex preview state */
+  movingVertex?: { runId: number; vertexIndex: number } | null;
+  movePreviewPos?: PdfPoint | null;
 }
 
 function screenToPdf(
@@ -45,7 +52,9 @@ export function DrawingOverlay({
   mode, onPointClick, children,
   runs = [], activeRunId, selectedRunId, onRunSelect, mousePosition, scalePxPerFt,
   onMouseMove, spaceHeld,
-  items = [], selectedItemId, onItemSelect, onRunContextMenu,
+  items = [], selectedItemId, onItemSelect,
+  onVertexContextMenu, onSegmentContextMenu, onItemContextMenu,
+  movingVertex, movePreviewPos,
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
 
@@ -102,12 +111,15 @@ export function DrawingOverlay({
           scalePxPerFt={scalePxPerFt ?? 1}
           mousePosition={run.id === activeRunId ? mousePosition : null}
           onSelect={onRunSelect}
-          onContextMenu={onRunContextMenu}
+          onVertexContextMenu={onVertexContextMenu}
+          onSegmentContextMenu={onSegmentContextMenu}
           pageWidth={pageWidth}
           pageHeight={pageHeight}
           panX={panX}
           panY={panY}
           scale={scale}
+          movingVertexIndex={movingVertex?.runId === run.id ? movingVertex.vertexIndex : null}
+          movePreviewPos={movingVertex?.runId === run.id ? movePreviewPos : null}
         />
       ))}
       <ItemSymbols
@@ -115,6 +127,7 @@ export function DrawingOverlay({
         selectedItemId={selectedItemId ?? null}
         labelSize={labelSize}
         onSelect={onItemSelect!}
+        onContextMenu={onItemContextMenu}
       />
       {children}
     </svg>
@@ -123,7 +136,7 @@ export function DrawingOverlay({
 
 /* ---- Per-run SVG rendering ---- */
 
-function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePosition, onSelect, onContextMenu, pageWidth, pageHeight, panX, panY, scale }: {
+function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePosition, onSelect, onVertexContextMenu, onSegmentContextMenu, pageWidth, pageHeight, panX, panY, scale, movingVertexIndex, movePreviewPos }: {
   run: TakeoffRun;
   isSelected: boolean;
   isActive: boolean;
@@ -131,12 +144,15 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
   scalePxPerFt: number;
   mousePosition?: PdfPoint | null;
   onSelect?: (id: number | null) => void;
-  onContextMenu?: (runId: number, point: PdfPoint) => void;
+  onVertexContextMenu?: (runId: number, vertexIndex: number, screenX: number, screenY: number) => void;
+  onSegmentContextMenu?: (runId: number, segmentIndex: number, screenX: number, screenY: number, pdfPoint: PdfPoint) => void;
   pageWidth: number;
   pageHeight: number;
   panX: number;
   panY: number;
   scale: number;
+  movingVertexIndex?: number | null;
+  movePreviewPos?: PdfPoint | null;
 }) {
   const pts = run.points;
   const strokeW = isSelected || isActive ? 3 : 2;
@@ -148,15 +164,22 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
     if (onSelect && !isActive) onSelect(run.id);
   };
 
-  const handleRunContextMenu = (e: React.MouseEvent) => {
-    if (!onContextMenu || isActive) return;
+  const handleVertexCtx = (e: React.MouseEvent, vertexIndex: number) => {
+    if (!onVertexContextMenu || isActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onVertexContextMenu(run.id, vertexIndex, e.clientX, e.clientY);
+  };
+
+  const handleSegmentCtx = (e: React.MouseEvent, segmentIndex: number) => {
+    if (!onSegmentContextMenu || isActive) return;
     e.preventDefault();
     e.stopPropagation();
     const container = (e.currentTarget as SVGElement).closest('svg')?.parentElement;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const point = screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale);
-    onContextMenu(run.id, point);
+    onSegmentContextMenu(run.id, segmentIndex, e.clientX, e.clientY, point);
   };
 
   return (
@@ -165,6 +188,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
       {pts.map((p, i) => {
         if (i === 0) return null;
         const prev = pts[i - 1];
+        const segIdx = i - 1;
         return (
           <g key={`seg-${i}`}>
             <line
@@ -173,7 +197,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
               vectorEffect="non-scaling-stroke"
               style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
               onClick={handleRunClick}
-              onContextMenu={handleRunContextMenu}
+              onContextMenu={(e) => handleSegmentCtx(e, segIdx)}
             />
             {/* Hit area (wider invisible line for easier clicking) */}
             <line
@@ -182,7 +206,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
               vectorEffect="non-scaling-stroke"
               style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
               onClick={handleRunClick}
-              onContextMenu={handleRunContextMenu}
+              onContextMenu={(e) => handleSegmentCtx(e, segIdx)}
             />
             <SegmentLabel
               p1={prev} p2={p} scalePxPerFt={scalePxPerFt}
@@ -209,17 +233,30 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
       )}
 
       {/* Nodes */}
-      {pts.map((p, i) => (
-        <circle
-          key={`node-${i}`}
-          cx={p.x} cy={p.y} r={nodeR}
-          fill={run.color} stroke="#fff" strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-          style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
-          onClick={handleRunClick}
-          onContextMenu={handleRunContextMenu}
-        />
-      ))}
+      {pts.map((p, i) => {
+        const hasElev = p.invertElev != null || p.rimElev != null;
+        return (
+          <React.Fragment key={`node-${i}`}>
+            {hasElev && (
+              <circle
+                cx={p.x} cy={p.y} r={nodeR * 1.5}
+                fill="none" stroke="#fff" strokeWidth={2} opacity={0.5}
+                vectorEffect="non-scaling-stroke"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
+            <circle
+              cx={p.x} cy={p.y} r={hasElev ? nodeR * 1.2 : nodeR}
+              fill={run.color} stroke={hasElev ? '#fff' : '#fff'}
+              strokeWidth={hasElev ? 2 : 1}
+              vectorEffect="non-scaling-stroke"
+              style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
+              onClick={handleRunClick}
+              onContextMenu={(e) => handleVertexCtx(e, i)}
+            />
+          </React.Fragment>
+        );
+      })}
 
       {/* Shoring depth warning */}
       {!isActive && pts.length >= 2 &&
@@ -253,6 +290,41 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
               />
             );
           })}
+        </g>
+      )}
+
+      {/* Move vertex preview */}
+      {movingVertexIndex != null && movePreviewPos && (
+        <g opacity={0.6} style={{ pointerEvents: 'none' }}>
+          {/* Ghost lines to adjacent vertices */}
+          {movingVertexIndex > 0 && (
+            <line
+              x1={pts[movingVertexIndex - 1].x} y1={pts[movingVertexIndex - 1].y}
+              x2={movePreviewPos.x} y2={movePreviewPos.y}
+              stroke={run.color} strokeWidth={2} strokeDasharray="6 4"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {movingVertexIndex < pts.length - 1 && (
+            <line
+              x1={movePreviewPos.x} y1={movePreviewPos.y}
+              x2={pts[movingVertexIndex + 1].x} y2={pts[movingVertexIndex + 1].y}
+              stroke={run.color} strokeWidth={2} strokeDasharray="6 4"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {/* Ghost vertex */}
+          <circle
+            cx={movePreviewPos.x} cy={movePreviewPos.y} r={nodeR * 1.4}
+            fill={run.color} stroke="#fff" strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+          {/* Highlight the original vertex */}
+          <circle
+            cx={pts[movingVertexIndex].x} cy={pts[movingVertexIndex].y} r={nodeR * 1.8}
+            fill="none" stroke="#fff" strokeWidth={2} strokeDasharray="4 3" opacity={0.5}
+            vectorEffect="non-scaling-stroke"
+          />
         </g>
       )}
     </g>

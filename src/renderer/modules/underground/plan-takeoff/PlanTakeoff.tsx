@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
-import { DrawingOverlay } from './DrawingOverlay';
+import { DrawingOverlay, screenToPdf } from './DrawingOverlay';
 import { useScaleCalibration, formatScale } from './ScaleCalibration';
 import type { ScaleResult } from './ScaleCalibration';
 import { TrenchConfigModal } from './TrenchConfigModal';
@@ -13,7 +13,9 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { useToastStore } from '../../../stores/toast-store';
 import { sendToProfiles } from './sendToProfiles';
 import { sendItemsToBid } from './sendItemsToBid';
-import type { TakeoffJobSettings, PdfPoint } from './types';
+import { ContextMenu, getMenuItems } from './ContextMenu';
+import { EditVertexDialog } from './EditVertexDialog';
+import type { TakeoffJobSettings, PdfPoint, ContextMenuState } from './types';
 
 interface PlanTakeoffProps {
   jobId: number;
@@ -40,12 +42,18 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // -- Per-page scale --
   const [pageScalePxPerFt, setPageScalePxPerFt] = useState<number | null>(null);
 
-  // -- Item placement via right-click on runs --
-  const [pendingItemPlacement, setPendingItemPlacement] = useState<{ runId: number; point: PdfPoint; pipeSizeIn?: number } | null>(null);
+  // -- Context menu --
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [editingVertex, setEditingVertex] = useState<{ runId: number; vertexIndex: number } | null>(null);
+
+  // -- Item placement via context menu --
+  const [pendingItemPlacement, setPendingItemPlacement] = useState<{ runId: number | null; point: PdfPoint; pipeSizeIn?: number } | null>(null);
   const [summaryTab, setSummaryTab] = useState<'runs' | 'items'>('runs');
 
   const pageSizeRef = useRef({ width: 0, height: 0 });
   const viewerWrapRef = useRef<HTMLDivElement>(null);
+  const pendingStartPointRef = useRef<PdfPoint | null>(null);
+  const editingItemIdRef = useRef<number | null>(null);
 
   // Calibration hook
   const calibration = useScaleCalibration({
@@ -193,20 +201,179 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (rm.isDrawing) rm.undoLastPoint();
-  }, [rm]);
+    if (rm.interactionMode === 'moveVertex') { rm.cancelMoveVertex(); return; }
+    if (rm.isDrawing) { rm.undoLastPoint(); return; }
+    if (calibrating) return;
+    // Canvas-level right-click — compute pdf point for placement
+    const wrap = viewerWrapRef.current;
+    let pdfPoint: PdfPoint | undefined;
+    if (wrap && pageSizeRef.current.width > 0) {
+      const rect = wrap.getBoundingClientRect();
+      pdfPoint = screenToPdf(e.clientX, e.clientY, rect, pageSizeRef.current.width, pageSizeRef.current.height, viewport.panX, viewport.panY, scale);
+    }
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      targetType: 'canvas', targetId: null,
+      targetData: { pdfPoint },
+    });
+  }, [rm, calibrating, viewport.panX, viewport.panY, scale]);
 
-  // Right-click on a run line or vertex opens the item picker
-  const handleRunContextMenu = useCallback((runId: number, point: PdfPoint) => {
+  const handleVertexContextMenu = useCallback((runId: number, vertexIndex: number, screenX: number, screenY: number) => {
     if (rm.isDrawing || calibrating) return;
-    const run = rm.pageRuns.find((r) => r.id === runId);
-    setPendingItemPlacement({ runId, point, pipeSizeIn: run?.pipeSizeIn });
-  }, [rm.isDrawing, rm.pageRuns, calibrating]);
+    setContextMenu({
+      x: screenX, y: screenY,
+      targetType: 'vertex', targetId: runId,
+      targetData: { vertexIndex },
+    });
+  }, [rm.isDrawing, calibrating]);
 
-  // Material selected from picker -- place item at the stored location
+  const handleSegmentContextMenu = useCallback((runId: number, segmentIndex: number, screenX: number, screenY: number, pdfPoint: PdfPoint) => {
+    if (rm.isDrawing || calibrating) return;
+    setContextMenu({
+      x: screenX, y: screenY,
+      targetType: 'segment', targetId: runId,
+      targetData: { segmentIndex, pdfPoint },
+    });
+  }, [rm.isDrawing, calibrating]);
+
+  const handleItemContextMenu = useCallback((itemId: number, screenX: number, screenY: number) => {
+    if (rm.isDrawing || calibrating) return;
+    const item = im.pageItems.find((i) => i.id === itemId);
+    const targetType = item?.nearRunId ? 'fitting' : 'countItem';
+    setContextMenu({
+      x: screenX, y: screenY,
+      targetType, targetId: itemId,
+      targetData: {},
+    });
+  }, [rm.isDrawing, calibrating, im.pageItems]);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const handleContextMenuAction = useCallback((action: string) => {
+    if (!contextMenu) return;
+    const { targetType, targetId, targetData } = contextMenu;
+
+    switch (action) {
+      // Vertex actions
+      case 'insertFitting': {
+        if (targetId != null && targetData.vertexIndex != null) {
+          const run = rm.pageRuns.find((r) => r.id === targetId);
+          if (run) {
+            const pt = run.points[targetData.vertexIndex];
+            setPendingItemPlacement({ runId: targetId, point: pt, pipeSizeIn: run.pipeSizeIn });
+          }
+        }
+        break;
+      }
+      // Segment actions
+      case 'insertFittingHere': {
+        if (targetId != null && targetData.pdfPoint) {
+          const run = rm.pageRuns.find((r) => r.id === targetId);
+          setPendingItemPlacement({ runId: targetId, point: targetData.pdfPoint, pipeSizeIn: run?.pipeSizeIn });
+        }
+        break;
+      }
+      case 'deleteRun': {
+        if (targetId != null) rm.handleDeleteRun(targetId);
+        break;
+      }
+      // Fitting/item actions
+      case 'removeFitting':
+      case 'removeItem': {
+        if (targetId != null) im.deleteItem(targetId);
+        break;
+      }
+      // Canvas actions
+      case 'startNewRun': {
+        if (rm.canAddRun) rm.handleAddRun();
+        break;
+      }
+      case 'editVertex': {
+        if (targetId != null && targetData.vertexIndex != null) {
+          setEditingVertex({ runId: targetId, vertexIndex: targetData.vertexIndex });
+        }
+        break;
+      }
+      case 'moveVertex': {
+        if (targetId != null && targetData.vertexIndex != null) {
+          rm.startMoveVertex(targetId, targetData.vertexIndex);
+        }
+        break;
+      }
+      case 'deleteVertex': {
+        if (targetId != null && targetData.vertexIndex != null) {
+          rm.deleteVertex(targetId, targetData.vertexIndex);
+        }
+        break;
+      }
+      case 'addVertexHere': {
+        if (targetId != null && targetData.segmentIndex != null && targetData.pdfPoint) {
+          rm.addVertexOnSegment(targetId, targetData.segmentIndex, targetData.pdfPoint);
+        }
+        break;
+      }
+      case 'startRunFromHere': {
+        // Start new run from vertex or fitting position
+        if (targetType === 'vertex' && targetId != null && targetData.vertexIndex != null) {
+          const run = rm.pageRuns.find((r) => r.id === targetId);
+          if (run) {
+            // Store point for pre-seeding after config modal
+            pendingStartPointRef.current = run.points[targetData.vertexIndex];
+          }
+        } else if ((targetType === 'fitting') && targetId != null) {
+          const item = im.pageItems.find((i) => i.id === targetId);
+          if (item) {
+            pendingStartPointRef.current = { x: item.xPx, y: item.yPx };
+          }
+        }
+        if (rm.canAddRun) rm.handleAddRun();
+        break;
+      }
+      case 'editFitting':
+      case 'editItem': {
+        if (targetId != null) {
+          const item = im.pageItems.find((i) => i.id === targetId);
+          if (item) {
+            setPendingItemPlacement({
+              runId: item.nearRunId,
+              point: { x: item.xPx, y: item.yPx },
+              pipeSizeIn: undefined,
+            });
+            editingItemIdRef.current = targetId;
+          }
+        }
+        break;
+      }
+      case 'duplicateItem': {
+        if (targetId != null) im.duplicateItem(targetId);
+        break;
+      }
+      case 'addCountItem': {
+        // Open item picker for canvas-level placement (no run association)
+        setPendingItemPlacement({
+          runId: null,
+          point: targetData.pdfPoint ?? { x: 0, y: 0 },
+          pipeSizeIn: undefined,
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  }, [contextMenu, rm, im]);
+
+  // Material selected from picker -- place item at the stored location or update existing
   const handleItemPickerSelect = useCallback((material: { id: number; name: string }) => {
     if (!pendingItemPlacement) return;
-    im.addItemAtPoint(material, pendingItemPlacement.point, pageNum, pendingItemPlacement.runId);
+
+    if (editingItemIdRef.current != null) {
+      // Update existing item's material
+      im.updateItem(editingItemIdRef.current, material);
+      editingItemIdRef.current = null;
+    } else {
+      im.addItemAtPoint(material, pendingItemPlacement.point, pageNum, pendingItemPlacement.runId);
+    }
+
     setPendingItemPlacement(null);
     setSummaryTab('items');
   }, [pendingItemPlacement, im, pageNum]);
@@ -222,6 +389,9 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     if (rm.isDrawing) setSummaryTab('runs');
   }, [rm.isDrawing]);
 
+  // Close context menu when page changes
+  useEffect(() => { setContextMenu(null); }, [pageNum, scale]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -235,6 +405,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       }
 
       if (e.key === 'Escape') {
+        if (contextMenu) { setContextMenu(null); return; }
+        if (rm.interactionMode === 'moveVertex') { rm.cancelMoveVertex(); return; }
         if (pendingItemPlacement) { setPendingItemPlacement(null); return; }
         if (rm.isDrawing) { rm.finishActiveRun(); return; }
       }
@@ -258,7 +430,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [totalPages, handleFitToWidth, rm, pendingItemPlacement]);
+  }, [totalPages, handleFitToWidth, rm, pendingItemPlacement, contextMenu]);
 
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
   const toolbarProps = {
@@ -337,11 +509,24 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             items={im.pageItems}
             selectedItemId={im.selectedItemId}
             onItemSelect={im.selectItem}
-            onRunContextMenu={handleRunContextMenu}
+            onVertexContextMenu={handleVertexContextMenu}
+            onSegmentContextMenu={handleSegmentContextMenu}
+            onItemContextMenu={handleItemContextMenu}
+            movingVertex={rm.movingVertex}
+            movePreviewPos={rm.movePreviewPos}
           >
             {calibration.svgContent}
           </DrawingOverlay>
           {calibration.panelContent}
+          {contextMenu && (
+            <ContextMenu
+              x={contextMenu.x}
+              y={contextMenu.y}
+              items={getMenuItems(contextMenu.targetType)}
+              onAction={handleContextMenuAction}
+              onClose={closeContextMenu}
+            />
+          )}
         </div>
 
         {showPanel && pageScalePxPerFt && (
@@ -416,10 +601,28 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         <ItemPickerModal
           items={im.items}
           onSelect={handleItemPickerSelect}
-          onCancel={() => setPendingItemPlacement(null)}
+          onCancel={() => { setPendingItemPlacement(null); editingItemIdRef.current = null; }}
           contextPipeSizeIn={pendingItemPlacement.pipeSizeIn}
         />
       )}
+
+      {editingVertex && (() => {
+        const run = rm.runs.find((r) => r.id === editingVertex.runId);
+        const vertex = run?.points[editingVertex.vertexIndex];
+        if (!run || !vertex) return null;
+        return (
+          <EditVertexDialog
+            vertex={vertex}
+            vertexIndex={editingVertex.vertexIndex}
+            runLabel={run.label || 'Untitled Run'}
+            onSave={(data) => {
+              rm.updateVertexElevation(editingVertex.runId, editingVertex.vertexIndex, data);
+              setEditingVertex(null);
+            }}
+            onClose={() => setEditingVertex(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

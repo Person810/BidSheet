@@ -1445,7 +1445,7 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:takeoff-runs:list', (_event, jobId: number) => {
     const runs = db.prepare('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY sort_order').all(jobId) as any[];
-    const pointsStmt = db.prepare('SELECT x_px, y_px FROM takeoff_points WHERE run_id = ? ORDER BY sort_order');
+    const pointsStmt = db.prepare('SELECT x_px, y_px, invert_elev, rim_elev, structure_type FROM takeoff_points WHERE run_id = ? ORDER BY sort_order');
     return runs.map((r) => ({
       id: r.id,
       label: r.label,
@@ -1464,7 +1464,10 @@ export function registerIpcHandlers(db: Database.Database): void {
       backfillMaterialId: r.backfill_material_id,
       color: r.color,
       pdfPage: r.pdf_page,
-      points: (pointsStmt.all(r.id) as any[]).map((p) => ({ x: p.x_px, y: p.y_px })),
+      points: (pointsStmt.all(r.id) as any[]).map((p) => ({
+        x: p.x_px, y: p.y_px,
+        invertElev: p.invert_elev, rimElev: p.rim_elev, structureType: p.structure_type,
+      })),
     }));
   });
 
@@ -1511,10 +1514,11 @@ export function registerIpcHandlers(db: Database.Database): void {
 
       // Replace points
       db.prepare('DELETE FROM takeoff_points WHERE run_id = ?').run(runId);
-      const insertPt = db.prepare('INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)');
+      const insertPt = db.prepare('INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order, invert_elev, rim_elev, structure_type) VALUES (?, ?, ?, ?, ?, ?, ?)');
       if (run.points) {
         for (let i = 0; i < run.points.length; i++) {
-          insertPt.run(runId, run.points[i].x, run.points[i].y, i);
+          const pt = run.points[i];
+          insertPt.run(runId, pt.x, pt.y, i, pt.invertElev ?? null, pt.rimElev ?? null, pt.structureType ?? null);
         }
       }
 
@@ -1525,6 +1529,12 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:takeoff-runs:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM takeoff_runs WHERE id = ?').run(id);
+  });
+
+  safeHandle('db:takeoff-points:update', (_event, data: { runId: number; sortOrder: number; invertElev: number | null; rimElev: number | null; structureType: string | null }) => {
+    return db.prepare(
+      'UPDATE takeoff_points SET invert_elev = ?, rim_elev = ?, structure_type = ? WHERE run_id = ? AND sort_order = ?'
+    ).run(data.invertElev, data.rimElev, data.structureType, data.runId, data.sortOrder);
   });
 
   // ---- Takeoff Items (count items: fittings, structures, valves) ----

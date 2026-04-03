@@ -178,6 +178,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 15) {
     migrateV15(db);
   }
+  if (version < 16) {
+    migrateV16(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -648,5 +651,14 @@ function migrateV15(db: Database.Database): void {
   db.exec(`
     ALTER TABLE app_settings ADD COLUMN company_tagline TEXT DEFAULT '';
     INSERT INTO schema_version (version) VALUES (15);
+  `);
+}
+
+function migrateV16(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE takeoff_points ADD COLUMN invert_elev REAL;
+    ALTER TABLE takeoff_points ADD COLUMN rim_elev REAL;
+    ALTER TABLE takeoff_points ADD COLUMN structure_type TEXT;
+    INSERT INTO schema_version (version) VALUES (16);
   `);
 }

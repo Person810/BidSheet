@@ -21,6 +21,8 @@ export interface ItemManager {
   deleteItem: (id: number) => void;
   confirmDelete: () => void;
   cancelDelete: () => void;
+  updateItem: (id: number, material: { id: number; name: string }) => void;
+  duplicateItem: (id: number) => void;
 }
 
 // Module-scoped counter so local IDs are unique across remounts
@@ -95,6 +97,41 @@ export function useItemManager({
     setPendingDeleteId(null);
   }, []);
 
+  const updateItem = useCallback((id: number, material: { id: number; name: string }) => {
+    setItems((prev) => prev.map((i) => {
+      if (i.id !== id) return i;
+      return { ...i, materialId: material.id, materialName: material.name, label: material.name };
+    }));
+    if (id > 0) {
+      const item = items.find((i) => i.id === id);
+      if (item) {
+        window.api.saveTakeoffItem({
+          ...item, materialId: material.id, materialName: material.name, label: material.name,
+        });
+      }
+    }
+  }, [items]);
+
+  const duplicateItem = useCallback((id: number) => {
+    if (!jobId) return;
+    const original = items.find((i) => i.id === id);
+    if (!original) return;
+
+    const offset = 20; // px offset so duplicate doesn't stack exactly on top
+    const localId = globalNextLocalId--;
+    const newItem: TakeoffItem = {
+      ...original,
+      id: localId,
+      xPx: original.xPx + offset,
+      yPx: original.yPx + offset,
+    };
+
+    setItems((prev) => [...prev, newItem]);
+    window.api.saveTakeoffItem(newItem).then((result: { id: number }) => {
+      setItems((cur) => cur.map((i) => i.id === localId ? { ...i, id: result.id } : i));
+    });
+  }, [items, jobId]);
+
   const pageItems = useMemo(
     () => items.filter((i) => i.pdfPage === pageNum),
     [items, pageNum],
@@ -110,5 +147,7 @@ export function useItemManager({
     deleteItem,
     confirmDelete,
     cancelDelete,
+    updateItem,
+    duplicateItem,
   };
 }

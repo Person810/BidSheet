@@ -34,14 +34,26 @@ export async function sendToProfiles(
     const runLengthLF = computeRunLengthLF(run.points, scalePxPerFt);
     if (runLengthLF <= 0) continue;
 
+    // Use elevation data when available at both endpoints
+    let startDepthFt = run.startDepthFt;
+    let gradePct = run.gradePct;
+    const firstPt = run.points[0];
+    const lastPt = run.points[run.points.length - 1];
+    if (firstPt.invertElev != null && firstPt.rimElev != null) {
+      startDepthFt = firstPt.rimElev - firstPt.invertElev;
+    }
+    if (firstPt.invertElev != null && lastPt.invertElev != null && runLengthLF > 0) {
+      gradePct = ((firstPt.invertElev - lastPt.invertElev) / runLengthLF) * 100;
+    }
+
     await window.api.saveTrenchProfile({
       jobId,
       label: run.label || `Takeoff Run ${i + 1}`,
       pipeSizeIn: run.pipeSizeIn,
       pipeMaterial: run.pipeMaterial,
       pipeMaterialId: run.pipeMaterialId,
-      startDepthFt: run.startDepthFt,
-      gradePct: run.gradePct,
+      startDepthFt,
+      gradePct,
       runLengthLF,
       trenchWidthFt: run.trenchWidthFt,
       benchWidthFt: run.benchWidthFt,
