@@ -19,7 +19,7 @@ function truncate(s: string, max: number): string {
 export default function ItemSymbols({
   items, selectedItemId, labelSize, onSelect, onContextMenu,
 }: ItemSymbolsProps) {
-  const r = Math.max(labelSize * 0.45, 4);
+  const r = labelSize * 0.45;
 
   return (
     <g>

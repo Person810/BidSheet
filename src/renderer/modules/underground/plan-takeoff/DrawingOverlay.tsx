@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem } from './types';
 import ItemSymbols from './ItemSymbols';
+import RunCalloutLabel from './RunCalloutLabel';
 import { getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT } from './takeoffUtils';
 
 interface DrawingOverlayProps {
@@ -83,8 +84,8 @@ export function DrawingOverlay({
 
   if (pageWidth === 0 || pageHeight === 0) return null;
 
-  // Font size that stays ~11px visually regardless of viewBox scale
-  const labelSize = Math.max(6, pageWidth / 80);
+  // Font size that stays ~11px visually regardless of zoom level
+  const labelSize = Math.max(6, pageWidth / 80) / scale;
 
   return (
     <svg
@@ -226,9 +227,10 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
               onClick={handleRunClick}
               onContextMenu={(e) => handleSegmentCtx(e, segIdx)}
             />
-            <SegmentLabel
+            <RunCalloutLabel
               p1={prev} p2={p} scalePxPerFt={scalePxPerFt}
               fontSize={labelSize} color={run.color}
+              segmentIndex={segIdx} scale={scale} isActive={isActive}
             />
           </g>
         );
@@ -243,7 +245,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
             stroke={run.color} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.6}
             vectorEffect="non-scaling-stroke"
           />
-          <SegmentLabel
+          <PreviewSegmentLabel
             p1={pts[pts.length - 1]} p2={mousePosition} scalePxPerFt={scalePxPerFt}
             fontSize={labelSize * 0.9} color={run.color} opacity={0.7}
           />
@@ -353,9 +355,9 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
   );
 }
 
-/* ---- Distance label at segment midpoint ---- */
+/* ---- Preview label for rubber-band line during drawing ---- */
 
-function SegmentLabel({ p1, p2, scalePxPerFt, fontSize, color, opacity = 1 }: {
+function PreviewSegmentLabel({ p1, p2, scalePxPerFt, fontSize, color, opacity = 1 }: {
   p1: PdfPoint; p2: PdfPoint; scalePxPerFt: number;
   fontSize: number; color: string; opacity?: number;
 }) {
