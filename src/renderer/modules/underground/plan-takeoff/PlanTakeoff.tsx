@@ -7,6 +7,7 @@ import { TrenchConfigModal } from './TrenchConfigModal';
 import { SummaryPanel } from './SummaryPanel';
 import { useRunManager } from './useRunManager';
 import { useItemManager } from './useItemManager';
+import { useNodeManager } from './useNodeManager';
 import TakeoffToolbar from './TakeoffToolbar';
 import ItemPickerModal from './ItemPickerModal';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
@@ -52,7 +53,6 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const pageSizeRef = useRef({ width: 0, height: 0 });
   const viewerWrapRef = useRef<HTMLDivElement>(null);
-  const pendingStartPointRef = useRef<PdfPoint | null>(null);
   const editingItemIdRef = useRef<number | null>(null);
 
   // Calibration hook
@@ -82,12 +82,16 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     onCancel: () => setCalibrating(false),
   });
 
+  // Node manager hook
+  const nm = useNodeManager({ jobId, pageNum });
+
   // Run manager hook
   const rm = useRunManager({
     jobId,
     pageNum,
     calibrating,
     calibrationHandlePointClick: calibration.handlePointClick,
+    nodeManager: nm,
   });
 
   // Item manager hook
@@ -220,12 +224,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const handleVertexContextMenu = useCallback((runId: number, vertexIndex: number, screenX: number, screenY: number) => {
     if (rm.isDrawing || calibrating) return;
+    const run = rm.pageRuns.find((r) => r.id === runId);
+    const nodeId = run?.points[vertexIndex]?.nodeId ?? null;
     setContextMenu({
       x: screenX, y: screenY,
       targetType: 'vertex', targetId: runId,
-      targetData: { vertexIndex },
+      targetData: { vertexIndex, nodeId },
     });
-  }, [rm.isDrawing, calibrating]);
+  }, [rm.isDrawing, rm.pageRuns, calibrating]);
 
   const handleSegmentContextMenu = useCallback((runId: number, segmentIndex: number, screenX: number, screenY: number, pdfPoint: PdfPoint) => {
     if (rm.isDrawing || calibrating) return;
@@ -313,20 +319,35 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         break;
       }
       case 'startRunFromHere': {
-        // Start new run from vertex or fitting position
+        // Start a new run from a shared junction node.
+        // Auto-creates a node if the vertex isn't already linked to one.
         if (targetType === 'vertex' && targetId != null && targetData.vertexIndex != null) {
           const run = rm.pageRuns.find((r) => r.id === targetId);
-          if (run) {
-            // Store point for pre-seeding after config modal
-            pendingStartPointRef.current = run.points[targetData.vertexIndex];
+          const vtx = run?.points[targetData.vertexIndex];
+          if (vtx?.nodeId) {
+            rm.startNewRunFromNode(vtx.nodeId);
+          } else if (run && vtx) {
+            // Auto-promote to a node
+            nm.createNode(
+              { x: vtx.x, y: vtx.y },
+              run.pdfPage,
+              { invertElev: vtx.invertElev ?? null, rimElev: vtx.rimElev ?? null, structureType: vtx.structureType ?? null },
+            ).then((node) => {
+              // Link the existing vertex to the new node in DB
+              window.api.updateTakeoffPoint({
+                runId: targetId!, sortOrder: targetData.vertexIndex!,
+                invertElev: vtx.invertElev ?? null, rimElev: vtx.rimElev ?? null,
+                structureType: vtx.structureType ?? null, nodeId: node.id,
+              });
+              // Start the new run from that node
+              rm.startNewRunFromNode(node.id);
+            });
           }
-        } else if ((targetType === 'fitting') && targetId != null) {
+        } else if (targetType === 'fitting' && targetId != null) {
+          // For fittings: continue the existing run from its end
           const item = im.pageItems.find((i) => i.id === targetId);
-          if (item) {
-            pendingStartPointRef.current = { x: item.xPx, y: item.yPx };
-          }
+          if (item?.nearRunId) rm.continueRun(item.nearRunId);
         }
-        if (rm.canAddRun) rm.handleAddRun();
         break;
       }
       case 'editFitting':
@@ -514,6 +535,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             onItemContextMenu={handleItemContextMenu}
             movingVertex={rm.movingVertex}
             movePreviewPos={rm.movePreviewPos}
+            snapNodeId={rm.snapNodeId}
+            nodes={nm.pageNodes}
           >
             {calibration.svgContent}
           </DrawingOverlay>
@@ -610,13 +633,18 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         const run = rm.runs.find((r) => r.id === editingVertex.runId);
         const vertex = run?.points[editingVertex.vertexIndex];
         if (!run || !vertex) return null;
+        const node = vertex.nodeId ? nm.getNodeById(vertex.nodeId) ?? null : null;
         return (
           <EditVertexDialog
             vertex={vertex}
             vertexIndex={editingVertex.vertexIndex}
             runLabel={run.label || 'Untitled Run'}
+            node={node}
             onSave={(data) => {
               rm.updateVertexElevation(editingVertex.runId, editingVertex.vertexIndex, data);
+              if (node && data.label != null) {
+                nm.updateNode(node.id, { label: data.label });
+              }
               setEditingVertex(null);
             }}
             onClose={() => setEditingVertex(null)}

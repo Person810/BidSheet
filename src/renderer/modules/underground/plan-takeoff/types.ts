@@ -26,6 +26,26 @@ export interface TakeoffVertex extends PdfPoint {
   invertElev?: number | null;
   rimElev?: number | null;
   structureType?: string | null;
+  /** When set, this vertex is linked to a shared junction node */
+  nodeId?: number | null;
+}
+
+/**
+ * A shared junction node (manhole, cleanout, tee, etc.) that can be
+ * referenced by vertices across multiple runs.
+ *
+ * ID convention: same as TakeoffRun (negative = local-only, positive = DB).
+ */
+export interface TakeoffNode {
+  id: number;
+  jobId: number;
+  xPx: number;
+  yPx: number;
+  pdfPage: number;
+  invertElev: number | null;
+  rimElev: number | null;
+  structureType: string | null;
+  label: string;
 }
 
 /** Interaction mode for the drawing overlay */
@@ -106,6 +126,7 @@ export interface ContextMenuState {
     vertexIndex?: number;
     segmentIndex?: number;
     pdfPoint?: PdfPoint;
+    nodeId?: number | null;
   };
 }
 

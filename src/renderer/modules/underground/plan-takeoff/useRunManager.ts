@@ -1,12 +1,15 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { TakeoffRun, RunConfig, PdfPoint, OverlayMode } from './types';
 import { UTILITY_COLORS } from './types';
+import type { NodeManager } from './useNodeManager';
+import { NODE_SNAP_RADIUS_PX } from './takeoffUtils';
 
 interface UseRunManagerOptions {
   jobId: number | null;
   pageNum: number;
   calibrating: boolean;
   calibrationHandlePointClick: (point: PdfPoint) => void;
+  nodeManager: NodeManager;
 }
 
 export type InteractionMode = 'normal' | 'moveVertex';
@@ -23,6 +26,8 @@ export interface RunManager {
   interactionMode: InteractionMode;
   movingVertex: { runId: number; vertexIndex: number } | null;
   movePreviewPos: PdfPoint | null;
+  snapNodeId: number | null;
+  pendingStartNodeId: number | null;
 
   // Derived
   pageRuns: TakeoffRun[];
@@ -49,32 +54,30 @@ export interface RunManager {
   cancelMoveVertex: () => void;
   deleteVertex: (runId: number, vertexIndex: number) => void;
   addVertexOnSegment: (runId: number, segmentIndex: number, point: PdfPoint) => void;
+  continueRun: (runId: number) => void;
+  startNewRunFromNode: (nodeId: number) => void;
+  /** Propagate a node position change across all runs that reference it */
+  syncNodePosition: (nodeId: number, x: number, y: number) => void;
+  /** Clear nodeId on all points referencing a deleted node */
+  unlinkNode: (nodeId: number) => void;
 }
 
 function runToConfig(run: TakeoffRun): RunConfig {
   return {
-    label: run.label,
-    utilityType: run.utilityType,
-    pipeSizeIn: run.pipeSizeIn,
-    pipeMaterial: run.pipeMaterial,
-    pipeMaterialId: run.pipeMaterialId,
-    startDepthFt: run.startDepthFt,
-    gradePct: run.gradePct,
-    trenchWidthFt: run.trenchWidthFt,
-    benchWidthFt: run.benchWidthFt,
-    beddingType: run.beddingType,
-    beddingDepthFt: run.beddingDepthFt,
-    beddingMaterialId: run.beddingMaterialId,
-    backfillType: run.backfillType,
+    label: run.label, utilityType: run.utilityType, pipeSizeIn: run.pipeSizeIn,
+    pipeMaterial: run.pipeMaterial, pipeMaterialId: run.pipeMaterialId,
+    startDepthFt: run.startDepthFt, gradePct: run.gradePct,
+    trenchWidthFt: run.trenchWidthFt, benchWidthFt: run.benchWidthFt,
+    beddingType: run.beddingType, beddingDepthFt: run.beddingDepthFt,
+    beddingMaterialId: run.beddingMaterialId, backfillType: run.backfillType,
     backfillMaterialId: run.backfillMaterialId,
   };
 }
 
-// Module-scoped counter so local IDs are unique across remounts
 let globalNextLocalId = -1;
 
 export function useRunManager({
-  jobId, pageNum, calibrating, calibrationHandlePointClick,
+  jobId, pageNum, calibrating, calibrationHandlePointClick, nodeManager,
 }: UseRunManagerOptions): RunManager {
   const [runs, setRuns] = useState<TakeoffRun[]>([]);
   const runsRef = useRef<TakeoffRun[]>([]);
@@ -87,6 +90,8 @@ export function useRunManager({
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('normal');
   const [movingVertex, setMovingVertex] = useState<{ runId: number; vertexIndex: number } | null>(null);
   const [movePreviewPos, setMovePreviewPos] = useState<PdfPoint | null>(null);
+  const [snapNodeId, setSnapNodeId] = useState<number | null>(null);
+  const [pendingStartNodeId, setPendingStartNodeId] = useState<number | null>(null);
 
   const isDrawing = activeRunId !== null;
 
@@ -105,19 +110,15 @@ export function useRunManager({
   const finishActiveRun = useCallback(() => {
     if (!activeRunId) return;
     const localId = activeRunId;
-
     const run = runsRef.current.find((r) => r.id === localId);
     if (!run || run.points.length < 2) {
-      // Discard incomplete run
       setRuns((prev) => prev.filter((r) => r.id !== localId));
     } else if (jobId) {
-      // Save completed run to DB (outside state updater to avoid double-fire in strict mode)
       const payload = { ...run, jobId, sortOrder: runsRef.current.indexOf(run) };
       window.api.saveTakeoffRun(payload).then((result: { id: number }) => {
         setRuns((cur) => cur.map((r) => r.id === localId ? { ...r, id: result.id } : r));
       });
     }
-
     setActiveRunId(null);
     setMousePos(null);
   }, [activeRunId, jobId]);
@@ -136,15 +137,12 @@ export function useRunManager({
           if (r.id !== editingRunId) return r;
           return { ...r, ...config, color: UTILITY_COLORS[config.utilityType] };
         });
-
-        // Persist config change for saved runs
         if (editingRunId > 0 && jobId) {
           const run = updated.find((r) => r.id === editingRunId);
           if (run) {
             window.api.saveTakeoffRun({ ...run, jobId, sortOrder: updated.indexOf(run) });
           }
         }
-
         return updated;
       });
       setShowConfigModal(false);
@@ -153,22 +151,31 @@ export function useRunManager({
     }
 
     const id = globalNextLocalId--;
+    const firstPoint = pendingStartNodeId
+      ? (() => {
+          const node = nodeManager.getNodeById(pendingStartNodeId);
+          return node ? { x: node.xPx, y: node.yPx, nodeId: pendingStartNodeId } : undefined;
+        })()
+      : undefined;
+
     const newRun: TakeoffRun = {
       id,
       ...config,
       color: UTILITY_COLORS[config.utilityType],
       pdfPage: pageNum,
-      points: [],
+      points: firstPoint ? [firstPoint] : [],
     };
     setRuns((prev) => [...prev, newRun]);
     setActiveRunId(id);
     setSelectedRunId(null);
     setShowConfigModal(false);
-  }, [editingRunId, pageNum, jobId]);
+    setPendingStartNodeId(null);
+  }, [editingRunId, pageNum, jobId, pendingStartNodeId, nodeManager]);
 
   const handleConfigCancel = useCallback(() => {
     setShowConfigModal(false);
     setEditingRunId(null);
+    setPendingStartNodeId(null);
   }, []);
 
   // -- Drawing --
@@ -182,19 +189,32 @@ export function useRunManager({
     // Move vertex: confirm placement
     if (interactionMode === 'moveVertex' && movingVertex) {
       const { runId, vertexIndex } = movingVertex;
-      setRuns((prev) => prev.map((r) => {
-        if (r.id !== runId) return r;
-        const newPoints = [...r.points];
-        newPoints[vertexIndex] = { ...newPoints[vertexIndex], x: point.x, y: point.y };
-        return { ...r, points: newPoints };
-      }));
-      // Persist
-      if (runId > 0 && jobId) {
-        const run = runsRef.current.find((r) => r.id === runId);
-        if (run) {
-          const updatedPoints = [...run.points];
-          updatedPoints[vertexIndex] = { ...updatedPoints[vertexIndex], x: point.x, y: point.y };
-          window.api.saveTakeoffRun({ ...run, points: updatedPoints, jobId, sortOrder: runsRef.current.indexOf(run) });
+      const vtx = runsRef.current.find((r) => r.id === runId)?.points[vertexIndex];
+
+      if (vtx?.nodeId) {
+        // Node-linked: move the node, then sync all runs
+        nodeManager.moveNode(vtx.nodeId, point);
+        setRuns((prev) => prev.map((r) => ({
+          ...r,
+          points: r.points.map((p) =>
+            p.nodeId === vtx.nodeId ? { ...p, x: point.x, y: point.y } : p
+          ),
+        })));
+      } else {
+        // Standalone vertex
+        setRuns((prev) => prev.map((r) => {
+          if (r.id !== runId) return r;
+          const newPoints = [...r.points];
+          newPoints[vertexIndex] = { ...newPoints[vertexIndex], x: point.x, y: point.y };
+          return { ...r, points: newPoints };
+        }));
+        if (runId > 0 && jobId) {
+          const run = runsRef.current.find((r) => r.id === runId);
+          if (run) {
+            const updatedPoints = [...run.points];
+            updatedPoints[vertexIndex] = { ...updatedPoints[vertexIndex], x: point.x, y: point.y };
+            window.api.saveTakeoffRun({ ...run, points: updatedPoints, jobId, sortOrder: runsRef.current.indexOf(run) });
+          }
         }
       }
       setInteractionMode('normal');
@@ -205,10 +225,16 @@ export function useRunManager({
 
     if (!activeRunId) return;
 
+    // Snap-to-node: if clicking near an existing node, link to it
+    const nearNode = nodeManager.findNearbyNode(point, NODE_SNAP_RADIUS_PX);
+    const vertex = nearNode
+      ? { x: nearNode.xPx, y: nearNode.yPx, nodeId: nearNode.id }
+      : point;
+
     setRuns((prev) => prev.map((r) =>
-      r.id === activeRunId ? { ...r, points: [...r.points, point] } : r
+      r.id === activeRunId ? { ...r, points: [...r.points, vertex] } : r
     ));
-  }, [calibrating, calibrationHandlePointClick, activeRunId, interactionMode, movingVertex, jobId]);
+  }, [calibrating, calibrationHandlePointClick, activeRunId, interactionMode, movingVertex, jobId, nodeManager]);
 
   const undoLastPoint = useCallback(() => {
     if (!activeRunId) return;
@@ -219,9 +245,14 @@ export function useRunManager({
   }, [activeRunId]);
 
   const handleMouseMove = useCallback((point: PdfPoint) => {
-    if (activeRunId) setMousePos(point);
+    if (activeRunId) {
+      setMousePos(point);
+      // Check for snap-to-node proximity
+      const near = nodeManager.findNearbyNode(point, NODE_SNAP_RADIUS_PX);
+      setSnapNodeId(near ? near.id : null);
+    }
     if (interactionMode === 'moveVertex') setMovePreviewPos(point);
-  }, [activeRunId, interactionMode]);
+  }, [activeRunId, interactionMode, nodeManager]);
 
   // -- Selection --
 
@@ -245,35 +276,28 @@ export function useRunManager({
 
   const confirmDelete = useCallback(() => {
     if (pendingDeleteId === null) return;
-    if (pendingDeleteId > 0) {
-      window.api.deleteTakeoffRun(pendingDeleteId);
-    }
+    if (pendingDeleteId > 0) window.api.deleteTakeoffRun(pendingDeleteId);
     setRuns((prev) => prev.filter((r) => r.id !== pendingDeleteId));
     if (selectedRunId === pendingDeleteId) setSelectedRunId(null);
     setPendingDeleteId(null);
   }, [pendingDeleteId, selectedRunId]);
 
-  const cancelDelete = useCallback(() => {
-    setPendingDeleteId(null);
-  }, []);
+  const cancelDelete = useCallback(() => setPendingDeleteId(null), []);
 
   // -- Derived --
 
   const pageRuns = useMemo(() => runs.filter((r) => r.pdfPage === pageNum), [runs, pageNum]);
-
   const overlayMode: OverlayMode = activeRunId ? 'draw' : interactionMode === 'moveVertex' ? 'draw' : 'none';
 
   const lastRunConfig = useMemo((): RunConfig | null => {
     if (runs.length === 0) return null;
-    const last = runs[runs.length - 1];
-    return { ...runToConfig(last), label: '' };
+    return { ...runToConfig(runs[runs.length - 1]), label: '' };
   }, [runs]);
 
   const editingConfig = useMemo((): RunConfig | undefined => {
     if (editingRunId === null) return undefined;
     const run = runs.find((r) => r.id === editingRunId);
-    if (!run) return undefined;
-    return runToConfig(run);
+    return run ? runToConfig(run) : undefined;
   }, [editingRunId, runs]);
 
   const canAddRun = !calibrating && !activeRunId;
@@ -295,12 +319,7 @@ export function useRunManager({
   const deleteVertex = useCallback((runId: number, vertexIndex: number) => {
     const run = runsRef.current.find((r) => r.id === runId);
     if (!run) return;
-
-    if (run.points.length <= 2) {
-      // Deleting from a 2-point run deletes the whole run
-      handleDeleteRun(runId);
-      return;
-    }
+    if (run.points.length <= 2) { handleDeleteRun(runId); return; }
 
     const newPoints = run.points.filter((_, i) => i !== vertexIndex);
     const updatedRun = { ...run, points: newPoints };
@@ -313,7 +332,6 @@ export function useRunManager({
   const addVertexOnSegment = useCallback((runId: number, segmentIndex: number, point: PdfPoint) => {
     const run = runsRef.current.find((r) => r.id === runId);
     if (!run) return;
-
     const newPoints = [...run.points];
     newPoints.splice(segmentIndex + 1, 0, { x: point.x, y: point.y });
     const updatedRun = { ...run, points: newPoints };
@@ -326,28 +344,69 @@ export function useRunManager({
   // -- Vertex elevation update --
 
   const updateVertexElevation = useCallback((runId: number, vertexIndex: number, data: { invertElev: number | null; rimElev: number | null; structureType: string | null }) => {
-    setRuns((prev) => prev.map((r) => {
-      if (r.id !== runId) return r;
-      const newPoints = [...r.points];
-      newPoints[vertexIndex] = { ...newPoints[vertexIndex], ...data };
-      return { ...r, points: newPoints };
-    }));
+    const vtx = runsRef.current.find((r) => r.id === runId)?.points[vertexIndex];
 
-    // Persist to DB if run is saved
-    if (runId > 0) {
-      window.api.updateTakeoffPoint({
-        runId,
-        sortOrder: vertexIndex,
-        invertElev: data.invertElev,
-        rimElev: data.rimElev,
-        structureType: data.structureType,
-      });
+    if (vtx?.nodeId) {
+      // Node-linked: update the node, then propagate to all linked points
+      nodeManager.updateNode(vtx.nodeId, data);
+      const nid = vtx.nodeId;
+      setRuns((prev) => prev.map((r) => ({
+        ...r,
+        points: r.points.map((p) =>
+          p.nodeId === nid ? { ...p, ...data } : p
+        ),
+      })));
+    } else {
+      // Standalone vertex
+      setRuns((prev) => prev.map((r) => {
+        if (r.id !== runId) return r;
+        const newPoints = [...r.points];
+        newPoints[vertexIndex] = { ...newPoints[vertexIndex], ...data };
+        return { ...r, points: newPoints };
+      }));
+      if (runId > 0) {
+        window.api.updateTakeoffPoint({
+          runId, sortOrder: vertexIndex,
+          invertElev: data.invertElev, rimElev: data.rimElev, structureType: data.structureType,
+        });
+      }
     }
+  }, [nodeManager]);
+
+  // -- Continue / Start New Run --
+
+  const continueRun = useCallback((runId: number) => {
+    if (activeRunId) return;
+    setActiveRunId(runId);
+    setSelectedRunId(null);
+  }, [activeRunId]);
+
+  const startNewRunFromNode = useCallback((nodeId: number) => {
+    if (activeRunId) return;
+    setPendingStartNodeId(nodeId);
+    setEditingRunId(null);
+    setShowConfigModal(true);
+  }, [activeRunId]);
+
+  // -- Cross-run node synchronization --
+
+  const syncNodePosition = useCallback((nodeId: number, x: number, y: number) => {
+    setRuns((prev) => prev.map((r) => ({
+      ...r,
+      points: r.points.map((p) => p.nodeId === nodeId ? { ...p, x, y } : p),
+    })));
+  }, []);
+
+  const unlinkNode = useCallback((nodeId: number) => {
+    setRuns((prev) => prev.map((r) => ({
+      ...r,
+      points: r.points.map((p) => p.nodeId === nodeId ? { ...p, nodeId: null } : p),
+    })));
   }, []);
 
   return {
     runs, activeRunId, selectedRunId, showConfigModal, mousePos, isDrawing,
-    interactionMode, movingVertex, movePreviewPos,
+    interactionMode, movingVertex, movePreviewPos, snapNodeId, pendingStartNodeId,
     pageRuns, overlayMode, lastRunConfig, editingConfig, canAddRun,
     handleAddRun, handleConfigConfirm, handleConfigCancel,
     handlePointClick, handleRunSelect, handleEditRun, handleDeleteRun,
@@ -355,5 +414,7 @@ export function useRunManager({
     pendingDeleteId, confirmDelete, cancelDelete,
     updateVertexElevation,
     startMoveVertex, cancelMoveVertex, deleteVertex, addVertexOnSegment,
+    continueRun, startNewRunFromNode,
+    syncNodePosition, unlinkNode,
   };
 }

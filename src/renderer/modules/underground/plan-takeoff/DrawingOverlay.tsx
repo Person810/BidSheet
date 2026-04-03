@@ -34,6 +34,10 @@ interface DrawingOverlayProps {
   /** Move-vertex preview state */
   movingVertex?: { runId: number; vertexIndex: number } | null;
   movePreviewPos?: PdfPoint | null;
+  /** ID of the node the mouse is near during drawing (for snap highlight) */
+  snapNodeId?: number | null;
+  /** Page-filtered nodes for snap highlight rendering */
+  nodes?: { id: number; xPx: number; yPx: number }[];
 }
 
 function screenToPdf(
@@ -54,7 +58,7 @@ export function DrawingOverlay({
   onMouseMove, spaceHeld,
   items = [], selectedItemId, onItemSelect,
   onVertexContextMenu, onSegmentContextMenu, onItemContextMenu,
-  movingVertex, movePreviewPos,
+  movingVertex, movePreviewPos, snapNodeId, nodes = [],
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
 
@@ -129,6 +133,20 @@ export function DrawingOverlay({
         onSelect={onItemSelect!}
         onContextMenu={onItemContextMenu}
       />
+      {/* Snap-to-node highlight during drawing */}
+      {snapNodeId != null && (() => {
+        const sn = nodes.find((n) => n.id === snapNodeId);
+        if (!sn) return null;
+        const r = labelSize * 0.6;
+        return (
+          <circle
+            cx={sn.xPx} cy={sn.yPx} r={r}
+            fill="none" stroke="var(--accent, #3b82f6)" strokeWidth={3}
+            vectorEffect="non-scaling-stroke" opacity={0.7}
+            style={{ pointerEvents: 'none' }}
+          />
+        );
+      })()}
       {children}
     </svg>
   );
@@ -234,21 +252,25 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
 
       {/* Nodes */}
       {pts.map((p, i) => {
+        const isNodeLinked = p.nodeId != null;
         const hasElev = p.invertElev != null || p.rimElev != null;
+        const r = isNodeLinked ? nodeR * 1.6 : hasElev ? nodeR * 1.2 : nodeR;
         return (
           <React.Fragment key={`node-${i}`}>
-            {hasElev && (
+            {/* Outer ring for node-linked or elevation vertices */}
+            {(isNodeLinked || hasElev) && (
               <circle
-                cx={p.x} cy={p.y} r={nodeR * 1.5}
-                fill="none" stroke="#fff" strokeWidth={2} opacity={0.5}
+                cx={p.x} cy={p.y} r={r + nodeR * 0.4}
+                fill="none" stroke={isNodeLinked ? run.color : '#fff'}
+                strokeWidth={isNodeLinked ? 2.5 : 2} opacity={isNodeLinked ? 0.6 : 0.5}
                 vectorEffect="non-scaling-stroke"
                 style={{ pointerEvents: 'none' }}
               />
             )}
             <circle
-              cx={p.x} cy={p.y} r={hasElev ? nodeR * 1.2 : nodeR}
-              fill={run.color} stroke={hasElev ? '#fff' : '#fff'}
-              strokeWidth={hasElev ? 2 : 1}
+              cx={p.x} cy={p.y} r={r}
+              fill={run.color} stroke="#fff"
+              strokeWidth={isNodeLinked ? 2.5 : hasElev ? 2 : 1}
               vectorEffect="non-scaling-stroke"
               style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
               onClick={handleRunClick}

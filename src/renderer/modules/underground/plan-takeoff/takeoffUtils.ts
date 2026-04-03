@@ -3,6 +3,9 @@ import type { TakeoffRun, PdfPoint } from './types';
 /** OSHA 1926 Subpart P general threshold for protective systems */
 export const SHORING_DEPTH_THRESHOLD_FT = 5;
 
+/** Snap-to-node radius in PDF-native pixels */
+export const NODE_SNAP_RADIUS_PX = 15;
+
 /** Sum pixel distances between consecutive points, convert to linear feet. */
 export function computeRunLengthLF(points: PdfPoint[], scalePxPerFt: number): number {
   let totalPx = 0;

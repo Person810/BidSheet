@@ -181,6 +181,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 16) {
     migrateV16(db);
   }
+  if (version < 17) {
+    migrateV17(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -660,5 +663,25 @@ function migrateV16(db: Database.Database): void {
     ALTER TABLE takeoff_points ADD COLUMN rim_elev REAL;
     ALTER TABLE takeoff_points ADD COLUMN structure_type TEXT;
     INSERT INTO schema_version (version) VALUES (16);
+  `);
+}
+
+function migrateV17(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_nodes (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      x_px            REAL NOT NULL,
+      y_px            REAL NOT NULL,
+      pdf_page        INTEGER NOT NULL DEFAULT 1,
+      invert_elev     REAL,
+      rim_elev        REAL,
+      structure_type  TEXT,
+      label           TEXT NOT NULL DEFAULT '',
+      created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX idx_takeoff_nodes_job ON takeoff_nodes(job_id);
+    ALTER TABLE takeoff_points ADD COLUMN node_id INTEGER REFERENCES takeoff_nodes(id) ON DELETE SET NULL;
+    INSERT INTO schema_version (version) VALUES (17);
   `);
 }

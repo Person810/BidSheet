@@ -520,13 +520,27 @@ export function registerIpcHandlers(db: Database.Database): void {
         insertScale.run(newJobId, s.page_number, s.scale_px_per_ft, s.scale_point1_x, s.scale_point1_y, s.scale_point2_x, s.scale_point2_y, s.scale_distance_ft);
       }
 
+      // Copy takeoff nodes (before runs, since points reference nodes)
+      const oldNodes = db.prepare('SELECT * FROM takeoff_nodes WHERE job_id = ?').all(id) as any[];
+      const insertNode = db.prepare(
+        `INSERT INTO takeoff_nodes (job_id, x_px, y_px, pdf_page, invert_elev, rim_elev, structure_type, label)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const nodeIdMap = new Map<number, number>();
+      for (const n of oldNodes) {
+        const result = insertNode.run(newJobId, n.x_px, n.y_px, n.pdf_page, n.invert_elev, n.rim_elev, n.structure_type, n.label);
+        nodeIdMap.set(n.id, Number(result.lastInsertRowid));
+      }
+
       // Copy takeoff runs and their points
       const runs = db.prepare('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
       const insertRun = db.prepare(
         `INSERT INTO takeoff_runs (job_id, label, utility_type, pipe_size_in, pipe_material, pipe_material_id, start_depth_ft, grade_pct, trench_width_ft, bench_width_ft, bedding_type, bedding_depth_ft, bedding_material_id, backfill_type, backfill_material_id, color, sort_order, pdf_page)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      const insertPt = db.prepare('INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)');
+      const insertPt = db.prepare(
+        'INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order, invert_elev, rim_elev, structure_type, node_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      );
       for (const r of runs) {
         const newRun = insertRun.run(
           newJobId, r.label, r.utility_type, r.pipe_size_in, r.pipe_material, r.pipe_material_id,
@@ -537,7 +551,8 @@ export function registerIpcHandlers(db: Database.Database): void {
         const newRunId = Number(newRun.lastInsertRowid);
         const points = db.prepare('SELECT * FROM takeoff_points WHERE run_id = ? ORDER BY sort_order').all(r.id) as any[];
         for (const pt of points) {
-          insertPt.run(newRunId, pt.x_px, pt.y_px, pt.sort_order);
+          const newNodeId = pt.node_id ? (nodeIdMap.get(pt.node_id) ?? null) : null;
+          insertPt.run(newRunId, pt.x_px, pt.y_px, pt.sort_order, pt.invert_elev, pt.rim_elev, pt.structure_type, newNodeId);
         }
       }
 
@@ -1445,7 +1460,15 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:takeoff-runs:list', (_event, jobId: number) => {
     const runs = db.prepare('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY sort_order').all(jobId) as any[];
-    const pointsStmt = db.prepare('SELECT x_px, y_px, invert_elev, rim_elev, structure_type FROM takeoff_points WHERE run_id = ? ORDER BY sort_order');
+    const pointsStmt = db.prepare(`
+      SELECT tp.x_px, tp.y_px, tp.invert_elev, tp.rim_elev, tp.structure_type, tp.node_id,
+             tn.x_px AS node_x, tn.y_px AS node_y,
+             tn.invert_elev AS node_invert, tn.rim_elev AS node_rim,
+             tn.structure_type AS node_structure
+      FROM takeoff_points tp
+      LEFT JOIN takeoff_nodes tn ON tp.node_id = tn.id
+      WHERE tp.run_id = ? ORDER BY tp.sort_order
+    `);
     return runs.map((r) => ({
       id: r.id,
       label: r.label,
@@ -1465,8 +1488,12 @@ export function registerIpcHandlers(db: Database.Database): void {
       color: r.color,
       pdfPage: r.pdf_page,
       points: (pointsStmt.all(r.id) as any[]).map((p) => ({
-        x: p.x_px, y: p.y_px,
-        invertElev: p.invert_elev, rimElev: p.rim_elev, structureType: p.structure_type,
+        x: p.node_id ? p.node_x : p.x_px,
+        y: p.node_id ? p.node_y : p.y_px,
+        invertElev: p.node_id ? p.node_invert : p.invert_elev,
+        rimElev: p.node_id ? p.node_rim : p.rim_elev,
+        structureType: p.node_id ? p.node_structure : p.structure_type,
+        nodeId: p.node_id,
       })),
     }));
   });
@@ -1514,11 +1541,11 @@ export function registerIpcHandlers(db: Database.Database): void {
 
       // Replace points
       db.prepare('DELETE FROM takeoff_points WHERE run_id = ?').run(runId);
-      const insertPt = db.prepare('INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order, invert_elev, rim_elev, structure_type) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      const insertPt = db.prepare('INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order, invert_elev, rim_elev, structure_type, node_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       if (run.points) {
         for (let i = 0; i < run.points.length; i++) {
           const pt = run.points[i];
-          insertPt.run(runId, pt.x, pt.y, i, pt.invertElev ?? null, pt.rimElev ?? null, pt.structureType ?? null);
+          insertPt.run(runId, pt.x, pt.y, i, pt.invertElev ?? null, pt.rimElev ?? null, pt.structureType ?? null, pt.nodeId ?? null);
         }
       }
 
@@ -1531,10 +1558,65 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM takeoff_runs WHERE id = ?').run(id);
   });
 
-  safeHandle('db:takeoff-points:update', (_event, data: { runId: number; sortOrder: number; invertElev: number | null; rimElev: number | null; structureType: string | null }) => {
+  safeHandle('db:takeoff-points:update', (_event, data: { runId: number; sortOrder: number; invertElev: number | null; rimElev: number | null; structureType: string | null; nodeId?: number | null }) => {
     return db.prepare(
-      'UPDATE takeoff_points SET invert_elev = ?, rim_elev = ?, structure_type = ? WHERE run_id = ? AND sort_order = ?'
-    ).run(data.invertElev, data.rimElev, data.structureType, data.runId, data.sortOrder);
+      'UPDATE takeoff_points SET invert_elev = ?, rim_elev = ?, structure_type = ?, node_id = ? WHERE run_id = ? AND sort_order = ?'
+    ).run(data.invertElev, data.rimElev, data.structureType, data.nodeId ?? null, data.runId, data.sortOrder);
+  });
+
+  // ---- Takeoff Nodes (shared junction points: manholes, cleanouts, tees) ----
+
+  safeHandle('db:takeoff-nodes:list', (_event, jobId: number) => {
+    const rows = db.prepare('SELECT * FROM takeoff_nodes WHERE job_id = ? ORDER BY id').all(jobId) as any[];
+    return rows.map((n) => ({
+      id: n.id,
+      jobId: n.job_id,
+      xPx: n.x_px,
+      yPx: n.y_px,
+      pdfPage: n.pdf_page,
+      invertElev: n.invert_elev,
+      rimElev: n.rim_elev,
+      structureType: n.structure_type,
+      label: n.label,
+    }));
+  });
+
+  safeHandle('db:takeoff-nodes:save', (_event, node: any) => {
+    if (node.id && node.id > 0) {
+      db.prepare(`
+        UPDATE takeoff_nodes SET
+          x_px = ?, y_px = ?, pdf_page = ?, invert_elev = ?,
+          rim_elev = ?, structure_type = ?, label = ?
+        WHERE id = ?
+      `).run(
+        node.xPx, node.yPx, node.pdfPage, node.invertElev ?? null,
+        node.rimElev ?? null, node.structureType ?? null, node.label ?? '',
+        node.id
+      );
+      return { id: node.id };
+    } else {
+      const result = db.prepare(`
+        INSERT INTO takeoff_nodes
+          (job_id, x_px, y_px, pdf_page, invert_elev, rim_elev, structure_type, label)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        node.jobId, node.xPx, node.yPx, node.pdfPage,
+        node.invertElev ?? null, node.rimElev ?? null,
+        node.structureType ?? null, node.label ?? ''
+      );
+      return { id: Number(result.lastInsertRowid) };
+    }
+  });
+
+  safeHandle('db:takeoff-nodes:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM takeoff_nodes WHERE id = ?').run(id);
+  });
+
+  safeHandle('db:takeoff-nodes:connected-runs', (_event, nodeId: number) => {
+    const rows = db.prepare(
+      'SELECT DISTINCT run_id FROM takeoff_points WHERE node_id = ?'
+    ).all(nodeId) as any[];
+    return rows.map((r) => r.run_id as number);
   });
 
   // ---- Takeoff Items (count items: fittings, structures, valves) ----
