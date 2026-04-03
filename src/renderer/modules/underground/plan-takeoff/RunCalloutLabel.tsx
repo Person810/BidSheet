@@ -28,7 +28,7 @@ interface RunCalloutLabelProps {
   isActive: boolean;
 }
 
-export default function RunCalloutLabel({
+const RunCalloutLabel = React.memo(function RunCalloutLabel({
   p1, p2, scalePxPerFt, fontSize, color, segmentIndex, scale, isActive,
 }: RunCalloutLabelProps) {
   const distPx = segmentLengthPx(p1, p2);
@@ -216,4 +216,6 @@ export default function RunCalloutLabel({
       </text>
     </g>
   );
-}
+});
+
+export default RunCalloutLabel;

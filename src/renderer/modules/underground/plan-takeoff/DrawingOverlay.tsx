@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem } from './types';
 import ItemSymbols from './ItemSymbols';
 import RunCalloutLabel from './RunCalloutLabel';
@@ -62,6 +62,12 @@ export function DrawingOverlay({
   movingVertex, movePreviewPos, snapNodeId, nodes = [],
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Keep viewport state in a ref so callbacks that need it don't cause
+  // child re-renders when pan/zoom changes.
+  const vpRef = useRef({ pageWidth, pageHeight, panX, panY, scale });
+  vpRef.current = { pageWidth, pageHeight, panX, panY, scale };
 
   const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (spaceHeld) return;
@@ -82,13 +88,29 @@ export function DrawingOverlay({
     onMouseMove(screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale));
   }, [onMouseMove, pageWidth, pageHeight, panX, panY, scale]);
 
+  // Stable callback for segment right-click: reads viewport from ref so it
+  // doesn't need pan/zoom as deps, keeping RunLines memo effective.
+  const handleSegmentCtx = useCallback((runId: number, segmentIndex: number, screenX: number, screenY: number) => {
+    if (!onSegmentContextMenu) return;
+    const container = svgRef.current?.parentElement;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const vp = vpRef.current;
+    const point = screenToPdf(screenX, screenY, rect, vp.pageWidth, vp.pageHeight, vp.panX, vp.panY, vp.scale);
+    onSegmentContextMenu(runId, segmentIndex, screenX, screenY, point);
+  }, [onSegmentContextMenu]);
+
   if (pageWidth === 0 || pageHeight === 0) return null;
 
-  // Font size that stays ~11px visually regardless of zoom level
-  const labelSize = Math.max(6, pageWidth / 80) / scale;
+  // Font size that stays ~11px visually regardless of zoom level.
+  // Use renderedScale (not scale) so labelSize only recalculates after the
+  // debounced PDF re-render, not on every wheel tick.  During a zoom gesture
+  // labels CSS-scale slightly with cssZoom — imperceptible for ~300 ms.
+  const labelSize = Math.max(6, pageWidth / 80) / (renderedScale > 0 ? renderedScale : 1);
 
   return (
     <svg
+      ref={svgRef}
       onClick={handleClick}
       onMouseMove={handleMouseMove}
       viewBox={`0 0 ${pageWidth} ${pageHeight}`}
@@ -117,12 +139,8 @@ export function DrawingOverlay({
           mousePosition={run.id === activeRunId ? mousePosition : null}
           onSelect={onRunSelect}
           onVertexContextMenu={onVertexContextMenu}
-          onSegmentContextMenu={onSegmentContextMenu}
-          pageWidth={pageWidth}
-          pageHeight={pageHeight}
-          panX={panX}
-          panY={panY}
-          scale={scale}
+          onSegmentContextMenu={handleSegmentCtx}
+          renderedScale={renderedScale}
           movingVertexIndex={movingVertex?.runId === run.id ? movingVertex.vertexIndex : null}
           movePreviewPos={movingVertex?.runId === run.id ? movePreviewPos : null}
         />
@@ -153,9 +171,9 @@ export function DrawingOverlay({
   );
 }
 
-/* ---- Per-run SVG rendering ---- */
+/* ---- Per-run SVG rendering (memoized) ---- */
 
-function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePosition, onSelect, onVertexContextMenu, onSegmentContextMenu, pageWidth, pageHeight, panX, panY, scale, movingVertexIndex, movePreviewPos }: {
+interface RunLinesProps {
   run: TakeoffRun;
   isSelected: boolean;
   isActive: boolean;
@@ -164,15 +182,20 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
   mousePosition?: PdfPoint | null;
   onSelect?: (id: number | null) => void;
   onVertexContextMenu?: (runId: number, vertexIndex: number, screenX: number, screenY: number) => void;
-  onSegmentContextMenu?: (runId: number, segmentIndex: number, screenX: number, screenY: number, pdfPoint: PdfPoint) => void;
-  pageWidth: number;
-  pageHeight: number;
-  panX: number;
-  panY: number;
-  scale: number;
+  /** Simplified: no pdfPoint — DrawingOverlay computes it via vpRef. */
+  onSegmentContextMenu?: (runId: number, segmentIndex: number, screenX: number, screenY: number) => void;
+  /** Used by RunCalloutLabel for drag delta conversion. renderedScale is stable
+   *  during zoom gestures, so it won't bust memo. */
+  renderedScale: number;
   movingVertexIndex?: number | null;
   movePreviewPos?: PdfPoint | null;
-}) {
+}
+
+const RunLines = React.memo(function RunLines({
+  run, isSelected, isActive, labelSize, scalePxPerFt, mousePosition,
+  onSelect, onVertexContextMenu, onSegmentContextMenu,
+  renderedScale, movingVertexIndex, movePreviewPos,
+}: RunLinesProps) {
   const pts = run.points;
   const strokeW = isSelected || isActive ? 3 : 2;
   const nodeR = labelSize * 0.3;
@@ -194,11 +217,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
     if (!onSegmentContextMenu || isActive) return;
     e.preventDefault();
     e.stopPropagation();
-    const container = (e.currentTarget as SVGElement).closest('svg')?.parentElement;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const point = screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale);
-    onSegmentContextMenu(run.id, segmentIndex, e.clientX, e.clientY, point);
+    onSegmentContextMenu(run.id, segmentIndex, e.clientX, e.clientY);
   };
 
   return (
@@ -230,7 +249,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
             <RunCalloutLabel
               p1={prev} p2={p} scalePxPerFt={scalePxPerFt}
               fontSize={labelSize} color={run.color}
-              segmentIndex={segIdx} scale={scale} isActive={isActive}
+              segmentIndex={segIdx} scale={renderedScale} isActive={isActive}
             />
           </g>
         );
@@ -353,7 +372,7 @@ function RunLines({ run, isSelected, isActive, labelSize, scalePxPerFt, mousePos
       )}
     </g>
   );
-}
+});
 
 /* ---- Preview label for rubber-band line during drawing ---- */
 
