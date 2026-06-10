@@ -629,6 +629,17 @@ export function registerIpcHandlers(db: Database.Database): void {
         }
       }
 
+      // Copy takeoff annotations
+      const annotations = db.prepare('SELECT * FROM takeoff_annotations WHERE job_id = ?').all(id) as any[];
+      const insertAnnotation = db.prepare(
+        `INSERT INTO takeoff_annotations (job_id, pdf_page, kind, x1_px, y1_px, x2_px, y2_px, text, color)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const ann of annotations) {
+        insertAnnotation.run(newJobId, ann.pdf_page, ann.kind, ann.x1_px, ann.y1_px,
+          ann.x2_px, ann.y2_px, ann.text, ann.color);
+      }
+
       // Copy takeoff page rotations
       const rotations = db.prepare('SELECT * FROM takeoff_page_rotations WHERE job_id = ?').all(id) as any[];
       const insertRotation = db.prepare(
@@ -1943,6 +1954,48 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM takeoff_areas WHERE id = ?').run(id);
   });
 
+  // ---- Takeoff Annotations (text notes, arrows, revision clouds) ----
+
+  safeHandle('db:takeoff-annotations:list', (_event, jobId: number) => {
+    const rows = db.prepare(
+      'SELECT * FROM takeoff_annotations WHERE job_id = ? ORDER BY id'
+    ).all(jobId) as any[];
+    return rows.map((a) => ({
+      id: a.id,
+      jobId: a.job_id,
+      pdfPage: a.pdf_page,
+      kind: a.kind,
+      x1: a.x1_px,
+      y1: a.y1_px,
+      x2: a.x2_px,
+      y2: a.y2_px,
+      text: a.text,
+      color: a.color,
+    }));
+  });
+
+  safeHandle('db:takeoff-annotations:save', (_event, ann: any) => {
+    if (ann.id && ann.id > 0) {
+      db.prepare(
+        `UPDATE takeoff_annotations SET pdf_page = ?, kind = ?, x1_px = ?, y1_px = ?,
+          x2_px = ?, y2_px = ?, text = ?, color = ? WHERE id = ?`
+      ).run(ann.pdfPage, ann.kind, ann.x1, ann.y1, ann.x2 ?? null, ann.y2 ?? null,
+        ann.text ?? '', ann.color, ann.id);
+      return { id: ann.id };
+    } else {
+      const result = db.prepare(
+        `INSERT INTO takeoff_annotations (job_id, pdf_page, kind, x1_px, y1_px, x2_px, y2_px, text, color)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(ann.jobId, ann.pdfPage, ann.kind, ann.x1, ann.y1, ann.x2 ?? null, ann.y2 ?? null,
+        ann.text ?? '', ann.color);
+      return { id: Number(result.lastInsertRowid) };
+    }
+  });
+
+  safeHandle('db:takeoff-annotations:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM takeoff_annotations WHERE id = ?').run(id);
+  });
+
   // ---- Takeoff undo/redo state restore ----
 
   // Replaces the entire takeoff state (runs, points, nodes, items, areas)
@@ -1954,6 +2007,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       db.prepare('DELETE FROM takeoff_areas WHERE job_id = ?').run(jobId);
       db.prepare('DELETE FROM takeoff_runs WHERE job_id = ?').run(jobId);
       db.prepare('DELETE FROM takeoff_nodes WHERE job_id = ?').run(jobId);
+      db.prepare('DELETE FROM takeoff_annotations WHERE job_id = ?').run(jobId);
 
       // Nodes first — run points reference them
       const insertNode = db.prepare(
@@ -2016,6 +2070,16 @@ export function registerIpcHandlers(db: Database.Database): void {
           insertAreaPt.run(a.id, pt.x, pt.y, i);
         });
       });
+
+      const insertAnn = db.prepare(
+        `INSERT INTO takeoff_annotations (id, job_id, pdf_page, kind, x1_px, y1_px, x2_px, y2_px, text, color)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const ann of state.annotations || []) {
+        if (ann.id <= 0) continue;
+        insertAnn.run(ann.id, jobId, ann.pdfPage, ann.kind, ann.x1, ann.y1,
+          ann.x2 ?? null, ann.y2 ?? null, ann.text ?? '', ann.color);
+      }
 
       return { success: true };
     });

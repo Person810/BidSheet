@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import type { TakeoffRun, TakeoffItem, TakeoffNode, TakeoffArea } from './types';
+import type { TakeoffRun, TakeoffItem, TakeoffNode, TakeoffArea, TakeoffAnnotation } from './types';
 
 const MAX_HISTORY = 50;
 
@@ -8,6 +8,7 @@ interface TakeoffSnapshot {
   items: TakeoffItem[];
   nodes: TakeoffNode[];
   areas: TakeoffArea[];
+  annotations: TakeoffAnnotation[];
 }
 
 interface UseTakeoffHistoryOptions {
@@ -55,6 +56,7 @@ export function useTakeoffHistory({ jobId, getState, reloadAll }: UseTakeoffHist
       items: state.items.filter((i) => i.id > 0),
       nodes: state.nodes.filter((n) => n.id > 0),
       areas: state.areas.filter((a) => a.id > 0),
+      annotations: state.annotations.filter((a) => a.id > 0),
     });
   }, [getState]);
 

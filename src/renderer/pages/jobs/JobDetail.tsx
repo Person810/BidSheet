@@ -9,6 +9,7 @@ import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { QuotesTab } from './QuotesTab';
 import { CostCodeReportModal } from './CostCodeReportModal';
+import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
 
@@ -46,6 +47,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [parentJob, setParentJob] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [profileCount, setProfileCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
@@ -654,17 +657,42 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           <button className="btn btn-secondary" onClick={handlePrint} disabled={printing}>
             {printing ? 'Printing...' : 'Print Bid'}
           </button>
-          <button className="btn btn-secondary" onClick={handleExportPdf} disabled={pdfExporting}>
-            {pdfExporting ? 'Generating...' : 'Export PDF'}
-          </button>
-          <button className="btn btn-secondary" onClick={handleExportQB}>QB Export</button>
-          <button className="btn btn-secondary" onClick={handleExportUnitPrices}
-            title="Export a unit price schedule with markups folded into unit sell prices">
-            Unit Prices
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowCostCodeReport(true)}
-            title="Direct cost roll-up by cost code">
-            Cost Codes
+          <div style={{ position: 'relative' }}>
+            <button className="btn btn-secondary" onClick={() => setShowExportMenu((o) => !o)}
+              disabled={pdfExporting}>
+              {pdfExporting ? 'Generating...' : <>Export &#9662;</>}
+            </button>
+            {showExportMenu && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 790 }}
+                  onClick={() => setShowExportMenu(false)} />
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 800,
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: 6, padding: '4px 0', minWidth: 220,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                }}>
+                  {[
+                    { label: 'Proposal PDF', action: handleExportPdf },
+                    { label: 'QuickBooks CSV', action: handleExportQB },
+                    { label: 'Unit Price Schedule CSV', action: handleExportUnitPrices },
+                    { label: 'Cost Code Report', action: () => setShowCostCodeReport(true) },
+                  ].map((opt) => (
+                    <div key={opt.label}
+                      onClick={() => { setShowExportMenu(false); opt.action(); }}
+                      style={{ padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--text-primary)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <button className="btn btn-secondary" onClick={() => setShowCompare(true)}
+            title="Compare this estimate against another job (e.g. a duplicated what-if scenario)">
+            Compare
           </button>
           {job.status === 'draft' && (
             <button className="btn btn-secondary" onClick={() => updateStatus('submitted')}>Mark Submitted</button>
@@ -952,6 +980,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             </div>
           </div>
         </div>
+      )}
+
+      {/* Compare Jobs Modal */}
+      {showCompare && (
+        <CompareJobsModal baseJobId={jobId} onClose={() => setShowCompare(false)} />
       )}
 
       {/* Cost Code Report Modal */}

@@ -57,16 +57,19 @@ These are genuinely competitive today, and a few are *better* than generic paid 
 | No assembly-driven takeoff | Measured areas can link an assembly; Send Areas to Bid expands the full assembly (materials + labor + equipment) per measured SY |
 | No escalation | Job-level material escalation %: raises material direct cost before markups, taxed like the materials it represents, shown on the grid/PDF/exports; job markups are now also editable per job (previously creation-time only) |
 
-## Remaining gaps, prioritized
+## Tier 3 gaps — closed (practical subset)
 
-### Tier 3 — parity items, lower urgency for the trade
+| Gap | What was added |
+|---|---|
+| No plan markup tools | Annotate menu in takeoff: text notes, arrows, and revision clouds, persisted per page, undo/redo-aware, with their own layer toggle and copied on job duplication |
+| No multi-select | Select mode with marquee drag across runs, items, areas, and annotations; bulk delete and bulk set-utility-type, both undoable |
+| No what-if comparison | Compare button on the job page: pick any other job (e.g. a duplicated scenario) for a side-by-side per-section and markup-stack delta view |
 
-- Annotation/markup tools (text, arrows, clouds) on plan sheets
-- Multi-select and bulk edit of takeoff objects
-- Scenario comparison (what-if duplicate with delta view)
-- OCR/auto-count of repeated symbols
-- Mobile/web access and multi-user collaboration (an architectural decision, not a feature)
+### Deliberately not built
+
+- **OCR/auto-count of repeated symbols** — experimental value on scanned plan sets doesn't justify the maintenance burden yet; revisit if vector-PDF symbol extraction proves reliable.
+- **Mobile/web access and multi-user collaboration** — an architectural decision (sync, hosting, auth) that conflicts with BidSheet's local-first, no-subscription design; would need its own design effort before any code.
 
 ## Positioning
 
-BidSheet should not chase generic-takeoff feature parity item by item. Its edge is **trade depth**: trench math, junction elevations, restoration areas, and crew-based costing in one tool, free and local. Paid generic tools make underground estimators assemble that themselves. With Tiers 1 and 2 closed, BidSheet covers the estimating workflow end to end — takeoff through unit-price bid forms, quote management, and cost-code reporting; what remains in Tier 3 is generic-tool polish, not trade capability.
+BidSheet should not chase generic-takeoff feature parity item by item. Its edge is **trade depth**: trench math, junction elevations, restoration areas, and crew-based costing in one tool, free and local. Paid generic tools make underground estimators assemble that themselves. With all three tiers addressed, BidSheet covers the estimating workflow end to end — takeoff with markup tools through unit-price bid forms, quote management, cost-code reporting, and scenario comparison. The remaining unbuilt items (OCR auto-count, mobile/web) are deliberate scope decisions documented above, not gaps waiting for time.

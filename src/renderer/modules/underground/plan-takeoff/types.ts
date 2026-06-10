@@ -148,11 +148,34 @@ export interface AreaConfig {
   assemblyId: number | null;
 }
 
+export type AnnotationKind = 'text' | 'arrow' | 'cloud';
+
+/**
+ * A plan markup: a text note (x1,y1), an arrow (x1,y1 → x2,y2), or a
+ * revision cloud over the rectangle (x1,y1)-(x2,y2).
+ *
+ * ID convention: same as TakeoffRun (negative = local-only, positive = DB).
+ */
+export interface TakeoffAnnotation {
+  id: number;
+  jobId: number;
+  pdfPage: number;
+  kind: AnnotationKind;
+  x1: number;
+  y1: number;
+  x2: number | null;
+  y2: number | null;
+  text: string;
+  color: string;
+}
+
+export const ANNOTATION_COLOR = '#EF4444';
+
 export interface ContextMenuState {
   x: number;
   y: number;
-  targetType: 'vertex' | 'segment' | 'fitting' | 'countItem' | 'area' | 'canvas';
-  targetId: number | null;       // run ID, item ID, or area ID
+  targetType: 'vertex' | 'segment' | 'fitting' | 'countItem' | 'area' | 'annotation' | 'canvas';
+  targetId: number | null;       // run ID, item ID, area ID, or annotation ID
   targetData: {
     vertexIndex?: number;
     segmentIndex?: number;
