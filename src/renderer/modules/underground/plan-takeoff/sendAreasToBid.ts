@@ -1,11 +1,13 @@
 import type { TakeoffArea } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import { computePolygonAreaSF, ftToInches, loadPageScaleMap } from './takeoffUtils';
+import { buildAssemblyLineItems } from '../../../../shared/assemblyExpansion';
 
 interface AreaGroup {
   areaType: TakeoffArea['areaType'];
   depthFt: number;
   materialId: number | null;
+  assemblyId: number | null;
   totalSY: number;
   totalCY: number;
   labels: string[];
@@ -36,7 +38,7 @@ export async function sendAreasToBid(
 
     // Group key uses rounded inches so float noise in stored depths
     // can't split otherwise-identical groups
-    const key = `${area.areaType}|${ftToInches(area.depthFt)}|${area.materialId ?? ''}`;
+    const key = `${area.areaType}|${ftToInches(area.depthFt)}|${area.materialId ?? ''}|${area.assemblyId ?? ''}`;
     const g = groups.get(key);
     if (g) {
       g.totalSY += sf / 9;
@@ -47,6 +49,7 @@ export async function sendAreasToBid(
         areaType: area.areaType,
         depthFt: area.depthFt,
         materialId: area.materialId,
+        assemblyId: area.assemblyId,
         totalSY: sf / 9,
         totalCY: (sf * area.depthFt) / 27,
         labels: area.label ? [area.label] : [],
@@ -55,8 +58,13 @@ export async function sendAreasToBid(
   }
   if (groups.size === 0) return 0;
 
-  // Look up catalog unit costs
-  const materials: any[] = await window.api.getMaterials();
+  // Look up catalog unit costs, assemblies, and crews for expansion
+  const needsAssemblies = Array.from(groups.values()).some((g) => g.assemblyId != null);
+  const [materials, assemblies, crews] = await Promise.all([
+    window.api.getMaterials() as Promise<any[]>,
+    needsAssemblies ? (window.api.getAssemblies() as Promise<any[]>) : Promise.resolve([]),
+    needsAssemblies ? (window.api.getCrewTemplates() as Promise<any[]>) : Promise.resolve([]),
+  ]);
 
   // Get existing section count for sort_order
   const sections: any[] = await window.api.getBidSections(jobId);
@@ -69,7 +77,27 @@ export async function sendAreasToBid(
   const sectionId = sectionResult.id;
 
   let sortOrder = 0;
+  let createdCount = 0;
   for (const g of groups.values()) {
+    // Assembly-linked areas expand the full assembly (materials + labor +
+    // equipment) scaled by measured SY
+    const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
+    if (assembly) {
+      const qtySY = Math.round(g.totalSY * 10) / 10;
+      const noteSuffix = g.labels.length ? ` — ${g.labels.join('; ')}` : ' — from plan takeoff';
+      const payloads = buildAssemblyLineItems(assembly, qtySY, crews, noteSuffix);
+      for (const payload of payloads) {
+        await window.api.saveBidLineItem({
+          sectionId,
+          jobId,
+          sortOrder: sortOrder++,
+          ...payload,
+        });
+      }
+      createdCount += payloads.length;
+      continue;
+    }
+
     const mat = g.materialId ? materials.find((m: any) => m.id === g.materialId) : null;
     const depthIn = ftToInches(g.depthFt);
     const description =
@@ -104,7 +132,8 @@ export async function sendAreasToBid(
       subcontractorCost: 0,
       notes,
     });
+    createdCount += 1;
   }
 
-  return groups.size;
+  return createdCount;
 }

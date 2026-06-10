@@ -14,6 +14,7 @@ const DEFAULT_CONFIG: AreaConfig = {
   areaType: 'asphalt',
   depthFt: 4 / 12,
   materialId: null,
+  assemblyId: null,
 };
 
 interface AreaConfigModalProps {
@@ -26,12 +27,22 @@ interface AreaConfigModalProps {
 export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaConfig }: AreaConfigModalProps) {
   const [config, setConfig] = useState<AreaConfig>(initialConfig ?? { ...DEFAULT_CONFIG });
   const [materialId, setMaterialId] = useState<number | string | null>(initialConfig?.materialId ?? null);
+  const [assemblyId, setAssemblyId] = useState<number | string | null>(initialConfig?.assemblyId ?? null);
   const [materials, setMaterials] = useState<AutocompleteItem[]>([]);
+  const [assemblies, setAssemblies] = useState<AutocompleteItem[]>([]);
 
   useEffect(() => {
     window.api.getMaterials()
       .then((rows: any[]) => setMaterials(materialsToAutocomplete(rows)))
       .catch((err) => console.error('Failed to load materials:', err));
+    window.api.getAssemblies()
+      .then((rows: any[]) => setAssemblies(rows.map((a: any) => ({
+        id: a.id,
+        label: a.name,
+        sublabel: a.description || `${(a.items || []).length} material${(a.items || []).length !== 1 ? 's' : ''}`,
+        detailSub: `per ${a.unit}`,
+      }))))
+      .catch((err) => console.error('Failed to load assemblies:', err));
   }, []);
 
   const set = <K extends keyof AreaConfig>(field: K, value: AreaConfig[K]) =>
@@ -41,12 +52,17 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
     if (!lastAreaConfig) return;
     setConfig({ ...lastAreaConfig });
     setMaterialId(lastAreaConfig.materialId);
+    setAssemblyId(lastAreaConfig.assemblyId);
   };
 
   const handleConfirm = () => {
+    const resolvedAssemblyId = typeof assemblyId === 'string' ? null : assemblyId as number | null;
     onConfirm({
       ...config,
-      materialId: typeof materialId === 'string' ? null : materialId as number | null,
+      // An assembly supersedes a direct material link — don't store both
+      materialId: resolvedAssemblyId != null ? null
+        : (typeof materialId === 'string' ? null : materialId as number | null),
+      assemblyId: resolvedAssemblyId,
     });
   };
 
@@ -107,21 +123,37 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
           Depth 0 measures area only. Set a depth to also get volume (CY).
         </div>
 
-        {/* Material */}
+        {/* Assembly */}
         <div className="form-group">
-          <label className="form-label">Material (optional)</label>
+          <label className="form-label">Assembly (optional)</label>
           <FuzzyAutocomplete
-            items={materials}
-            value={materialId}
-            onSelect={(item) => setMaterialId(item ? item.id : null)}
-            placeholder="Search material (e.g. asphalt, concrete)"
+            items={assemblies}
+            value={assemblyId}
+            onSelect={(item) => setAssemblyId(item ? item.id : null)}
+            placeholder="Search assemblies (e.g. asphalt patch per SY)"
           />
-          {materialId == null && (
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              Link a catalog material so Send to Bid can include pricing.
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Send to Bid expands the assembly (materials + labor + equipment) per measured SY.
+          </div>
         </div>
+
+        {/* Material (used when no assembly is linked) */}
+        {assemblyId == null && (
+          <div className="form-group">
+            <label className="form-label">Material (optional)</label>
+            <FuzzyAutocomplete
+              items={materials}
+              value={materialId}
+              onSelect={(item) => setMaterialId(item ? item.id : null)}
+              placeholder="Search material (e.g. asphalt, concrete)"
+            />
+            {materialId == null && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                Link a catalog material or an assembly so Send to Bid can include pricing.
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="modal-actions">

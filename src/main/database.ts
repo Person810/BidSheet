@@ -193,6 +193,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 20) {
     migrateV20(db);
   }
+  if (version < 21) {
+    migrateV21(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -683,6 +686,41 @@ function migrateV19(db: Database.Database): void {
     ALTER TABLE bid_sections ADD COLUMN profit_percent_override REAL;
     ALTER TABLE bid_sections ADD COLUMN bond_percent_override REAL;
     INSERT INTO schema_version (version) VALUES (19);
+  `);
+}
+
+// V21: Tier 2 estimating features — owner item numbers + cost codes on line
+// items, subcontractor/supplier quotes, labor+equipment assembly components,
+// assembly-driven area takeoff, and job-level material escalation
+function migrateV21(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE bid_line_items ADD COLUMN item_number TEXT;
+    ALTER TABLE bid_line_items ADD COLUMN cost_code TEXT;
+
+    CREATE TABLE quotes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      scope       TEXT NOT NULL DEFAULT '',
+      vendor      TEXT NOT NULL DEFAULT '',
+      contact     TEXT NOT NULL DEFAULT '',
+      amount      REAL NOT NULL DEFAULT 0,
+      quote_date  TEXT,
+      notes       TEXT,
+      is_selected INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX idx_quotes_job ON quotes(job_id);
+
+    ALTER TABLE assemblies ADD COLUMN production_rate_id INTEGER REFERENCES production_rates(id);
+    ALTER TABLE assemblies ADD COLUMN crew_template_id INTEGER REFERENCES crew_templates(id);
+    ALTER TABLE assemblies ADD COLUMN equipment_id INTEGER REFERENCES equipment(id);
+    ALTER TABLE assemblies ADD COLUMN equipment_hours_per_unit REAL NOT NULL DEFAULT 0;
+
+    ALTER TABLE takeoff_areas ADD COLUMN assembly_id INTEGER REFERENCES assemblies(id);
+
+    ALTER TABLE jobs ADD COLUMN escalation_percent REAL NOT NULL DEFAULT 0;
+
+    INSERT INTO schema_version (version) VALUES (21);
   `);
 }
 

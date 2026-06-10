@@ -3,9 +3,12 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal, statusBadge } from './helpers';
+import { buildAssemblyLineItems } from '../../../shared/assemblyExpansion';
 import { BidGrid } from './BidGrid';
 import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
+import { QuotesTab } from './QuotesTab';
+import { CostCodeReportModal } from './CostCodeReportModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
 
@@ -41,7 +44,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [changeOrders, setChangeOrders] = useState<any[]>([]);
   const [coSummaries, setCoSummaries] = useState<Record<number, any>>({});
   const [parentJob, setParentJob] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'changes'>('estimate');
+  const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'changes'>('estimate');
+  const [showCostCodeReport, setShowCostCodeReport] = useState(false);
   const [profileCount, setProfileCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
@@ -62,22 +66,27 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [showAssemblyPicker, setShowAssemblyPicker] = useState(false);
   const [assemblySectionId, setAssemblySectionId] = useState<number | null>(null);
 
-  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; onNo?: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
   const [showEditJob, setShowEditJob] = useState(false);
-  const [editJobForm, setEditJobForm] = useState({ name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '' });
+  const [editJobForm, setEditJobForm] = useState({
+    name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
+    overheadPercent: 0, profitPercent: 0, bondPercent: 0, taxPercent: 0, escalationPercent: 0,
+  });
   const [lockBypassed, setLockBypassed] = useState(false);
 
   // Derived: bid is effectively locked when job is won or lost, bid_locked=1, and user hasn't bypassed this session
   const isLocked = (job?.status === 'won' || job?.status === 'lost') && job?.bid_locked === 1 && !lockBypassed;
 
-  // Gate any destructive/edit action behind a soft lock warning
-  const withLockCheck = (action: () => void) => {
+  // Gate any destructive/edit action behind a soft lock warning.
+  // onCancel fires when the user declines, so promise-based callers can settle.
+  const withLockCheck = (action: () => void, onCancel?: () => void) => {
     if (isLocked) {
       setConfirmState({
         msg: 'This bid is locked. Edit anyway?',
         yesLabel: 'Edit Anyway',
         variant: 'neutral',
         onYes: () => { setConfirmState(null); setLockBypassed(true); action(); },
+        onNo: onCancel,
       });
     } else {
       action();
@@ -187,6 +196,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       location: job.location || '',
       bidDate: job.bid_date ? job.bid_date.slice(0, 10) : '',
       description: job.description || '',
+      overheadPercent: job.overhead_percent ?? 0,
+      profitPercent: job.profit_percent ?? 0,
+      bondPercent: job.bond_percent ?? 0,
+      taxPercent: job.tax_percent ?? 0,
+      escalationPercent: job.escalation_percent ?? 0,
     });
     setShowEditJob(true);
   };
@@ -201,9 +215,61 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       location: editJobForm.location || null,
       bidDate: editJobForm.bidDate || null,
       description: editJobForm.description || null,
+      overheadPercent: editJobForm.overheadPercent,
+      profitPercent: editJobForm.profitPercent,
+      bondPercent: editJobForm.bondPercent,
+      taxPercent: editJobForm.taxPercent,
+      escalationPercent: editJobForm.escalationPercent,
     });
     setShowEditJob(false);
     loadJob();
+  };
+
+  // ---- Quotes → bid ----
+  const handleSendQuotesToBid = async (selected: { scope: string; vendor: string; amount: number; notes: string | null }[]) => {
+    if (selected.length === 0) return;
+    const sectionResult = await window.api.saveBidSection({
+      jobId,
+      name: 'Subcontractors',
+      sortOrder: sections.length,
+    });
+    let sortOrder = 0;
+    for (const q of selected) {
+      await window.api.saveBidLineItem({
+        sectionId: sectionResult.id,
+        jobId,
+        description: `${q.scope} — ${q.vendor}`,
+        quantity: 1,
+        unit: 'LS',
+        sortOrder: sortOrder++,
+        materialId: null,
+        materialUnitCost: 0,
+        crewTemplateId: null,
+        productionRateId: null,
+        laborHours: 0,
+        laborCostPerHour: 0,
+        equipmentId: null,
+        equipmentCostPerHour: 0,
+        equipmentHours: 0,
+        subcontractorCost: q.amount,
+        notes: q.notes ? `Quote: ${q.notes}` : 'From quote tracking',
+      });
+    }
+    await loadJob();
+  };
+
+  // ---- Unit price schedule export ----
+  const handleExportUnitPrices = async () => {
+    try {
+      const result = await window.api.exportUnitPriceCSV(jobId);
+      if (result.success) {
+        addToast(`Unit price schedule saved to ${result.path}`, 'success');
+      } else if (result.error) {
+        addToast(result.error, 'error');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Export failed', 'error');
+    }
   };
 
   // ---- Sections ----
@@ -268,6 +334,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       setEditingLineItem(item);
       setLineForm({
         description: item.description,
+        itemNumber: item.item_number || '',
+        costCode: item.cost_code || '',
         quantity: item.quantity,
         unit: item.unit,
         materialId: item.material_id || 0,
@@ -293,6 +361,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       sectionId: editingSectionId,
       jobId,
       description: lineForm.description,
+      itemNumber: lineForm.itemNumber || null,
+      costCode: lineForm.costCode || null,
       quantity: lineForm.quantity,
       unit: lineForm.unit,
       sortOrder: editingLineItem?.sort_order ?? sectionItems.length,
@@ -341,24 +411,12 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     const sectionItems = lineItems[assemblySectionId] || [];
     let sortOrder = sectionItems.length;
 
-    for (const item of assembly.items) {
+    for (const payload of buildAssemblyLineItems(assembly, qty, crews)) {
       await window.api.saveBidLineItem({
         sectionId: assemblySectionId,
         jobId,
-        description: item.material_name,
-        quantity: item.quantity * qty,
-        unit: item.material_unit,
         sortOrder: sortOrder++,
-        materialId: item.material_id,
-        materialUnitCost: item.material_unit_cost,
-        crewTemplateId: null,
-        productionRateId: null,
-        laborHours: 0,
-        laborCostPerHour: 0,
-        equipmentCostPerHour: 0,
-        equipmentHours: 0,
-        subcontractorCost: 0,
-        notes: `From assembly: ${assembly.name}`,
+        ...payload,
       });
     }
 
@@ -600,6 +658,14 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             {pdfExporting ? 'Generating...' : 'Export PDF'}
           </button>
           <button className="btn btn-secondary" onClick={handleExportQB}>QB Export</button>
+          <button className="btn btn-secondary" onClick={handleExportUnitPrices}
+            title="Export a unit price schedule with markups folded into unit sell prices">
+            Unit Prices
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowCostCodeReport(true)}
+            title="Direct cost roll-up by cost code">
+            Cost Codes
+          </button>
           {job.status === 'draft' && (
             <button className="btn btn-secondary" onClick={() => updateStatus('submitted')}>Mark Submitted</button>
           )}
@@ -640,6 +706,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           onClick={() => setActiveTab('profiles')}>
           Profiles {profileCount > 0 && <span className="job-tab-count">{profileCount}</span>}
         </button>
+        <button className={`job-tab ${activeTab === 'quotes' ? 'job-tab-active' : ''}`}
+          onClick={() => setActiveTab('quotes')}>Quotes</button>
         {!isChangeOrder && (
           <button className={`job-tab ${activeTab === 'changes' ? 'job-tab-active' : ''}`}
             onClick={() => setActiveTab('changes')}>
@@ -692,7 +760,17 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       {/* Profiles tab */}
       {activeTab === 'profiles' && (
         <TrenchProfileList jobId={jobId} onProfileCountChange={setProfileCount} onConvertToBid={(data) => new Promise<void>((resolve) => {
-          withLockCheck(async () => { await handleConvertToBid(data); resolve(); });
+          withLockCheck(async () => { await handleConvertToBid(data); resolve(); }, resolve);
+        })} />
+      )}
+
+      {/* Quotes tab */}
+      {activeTab === 'quotes' && (
+        <QuotesTab jobId={jobId} onSendToBid={(selected) => new Promise<void>((resolve, reject) => {
+          withLockCheck(async () => {
+            try { await handleSendQuotesToBid(selected); resolve(); }
+            catch (err) { reject(err); }
+          }, resolve);
         })} />
       )}
 
@@ -793,7 +871,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         <ConfirmDialog
           message={confirmState.msg}
           onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)}
+          onNo={() => { const cancel = confirmState.onNo; setConfirmState(null); cancel?.(); }}
           yesLabel={confirmState.yesLabel}
           variant={confirmState.variant}
         />
@@ -840,12 +918,50 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
               <input type="text" className="form-control" value={editJobForm.description}
                 onChange={(e) => setEditJobForm({ ...editJobForm, description: e.target.value })} />
             </div>
+            <div style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 8px' }}>Markups &amp; Escalation</div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Overhead %</label>
+                <input type="number" className="form-control" value={editJobForm.overheadPercent} step="0.5"
+                  onChange={(e) => setEditJobForm({ ...editJobForm, overheadPercent: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div className="form-group">
+                <label>Profit %</label>
+                <input type="number" className="form-control" value={editJobForm.profitPercent} step="0.5"
+                  onChange={(e) => setEditJobForm({ ...editJobForm, profitPercent: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div className="form-group">
+                <label>Bond %</label>
+                <input type="number" className="form-control" value={editJobForm.bondPercent} step="0.1"
+                  onChange={(e) => setEditJobForm({ ...editJobForm, bondPercent: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div className="form-group">
+                <label>Tax %</label>
+                <input type="number" className="form-control" value={editJobForm.taxPercent} step="0.1"
+                  onChange={(e) => setEditJobForm({ ...editJobForm, taxPercent: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div className="form-group">
+                <label title="Material price escalation for long-lead bids — raises material direct cost before markups">Escalation %</label>
+                <input type="number" className="form-control" value={editJobForm.escalationPercent} step="0.5"
+                  onChange={(e) => setEditJobForm({ ...editJobForm, escalationPercent: parseFloat(e.target.value) || 0 })} />
+              </div>
+            </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowEditJob(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={saveJobInfo} disabled={!editJobForm.name.trim()}>Save</button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Cost Code Report Modal */}
+      {showCostCodeReport && (
+        <CostCodeReportModal
+          job={job}
+          sections={sections}
+          lineItems={lineItems}
+          onClose={() => setShowCostCodeReport(false)}
+        />
       )}
 
       {/* Assembly Picker Modal */}

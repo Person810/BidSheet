@@ -15,6 +15,7 @@ interface ExportJob {
   profit_percent: number;
   bond_percent: number;
   tax_percent: number;
+  escalation_percent?: number;
 }
 
 interface ExportSection {
@@ -31,6 +32,7 @@ interface ExportLineItem {
 }
 
 interface ExportSummary {
+  escalation?: number;
   overhead: number;
   profit: number;
   bond: number;
@@ -63,7 +65,7 @@ const COLUMNS = [
 ];
 
 /** Escape a field value per RFC 4180: quote if it contains comma, quote, or newline. */
-function escapeField(value: string): string {
+export function escapeField(value: string): string {
   if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return '"' + value.replace(/"/g, '""') + '"';
   }
@@ -147,6 +149,12 @@ export function generateEstimateCSV(data: CSVExportData): string {
   }
 
   // Markup rows (skip if zero)
+  if ((summary.escalation || 0) > 0) {
+    lines.push(buildRow(
+      customer, invoiceNo, date, location, memo,
+      `Material Escalation (${fmt(job.escalation_percent || 0)}%)`, 1, fmt(summary.escalation!), fmt(summary.escalation!),
+    ));
+  }
   if (summary.overhead > 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,

@@ -45,6 +45,7 @@ function areaToConfig(area: TakeoffArea): AreaConfig {
     areaType: area.areaType,
     depthFt: area.depthFt,
     materialId: area.materialId,
+    assemblyId: area.assemblyId,
   };
 }
 

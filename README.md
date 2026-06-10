@@ -10,8 +10,11 @@ Everything runs locally on your machine.
 - Build crews with burdened labor rates and production rates
 - Track equipment costs (owned and rented)
 - Create bid estimates organized by section and line item
-- Auto-calculate totals with overhead, profit, bond, and tax markups
+- Auto-calculate totals with overhead, profit, bond, tax, and material escalation markups
 - Bid alternates and per-section markup overrides
+- Subcontractor/supplier quote tracking with winner selection per scope
+- Unit price schedule export (markups folded into unit sell prices) and cost-code roll-up reports
+- Assemblies with labor and equipment components, expandable from measured takeoff areas
 - Generate professional bid proposal PDFs
 - Duplicate previous bids as starting points for new jobs
 - Plan takeoff with PDF viewer, scale calibration, page rotation, and pipe run drawing
