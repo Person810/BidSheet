@@ -1,8 +1,11 @@
 import React, { useCallback, useRef } from 'react';
-import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem } from './types';
+import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem, TakeoffArea } from './types';
 import ItemSymbols from './ItemSymbols';
 import RunCalloutLabel from './RunCalloutLabel';
-import { getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT } from './takeoffUtils';
+import {
+  getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT,
+  computePolygonAreaSF, polygonCentroid,
+} from './takeoffUtils';
 
 interface DrawingOverlayProps {
   pageWidth: number;
@@ -39,6 +42,13 @@ interface DrawingOverlayProps {
   snapNodeId?: number | null;
   /** Page-filtered nodes for snap highlight rendering */
   nodes?: { id: number; xPx: number; yPx: number }[];
+  /** Measured surface areas (polygons) */
+  areas?: TakeoffArea[];
+  activeAreaId?: number | null;
+  selectedAreaId?: number | null;
+  onAreaSelect?: (areaId: number | null) => void;
+  /** Fired when user right-clicks an area polygon */
+  onAreaContextMenu?: (areaId: number, screenX: number, screenY: number) => void;
 }
 
 function screenToPdf(
@@ -60,6 +70,7 @@ export function DrawingOverlay({
   items = [], selectedItemId, onItemSelect,
   onVertexContextMenu, onSegmentContextMenu, onItemContextMenu,
   movingVertex, movePreviewPos, snapNodeId, nodes = [],
+  areas = [], activeAreaId, selectedAreaId, onAreaSelect, onAreaContextMenu,
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
   const svgRef = useRef<SVGSVGElement>(null);
@@ -127,6 +138,21 @@ export function DrawingOverlay({
         overflow: 'visible',
       }}
     >
+      {/* Measured areas (rendered below runs so pipe lines stay clickable) */}
+      {areas.map((area) => (
+        <AreaPolygon
+          key={area.id}
+          area={area}
+          isSelected={area.id === selectedAreaId}
+          isActive={area.id === activeAreaId}
+          interactive={!isActive}
+          labelSize={labelSize}
+          scalePxPerFt={scalePxPerFt ?? 1}
+          mousePosition={area.id === activeAreaId ? mousePosition : null}
+          onSelect={onAreaSelect}
+          onContextMenu={onAreaContextMenu}
+        />
+      ))}
       {/* Completed + active runs */}
       {runs.map((run) => (
         <RunLines
@@ -134,6 +160,7 @@ export function DrawingOverlay({
           run={run}
           isSelected={run.id === selectedRunId}
           isActive={run.id === activeRunId}
+          interactive={!isActive}
           labelSize={labelSize}
           scalePxPerFt={scalePxPerFt ?? 1}
           mousePosition={run.id === activeRunId ? mousePosition : null}
@@ -171,12 +198,132 @@ export function DrawingOverlay({
   );
 }
 
+/* ---- Per-area polygon rendering (memoized) ---- */
+
+interface AreaPolygonProps {
+  area: TakeoffArea;
+  isSelected: boolean;
+  isActive: boolean;
+  /** False while any drawing/calibration is in progress so the polygon's
+   *  fill region doesn't swallow point-placement clicks. */
+  interactive: boolean;
+  labelSize: number;
+  scalePxPerFt: number;
+  mousePosition?: PdfPoint | null;
+  onSelect?: (id: number | null) => void;
+  onContextMenu?: (areaId: number, screenX: number, screenY: number) => void;
+}
+
+const AreaPolygon = React.memo(function AreaPolygon({
+  area, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
+  onSelect, onContextMenu,
+}: AreaPolygonProps) {
+  const pts = area.points;
+  if (pts.length === 0) return null;
+
+  // While drawing, include the mouse position so fill and label preview live
+  const previewPts = isActive && mousePosition ? [...pts, mousePosition] : pts;
+  const pointsAttr = previewPts.map((p) => `${p.x},${p.y}`).join(' ');
+  const strokeW = isSelected || isActive ? 3 : 2;
+  const vertexR = labelSize * 0.25;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSelect && !isActive) onSelect(area.id);
+  };
+
+  const handleCtx = (e: React.MouseEvent) => {
+    if (!onContextMenu || isActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onContextMenu(area.id, e.clientX, e.clientY);
+  };
+
+  const areaSF = previewPts.length >= 3 ? computePolygonAreaSF(previewPts, scalePxPerFt) : 0;
+  const centroid = previewPts.length >= 3 ? polygonCentroid(previewPts) : null;
+  const sfLabel = `${Math.round(areaSF).toLocaleString()} SF`;
+  const syLabel = `${(areaSF / 9).toFixed(1)} SY`;
+  const labelWidth = Math.max(sfLabel.length, syLabel.length) * labelSize * 0.55;
+
+  return (
+    <g style={{ pointerEvents: interactive && !isActive ? 'auto' : 'none' }}>
+      <polygon
+        points={pointsAttr}
+        fill={area.color}
+        fillOpacity={isSelected || isActive ? 0.3 : 0.18}
+        stroke={area.color}
+        strokeWidth={strokeW}
+        strokeDasharray={isActive ? '6 4' : undefined}
+        vectorEffect="non-scaling-stroke"
+        style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
+        onClick={handleClick}
+        onContextMenu={handleCtx}
+      />
+      {/* Closing edge hint while drawing */}
+      {isActive && pts.length >= 2 && mousePosition && (
+        <line
+          x1={mousePosition.x} y1={mousePosition.y} x2={pts[0].x} y2={pts[0].y}
+          stroke={area.color} strokeWidth={1.5} strokeDasharray="3 5" opacity={0.5}
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      {/* Vertices */}
+      {pts.map((p, i) => (
+        <circle
+          key={`av-${i}`}
+          cx={p.x} cy={p.y} r={vertexR}
+          fill={area.color} stroke="#fff" strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+          style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
+          onClick={handleClick}
+          onContextMenu={handleCtx}
+        />
+      ))}
+      {/* Centroid area label */}
+      {centroid && areaSF > 0 && (
+        <g transform={`translate(${centroid.x}, ${centroid.y})`} style={{ pointerEvents: 'none' }}
+          opacity={isActive ? 0.85 : 1}>
+          <rect
+            x={-labelWidth / 2 - labelSize * 0.3}
+            y={-labelSize * 1.35}
+            width={labelWidth + labelSize * 0.6}
+            height={labelSize * 2.7}
+            fill="rgba(0,0,0,0.65)" rx={2}
+          />
+          <text x={0} y={-labelSize * 0.25} textAnchor="middle" fontSize={labelSize}
+            fill="#fff" fontFamily="system-ui, sans-serif" fontWeight={600}
+            style={{ userSelect: 'none' }}>
+            {sfLabel}
+          </text>
+          <text x={0} y={labelSize * 0.95} textAnchor="middle" fontSize={labelSize * 0.85}
+            fill="#ddd" fontFamily="system-ui, sans-serif"
+            style={{ userSelect: 'none' }}>
+            {syLabel}
+          </text>
+        </g>
+      )}
+      {/* Selection glow */}
+      {isSelected && pts.length >= 3 && (
+        <polygon
+          points={pointsAttr}
+          fill="none" stroke={area.color} strokeWidth={8} opacity={0.25}
+          strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+    </g>
+  );
+});
+
 /* ---- Per-run SVG rendering (memoized) ---- */
 
 interface RunLinesProps {
   run: TakeoffRun;
   isSelected: boolean;
   isActive: boolean;
+  /** False while any drawing/calibration is in progress so completed runs
+   *  don't swallow point-placement clicks. */
+  interactive: boolean;
   labelSize: number;
   scalePxPerFt: number;
   mousePosition?: PdfPoint | null;
@@ -192,7 +339,7 @@ interface RunLinesProps {
 }
 
 const RunLines = React.memo(function RunLines({
-  run, isSelected, isActive, labelSize, scalePxPerFt, mousePosition,
+  run, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
   onSelect, onVertexContextMenu, onSegmentContextMenu,
   renderedScale, movingVertexIndex, movePreviewPos,
 }: RunLinesProps) {
@@ -221,7 +368,7 @@ const RunLines = React.memo(function RunLines({
   };
 
   return (
-    <g opacity={opacity} style={{ pointerEvents: isActive ? 'none' : 'auto' }}>
+    <g opacity={opacity} style={{ pointerEvents: interactive && !isActive ? 'auto' : 'none' }}>
       {/* Segments */}
       {pts.map((p, i) => {
         if (i === 0) return null;

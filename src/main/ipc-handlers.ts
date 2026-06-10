@@ -566,6 +566,25 @@ export function registerIpcHandlers(db: Database.Database): void {
         insertTakeoffItem.run(newJobId, ti.material_id, ti.x_px, ti.y_px, ti.quantity, ti.label, ti.pdf_page, null);
       }
 
+      // Copy takeoff areas and their points
+      const takeoffAreas = db.prepare('SELECT * FROM takeoff_areas WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
+      const insertTakeoffArea = db.prepare(
+        `INSERT INTO takeoff_areas (job_id, label, area_type, depth_ft, material_id, color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const insertAreaPt = db.prepare(
+        'INSERT INTO takeoff_area_points (area_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
+      );
+      for (const ta of takeoffAreas) {
+        const newAreaId = Number(insertTakeoffArea.run(
+          newJobId, ta.label, ta.area_type, ta.depth_ft, ta.material_id, ta.color, ta.sort_order, ta.pdf_page
+        ).lastInsertRowid);
+        const areaPoints = db.prepare('SELECT * FROM takeoff_area_points WHERE area_id = ? ORDER BY sort_order').all(ta.id) as any[];
+        for (const pt of areaPoints) {
+          insertAreaPt.run(newAreaId, pt.x_px, pt.y_px, pt.sort_order);
+        }
+      }
+
       // Copy takeoff job settings (PDF path, legacy scale)
       const takeoffSettings = db.prepare('SELECT * FROM takeoff_job_settings WHERE job_id = ?').get(id) as any;
       if (takeoffSettings) {
@@ -1670,6 +1689,87 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:takeoff-items:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM takeoff_items WHERE id = ?').run(id);
+  });
+
+  // ---- Takeoff Areas (surface restoration polygons: asphalt, concrete, gravel) ----
+
+  safeHandle('db:takeoff-areas:list', (_event, jobId: number) => {
+    const areas = db.prepare('SELECT * FROM takeoff_areas WHERE job_id = ? ORDER BY sort_order').all(jobId) as any[];
+    const pointsStmt = db.prepare(
+      'SELECT x_px, y_px FROM takeoff_area_points WHERE area_id = ? ORDER BY sort_order'
+    );
+    return areas.map((a) => ({
+      id: a.id,
+      jobId: a.job_id,
+      label: a.label,
+      areaType: a.area_type,
+      depthFt: a.depth_ft,
+      materialId: a.material_id,
+      color: a.color,
+      pdfPage: a.pdf_page,
+      points: (pointsStmt.all(a.id) as any[]).map((p) => ({ x: p.x_px, y: p.y_px })),
+    }));
+  });
+
+  safeHandle('db:takeoff-areas:save', (_event, area: any) => {
+    const saveTx = db.transaction(() => {
+      let areaId: number;
+      if (area.id && area.id > 0) {
+        db.prepare(`
+          UPDATE takeoff_areas SET
+            label = ?, area_type = ?, depth_ft = ?, material_id = ?,
+            color = ?, sort_order = ?, pdf_page = ?,
+            updated_at = datetime('now','localtime')
+          WHERE id = ?
+        `).run(
+          area.label, area.areaType, area.depthFt, area.materialId ?? null,
+          area.color, area.sortOrder ?? 0, area.pdfPage, area.id
+        );
+        areaId = area.id;
+      } else {
+        const result = db.prepare(`
+          INSERT INTO takeoff_areas
+            (job_id, label, area_type, depth_ft, material_id, color, sort_order, pdf_page)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          area.jobId, area.label, area.areaType, area.depthFt,
+          area.materialId ?? null, area.color, area.sortOrder ?? 0, area.pdfPage
+        );
+        areaId = Number(result.lastInsertRowid);
+      }
+
+      // Replace points
+      db.prepare('DELETE FROM takeoff_area_points WHERE area_id = ?').run(areaId);
+      const insertPt = db.prepare('INSERT INTO takeoff_area_points (area_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)');
+      if (area.points) {
+        for (let i = 0; i < area.points.length; i++) {
+          insertPt.run(areaId, area.points[i].x, area.points[i].y, i);
+        }
+      }
+
+      return { id: areaId };
+    });
+    return saveTx();
+  });
+
+  safeHandle('db:takeoff-areas:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM takeoff_areas WHERE id = ?').run(id);
+  });
+
+  // ---- Takeoff CSV export ----
+
+  safeHandle('takeoff:export-csv', async (_event, jobId: number, csvContent: string) => {
+    const job = db.prepare('SELECT name, job_number FROM jobs WHERE id = ?').get(jobId) as any;
+    const safeName = (job?.job_number || job?.name || 'takeoff').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Takeoff Quantities to CSV',
+      defaultPath: `${safeName}-takeoff.csv`,
+      filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    fs.writeFileSync(result.filePath, csvContent, 'utf-8');
+    logger.info('takeoff:export-csv', `Exported takeoff for job ${jobId} to ${result.filePath}`);
+    return { success: true, path: result.filePath };
   });
 
   // ================================================================

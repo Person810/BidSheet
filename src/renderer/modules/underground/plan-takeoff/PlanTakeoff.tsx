@@ -1,19 +1,23 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
 import { DrawingOverlay, screenToPdf } from './DrawingOverlay';
 import { useScaleCalibration, formatScale } from './ScaleCalibration';
 import type { ScaleResult } from './ScaleCalibration';
 import { TrenchConfigModal } from './TrenchConfigModal';
-import { SummaryPanel } from './SummaryPanel';
+import { AreaConfigModal } from './AreaConfigModal';
+import { SummaryPanel, type SummaryTab } from './SummaryPanel';
 import { useRunManager } from './useRunManager';
 import { useItemManager } from './useItemManager';
 import { useNodeManager } from './useNodeManager';
-import TakeoffToolbar from './TakeoffToolbar';
+import { useAreaManager } from './useAreaManager';
+import TakeoffToolbar, { type LayerKey } from './TakeoffToolbar';
 import ItemPickerModal from './ItemPickerModal';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { useToastStore } from '../../../stores/toast-store';
 import { sendToProfiles } from './sendToProfiles';
 import { sendItemsToBid } from './sendItemsToBid';
+import { sendAreasToBid } from './sendAreasToBid';
+import { buildTakeoffCsv } from './exportTakeoffCsv';
 import { ContextMenu, getMenuItems } from './ContextMenu';
 import { EditVertexDialog } from './EditVertexDialog';
 import type { TakeoffJobSettings, PdfPoint, ContextMenuState } from './types';
@@ -49,7 +53,18 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   // -- Item placement via context menu --
   const [pendingItemPlacement, setPendingItemPlacement] = useState<{ runId: number | null; point: PdfPoint; pipeSizeIn?: number } | null>(null);
-  const [summaryTab, setSummaryTab] = useState<'runs' | 'items'>('runs');
+  const [summaryTab, setSummaryTab] = useState<SummaryTab>('runs');
+
+  // -- Layer visibility --
+  const [hiddenLayers, setHiddenLayers] = useState<Set<LayerKey>>(new Set());
+  const toggleLayer = useCallback((key: LayerKey) => {
+    setHiddenLayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const pageSizeRef = useRef({ width: 0, height: 0 });
   const viewerWrapRef = useRef<HTMLDivElement>(null);
@@ -97,9 +112,13 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // Item manager hook
   const im = useItemManager({ jobId, pageNum });
 
-  // Send to Trench Profiles / Send Items to Bid
+  // Area manager hook
+  const am = useAreaManager({ jobId, pageNum });
+
+  // Send to Trench Profiles / Send Items to Bid / Send Areas to Bid
   const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [showSendItemsConfirm, setShowSendItemsConfirm] = useState(false);
+  const [showSendAreasConfirm, setShowSendAreasConfirm] = useState(false);
   const addToast = useToastStore((s) => s.addToast);
 
   const handleSendToProfiles = useCallback(async () => {
@@ -123,6 +142,32 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       addToast('Failed to send items to bid', 'error');
     }
   }, [jobId, im.items, addToast]);
+
+  const handleSendAreasToBid = useCallback(async () => {
+    setShowSendAreasConfirm(false);
+    try {
+      const count = await sendAreasToBid(am.areas, jobId);
+      if (count === 0) {
+        addToast('No areas on calibrated pages to send.', 'error');
+      } else {
+        addToast(`Created ${count} line items in "Surface Restoration" section.`, 'success');
+      }
+    } catch (err) {
+      console.error('Send areas to bid failed:', err);
+      addToast('Failed to send areas to bid', 'error');
+    }
+  }, [jobId, am.areas, addToast]);
+
+  const handleExportCsv = useCallback(async () => {
+    try {
+      const csv = await buildTakeoffCsv(jobId, rm.runs, im.items, am.areas);
+      const result = await window.api.exportTakeoffCsv(jobId, csv);
+      if (result?.success) addToast(`Takeoff exported to ${result.path}`, 'success');
+    } catch (err) {
+      console.error('Takeoff CSV export failed:', err);
+      addToast('Failed to export takeoff CSV', 'error');
+    }
+  }, [jobId, rm.runs, im.items, am.areas, addToast]);
 
   // Load settings on mount
   useEffect(() => {
@@ -195,18 +240,63 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     setResetPanKey((k) => k + 1);
   }, []);
 
+  // Route overlay clicks/moves to whichever tool is active.
+  // Calibration and run interactions (move-vertex, run drawing) are handled
+  // inside rm.handlePointClick; area drawing is checked first since the run
+  // manager would silently ignore those clicks.
+  const handleOverlayPointClick = useCallback((point: PdfPoint) => {
+    if (!calibrating && am.isDrawing) {
+      am.handlePointClick(point);
+      return;
+    }
+    rm.handlePointClick(point);
+  }, [calibrating, am, rm]);
+
+  const handleOverlayMouseMove = useCallback((point: PdfPoint) => {
+    rm.handleMouseMove(point);
+    am.handleMouseMove(point);
+  }, [rm, am]);
+
+  // Selecting one kind of object clears the others so only one detail view
+  // and canvas highlight is active at a time.
+  const handleRunSelect = useCallback((runId: number | null) => {
+    rm.handleRunSelect(runId);
+    if (runId != null) {
+      im.selectItem(null);
+      am.handleAreaSelect(null);
+    }
+  }, [rm, im, am]);
+
+  const handleItemSelect = useCallback((id: number | null) => {
+    im.selectItem(id);
+    if (id != null) {
+      rm.handleRunSelect(null);
+      am.handleAreaSelect(null);
+    }
+  }, [rm, im, am]);
+
+  const handleAreaSelect = useCallback((areaId: number | null) => {
+    am.handleAreaSelect(areaId);
+    if (areaId != null) {
+      rm.handleRunSelect(null);
+      im.selectItem(null);
+    }
+  }, [rm, im, am]);
+
   const handleViewerClick = useCallback((e: React.MouseEvent) => {
-    if (rm.isDrawing) return;
+    if (rm.isDrawing || am.isDrawing) return;
     const target = e.target as HTMLElement;
     if (['line', 'circle', 'rect', 'polygon'].includes(target.tagName)) return;
     rm.handleRunSelect(null);
     im.selectItem(null);
-  }, [rm, im]);
+    am.handleAreaSelect(null);
+  }, [rm, im, am]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     if (rm.interactionMode === 'moveVertex') { rm.cancelMoveVertex(); return; }
     if (rm.isDrawing) { rm.undoLastPoint(); return; }
+    if (am.isDrawing) { am.undoLastPoint(); return; }
     if (calibrating) return;
     // Canvas-level right-click — compute pdf point for placement
     const wrap = viewerWrapRef.current;
@@ -220,7 +310,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       targetType: 'canvas', targetId: null,
       targetData: { pdfPoint },
     });
-  }, [rm, calibrating, viewport.panX, viewport.panY, scale]);
+  }, [rm, am, calibrating, viewport.panX, viewport.panY, scale]);
 
   const handleVertexContextMenu = useCallback((runId: number, vertexIndex: number, screenX: number, screenY: number) => {
     if (rm.isDrawing || calibrating) return;
@@ -252,6 +342,15 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       targetData: {},
     });
   }, [rm.isDrawing, calibrating, im.pageItems]);
+
+  const handleAreaContextMenu = useCallback((areaId: number, screenX: number, screenY: number) => {
+    if (rm.isDrawing || am.isDrawing || calibrating) return;
+    setContextMenu({
+      x: screenX, y: screenY,
+      targetType: 'area', targetId: areaId,
+      targetData: {},
+    });
+  }, [rm.isDrawing, am.isDrawing, calibrating]);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -369,6 +468,19 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (targetId != null) im.duplicateItem(targetId);
         break;
       }
+      // Area actions
+      case 'editArea': {
+        if (targetId != null) am.handleEditArea(targetId);
+        break;
+      }
+      case 'deleteArea': {
+        if (targetId != null) am.handleDeleteArea(targetId);
+        break;
+      }
+      case 'addArea': {
+        if (!rm.isDrawing && !am.isDrawing && !calibrating) am.handleAddArea();
+        break;
+      }
       case 'addCountItem': {
         // Open item picker for canvas-level placement (no run association)
         setPendingItemPlacement({
@@ -381,7 +493,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       default:
         break;
     }
-  }, [contextMenu, rm, im]);
+  }, [contextMenu, rm, im, am, calibrating]);
 
   // Material selected from picker -- place item at the stored location or update existing
   const handleItemPickerSelect = useCallback((material: { id: number; name: string }) => {
@@ -399,16 +511,39 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     setSummaryTab('items');
   }, [pendingItemPlacement, im, pageNum]);
 
-  // Overlay mode: calibration > drawing
-  const overlayMode = calibrating ? calibration.overlayMode : rm.overlayMode;
+  // Overlay mode: calibration > drawing (run or area)
+  const overlayMode = calibrating ? calibration.overlayMode : am.isDrawing ? 'draw' : rm.overlayMode;
 
   const zoomPercent = Math.round(scale * 100);
-  const canAddRun = rm.canAddRun && !!pageScalePxPerFt;
-  const showPanel = rm.runs.length > 0 || rm.isDrawing || im.items.length > 0;
+  const canAddRun = rm.canAddRun && !am.isDrawing && !!pageScalePxPerFt;
+  const canAddArea = !calibrating && !rm.isDrawing && !am.isDrawing && !!pageScalePxPerFt;
+  const showPanel = rm.runs.length > 0 || rm.isDrawing || im.items.length > 0
+    || am.areas.length > 0 || am.isDrawing;
+  const hasTakeoffData = rm.runs.some((r) => r.points.length >= 2) || im.items.length > 0
+    || am.areas.some((a) => a.points.length >= 3);
+
+  // Layer visibility filtering (overlay only — summary lists stay complete).
+  // The shape being drawn is always visible regardless of layer state.
+  const visibleRuns = useMemo(
+    () => rm.pageRuns.filter((r) => r.id === rm.activeRunId || !hiddenLayers.has(r.utilityType)),
+    [rm.pageRuns, rm.activeRunId, hiddenLayers],
+  );
+  const visibleItems = useMemo(
+    () => (hiddenLayers.has('items') ? [] : im.pageItems),
+    [im.pageItems, hiddenLayers],
+  );
+  const visibleAreas = useMemo(
+    () => am.pageAreas.filter((a) => a.id === am.activeAreaId || !hiddenLayers.has('areas')),
+    [am.pageAreas, am.activeAreaId, hiddenLayers],
+  );
 
   useEffect(() => {
     if (rm.isDrawing) setSummaryTab('runs');
   }, [rm.isDrawing]);
+
+  useEffect(() => {
+    if (am.isDrawing) setSummaryTab('areas');
+  }, [am.isDrawing]);
 
   // Close context menu when page changes
   useEffect(() => { setContextMenu(null); }, [pageNum, scale]);
@@ -430,6 +565,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (rm.interactionMode === 'moveVertex') { rm.cancelMoveVertex(); return; }
         if (pendingItemPlacement) { setPendingItemPlacement(null); return; }
         if (rm.isDrawing) { rm.finishActiveRun(); return; }
+        if (am.isDrawing) { am.finishActiveArea(); return; }
       }
 
       switch (e.key) {
@@ -451,7 +587,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [totalPages, handleFitToWidth, rm, pendingItemPlacement, contextMenu]);
+  }, [totalPages, handleFitToWidth, rm, am, pendingItemPlacement, contextMenu]);
 
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
   const toolbarProps = {
@@ -460,6 +596,9 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     onNextPage: nextPage, zoomPercent, onFitToWidth: handleFitToWidth, calibrating,
     onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: true,
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,
+    canAddArea, onAddArea: am.handleAddArea, isDrawingArea: am.isDrawing,
+    hiddenLayers, onToggleLayer: toggleLayer,
+    canExport: hasTakeoffData, onExportCsv: handleExportCsv,
     pdfFilename: pdfPath ? pdfPath.split(/[\\/]/).pop() || '' : '',
   };
 
@@ -503,7 +642,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             pageNumber={pageNum}
             scale={scale}
             resetPanKey={resetPanKey}
-            panEnabled={(!calibrating && !rm.isDrawing) || spaceHeld}
+            panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing) || spaceHeld}
             onViewportChange={setViewport}
             onDocLoaded={handleDocLoaded}
             onPageSizeKnown={handlePageSizeKnown}
@@ -518,18 +657,18 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             renderedScale={viewport.renderedScale}
             scale={scale}
             mode={overlayMode}
-            onPointClick={rm.handlePointClick}
-            runs={rm.pageRuns}
+            onPointClick={handleOverlayPointClick}
+            runs={visibleRuns}
             activeRunId={rm.activeRunId}
             selectedRunId={rm.selectedRunId}
-            onRunSelect={rm.handleRunSelect}
-            mousePosition={rm.mousePos}
+            onRunSelect={handleRunSelect}
+            mousePosition={am.isDrawing ? am.mousePos : rm.mousePos}
             scalePxPerFt={pageScalePxPerFt}
-            onMouseMove={rm.handleMouseMove}
+            onMouseMove={handleOverlayMouseMove}
             spaceHeld={spaceHeld}
-            items={im.pageItems}
+            items={visibleItems}
             selectedItemId={im.selectedItemId}
-            onItemSelect={im.selectItem}
+            onItemSelect={handleItemSelect}
             onVertexContextMenu={handleVertexContextMenu}
             onSegmentContextMenu={handleSegmentContextMenu}
             onItemContextMenu={handleItemContextMenu}
@@ -537,6 +676,11 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             movePreviewPos={rm.movePreviewPos}
             snapNodeId={rm.snapNodeId}
             nodes={nm.pageNodes}
+            areas={visibleAreas}
+            activeAreaId={am.activeAreaId}
+            selectedAreaId={am.selectedAreaId}
+            onAreaSelect={handleAreaSelect}
+            onAreaContextMenu={handleAreaContextMenu}
           >
             {calibration.svgContent}
           </DrawingOverlay>
@@ -560,15 +704,23 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             selectedRunId={rm.selectedRunId}
             scalePxPerFt={pageScalePxPerFt}
             pageNumber={pageNum}
-            onSelectRun={rm.handleRunSelect}
+            onSelectRun={handleRunSelect}
             onEditRun={rm.handleEditRun}
             onDeleteRun={rm.handleDeleteRun}
             onSendToProfiles={() => setShowSendConfirm(true)}
             onSendItemsToBid={() => setShowSendItemsConfirm(true)}
             items={im.pageItems}
             selectedItemId={im.selectedItemId}
-            onSelectItem={im.selectItem}
+            onSelectItem={handleItemSelect}
             onDeleteItem={im.deleteItem}
+            areas={am.pageAreas}
+            allAreas={am.areas}
+            activeAreaId={am.activeAreaId}
+            selectedAreaId={am.selectedAreaId}
+            onSelectArea={handleAreaSelect}
+            onEditArea={am.handleEditArea}
+            onDeleteArea={am.handleDeleteArea}
+            onSendAreasToBid={() => setShowSendAreasConfirm(true)}
             activeTab={summaryTab}
             onTabChange={setSummaryTab}
           />
@@ -591,6 +743,33 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           onCancel={rm.handleConfigCancel}
           initialConfig={rm.editingConfig}
           lastRunConfig={rm.lastRunConfig}
+        />
+      )}
+
+      {am.showConfigModal && (
+        <AreaConfigModal
+          onConfirm={am.handleConfigConfirm}
+          onCancel={am.handleConfigCancel}
+          initialConfig={am.editingConfig}
+          lastAreaConfig={am.lastAreaConfig}
+        />
+      )}
+
+      {showSendAreasConfirm && (
+        <ConfirmDialog
+          message={`Send ${am.areas.filter((a) => a.points.length >= 3).length} area${am.areas.filter((a) => a.points.length >= 3).length !== 1 ? 's' : ''} to bid? This will create a "Surface Restoration" section with line items grouped by surface type and depth.`}
+          onYes={handleSendAreasToBid}
+          onNo={() => setShowSendAreasConfirm(false)}
+          yesLabel="Send to Bid"
+          variant="neutral"
+        />
+      )}
+
+      {am.pendingDeleteId !== null && (
+        <ConfirmDialog
+          message={`Delete "${am.areas.find((a) => a.id === am.pendingDeleteId)?.label || 'this area'}"? This cannot be undone.`}
+          onYes={am.confirmDelete}
+          onNo={am.cancelDelete}
         />
       )}
 

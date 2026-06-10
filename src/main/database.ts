@@ -184,6 +184,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 17) {
     migrateV17(db);
   }
+  if (version < 18) {
+    migrateV18(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -663,6 +666,37 @@ function migrateV16(db: Database.Database): void {
     ALTER TABLE takeoff_points ADD COLUMN rim_elev REAL;
     ALTER TABLE takeoff_points ADD COLUMN structure_type TEXT;
     INSERT INTO schema_version (version) VALUES (16);
+  `);
+}
+
+// V18: Area takeoff (surface restoration polygons: asphalt, concrete, gravel)
+function migrateV18(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_areas (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      label       TEXT NOT NULL DEFAULT '',
+      area_type   TEXT NOT NULL DEFAULT 'asphalt',
+      depth_ft    REAL NOT NULL DEFAULT 0,
+      material_id INTEGER REFERENCES materials(id),
+      color       TEXT NOT NULL DEFAULT '#455A64',
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      pdf_page    INTEGER NOT NULL DEFAULT 1,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX idx_takeoff_areas_job ON takeoff_areas(job_id);
+
+    CREATE TABLE takeoff_area_points (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      area_id     INTEGER NOT NULL REFERENCES takeoff_areas(id) ON DELETE CASCADE,
+      x_px        REAL NOT NULL,
+      y_px        REAL NOT NULL,
+      sort_order  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_takeoff_area_points_area ON takeoff_area_points(area_id);
+
+    INSERT INTO schema_version (version) VALUES (18);
   `);
 }
 
