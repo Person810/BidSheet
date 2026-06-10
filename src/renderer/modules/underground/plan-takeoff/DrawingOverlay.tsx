@@ -15,6 +15,8 @@ interface DrawingOverlayProps {
   cssZoom: number;
   renderedScale: number;
   scale: number;
+  /** User page rotation in degrees (0/90/180/270) */
+  rotation?: number;
   mode: OverlayMode;
   onPointClick?: (point: PdfPoint) => void;
   children?: React.ReactNode;
@@ -51,19 +53,40 @@ interface DrawingOverlayProps {
   onAreaContextMenu?: (areaId: number, screenX: number, screenY: number) => void;
 }
 
+/**
+ * Convert a screen position to PDF coordinates in the UNROTATED page frame
+ * (the frame drawings are stored in). pageWidth/pageHeight are the ROTATED
+ * page dimensions as reported by the viewer.
+ */
 function screenToPdf(
   clientX: number, clientY: number, containerRect: DOMRect,
   pageWidth: number, pageHeight: number, panX: number, panY: number, scale: number,
+  rotation = 0,
 ): PdfPoint {
   const cx = clientX - containerRect.left - containerRect.width / 2;
   const cy = clientY - containerRect.top - containerRect.height / 2;
-  const pdfX = (cx - panX) / scale + pageWidth / 2;
-  const pdfY = (cy - panY) / scale + pageHeight / 2;
-  return { x: pdfX, y: pdfY };
+  const xr = (cx - panX) / scale + pageWidth / 2;
+  const yr = (cy - panY) / scale + pageHeight / 2;
+  switch (((rotation % 360) + 360) % 360) {
+    case 90: return { x: yr, y: pageWidth - xr };
+    case 180: return { x: pageWidth - xr, y: pageHeight - yr };
+    case 270: return { x: pageHeight - yr, y: xr };
+    default: return { x: xr, y: yr };
+  }
+}
+
+/** SVG transform mapping unrotated drawing coords into the rotated page frame. */
+function rotationTransform(rotation: number, rotatedW: number, rotatedH: number): string | undefined {
+  switch (((rotation % 360) + 360) % 360) {
+    case 90: return `translate(${rotatedW} 0) rotate(90)`;
+    case 180: return `translate(${rotatedW} ${rotatedH}) rotate(180)`;
+    case 270: return `translate(0 ${rotatedH}) rotate(270)`;
+    default: return undefined;
+  }
 }
 
 export function DrawingOverlay({
-  pageWidth, pageHeight, panX, panY, cssZoom, renderedScale, scale,
+  pageWidth, pageHeight, panX, panY, cssZoom, renderedScale, scale, rotation = 0,
   mode, onPointClick, children,
   runs = [], activeRunId, selectedRunId, onRunSelect, mousePosition, scalePxPerFt,
   onMouseMove, spaceHeld,
@@ -77,8 +100,8 @@ export function DrawingOverlay({
 
   // Keep viewport state in a ref so callbacks that need it don't cause
   // child re-renders when pan/zoom changes.
-  const vpRef = useRef({ pageWidth, pageHeight, panX, panY, scale });
-  vpRef.current = { pageWidth, pageHeight, panX, panY, scale };
+  const vpRef = useRef({ pageWidth, pageHeight, panX, panY, scale, rotation });
+  vpRef.current = { pageWidth, pageHeight, panX, panY, scale, rotation };
 
   const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (spaceHeld) return;
@@ -87,17 +110,17 @@ export function DrawingOverlay({
     const container = e.currentTarget.parentElement;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const point = screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale);
+    const point = screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale, rotation);
     onPointClick(point);
-  }, [isActive, onPointClick, pageWidth, pageHeight, panX, panY, scale, spaceHeld]);
+  }, [isActive, onPointClick, pageWidth, pageHeight, panX, panY, scale, rotation, spaceHeld]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!onMouseMove) return;
     const container = e.currentTarget.parentElement;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    onMouseMove(screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale));
-  }, [onMouseMove, pageWidth, pageHeight, panX, panY, scale]);
+    onMouseMove(screenToPdf(e.clientX, e.clientY, rect, pageWidth, pageHeight, panX, panY, scale, rotation));
+  }, [onMouseMove, pageWidth, pageHeight, panX, panY, scale, rotation]);
 
   // Stable callback for segment right-click: reads viewport from ref so it
   // doesn't need pan/zoom as deps, keeping RunLines memo effective.
@@ -107,7 +130,7 @@ export function DrawingOverlay({
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const vp = vpRef.current;
-    const point = screenToPdf(screenX, screenY, rect, vp.pageWidth, vp.pageHeight, vp.panX, vp.panY, vp.scale);
+    const point = screenToPdf(screenX, screenY, rect, vp.pageWidth, vp.pageHeight, vp.panX, vp.panY, vp.scale, vp.rotation);
     onSegmentContextMenu(runId, segmentIndex, screenX, screenY, point);
   }, [onSegmentContextMenu]);
 
@@ -118,6 +141,10 @@ export function DrawingOverlay({
   // debounced PDF re-render, not on every wheel tick.  During a zoom gesture
   // labels CSS-scale slightly with cssZoom — imperceptible for ~300 ms.
   const labelSize = Math.max(6, pageWidth / 80) / (renderedScale > 0 ? renderedScale : 1);
+
+  // Drawings are stored in the unrotated page frame; this group maps them
+  // into the rotated frame the canvas was rendered in.
+  const rotateGroup = rotationTransform(rotation, pageWidth, pageHeight);
 
   return (
     <svg
@@ -138,6 +165,7 @@ export function DrawingOverlay({
         overflow: 'visible',
       }}
     >
+      <g transform={rotateGroup}>
       {/* Measured areas (rendered below runs so pipe lines stay clickable) */}
       {areas.map((area) => (
         <AreaPolygon
@@ -194,6 +222,7 @@ export function DrawingOverlay({
         );
       })()}
       {children}
+      </g>
     </svg>
   );
 }

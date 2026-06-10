@@ -4,6 +4,8 @@ import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal, statusBadge } from './helpers';
 import { BidGrid } from './BidGrid';
+import { SectionSettingsModal } from './SectionSettingsModal';
+import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
 
@@ -210,6 +212,30 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     await window.api.saveBidSection({ jobId, name: newSectionName, sortOrder: sections.length });
     setNewSectionName('');
     setShowAddSection(false);
+    loadJob();
+  };
+
+  const [editingSection, setEditingSection] = useState<any>(null);
+
+  const openSectionSettings = (section: any) => {
+    withLockCheck(() => setEditingSection(section));
+  };
+
+  const saveSectionSettings = async (payload: {
+    name: string;
+    isAlternate: boolean;
+    overheadPercentOverride: number | null;
+    profitPercentOverride: number | null;
+    bondPercentOverride: number | null;
+  }) => {
+    if (!editingSection) return;
+    await window.api.saveBidSection({
+      id: editingSection.id,
+      jobId,
+      sortOrder: editingSection.sort_order,
+      ...payload,
+    });
+    setEditingSection(null);
     loadJob();
   };
 
@@ -624,6 +650,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
       {/* Estimate tab */}
       {activeTab === 'estimate' && (<>
+      <TakeoffSummaryCard jobId={jobId} onOpenTakeoff={onOpenTakeoff} />
       <BidGrid
         sections={sections}
         lineItems={lineItems}
@@ -634,6 +661,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         onEditLineItem={openEditLineItem}
         onDeleteLineItem={deleteLineItem}
         onDeleteSection={deleteSection}
+        onEditSection={openSectionSettings}
         onOpenAssemblyPicker={openAssemblyPicker}
         hasAssemblies={assemblies.length > 0}
         approvedCOTotal={approvedCOTotal}
@@ -748,6 +776,16 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           equipment={equipment}
           onSave={async () => { await saveLineItem(); setLockBypassed(false); }}
           onClose={() => { setShowLineItemModal(false); setLockBypassed(false); }}
+        />
+      )}
+
+      {/* Section Settings Modal */}
+      {editingSection && (
+        <SectionSettingsModal
+          section={editingSection}
+          job={job}
+          onSave={saveSectionSettings}
+          onClose={() => { setEditingSection(null); setLockBypassed(false); }}
         />
       )}
 

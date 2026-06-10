@@ -23,6 +23,8 @@ export interface ItemManager {
   cancelDelete: () => void;
   updateItem: (id: number, material: { id: number; name: string }) => void;
   duplicateItem: (id: number) => void;
+  /** Re-fetch state from the DB (used by undo/redo restore) */
+  reload: () => Promise<void>;
 }
 
 // Module-scoped counter so local IDs are unique across remounts
@@ -35,14 +37,15 @@ export function useItemManager({
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
-  // Load items from DB when job changes
-  useEffect(() => {
+  // Load items from DB when job changes (also used by undo/redo restore)
+  const reload = useCallback(async () => {
     if (!jobId) { setItems([]); return; }
-    window.api.listTakeoffItems(jobId).then((loaded: TakeoffItem[]) => {
-      setItems(loaded);
-      setSelectedItemId(null);
-    });
+    const loaded: TakeoffItem[] = await window.api.listTakeoffItems(jobId);
+    setItems(loaded);
+    setSelectedItemId(null);
   }, [jobId]);
+
+  useEffect(() => { reload(); }, [reload]);
 
   const addItemAtPoint = useCallback((
     material: { id: number; name: string },
@@ -149,5 +152,6 @@ export function useItemManager({
     cancelDelete,
     updateItem,
     duplicateItem,
+    reload,
   };
 }

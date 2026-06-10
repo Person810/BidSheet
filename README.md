@@ -11,11 +11,12 @@ Everything runs locally on your machine.
 - Track equipment costs (owned and rented)
 - Create bid estimates organized by section and line item
 - Auto-calculate totals with overhead, profit, bond, and tax markups
+- Bid alternates and per-section markup overrides
 - Generate professional bid proposal PDFs
 - Duplicate previous bids as starting points for new jobs
-- Plan takeoff with PDF viewer, scale calibration, and pipe run drawing
+- Plan takeoff with PDF viewer, scale calibration, page rotation, and pipe run drawing
 - Area measurement for surface restoration (asphalt, concrete, gravel) with SF/SY/CY quantities
-- Layer visibility toggles and takeoff quantity CSV export
+- Full undo/redo, layer visibility toggles, and takeoff quantity CSV export
 - Trench profiler with excavation and backfill volume calculations
 - CSV price sheet import with fuzzy matching to your catalog
 - Win/loss tracking and bid status management

@@ -10,6 +10,7 @@ import { useRunManager } from './useRunManager';
 import { useItemManager } from './useItemManager';
 import { useNodeManager } from './useNodeManager';
 import { useAreaManager } from './useAreaManager';
+import { useTakeoffHistory } from './useTakeoffHistory';
 import TakeoffToolbar, { type LayerKey } from './TakeoffToolbar';
 import ItemPickerModal from './ItemPickerModal';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
@@ -46,6 +47,9 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   // -- Per-page scale --
   const [pageScalePxPerFt, setPageScalePxPerFt] = useState<number | null>(null);
+
+  // -- Per-page rotation --
+  const [pageRotation, setPageRotation] = useState(0);
 
   // -- Context menu --
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -115,6 +119,17 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // Area manager hook
   const am = useAreaManager({ jobId, pageNum });
 
+  // -- Undo/redo history --
+  // State is read through a ref so record() always sees the latest values
+  // without re-creating callbacks on every render.
+  const takeoffStateRef = useRef({ runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas });
+  takeoffStateRef.current = { runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas };
+  const getTakeoffState = useCallback(() => takeoffStateRef.current, []);
+  const reloadAll = useCallback(async () => {
+    await Promise.all([rm.reload(), im.reload(), nm.reload(), am.reload()]);
+  }, [rm.reload, im.reload, nm.reload, am.reload]);
+  const history = useTakeoffHistory({ jobId, getState: getTakeoffState, reloadAll });
+
   // Send to Trench Profiles / Send Items to Bid / Send Areas to Bid
   const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [showSendItemsConfirm, setShowSendItemsConfirm] = useState(false);
@@ -176,12 +191,23 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     });
   }, [jobId]);
 
-  // Load per-page scale when page changes
+  // Load per-page scale and rotation when page changes
   useEffect(() => {
     window.api.getPageScale(jobId, pageNum).then((row: any) => {
       setPageScalePxPerFt(row?.scale_px_per_ft ?? null);
     });
+    window.api.getPageRotation(jobId, pageNum).then((rotation: number) => {
+      setPageRotation(rotation || 0);
+    });
   }, [jobId, pageNum]);
+
+  const handleRotatePage = useCallback(() => {
+    const next = (pageRotation + 90) % 360;
+    setPageRotation(next);
+    window.api.savePageRotation(jobId, pageNum, next).catch(() => {
+      addToast('Failed to save page rotation', 'error');
+    });
+  }, [jobId, pageNum, pageRotation, addToast]);
 
   // Auto-load PDF from saved path
   useEffect(() => {
@@ -249,8 +275,31 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       am.handlePointClick(point);
       return;
     }
+    // Confirming a vertex move mutates the run (and possibly a shared node)
+    if (!calibrating && rm.interactionMode === 'moveVertex' && rm.movingVertex) {
+      history.record();
+    }
     rm.handlePointClick(point);
-  }, [calibrating, am, rm]);
+  }, [calibrating, am, rm, history]);
+
+  // Finish the active run/area, recording history for newly created shapes.
+  // Snapshots exclude negative (unsaved) IDs, so a capture taken just before
+  // finish equals the pre-creation state.
+  const finishActiveRun = useCallback(() => {
+    const activeRun = rm.runs.find((r) => r.id === rm.activeRunId);
+    if (rm.activeRunId != null && rm.activeRunId < 0 && activeRun && activeRun.points.length >= 2) {
+      history.record();
+    }
+    rm.finishActiveRun();
+  }, [rm, history]);
+
+  const finishActiveArea = useCallback(() => {
+    const activeArea = am.areas.find((a) => a.id === am.activeAreaId);
+    if (activeArea && activeArea.points.length >= 3) {
+      history.record();
+    }
+    am.finishActiveArea();
+  }, [am, history]);
 
   const handleOverlayMouseMove = useCallback((point: PdfPoint) => {
     rm.handleMouseMove(point);
@@ -303,14 +352,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     let pdfPoint: PdfPoint | undefined;
     if (wrap && pageSizeRef.current.width > 0) {
       const rect = wrap.getBoundingClientRect();
-      pdfPoint = screenToPdf(e.clientX, e.clientY, rect, pageSizeRef.current.width, pageSizeRef.current.height, viewport.panX, viewport.panY, scale);
+      pdfPoint = screenToPdf(e.clientX, e.clientY, rect, pageSizeRef.current.width, pageSizeRef.current.height, viewport.panX, viewport.panY, scale, pageRotation);
     }
     setContextMenu({
       x: e.clientX, y: e.clientY,
       targetType: 'canvas', targetId: null,
       targetData: { pdfPoint },
     });
-  }, [rm, am, calibrating, viewport.panX, viewport.panY, scale]);
+  }, [rm, am, calibrating, viewport.panX, viewport.panY, scale, pageRotation]);
 
   const handleVertexContextMenu = useCallback((runId: number, vertexIndex: number, screenX: number, screenY: number) => {
     if (rm.isDrawing || calibrating) return;
@@ -407,12 +456,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       }
       case 'deleteVertex': {
         if (targetId != null && targetData.vertexIndex != null) {
+          history.record();
           rm.deleteVertex(targetId, targetData.vertexIndex);
         }
         break;
       }
       case 'addVertexHere': {
         if (targetId != null && targetData.segmentIndex != null && targetData.pdfPoint) {
+          history.record();
           rm.addVertexOnSegment(targetId, targetData.segmentIndex, targetData.pdfPoint);
         }
         break;
@@ -426,7 +477,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           if (vtx?.nodeId) {
             rm.startNewRunFromNode(vtx.nodeId);
           } else if (run && vtx) {
-            // Auto-promote to a node
+            // Auto-promote to a node (mutates the vertex's node link in DB)
+            history.record();
             nm.createNode(
               { x: vtx.x, y: vtx.y },
               run.pdfPage,
@@ -443,9 +495,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             });
           }
         } else if (targetType === 'fitting' && targetId != null) {
-          // For fittings: continue the existing run from its end
+          // For fittings: continue the existing run from its end. The run
+          // already has a positive ID, so points added while drawing won't
+          // be recorded at finish — capture the pre-continue state here.
           const item = im.pageItems.find((i) => i.id === targetId);
-          if (item?.nearRunId) rm.continueRun(item.nearRunId);
+          if (item?.nearRunId) {
+            history.record();
+            rm.continueRun(item.nearRunId);
+          }
         }
         break;
       }
@@ -465,7 +522,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         break;
       }
       case 'duplicateItem': {
-        if (targetId != null) im.duplicateItem(targetId);
+        if (targetId != null) {
+          history.record();
+          im.duplicateItem(targetId);
+        }
         break;
       }
       // Area actions
@@ -493,12 +553,13 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       default:
         break;
     }
-  }, [contextMenu, rm, im, am, calibrating]);
+  }, [contextMenu, rm, im, am, calibrating, history, nm]);
 
   // Material selected from picker -- place item at the stored location or update existing
   const handleItemPickerSelect = useCallback((material: { id: number; name: string }) => {
     if (!pendingItemPlacement) return;
 
+    history.record();
     if (editingItemIdRef.current != null) {
       // Update existing item's material
       im.updateItem(editingItemIdRef.current, material);
@@ -509,7 +570,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
     setPendingItemPlacement(null);
     setSummaryTab('items');
-  }, [pendingItemPlacement, im, pageNum]);
+  }, [pendingItemPlacement, im, pageNum, history]);
 
   // Overlay mode: calibration > drawing (run or area)
   const overlayMode = calibrating ? calibration.overlayMode : am.isDrawing ? 'draw' : rm.overlayMode;
@@ -564,8 +625,24 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (contextMenu) { setContextMenu(null); return; }
         if (rm.interactionMode === 'moveVertex') { rm.cancelMoveVertex(); return; }
         if (pendingItemPlacement) { setPendingItemPlacement(null); return; }
-        if (rm.isDrawing) { rm.finishActiveRun(); return; }
-        if (am.isDrawing) { am.finishActiveArea(); return; }
+        if (rm.isDrawing) { finishActiveRun(); return; }
+        if (am.isDrawing) { finishActiveArea(); return; }
+      }
+
+      // Undo/redo: while drawing, Ctrl+Z removes the last placed point;
+      // otherwise it walks the history stack
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (rm.isDrawing) { if (!e.shiftKey) rm.undoLastPoint(); return; }
+        if (am.isDrawing) { if (!e.shiftKey) am.undoLastPoint(); return; }
+        if (e.shiftKey) history.redo();
+        else history.undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        if (!rm.isDrawing && !am.isDrawing) history.redo();
+        return;
       }
 
       switch (e.key) {
@@ -587,9 +664,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [totalPages, handleFitToWidth, rm, am, pendingItemPlacement, contextMenu]);
+  }, [totalPages, handleFitToWidth, rm, am, history, finishActiveRun, finishActiveArea, pendingItemPlacement, contextMenu]);
 
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
+  const anyDrawing = rm.isDrawing || am.isDrawing;
   const toolbarProps = {
     onBack,
     onLoadPlan: handleLoadPlan, loading, pageNum, totalPages, onPrevPage: prevPage,
@@ -597,6 +675,11 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: true,
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,
     canAddArea, onAddArea: am.handleAddArea, isDrawingArea: am.isDrawing,
+    onRotatePage: handleRotatePage,
+    canRotate: !calibrating && !anyDrawing,
+    canUndo: history.canUndo && !anyDrawing && !calibrating,
+    canRedo: history.canRedo && !anyDrawing && !calibrating,
+    onUndo: history.undo, onRedo: history.redo,
     hiddenLayers, onToggleLayer: toggleLayer,
     canExport: hasTakeoffData, onExportCsv: handleExportCsv,
     pdfFilename: pdfPath ? pdfPath.split(/[\\/]/).pop() || '' : '',
@@ -641,6 +724,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             pdfData={pdfData}
             pageNumber={pageNum}
             scale={scale}
+            rotation={pageRotation}
             resetPanKey={resetPanKey}
             panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing) || spaceHeld}
             onViewportChange={setViewport}
@@ -656,6 +740,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             cssZoom={viewport.cssZoom}
             renderedScale={viewport.renderedScale}
             scale={scale}
+            rotation={pageRotation}
             mode={overlayMode}
             onPointClick={handleOverlayPointClick}
             runs={visibleRuns}
@@ -739,7 +824,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
       {rm.showConfigModal && (
         <TrenchConfigModal
-          onConfirm={rm.handleConfigConfirm}
+          onConfirm={(config) => {
+            // Editing an existing run mutates it; creating a new one doesn't
+            // touch persisted state until the run is finished
+            if (rm.editingConfig) history.record();
+            rm.handleConfigConfirm(config);
+          }}
           onCancel={rm.handleConfigCancel}
           initialConfig={rm.editingConfig}
           lastRunConfig={rm.lastRunConfig}
@@ -748,7 +838,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
       {am.showConfigModal && (
         <AreaConfigModal
-          onConfirm={am.handleConfigConfirm}
+          onConfirm={(config) => {
+            if (am.editingConfig) history.record();
+            am.handleConfigConfirm(config);
+          }}
           onCancel={am.handleConfigCancel}
           initialConfig={am.editingConfig}
           lastAreaConfig={am.lastAreaConfig}
@@ -767,8 +860,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
       {am.pendingDeleteId !== null && (
         <ConfirmDialog
-          message={`Delete "${am.areas.find((a) => a.id === am.pendingDeleteId)?.label || 'this area'}"? This cannot be undone.`}
-          onYes={am.confirmDelete}
+          message={`Delete "${am.areas.find((a) => a.id === am.pendingDeleteId)?.label || 'this area'}"?`}
+          onYes={() => { history.record(); am.confirmDelete(); }}
           onNo={am.cancelDelete}
         />
       )}
@@ -785,16 +878,16 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
       {rm.pendingDeleteId !== null && (
         <ConfirmDialog
-          message={`Delete "${rm.runs.find((r) => r.id === rm.pendingDeleteId)?.label || 'this run'}"? This cannot be undone.`}
-          onYes={rm.confirmDelete}
+          message={`Delete "${rm.runs.find((r) => r.id === rm.pendingDeleteId)?.label || 'this run'}"?`}
+          onYes={() => { history.record(); rm.confirmDelete(); }}
           onNo={rm.cancelDelete}
         />
       )}
 
       {im.pendingDeleteId !== null && (
         <ConfirmDialog
-          message={`Delete "${im.items.find((i) => i.id === im.pendingDeleteId)?.materialName || 'this item'}"? This cannot be undone.`}
-          onYes={im.confirmDelete}
+          message={`Delete "${im.items.find((i) => i.id === im.pendingDeleteId)?.materialName || 'this item'}"?`}
+          onYes={() => { history.record(); im.confirmDelete(); }}
           onNo={im.cancelDelete}
         />
       )}
@@ -820,6 +913,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             runLabel={run.label || 'Untitled Run'}
             node={node}
             onSave={(data) => {
+              history.record();
               rm.updateVertexElevation(editingVertex.runId, editingVertex.vertexIndex, data);
               if (node && data.label != null) {
                 nm.updateNode(node.id, { label: data.label });

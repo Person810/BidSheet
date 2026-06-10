@@ -35,6 +35,8 @@ export interface AreaManager {
   finishActiveArea: () => void;
   confirmDelete: () => void;
   cancelDelete: () => void;
+  /** Re-fetch state from the DB (used by undo/redo restore) */
+  reload: () => Promise<void>;
 }
 
 function areaToConfig(area: TakeoffArea): AreaConfig {
@@ -62,15 +64,16 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
 
   const isDrawing = activeAreaId !== null;
 
-  // Load areas from DB when job changes
-  useEffect(() => {
+  // Load areas from DB when job changes (also used by undo/redo restore)
+  const reload = useCallback(async () => {
     if (!jobId) { setAreas([]); return; }
-    window.api.listTakeoffAreas(jobId).then((loaded: TakeoffArea[]) => {
-      setAreas(loaded);
-      setActiveAreaId(null);
-      setSelectedAreaId(null);
-    });
+    const loaded: TakeoffArea[] = await window.api.listTakeoffAreas(jobId);
+    setAreas(loaded);
+    setActiveAreaId(null);
+    setSelectedAreaId(null);
   }, [jobId]);
+
+  useEffect(() => { reload(); }, [reload]);
 
   const finishActiveArea = useCallback(() => {
     if (!activeAreaId) return;
@@ -204,6 +207,6 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
     handleAddArea, handleConfigConfirm, handleConfigCancel,
     handlePointClick, handleAreaSelect, handleEditArea, handleDeleteArea,
     handleMouseMove, undoLastPoint, finishActiveArea,
-    confirmDelete, cancelDelete,
+    confirmDelete, cancelDelete, reload,
   };
 }
