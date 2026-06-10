@@ -117,11 +117,39 @@ export interface TakeoffItem {
   nearRunId: number | null;
 }
 
+export type AreaType = 'asphalt' | 'concrete' | 'gravel' | 'topsoil' | 'other';
+
+/**
+ * A measured surface area polygon (pavement patch, restoration, grading limits).
+ *
+ * ID convention: same as TakeoffRun (negative = local-only, positive = DB).
+ */
+export interface TakeoffArea {
+  id: number;
+  jobId: number;
+  label: string;
+  areaType: AreaType;
+  /** Depth of the surface course in feet (0 = area-only, no volume) */
+  depthFt: number;
+  materialId: number | null;
+  color: string;
+  pdfPage: number;
+  points: PdfPoint[];
+}
+
+/** Config fields shared between new-area and edit-area modals */
+export interface AreaConfig {
+  label: string;
+  areaType: AreaType;
+  depthFt: number;
+  materialId: number | null;
+}
+
 export interface ContextMenuState {
   x: number;
   y: number;
-  targetType: 'vertex' | 'segment' | 'fitting' | 'countItem' | 'canvas';
-  targetId: number | null;       // run ID or item ID
+  targetType: 'vertex' | 'segment' | 'fitting' | 'countItem' | 'area' | 'canvas';
+  targetId: number | null;       // run ID, item ID, or area ID
   targetData: {
     vertexIndex?: number;
     segmentIndex?: number;
@@ -136,4 +164,20 @@ export const UTILITY_COLORS: Record<UtilityType, string> = {
   water: '#2196F3',
   fiber: '#9C27B0',
   other: '#607D8B',
+};
+
+export const AREA_COLORS: Record<AreaType, string> = {
+  asphalt: '#455A64',
+  concrete: '#90A4AE',
+  gravel: '#A1887F',
+  topsoil: '#8BC34A',
+  other: '#BA68C8',
+};
+
+export const AREA_TYPE_LABELS: Record<AreaType, string> = {
+  asphalt: 'Asphalt',
+  concrete: 'Concrete',
+  gravel: 'Gravel',
+  topsoil: 'Topsoil / Seeding',
+  other: 'Other',
 };

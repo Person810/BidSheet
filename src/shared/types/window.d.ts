@@ -5,10 +5,11 @@ declare global {
     api: {
       // Materials
       getMaterialCategories: () => Promise<any[]>;
-      getMaterials: (categoryId?: number) => Promise<any[]>;
+      getMaterials: (categoryId?: number, includeInactive?: boolean) => Promise<any[]>;
       getMaterial: (id: number) => Promise<any>;
       saveMaterial: (material: any) => Promise<any>;
       deleteMaterial: (id: number) => Promise<any>;
+      restoreMaterial: (id: number) => Promise<any>;
       updateMaterialPrice: (id: number, newPrice: number, source: string) => Promise<any>;
       getMaterialsByCategoryName: (name: string) => Promise<any[]>;
 
@@ -25,9 +26,10 @@ declare global {
       deleteProductionRate: (id: number) => Promise<any>;
 
       // Equipment
-      getEquipment: () => Promise<any[]>;
+      getEquipment: (includeInactive?: boolean) => Promise<any[]>;
       saveEquipment: (equip: any) => Promise<any>;
       deleteEquipment: (id: number) => Promise<any>;
+      restoreEquipment: (id: number) => Promise<any>;
 
       // Jobs / Bids
       getJobs: (status?: string) => Promise<any[]>;
@@ -97,6 +99,10 @@ declare global {
       listTakeoffItems: (jobId: number) => Promise<any[]>;
       saveTakeoffItem: (item: any) => Promise<any>;
       deleteTakeoffItem: (id: number) => Promise<any>;
+      listTakeoffAreas: (jobId: number) => Promise<any[]>;
+      saveTakeoffArea: (area: any) => Promise<{ id: number }>;
+      deleteTakeoffArea: (id: number) => Promise<any>;
+      exportTakeoffCsv: (jobId: number, csvContent: string) => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
       listTakeoffNodes: (jobId: number) => Promise<any[]>;
       saveTakeoffNode: (node: any) => Promise<{ id: number }>;
       deleteTakeoffNode: (id: number) => Promise<any>;

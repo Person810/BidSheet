@@ -1,7 +1,13 @@
 import React, { useMemo } from 'react';
 import { calculateTrench, type TrenchInput } from '../trenchCalc';
-import type { TakeoffRun, TakeoffItem } from './types';
-import { computeRunLengthLF, getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT } from './takeoffUtils';
+import type { TakeoffRun, TakeoffItem, TakeoffArea } from './types';
+import { AREA_TYPE_LABELS } from './types';
+import {
+  computeRunLengthLF, getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT,
+  computePolygonAreaSF, computePolygonPerimeterLF, ftToInches,
+} from './takeoffUtils';
+
+export type SummaryTab = 'runs' | 'items' | 'areas';
 
 interface SummaryPanelProps {
   runs: TakeoffRun[];
@@ -19,8 +25,16 @@ interface SummaryPanelProps {
   onSelectItem: (id: number | null) => void;
   onDeleteItem: (id: number) => void;
   onSendItemsToBid?: () => void;
-  activeTab: 'runs' | 'items';
-  onTabChange: (tab: 'runs' | 'items') => void;
+  areas: TakeoffArea[];
+  allAreas: TakeoffArea[];
+  activeAreaId: number | null;
+  selectedAreaId: number | null;
+  onSelectArea: (id: number | null) => void;
+  onEditArea: (id: number) => void;
+  onDeleteArea: (id: number) => void;
+  onSendAreasToBid?: () => void;
+  activeTab: SummaryTab;
+  onTabChange: (tab: SummaryTab) => void;
 }
 
 function buildTrenchInput(run: TakeoffRun, runLengthLF: number): TrenchInput {
@@ -44,6 +58,8 @@ export function SummaryPanel(props: SummaryPanelProps) {
     runs, allRuns, activeRunId, selectedRunId, scalePxPerFt, pageNumber,
     onSelectRun, onEditRun, onDeleteRun, onSendToProfiles,
     items, selectedItemId, onSelectItem, onDeleteItem, onSendItemsToBid,
+    areas, allAreas, activeAreaId, selectedAreaId,
+    onSelectArea, onEditArea, onDeleteArea, onSendAreasToBid,
     activeTab, onTabChange,
   } = props;
 
@@ -61,6 +77,9 @@ export function SummaryPanel(props: SummaryPanelProps) {
         <button style={tabStyle(activeTab === 'items')} onClick={() => onTabChange('items')}>
           Items ({items.length})
         </button>
+        <button style={tabStyle(activeTab === 'areas')} onClick={() => onTabChange('areas')}>
+          Areas ({areas.length})
+        </button>
       </div>
 
       {/* Tab content */}
@@ -71,12 +90,19 @@ export function SummaryPanel(props: SummaryPanelProps) {
           onSelectRun={onSelectRun} onEditRun={onEditRun}
           onDeleteRun={onDeleteRun} onSendToProfiles={onSendToProfiles}
         />
-      ) : (
+      ) : activeTab === 'items' ? (
         <ItemsTabContent
           items={items} selectedItemId={selectedItemId}
           onSelectItem={onSelectItem} onDeleteItem={onDeleteItem}
           onSendItemsToBid={onSendItemsToBid}
           activeRunId={activeRunId}
+        />
+      ) : (
+        <AreasTabContent
+          areas={areas} allAreas={allAreas} activeAreaId={activeAreaId}
+          selectedAreaId={selectedAreaId} scalePxPerFt={scalePxPerFt}
+          onSelectArea={onSelectArea} onEditArea={onEditArea}
+          onDeleteArea={onDeleteArea} onSendAreasToBid={onSendAreasToBid}
         />
       )}
     </div>
@@ -273,6 +299,118 @@ function ItemsTabContent({ items, selectedItemId, onSelectItem, onDeleteItem, on
           onClick={onSendItemsToBid}>
           Send Items to Bid
         </button>
+      )}
+    </div>
+  );
+}
+
+/* ==== AREAS TAB ==== */
+
+function AreasTabContent({ areas, allAreas, activeAreaId, selectedAreaId, scalePxPerFt,
+  onSelectArea, onEditArea, onDeleteArea, onSendAreasToBid,
+}: {
+  areas: TakeoffArea[]; allAreas: TakeoffArea[]; activeAreaId: number | null;
+  selectedAreaId: number | null; scalePxPerFt: number;
+  onSelectArea: (id: number | null) => void; onEditArea: (id: number) => void;
+  onDeleteArea: (id: number) => void; onSendAreasToBid?: () => void;
+}) {
+  const focusedArea = areas.find((a) => a.id === (activeAreaId ?? selectedAreaId));
+
+  if (focusedArea) {
+    return (
+      <AreaDetail
+        area={focusedArea} scalePxPerFt={scalePxPerFt}
+        isActive={focusedArea.id === activeAreaId}
+        onEdit={() => onEditArea(focusedArea.id)}
+        onDelete={() => onDeleteArea(focusedArea.id)}
+      />
+    );
+  }
+
+  const hasCompletedAreas = allAreas.some((a) => a.points.length >= 3);
+  const pageTotalSF = areas.reduce(
+    (sum, a) => sum + (a.points.length >= 3 ? computePolygonAreaSF(a.points, scalePxPerFt) : 0), 0,
+  );
+  return (
+    <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+      {areas.length === 0 && (
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 24 }}>
+          No areas on this page.
+        </p>
+      )}
+      {areas.map((area) => {
+        const globalIdx = allAreas.indexOf(area);
+        const sf = area.points.length >= 3 ? computePolygonAreaSF(area.points, scalePxPerFt) : 0;
+        return (
+          <div key={area.id} onClick={() => onSelectArea(area.id)} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+            borderRadius: 4, cursor: 'pointer', marginBottom: 2,
+          }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: area.color, flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {area.label || `Area ${globalIdx + 1}`}
+            </span>
+            <span className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+              {Math.round(sf).toLocaleString()} SF
+            </span>
+          </div>
+        );
+      })}
+      {areas.length > 1 && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', marginTop: 6, paddingRight: 8 }}>
+          Page total: {Math.round(pageTotalSF).toLocaleString()} SF ({(pageTotalSF / 9).toFixed(1)} SY)
+        </div>
+      )}
+      {onSendAreasToBid && hasCompletedAreas && !activeAreaId && (
+        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 12 }}
+          onClick={onSendAreasToBid}>
+          Send Areas to Bid
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AreaDetail({ area, scalePxPerFt, isActive, onEdit, onDelete }: {
+  area: TakeoffArea; scalePxPerFt: number; isActive: boolean;
+  onEdit: () => void; onDelete: () => void;
+}) {
+  const sf = area.points.length >= 3 ? computePolygonAreaSF(area.points, scalePxPerFt) : 0;
+  const sy = sf / 9;
+  const cy = (sf * area.depthFt) / 27;
+  const perimeter = area.points.length >= 3 ? computePolygonPerimeterLF(area.points, scalePxPerFt) : 0;
+  const depthIn = ftToInches(area.depthFt);
+
+  return (
+    <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span style={{ width: 10, height: 10, borderRadius: 2, background: area.color, flexShrink: 0 }} />
+        <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {area.label || 'Untitled Area'}
+        </span>
+        {isActive && <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>DRAWING</span>}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
+        {AREA_TYPE_LABELS[area.areaType]} &middot;{' '}
+        {area.points.length} vert{area.points.length !== 1 ? 'ices' : 'ex'}
+        {depthIn > 0 ? <> &middot; {depthIn}&quot; depth</> : null}
+      </div>
+      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+        <tbody>
+          <QtyRow label="Area (SF)" value={`${Math.round(sf).toLocaleString()} SF`} />
+          <QtyRow label="Area (SY)" value={`${sy.toFixed(1)} SY`} />
+          {cy > 0 && <QtyRow label="Volume" value={`${cy.toFixed(1)} CY`} />}
+          <QtyRow label="Perimeter" value={`${perimeter.toFixed(1)} LF`} />
+        </tbody>
+      </table>
+      {!isActive && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onEdit}>Edit Config</button>
+          <button className="btn btn-danger btn-sm" style={{ flex: 1 }} onClick={onDelete}>Delete Area</button>
+        </div>
       )}
     </div>
   );

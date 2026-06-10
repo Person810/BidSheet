@@ -17,6 +17,66 @@ export function computeRunLengthLF(points: PdfPoint[], scalePxPerFt: number): nu
   return scalePxPerFt > 0 ? totalPx / scalePxPerFt : 0;
 }
 
+/* ---- Polygon geometry for area takeoff ---- */
+
+/** Convert a depth in feet to inches, rounded to 2 decimals for display/grouping. */
+export function ftToInches(ft: number): number {
+  return Math.round(ft * 12 * 100) / 100;
+}
+
+/** Load all page scale calibrations for a job as a page-number → px/ft map. */
+export async function loadPageScaleMap(jobId: number): Promise<Map<number, number>> {
+  const scales: { page_number: number; scale_px_per_ft: number }[] =
+    await window.api.listPageScales(jobId);
+  return new Map(scales.map((s) => [s.page_number, s.scale_px_per_ft]));
+}
+
+/** Polygon area via the shoelace formula, converted to square feet. */
+export function computePolygonAreaSF(points: PdfPoint[], scalePxPerFt: number): number {
+  if (points.length < 3 || scalePxPerFt <= 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    sum += p1.x * p2.y - p2.x * p1.y;
+  }
+  return Math.abs(sum / 2) / (scalePxPerFt * scalePxPerFt);
+}
+
+/** Closed-polygon perimeter in linear feet. */
+export function computePolygonPerimeterLF(points: PdfPoint[], scalePxPerFt: number): number {
+  if (points.length < 2 || scalePxPerFt <= 0) return 0;
+  let totalPx = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    totalPx += segmentLengthPx(p1, p2);
+  }
+  return totalPx / scalePxPerFt;
+}
+
+/** Polygon centroid (falls back to vertex average for degenerate polygons). */
+export function polygonCentroid(points: PdfPoint[]): PdfPoint {
+  if (points.length === 0) return { x: 0, y: 0 };
+  let signedArea = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    const cross = p1.x * p2.y - p2.x * p1.y;
+    signedArea += cross;
+    cx += (p1.x + p2.x) * cross;
+    cy += (p1.y + p2.y) * cross;
+  }
+  if (Math.abs(signedArea) < 1e-6) {
+    const sx = points.reduce((s, p) => s + p.x, 0);
+    const sy = points.reduce((s, p) => s + p.y, 0);
+    return { x: sx / points.length, y: sy / points.length };
+  }
+  return { x: cx / (3 * signedArea), y: cy / (3 * signedArea) };
+}
+
 /* ---- Geometry helpers for callout labels ---- */
 
 /** Midpoint of a segment. */

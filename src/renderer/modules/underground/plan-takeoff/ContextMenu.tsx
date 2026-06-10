@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useLayoutEffect, useState } from 'react';
 
-export type ContextTargetType = 'vertex' | 'segment' | 'fitting' | 'countItem' | 'canvas';
+export type ContextTargetType = 'vertex' | 'segment' | 'fitting' | 'countItem' | 'area' | 'canvas';
 
 export interface ContextMenuItem {
   label: string;
@@ -44,10 +44,16 @@ export function getMenuItems(targetType: ContextTargetType): ContextMenuItem[] {
         { label: 'Remove Item', action: 'removeItem' },
         { label: 'Duplicate Item', action: 'duplicateItem' },
       ];
+    case 'area':
+      return [
+        { label: 'Edit Area', action: 'editArea' },
+        { label: 'Delete Area', action: 'deleteArea' },
+      ];
     case 'canvas':
       return [
         { label: 'Start New Run', action: 'startNewRun' },
         { label: 'Add Count Item', action: 'addCountItem' },
+        { label: 'Measure Area', action: 'addArea' },
       ];
   }
 }
