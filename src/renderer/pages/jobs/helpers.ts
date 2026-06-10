@@ -14,6 +14,8 @@ export function statusBadge(status: string) {
 export function emptyLineForm() {
   return {
     description: '',
+    itemNumber: '',
+    costCode: '',
     quantity: 0,
     unit: 'LF',
     materialId: 0,
@@ -36,7 +38,8 @@ export function jobToPayload(job: any) {
     location: job.location, bidDate: job.bid_date, startDate: job.start_date,
     description: job.description, status: job.status, overheadPercent: job.overhead_percent,
     profitPercent: job.profit_percent, bondPercent: job.bond_percent,
-    taxPercent: job.tax_percent, notes: job.notes, bidLocked: job.bid_locked === 1,
+    taxPercent: job.tax_percent, escalationPercent: job.escalation_percent ?? 0,
+    notes: job.notes, bidLocked: job.bid_locked === 1,
     parentJobId: job.parent_job_id || null, changeOrderNumber: job.change_order_number || null,
   };
 }

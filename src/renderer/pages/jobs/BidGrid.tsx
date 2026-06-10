@@ -155,10 +155,21 @@ export function BidGrid({
                 items.map((item: any) => (
                   <tr key={item.id} className="bid-grid-item-row">
                     <td className="bid-grid-item-desc">
+                      {item.item_number && (
+                        <span className="text-muted" style={{ marginRight: 6, fontSize: 11 }}>
+                          {item.item_number}
+                        </span>
+                      )}
                       <span className="material-name-link no-print" onClick={() => onEditLineItem(item)}>
                         {item.description}
                       </span>
                       <span className="print-only">{item.description}</span>
+                      {item.cost_code && (
+                        <span className="text-muted no-print" style={{ marginLeft: 6, fontSize: 10 }}
+                          title="Cost code">
+                          [{item.cost_code}]
+                        </span>
+                      )}
                     </td>
                     <td className="text-right">{item.quantity}</td>
                     <td>{item.unit}</td>
@@ -198,6 +209,14 @@ export function BidGrid({
             <td className="text-right" style={{ fontWeight: 700 }}>{formatCurrency(summary.direct_cost_total)}</td>
             <td colSpan={2}></td>
           </tr>
+          {/* Material escalation (conditional) */}
+          {summary.escalation > 0 && (
+            <tr>
+              <td colSpan={6} className="text-right">Material Escalation ({job.escalation_percent}%)</td>
+              <td className="text-right">{formatCurrency(summary.escalation)}</td>
+              <td colSpan={2}></td>
+            </tr>
+          )}
           {/* Overhead */}
           <tr>
             <td colSpan={6} className="text-right">Overhead{hasMarkupOverrides ? '*' : ` (${job.overhead_percent}%)`}</td>

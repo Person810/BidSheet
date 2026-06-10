@@ -440,7 +440,7 @@ export function registerIpcHandlers(db: Database.Database): void {
             name = ?, job_number = ?, client = ?, location = ?,
             bid_date = ?, start_date = ?, description = ?, status = ?,
             overhead_percent = ?, profit_percent = ?, bond_percent = ?,
-            tax_percent = ?, notes = ?, bid_locked = ?,
+            tax_percent = ?, escalation_percent = ?, notes = ?, bid_locked = ?,
             updated_at = datetime('now', 'localtime')
           WHERE id = ?`
         )
@@ -448,19 +448,19 @@ export function registerIpcHandlers(db: Database.Database): void {
           job.name, job.jobNumber, job.client, job.location,
           job.bidDate, job.startDate, job.description, job.status,
           job.overheadPercent, job.profitPercent, job.bondPercent,
-          job.taxPercent, job.notes, job.bidLocked ? 1 : 0, job.id
+          job.taxPercent, job.escalationPercent ?? 0, job.notes, job.bidLocked ? 1 : 0, job.id
         );
     } else {
       return db
         .prepare(
-          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, notes, parent_job_id, change_order_number)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, parent_job_id, change_order_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           job.name, job.jobNumber, job.client, job.location,
           job.bidDate, job.startDate, job.description,
           job.overheadPercent, job.profitPercent, job.bondPercent,
-          job.taxPercent, job.notes,
+          job.taxPercent, job.escalationPercent ?? 0, job.notes,
           job.parentJobId || null, job.changeOrderNumber || null
         );
     }
@@ -477,14 +477,14 @@ export function registerIpcHandlers(db: Database.Database): void {
 
       const newJob = db
         .prepare(
-          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`
+          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`
         )
         .run(
           newName || job.name + ' (Copy)', job.job_number, job.client, job.location,
           newBidDate ?? job.bid_date, job.start_date, job.description,
           job.overhead_percent, job.profit_percent, job.bond_percent,
-          job.tax_percent, job.notes
+          job.tax_percent, job.escalation_percent ?? 0, job.notes
         );
       const newJobId = Number(newJob.lastInsertRowid);
 
@@ -510,8 +510,8 @@ export function registerIpcHandlers(db: Database.Database): void {
             material_id, material_unit_cost, material_total,
             crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
             equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
-            subcontractor_cost, unit_cost, total_cost, notes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
         for (const item of items) {
           insertItem.run(
@@ -519,7 +519,8 @@ export function registerIpcHandlers(db: Database.Database): void {
             item.material_id, item.material_unit_cost, item.material_total,
             item.crew_template_id, item.production_rate_id, item.labor_hours, item.labor_cost_per_hour, item.labor_total,
             item.equipment_id || null, item.equipment_cost_per_hour, item.equipment_hours, item.equipment_total,
-            item.subcontractor_cost, item.unit_cost, item.total_cost, item.notes
+            item.subcontractor_cost, item.unit_cost, item.total_cost, item.notes,
+            item.item_number ?? null, item.cost_code ?? null
           );
         }
       }
@@ -599,18 +600,28 @@ export function registerIpcHandlers(db: Database.Database): void {
         insertTakeoffItem.run(newJobId, ti.material_id, ti.x_px, ti.y_px, ti.quantity, ti.label, ti.pdf_page, null);
       }
 
+      // Copy quotes (vendor pricing gathered for this job)
+      const jobQuotes = db.prepare('SELECT * FROM quotes WHERE job_id = ?').all(id) as any[];
+      const insertQuote = db.prepare(
+        `INSERT INTO quotes (job_id, scope, vendor, contact, amount, quote_date, notes, is_selected)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const q of jobQuotes) {
+        insertQuote.run(newJobId, q.scope, q.vendor, q.contact, q.amount, q.quote_date, q.notes, q.is_selected);
+      }
+
       // Copy takeoff areas and their points
       const takeoffAreas = db.prepare('SELECT * FROM takeoff_areas WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
       const insertTakeoffArea = db.prepare(
-        `INSERT INTO takeoff_areas (job_id, label, area_type, depth_ft, material_id, color, sort_order, pdf_page)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO takeoff_areas (job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const insertAreaPt = db.prepare(
         'INSERT INTO takeoff_area_points (area_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
       );
       for (const ta of takeoffAreas) {
         const newAreaId = Number(insertTakeoffArea.run(
-          newJobId, ta.label, ta.area_type, ta.depth_ft, ta.material_id, ta.color, ta.sort_order, ta.pdf_page
+          newJobId, ta.label, ta.area_type, ta.depth_ft, ta.material_id, ta.assembly_id, ta.color, ta.sort_order, ta.pdf_page
         ).lastInsertRowid);
         const areaPoints = db.prepare('SELECT * FROM takeoff_area_points WHERE area_id = ? ORDER BY sort_order').all(ta.id) as any[];
         for (const pt of areaPoints) {
@@ -775,7 +786,8 @@ export function registerIpcHandlers(db: Database.Database): void {
             material_id = ?, material_unit_cost = ?, material_total = ?,
             crew_template_id = ?, production_rate_id = ?, labor_hours = ?, labor_cost_per_hour = ?, labor_total = ?,
             equipment_id = ?, equipment_cost_per_hour = ?, equipment_hours = ?, equipment_total = ?,
-            subcontractor_cost = ?, unit_cost = ?, total_cost = ?, notes = ?
+            subcontractor_cost = ?, unit_cost = ?, total_cost = ?, notes = ?,
+            item_number = ?, cost_code = ?
           WHERE id = ?`
         )
         .run(
@@ -784,6 +796,7 @@ export function registerIpcHandlers(db: Database.Database): void {
           item.crewTemplateId, item.productionRateId, item.laborHours, item.laborCostPerHour, laborTotal,
           item.equipmentId || null, item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
           item.subcontractorCost || 0, unitCost, totalCost, item.notes,
+          item.itemNumber || null, item.costCode || null,
           item.id
         );
     } else {
@@ -794,21 +807,73 @@ export function registerIpcHandlers(db: Database.Database): void {
             material_id, material_unit_cost, material_total,
             crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
             equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
-            subcontractor_cost, unit_cost, total_cost, notes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           item.sectionId, item.jobId, item.description, item.quantity, item.unit, item.sortOrder,
           item.materialId, item.materialUnitCost, materialTotal,
           item.crewTemplateId, item.productionRateId, item.laborHours, item.laborCostPerHour, laborTotal,
           item.equipmentId || null, item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
-          item.subcontractorCost || 0, unitCost, totalCost, item.notes
+          item.subcontractorCost || 0, unitCost, totalCost, item.notes,
+          item.itemNumber || null, item.costCode || null
         );
     }
   });
 
   safeHandle('db:line-items:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM bid_line_items WHERE id = ?').run(id);
+  });
+
+  // ================================================================
+  // SUBCONTRACTOR / SUPPLIER QUOTES
+  // ================================================================
+
+  safeHandle('db:quotes:list', (_event, jobId: number) => {
+    return db.prepare(
+      'SELECT * FROM quotes WHERE job_id = ? ORDER BY scope, amount, id'
+    ).all(jobId);
+  });
+
+  safeHandle('db:quotes:save', (_event, quote: any) => {
+    if (quote.id) {
+      // Moving a quote to a different scope drops its winner flag — the new
+      // scope may already have a winner
+      const existing = db.prepare('SELECT scope FROM quotes WHERE id = ?').get(quote.id) as any;
+      const scopeChanged = existing && existing.scope !== quote.scope;
+      db.prepare(
+        `UPDATE quotes SET scope = ?, vendor = ?, contact = ?, amount = ?,
+          quote_date = ?, notes = ?,
+          is_selected = CASE WHEN ? THEN 0 ELSE is_selected END
+        WHERE id = ?`
+      ).run(quote.scope, quote.vendor, quote.contact ?? '', quote.amount ?? 0,
+        quote.quoteDate ?? null, quote.notes ?? null, scopeChanged ? 1 : 0, quote.id);
+      return { id: quote.id };
+    } else {
+      const result = db.prepare(
+        `INSERT INTO quotes (job_id, scope, vendor, contact, amount, quote_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(quote.jobId, quote.scope, quote.vendor, quote.contact ?? '',
+        quote.amount ?? 0, quote.quoteDate ?? null, quote.notes ?? null);
+      return { id: Number(result.lastInsertRowid) };
+    }
+  });
+
+  // Pick the winning quote for a scope (one winner per scope; pass null id to clear)
+  safeHandle('db:quotes:select', (_event, jobId: number, scope: string, quoteId: number | null) => {
+    const selectTx = db.transaction(() => {
+      db.prepare('UPDATE quotes SET is_selected = 0 WHERE job_id = ? AND scope = ?').run(jobId, scope);
+      if (quoteId != null) {
+        db.prepare('UPDATE quotes SET is_selected = 1 WHERE id = ? AND job_id = ? AND scope = ?')
+          .run(quoteId, jobId, scope);
+      }
+      return { success: true };
+    });
+    return selectTx();
+  });
+
+  safeHandle('db:quotes:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM quotes WHERE id = ?').run(id);
   });
 
   // ================================================================
@@ -877,7 +942,16 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   safeHandle('db:assemblies:list', () => {
     const assemblies = db
-      .prepare('SELECT * FROM assemblies WHERE is_active = 1 ORDER BY name')
+      .prepare(
+        `SELECT a.*,
+          pr.description AS production_rate_desc, pr.rate_per_hour AS production_rate_per_hour,
+          ct.name AS crew_name, eq.name AS equipment_name, eq.hourly_rate AS equipment_hourly_rate
+        FROM assemblies a
+        LEFT JOIN production_rates pr ON a.production_rate_id = pr.id
+        LEFT JOIN crew_templates ct ON a.crew_template_id = ct.id
+        LEFT JOIN equipment eq ON a.equipment_id = eq.id
+        WHERE a.is_active = 1 ORDER BY a.name`
+      )
       .all() as any[];
 
     return assemblies.map((a) => ({
@@ -913,14 +987,24 @@ export function registerIpcHandlers(db: Database.Database): void {
 
       if (assembly.id) {
         db.prepare(
-          `UPDATE assemblies SET name = ?, description = ?, unit = ?, notes = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`
-        ).run(assembly.name, assembly.description, assembly.unit, assembly.notes, assembly.id);
+          `UPDATE assemblies SET name = ?, description = ?, unit = ?, notes = ?,
+            production_rate_id = ?, crew_template_id = ?, equipment_id = ?, equipment_hours_per_unit = ?,
+            updated_at = datetime('now', 'localtime') WHERE id = ?`
+        ).run(assembly.name, assembly.description, assembly.unit, assembly.notes,
+          assembly.productionRateId ?? null, assembly.crewTemplateId ?? null,
+          assembly.equipmentId ?? null, assembly.equipmentHoursPerUnit ?? 0, assembly.id);
         assemblyId = assembly.id;
         db.prepare('DELETE FROM assembly_items WHERE assembly_id = ?').run(assemblyId);
       } else {
         const result = db
-          .prepare('INSERT INTO assemblies (name, description, unit, notes) VALUES (?, ?, ?, ?)')
-          .run(assembly.name, assembly.description, assembly.unit, assembly.notes);
+          .prepare(
+            `INSERT INTO assemblies
+              (name, description, unit, notes, production_rate_id, crew_template_id, equipment_id, equipment_hours_per_unit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(assembly.name, assembly.description, assembly.unit, assembly.notes,
+            assembly.productionRateId ?? null, assembly.crewTemplateId ?? null,
+            assembly.equipmentId ?? null, assembly.equipmentHoursPerUnit ?? 0);
         assemblyId = Number(result.lastInsertRowid);
       }
 
@@ -1105,6 +1189,105 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   });
 
+  // ---- Generic CSV save (renderer builds content, main shows the dialog) ----
+
+  safeHandle('export:save-csv', async (_event, defaultName: string, title: string, csvContent: string) => {
+    const result = await dialog.showSaveDialog({
+      title,
+      defaultPath: defaultName.replace(/[^a-zA-Z0-9_.-]/g, '_'),
+      filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    fs.writeFileSync(result.filePath, csvContent, 'utf-8');
+    logger.info('export:save-csv', `Saved CSV to ${result.filePath}`);
+    return { success: true, path: result.filePath };
+  });
+
+  // ---- Unit price schedule export ----
+  // DOT/municipal-style bid form: markups, escalation, and tax are folded
+  // into each line's unit SELL price instead of shown as separate rows.
+  safeHandle('export:unit-price-csv', async (_event, jobId: number) => {
+    const { escapeField } = await import('./csv-export');
+    const row = (...fields: (string | number)[]) => fields.map((f) => escapeField(String(f))).join(',');
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
+    if (!job) return { success: false, error: 'Job not found.' };
+
+    const sections = db.prepare(
+      'SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order'
+    ).all(jobId) as any[];
+
+    const escPct = (job.escalation_percent || 0) / 100;
+    const taxPct = (job.tax_percent || 0) / 100;
+
+    const lines: string[] = [];
+    lines.push('﻿' + row('UNIT PRICE SCHEDULE', job.name, job.job_number || ''));
+    lines.push('');
+    lines.push(row('Item No', 'Description', 'Unit', 'Quantity', 'Unit Price', 'Extension'));
+
+    const buildSection = (section: any): number => {
+      const items = db.prepare(
+        'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
+      ).all(section.id) as any[];
+      if (items.length === 0) return 0;
+
+      // Section markups resolve overrides the same way the bid summary does
+      const markupPct = (
+        (section.overhead_percent_override ?? job.overhead_percent ?? 0)
+        + (section.profit_percent_override ?? job.profit_percent ?? 0)
+        + (section.bond_percent_override ?? job.bond_percent ?? 0)
+      ) / 100;
+
+      lines.push(row(section.is_alternate ? `ADD ALTERNATE: ${section.name}` : section.name, '', '', '', '', ''));
+      let sectionTotal = 0;
+      for (const item of items) {
+        const escalatedMaterial = (item.material_total || 0) * (1 + escPct);
+        const directWithEsc = (item.total_cost || 0) - (item.material_total || 0) + escalatedMaterial;
+        const sellTotal = directWithEsc * (1 + markupPct) + escalatedMaterial * taxPct;
+        const qty = item.quantity || 0;
+        // Round the unit price to cents and extend from the rounded price,
+        // as owner bid forms require qty x unit price = extension
+        const unitSell = qty > 0 ? Math.round((sellTotal / qty) * 100) / 100 : 0;
+        const extension = qty > 0 ? unitSell * qty : Math.round(sellTotal * 100) / 100;
+        sectionTotal += extension;
+        lines.push(row(
+          item.item_number || '', item.description, item.unit, qty,
+          unitSell.toFixed(2), extension.toFixed(2),
+        ));
+      }
+      lines.push(row('', `${section.name} Subtotal`, '', '', '', sectionTotal.toFixed(2)));
+      return sectionTotal;
+    };
+
+    let baseTotal = 0;
+    for (const section of sections.filter((s) => !s.is_alternate)) {
+      baseTotal += buildSection(section);
+    }
+    lines.push(row('', 'TOTAL BASE BID', '', '', '', baseTotal.toFixed(2)));
+
+    const altSections = sections.filter((s) => s.is_alternate);
+    if (altSections.length > 0) {
+      lines.push('');
+      for (const section of altSections) {
+        buildSection(section);
+      }
+    }
+    lines.push('');
+    lines.push(row('Note: unit prices include overhead, profit, bond, escalation, and sales tax. Extensions use rounded unit prices and may differ from the proposal total by cents.'));
+
+    const csvContent = lines.join('\r\n') + '\r\n';
+    const safeName = (job.job_number || job.name || 'schedule').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const result = await dialog.showSaveDialog({
+      title: 'Export Unit Price Schedule',
+      defaultPath: `${safeName}-unit-prices.csv`,
+      filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    fs.writeFileSync(result.filePath, csvContent, 'utf-8');
+    logger.info('export:unit-price-csv', `Exported job ${jobId} to ${result.filePath}`);
+    return { success: true, path: result.filePath };
+  });
+
   // ================================================================
   // PDF BID EXPORT
   // ================================================================
@@ -1132,9 +1315,11 @@ export function registerIpcHandlers(db: Database.Database): void {
     return {
       job, settings, sections, lineItemsBySection,
       totals: summary,
+      escalation: summary.escalation,
       overhead: summary.overhead, profit: summary.profit,
       bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
       alternates: summary.alternates,
+      escalationPct: job.escalation_percent || 0,
       overheadPct: job.overhead_percent || 0,
       profitPct: job.profit_percent || 0,
       bondPct: job.bond_percent || 0,
@@ -1706,6 +1891,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       areaType: a.area_type,
       depthFt: a.depth_ft,
       materialId: a.material_id,
+      assemblyId: a.assembly_id,
       color: a.color,
       pdfPage: a.pdf_page,
       points: (pointsStmt.all(a.id) as any[]).map((p) => ({ x: p.x_px, y: p.y_px })),
@@ -1718,23 +1904,23 @@ export function registerIpcHandlers(db: Database.Database): void {
       if (area.id && area.id > 0) {
         db.prepare(`
           UPDATE takeoff_areas SET
-            label = ?, area_type = ?, depth_ft = ?, material_id = ?,
+            label = ?, area_type = ?, depth_ft = ?, material_id = ?, assembly_id = ?,
             color = ?, sort_order = ?, pdf_page = ?,
             updated_at = datetime('now','localtime')
           WHERE id = ?
         `).run(
-          area.label, area.areaType, area.depthFt, area.materialId ?? null,
+          area.label, area.areaType, area.depthFt, area.materialId ?? null, area.assemblyId ?? null,
           area.color, area.sortOrder ?? 0, area.pdfPage, area.id
         );
         areaId = area.id;
       } else {
         const result = db.prepare(`
           INSERT INTO takeoff_areas
-            (job_id, label, area_type, depth_ft, material_id, color, sort_order, pdf_page)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           area.jobId, area.label, area.areaType, area.depthFt,
-          area.materialId ?? null, area.color, area.sortOrder ?? 0, area.pdfPage
+          area.materialId ?? null, area.assemblyId ?? null, area.color, area.sortOrder ?? 0, area.pdfPage
         );
         areaId = Number(result.lastInsertRowid);
       }
@@ -1816,8 +2002,8 @@ export function registerIpcHandlers(db: Database.Database): void {
       }
 
       const insertArea = db.prepare(
-        `INSERT INTO takeoff_areas (id, job_id, label, area_type, depth_ft, material_id, color, sort_order, pdf_page)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO takeoff_areas (id, job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const insertAreaPt = db.prepare(
         'INSERT INTO takeoff_area_points (area_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
@@ -1825,7 +2011,7 @@ export function registerIpcHandlers(db: Database.Database): void {
       (state.areas || []).forEach((a: any, idx: number) => {
         if (a.id <= 0) return;
         insertArea.run(a.id, jobId, a.label, a.areaType, a.depthFt,
-          a.materialId ?? null, a.color, idx, a.pdfPage);
+          a.materialId ?? null, a.assemblyId ?? null, a.color, idx, a.pdfPage);
         (a.points || []).forEach((pt: any, i: number) => {
           insertAreaPt.run(a.id, pt.x, pt.y, i);
         });
@@ -1920,6 +2106,7 @@ interface PdfData {
   sections: any[];
   lineItemsBySection: Record<number, any[]>;
   totals: any;
+  escalation: number;
   overhead: number;
   profit: number;
   bond: number;
@@ -1927,6 +2114,7 @@ interface PdfData {
   grandTotal: number;
   /** Alternate sections priced independently (excluded from base totals) */
   alternates: { sectionId: number; name: string; grandTotal: number }[];
+  escalationPct: number;
   overheadPct: number;
   profitPct: number;
   bondPct: number;
@@ -1935,8 +2123,8 @@ interface PdfData {
 
 function buildBidPdfHtml(data: PdfData): string {
   const { job, settings, sections, lineItemsBySection, totals,
-    overhead, profit, bond, tax, grandTotal, alternates,
-    overheadPct, profitPct, bondPct, taxPct } = data;
+    escalation, overhead, profit, bond, tax, grandTotal, alternates,
+    escalationPct, overheadPct, profitPct, bondPct, taxPct } = data;
 
   const companyName = escHtml(settings?.company_name || '');
   const companyAddress = escHtml(settings?.company_address || '');
@@ -2033,6 +2221,9 @@ function buildBidPdfHtml(data: PdfData): string {
   // Summary rows (omit zero-percent rows)
   let summaryRows = '';
   summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtCurrency(totals.direct_cost_total)}</td></tr>`;
+  if (escalationPct > 0) {
+    summaryRows += `<tr><td class="sum-label">Material Escalation (${escalationPct}%)</td><td class="sum-val">${fmtCurrency(escalation)}</td></tr>`;
+  }
   if (overheadPct > 0) {
     summaryRows += `<tr><td class="sum-label">Overhead (${overheadPct}%)</td><td class="sum-val">${fmtCurrency(overhead)}</td></tr>`;
   }

@@ -73,8 +73,16 @@ declare global {
       parseCsvPath: (filePath: string) => Promise<any>;
       importPriceSheet: (updates: any[], source: string) => Promise<any>;
 
+      // Quotes
+      getQuotes: (jobId: number) => Promise<any[]>;
+      saveQuote: (quote: any) => Promise<{ id: number }>;
+      selectQuote: (jobId: number, scope: string, quoteId: number | null) => Promise<any>;
+      deleteQuote: (id: number) => Promise<any>;
+
       // Export
       exportQuickBooksCSV: (jobId: number) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+      exportUnitPriceCSV: (jobId: number) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+      saveCsv: (defaultName: string, title: string, csvContent: string) => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
       exportBidPdf: (jobId: number) => Promise<{ success: boolean; filePath?: string; canceled?: boolean }>;
       printBid: (jobId: number) => Promise<{ success: boolean }>;
 

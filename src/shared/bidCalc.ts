@@ -22,9 +22,13 @@ export interface BidJobParams {
   profit_percent: number;
   bond_percent?: number | null;
   tax_percent?: number | null;
+  /** Material price escalation for long-lead bids (job-level) */
+  escalation_percent?: number | null;
 }
 
 export interface BidSummary {
+  /** Material escalation dollars — part of escalated direct cost, so markups apply on top */
+  escalation: number;
   overhead: number;
   profit: number;
   bond: number;
@@ -53,13 +57,17 @@ export interface FullBidSummary extends BidTotals, BidSummary {
 }
 
 export function computeBidSummary(totals: BidTotals, job: BidJobParams): BidSummary {
-  const directCost = totals.direct_cost_total;
+  // Escalation raises the expected material cost, so it joins the direct
+  // cost before markups and is taxed like the materials it represents
+  const escalation = totals.material_total * ((job.escalation_percent || 0) / 100);
+  const directCost = totals.direct_cost_total + escalation;
   const overhead = directCost * (job.overhead_percent / 100);
   const profit = directCost * (job.profit_percent / 100);
   const bond = directCost * ((job.bond_percent || 0) / 100);
-  const tax = totals.material_total * ((job.tax_percent || 0) / 100);
+  const tax = (totals.material_total + escalation) * ((job.tax_percent || 0) / 100);
 
   return {
+    escalation,
     overhead,
     profit,
     bond,
@@ -75,6 +83,7 @@ function sectionParams(section: SectionCostRow, job: BidJobParams): BidJobParams
     profit_percent: section.profit_percent_override ?? job.profit_percent,
     bond_percent: section.bond_percent_override ?? job.bond_percent,
     tax_percent: job.tax_percent,
+    escalation_percent: job.escalation_percent,
   };
 }
 
@@ -102,6 +111,7 @@ export function computeBidSummaryFromSections(
   job: BidJobParams,
 ): FullBidSummary {
   const baseTotals: BidTotals = { ...EMPTY_TOTALS };
+  let escalation = 0;
   let overhead = 0;
   let profit = 0;
   let bond = 0;
@@ -124,6 +134,7 @@ export function computeBidSummaryFromSections(
       });
     } else {
       addTotals(baseTotals, row);
+      escalation += summary.escalation;
       overhead += summary.overhead;
       profit += summary.profit;
       bond += summary.bond;
@@ -133,11 +144,12 @@ export function computeBidSummaryFromSections(
 
   return {
     ...baseTotals,
+    escalation,
     overhead,
     profit,
     bond,
     tax,
-    grandTotal: baseTotals.direct_cost_total + overhead + profit + bond + tax,
+    grandTotal: baseTotals.direct_cost_total + escalation + overhead + profit + bond + tax,
     alternates,
   };
 }

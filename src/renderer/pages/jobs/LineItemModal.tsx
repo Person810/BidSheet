@@ -155,6 +155,18 @@ export function LineItemModal({
               ))}
             </select>
           </div>
+          <div className="form-group">
+            <label>Item # (bid form)</label>
+            <input type="text" className="form-control" value={lineForm.itemNumber}
+              onChange={(e) => setLineForm({ ...lineForm, itemNumber: e.target.value })}
+              placeholder="e.g. 201.4" />
+          </div>
+          <div className="form-group">
+            <label>Cost Code</label>
+            <input type="text" className="form-control" value={lineForm.costCode}
+              onChange={(e) => setLineForm({ ...lineForm, costCode: e.target.value })}
+              placeholder="e.g. 02-300" />
+          </div>
         </div>
 
         {/* Material Section */}

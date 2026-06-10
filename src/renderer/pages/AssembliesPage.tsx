@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   FuzzyAutocomplete,
   materialsToAutocomplete,
+  productionRatesToAutocomplete,
+  crewsToAutocomplete,
+  equipmentToAutocomplete,
   AutocompleteItem,
 } from '../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -50,6 +53,10 @@ const EMPTY_FORM = {
   description: '',
   unit: 'EA',
   notes: '',
+  productionRateId: null as number | null,
+  crewTemplateId: null as number | null,
+  equipmentId: null as number | null,
+  equipmentHoursPerUnit: 0,
 };
 
 // ============================================================
@@ -59,6 +66,9 @@ const EMPTY_FORM = {
 export function AssembliesPage() {
   const [assemblies, setAssemblies] = useState<AssemblyRow[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
+  const [productionRates, setProductionRates] = useState<any[]>([]);
+  const [crews, setCrews] = useState<any[]>([]);
+  const [equipment, setEquipment] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -75,8 +85,16 @@ export function AssembliesPage() {
   }, []);
 
   const loadMaterials = useCallback(async () => {
-    const mats = await window.api.getMaterials();
+    const [mats, rates, crewList, equip] = await Promise.all([
+      window.api.getMaterials(),
+      window.api.getProductionRates(),
+      window.api.getCrewTemplates(),
+      window.api.getEquipment(),
+    ]);
     setMaterials(mats);
+    setProductionRates(rates);
+    setCrews(crewList);
+    setEquipment(equip);
   }, []);
 
   useEffect(() => {
@@ -112,6 +130,10 @@ export function AssembliesPage() {
       description: a.description || '',
       unit: a.unit,
       notes: a.notes || '',
+      productionRateId: (a as any).production_rate_id ?? null,
+      crewTemplateId: (a as any).crew_template_id ?? null,
+      equipmentId: (a as any).equipment_id ?? null,
+      equipmentHoursPerUnit: (a as any).equipment_hours_per_unit ?? 0,
     });
     setFormItems(
       a.items.map((i) => ({
@@ -172,6 +194,10 @@ export function AssembliesPage() {
         description: form.description.trim() || null,
         unit: form.unit,
         notes: form.notes.trim() || null,
+        productionRateId: form.productionRateId,
+        crewTemplateId: form.crewTemplateId,
+        equipmentId: form.equipmentId,
+        equipmentHoursPerUnit: form.equipmentHoursPerUnit,
         items: formItems.map((fi) => ({
           materialId: fi.materialId,
           quantity: fi.quantity,
@@ -334,6 +360,18 @@ export function AssembliesPage() {
                         </tr>
                       </tfoot>
                     </table>
+                    {((a as any).crew_name || (a as any).production_rate_desc || (a as any).equipment_name) && (
+                      <p className="text-muted" style={{ margin: '8px 0 0', fontSize: '0.85em' }}>
+                        {(a as any).production_rate_desc && <span>Labor: {(a as any).production_rate_desc}{(a as any).crew_name ? ` (${(a as any).crew_name})` : ''}</span>}
+                        {!(a as any).production_rate_desc && (a as any).crew_name && <span>Crew: {(a as any).crew_name}</span>}
+                        {(a as any).equipment_name && (
+                          <span>
+                            {((a as any).production_rate_desc || (a as any).crew_name) ? ' · ' : ''}
+                            Equipment: {(a as any).equipment_name} ({(a as any).equipment_hours_per_unit} hr/{a.unit})
+                          </span>
+                        )}
+                      </p>
+                    )}
                     {a.notes && (
                       <p className="text-muted" style={{ margin: '8px 0 0', fontSize: '0.85em' }}>
                         {a.notes}
@@ -474,6 +512,71 @@ export function AssembliesPage() {
                   </table>
                 </div>
               )}
+
+              {/* Labor & Equipment components */}
+              <div style={{ marginBottom: '0.75rem', padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+                  Labor &amp; Equipment (optional)
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                  Added as extra line items when the assembly is dropped into a bid, scaled by quantity.
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label className="form-label">Production Rate</label>
+                    <FuzzyAutocomplete
+                      items={productionRatesToAutocomplete(productionRates)}
+                      value={form.productionRateId}
+                      onSelect={(item) => {
+                        if (item) {
+                          const rate = productionRates.find((r: any) => r.id === item.id);
+                          setForm((f) => ({
+                            ...f,
+                            productionRateId: item.id as number,
+                            // A production rate implies its crew
+                            crewTemplateId: rate?.crew_template_id ?? f.crewTemplateId,
+                          }));
+                        } else {
+                          setForm((f) => ({ ...f, productionRateId: null }));
+                        }
+                      }}
+                      placeholder="Search production rates..."
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Crew</label>
+                    <FuzzyAutocomplete
+                      items={crewsToAutocomplete(crews)}
+                      value={form.crewTemplateId}
+                      onSelect={(item) => setForm((f) => ({ ...f, crewTemplateId: item ? item.id as number : null }))}
+                      placeholder="Search crews..."
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: '0.75rem' }}>
+                  <div>
+                    <label className="form-label">Equipment</label>
+                    <FuzzyAutocomplete
+                      items={equipmentToAutocomplete(equipment)}
+                      value={form.equipmentId}
+                      onSelect={(item) => setForm((f) => ({ ...f, equipmentId: item ? item.id as number : null }))}
+                      placeholder="Search equipment..."
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Equip Hrs per {form.unit}</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={form.equipmentHoursPerUnit}
+                      min={0}
+                      step="any"
+                      disabled={!form.equipmentId}
+                      onChange={(e) => setForm((f) => ({ ...f, equipmentHoursPerUnit: parseFloat(e.target.value) || 0 }))}
+                    />
+                  </div>
+                </div>
+              </div>
 
               {/* Notes */}
               <div style={{ marginBottom: '0.75rem' }}>

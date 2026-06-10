@@ -105,8 +105,16 @@ contextBridge.exposeInMainWorld('api', {
   deleteTakeoffNode: (id: number) => ipcRenderer.invoke('db:takeoff-nodes:delete', id),
   getNodeConnectedRuns: (nodeId: number) => ipcRenderer.invoke('db:takeoff-nodes:connected-runs', nodeId),
 
+  // ---- Quotes ----
+  getQuotes: (jobId: number) => ipcRenderer.invoke('db:quotes:list', jobId),
+  saveQuote: (quote: any) => ipcRenderer.invoke('db:quotes:save', quote),
+  selectQuote: (jobId: number, scope: string, quoteId: number | null) => ipcRenderer.invoke('db:quotes:select', jobId, scope, quoteId),
+  deleteQuote: (id: number) => ipcRenderer.invoke('db:quotes:delete', id),
+
   // ---- Export ----
   exportQuickBooksCSV: (jobId: number) => ipcRenderer.invoke('export:quickbooks-csv', jobId),
+  exportUnitPriceCSV: (jobId: number) => ipcRenderer.invoke('export:unit-price-csv', jobId),
+  saveCsv: (defaultName: string, title: string, csvContent: string) => ipcRenderer.invoke('export:save-csv', defaultName, title, csvContent),
   exportBidPdf: (jobId: number) => ipcRenderer.invoke('jobs:export-pdf', jobId),
   printBid: (jobId: number) => ipcRenderer.invoke('jobs:print-bid', jobId),
 

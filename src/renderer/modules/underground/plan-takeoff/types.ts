@@ -132,6 +132,8 @@ export interface TakeoffArea {
   /** Depth of the surface course in feet (0 = area-only, no volume) */
   depthFt: number;
   materialId: number | null;
+  /** When set, Send to Bid expands this assembly per measured SY instead of a single material line */
+  assemblyId: number | null;
   color: string;
   pdfPage: number;
   points: PdfPoint[];
@@ -143,6 +145,7 @@ export interface AreaConfig {
   areaType: AreaType;
   depthFt: number;
   materialId: number | null;
+  assemblyId: number | null;
 }
 
 export interface ContextMenuState {

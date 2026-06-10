@@ -46,15 +46,18 @@ These are genuinely competitive today, and a few are *better* than generic paid 
 | Global-only markups | Per-section overhead/profit/bond overrides (blank = job default), applied in one shared calculation used by the UI, PDF, and CSV exports |
 | No takeoff visibility on the bid | Takeoff summary card on the job estimate tab: LF by utility, item counts, restoration SY, and uncalibrated-page warnings |
 
+## Tier 2 gaps — closed
+
+| Gap | What was added |
+|---|---|
+| No quote management | Quotes tab per job: competing quotes grouped by scope with lowest-quote flagging, one selectable winner per scope, and one-click "Send to Bid" creating subcontractor line items |
+| No unit price schedules | Owner item numbers on line items plus a Unit Price Schedule CSV export that folds overhead/profit/bond/escalation/tax into each line's unit sell price (DOT/municipal bid-form style), with alternates in their own block |
+| No cost codes | Cost-code field on line items, shown in the grid, with a Cost Code Summary report (direct cost by material/labor/equipment/sub per code, % of direct) and CSV export |
+| Material-only assemblies | Assemblies can carry a labor component (production rate + crew, burdened) and an equipment component (machine + hours per unit); expansion into the bid scales all of it by quantity |
+| No assembly-driven takeoff | Measured areas can link an assembly; Send Areas to Bid expands the full assembly (materials + labor + equipment) per measured SY |
+| No escalation | Job-level material escalation %: raises material direct cost before markups, taxed like the materials it represents, shown on the grid/PDF/exports; job markups are now also editable per job (previously creation-time only) |
+
 ## Remaining gaps, prioritized
-
-### Tier 2 — strong differentiators
-
-1. **Subcontractor/supplier quote tracking** — record competing quotes per scope, pick a winner, flow into line items.
-2. **Unit price schedules** — bid forms with owner-supplied line numbers and units (DOT/municipal work), exportable in the owner's format.
-3. **Cost-code roll-ups and bid-to-actual** — even a simple cost-code field per line item plus a roll-up report opens the door to job costing.
-4. **Assembly-driven takeoff** — let a measured run/area expand a full assembly (pipe + bedding + labor production rate + equipment) instead of material-only line items.
-5. **Material price escalation** — date-based escalation percentage for long-lead bids.
 
 ### Tier 3 — parity items, lower urgency for the trade
 
@@ -66,4 +69,4 @@ These are genuinely competitive today, and a few are *better* than generic paid 
 
 ## Positioning
 
-BidSheet should not chase generic-takeoff feature parity item by item. Its edge is **trade depth**: trench math, junction elevations, restoration areas, and crew-based costing in one tool, free and local. Paid generic tools make underground estimators assemble that themselves. With Tier 1 closed, the gaps a paying user would notice in the first week are gone; Tier 2 is where BidSheet starts beating paid tools on their own turf.
+BidSheet should not chase generic-takeoff feature parity item by item. Its edge is **trade depth**: trench math, junction elevations, restoration areas, and crew-based costing in one tool, free and local. Paid generic tools make underground estimators assemble that themselves. With Tiers 1 and 2 closed, BidSheet covers the estimating workflow end to end — takeoff through unit-price bid forms, quote management, and cost-code reporting; what remains in Tier 3 is generic-tool polish, not trade capability.
