@@ -1,7 +1,8 @@
 import React, { useCallback, useRef } from 'react';
-import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem, TakeoffArea } from './types';
+import type { PdfPoint, OverlayMode, TakeoffRun, TakeoffItem, TakeoffArea, TakeoffAnnotation, AnnotationKind } from './types';
 import ItemSymbols from './ItemSymbols';
 import RunCalloutLabel from './RunCalloutLabel';
+import AnnotationLayer from './AnnotationLayer';
 import {
   getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT,
   computePolygonAreaSF, polygonCentroid,
@@ -51,6 +52,13 @@ interface DrawingOverlayProps {
   onAreaSelect?: (areaId: number | null) => void;
   /** Fired when user right-clicks an area polygon */
   onAreaContextMenu?: (areaId: number, screenX: number, screenY: number) => void;
+  /** Plan markups (text notes, arrows, revision clouds) */
+  annotations?: TakeoffAnnotation[];
+  onAnnotationContextMenu?: (id: number, screenX: number, screenY: number) => void;
+  annotationPreview?: { kind: AnnotationKind; start: PdfPoint; mouse: PdfPoint } | null;
+  /** Marquee multi-selection: highlight sets + the drag rectangle (pdf coords) */
+  multiSelected?: { runs: Set<number>; items: Set<number>; areas: Set<number>; annotations: Set<number> } | null;
+  marqueeRect?: { x: number; y: number; w: number; h: number } | null;
 }
 
 /**
@@ -94,6 +102,8 @@ export function DrawingOverlay({
   onVertexContextMenu, onSegmentContextMenu, onItemContextMenu,
   movingVertex, movePreviewPos, snapNodeId, nodes = [],
   areas = [], activeAreaId, selectedAreaId, onAreaSelect, onAreaContextMenu,
+  annotations = [], onAnnotationContextMenu, annotationPreview,
+  multiSelected, marqueeRect,
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
   const svgRef = useRef<SVGSVGElement>(null);
@@ -171,7 +181,7 @@ export function DrawingOverlay({
         <AreaPolygon
           key={area.id}
           area={area}
-          isSelected={area.id === selectedAreaId}
+          isSelected={area.id === selectedAreaId || (multiSelected?.areas.has(area.id) ?? false)}
           isActive={area.id === activeAreaId}
           interactive={!isActive}
           labelSize={labelSize}
@@ -186,7 +196,7 @@ export function DrawingOverlay({
         <RunLines
           key={run.id}
           run={run}
-          isSelected={run.id === selectedRunId}
+          isSelected={run.id === selectedRunId || (multiSelected?.runs.has(run.id) ?? false)}
           isActive={run.id === activeRunId}
           interactive={!isActive}
           labelSize={labelSize}
@@ -203,10 +213,29 @@ export function DrawingOverlay({
       <ItemSymbols
         items={items}
         selectedItemId={selectedItemId ?? null}
+        multiSelectedIds={multiSelected?.items ?? null}
         labelSize={labelSize}
         onSelect={onItemSelect!}
         onContextMenu={onItemContextMenu}
       />
+      {/* Plan annotations (rendered above takeoff geometry) */}
+      <AnnotationLayer
+        annotations={annotations}
+        labelSize={labelSize}
+        interactive={!isActive}
+        selectedIds={multiSelected?.annotations}
+        onContextMenu={onAnnotationContextMenu}
+        preview={annotationPreview}
+      />
+      {/* Marquee selection rectangle */}
+      {marqueeRect && (
+        <rect
+          x={marqueeRect.x} y={marqueeRect.y} width={marqueeRect.w} height={marqueeRect.h}
+          fill="rgba(59,130,246,0.12)" stroke="var(--accent, #3b82f6)" strokeWidth={1.5}
+          strokeDasharray="5 4" vectorEffect="non-scaling-stroke"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
       {/* Snap-to-node highlight during drawing */}
       {snapNodeId != null && (() => {
         const sn = nodes.find((n) => n.id === snapNodeId);

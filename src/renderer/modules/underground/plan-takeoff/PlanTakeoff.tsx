@@ -10,7 +10,10 @@ import { useRunManager } from './useRunManager';
 import { useItemManager } from './useItemManager';
 import { useNodeManager } from './useNodeManager';
 import { useAreaManager } from './useAreaManager';
+import { useAnnotationManager } from './useAnnotationManager';
 import { useTakeoffHistory } from './useTakeoffHistory';
+import { rectContains, normalizeRect, type MarqueeRect } from './takeoffUtils';
+import { UTILITY_COLORS, type UtilityType, type AnnotationKind } from './types';
 import TakeoffToolbar, { type LayerKey } from './TakeoffToolbar';
 import ItemPickerModal from './ItemPickerModal';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
@@ -119,15 +122,42 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // Area manager hook
   const am = useAreaManager({ jobId, pageNum });
 
+  // Annotation manager hook
+  const anm = useAnnotationManager({ jobId, pageNum });
+
+  // -- Annotation text modal --
+  const [editingAnnotationId, setEditingAnnotationId] = useState<number | null>(null);
+  const [annotationText, setAnnotationText] = useState('');
+  const showAnnotationTextModal = anm.pendingTextPoint != null || editingAnnotationId != null;
+
+  // -- Marquee multi-select --
+  const [selectMode, setSelectMode] = useState(false);
+  const [marqueeStart, setMarqueeStart] = useState<PdfPoint | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null);
+  const [multiSelected, setMultiSelected] = useState<{
+    runs: Set<number>; items: Set<number>; areas: Set<number>; annotations: Set<number>;
+  } | null>(null);
+
+  const clearMultiSelection = useCallback(() => {
+    setMultiSelected(null);
+    setMarqueeStart(null);
+    setMarqueeRect(null);
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    clearMultiSelection();
+  }, [clearMultiSelection]);
+
   // -- Undo/redo history --
   // State is read through a ref so record() always sees the latest values
   // without re-creating callbacks on every render.
-  const takeoffStateRef = useRef({ runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas });
-  takeoffStateRef.current = { runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas };
+  const takeoffStateRef = useRef({ runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas, annotations: anm.annotations });
+  takeoffStateRef.current = { runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas, annotations: anm.annotations };
   const getTakeoffState = useCallback(() => takeoffStateRef.current, []);
   const reloadAll = useCallback(async () => {
-    await Promise.all([rm.reload(), im.reload(), nm.reload(), am.reload()]);
-  }, [rm.reload, im.reload, nm.reload, am.reload]);
+    await Promise.all([rm.reload(), im.reload(), nm.reload(), am.reload(), anm.reload()]);
+  }, [rm.reload, im.reload, nm.reload, am.reload, anm.reload]);
   const history = useTakeoffHistory({ jobId, getState: getTakeoffState, reloadAll });
 
   // Send to Trench Profiles / Send Items to Bid / Send Areas to Bid
@@ -271,6 +301,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // inside rm.handlePointClick; area drawing is checked first since the run
   // manager would silently ignore those clicks.
   const handleOverlayPointClick = useCallback((point: PdfPoint) => {
+    if (!calibrating && anm.isDrawing) {
+      // Second click completes an arrow/cloud — record before the mutation
+      if (anm.pendingKind !== 'text' && anm.startPoint) history.record();
+      anm.handlePointClick(point);
+      return;
+    }
     if (!calibrating && am.isDrawing) {
       am.handlePointClick(point);
       return;
@@ -280,7 +316,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       history.record();
     }
     rm.handlePointClick(point);
-  }, [calibrating, am, rm, history]);
+  }, [calibrating, anm, am, rm, history]);
 
   // Finish the active run/area, recording history for newly created shapes.
   // Snapshots exclude negative (unsaved) IDs, so a capture taken just before
@@ -304,7 +340,116 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const handleOverlayMouseMove = useCallback((point: PdfPoint) => {
     rm.handleMouseMove(point);
     am.handleMouseMove(point);
-  }, [rm, am]);
+    anm.handleMouseMove(point);
+  }, [rm, am, anm]);
+
+  // -- Marquee selection (handled at the wrapper so it works over all layers) --
+
+  const screenPointToPdf = useCallback((clientX: number, clientY: number): PdfPoint | null => {
+    const wrap = viewerWrapRef.current;
+    if (!wrap || pageSizeRef.current.width === 0) return null;
+    const rect = wrap.getBoundingClientRect();
+    return screenToPdf(clientX, clientY, rect, pageSizeRef.current.width, pageSizeRef.current.height,
+      viewport.panX, viewport.panY, scale, pageRotation);
+  }, [viewport.panX, viewport.panY, scale, pageRotation]);
+
+  const handleMarqueeMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!selectMode || e.button !== 0) return;
+    const p = screenPointToPdf(e.clientX, e.clientY);
+    if (!p) return;
+    setMarqueeStart(p);
+    setMarqueeRect(null);
+  }, [selectMode, screenPointToPdf]);
+
+  const handleMarqueeMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!selectMode || !marqueeStart) return;
+    const p = screenPointToPdf(e.clientX, e.clientY);
+    if (!p) return;
+    setMarqueeRect(normalizeRect(marqueeStart, p));
+  }, [selectMode, marqueeStart, screenPointToPdf]);
+
+  const handleMarqueeMouseUp = useCallback(() => {
+    if (!selectMode || !marqueeStart) return;
+    const rect = marqueeRect;
+    setMarqueeStart(null);
+    setMarqueeRect(null);
+    if (!rect || (rect.w < 2 && rect.h < 2)) {
+      // A click without a drag clears the selection
+      setMultiSelected(null);
+      return;
+    }
+    // Only hit-test objects on visible layers — selecting (and bulk-deleting)
+    // things the user can't see would be a footgun
+    setMultiSelected({
+      runs: new Set(rm.pageRuns
+        .filter((r) => !hiddenLayers.has(r.utilityType))
+        .filter((r) => r.points.some((p) => rectContains(rect, p))).map((r) => r.id)),
+      items: hiddenLayers.has('items') ? new Set<number>() : new Set(
+        im.pageItems.filter((i) => rectContains(rect, { x: i.xPx, y: i.yPx })).map((i) => i.id)),
+      areas: hiddenLayers.has('areas') ? new Set<number>() : new Set(
+        am.pageAreas.filter((a) => a.points.some((p) => rectContains(rect, p))).map((a) => a.id)),
+      annotations: hiddenLayers.has('annotations') ? new Set<number>() : new Set(
+        anm.pageAnnotations.filter((a) =>
+          rectContains(rect, { x: a.x1, y: a.y1 })
+          || (a.x2 != null && a.y2 != null && rectContains(rect, { x: a.x2, y: a.y2 }))
+        ).map((a) => a.id)),
+    });
+  }, [selectMode, marqueeStart, marqueeRect, hiddenLayers, rm.pageRuns, im.pageItems, am.pageAreas, anm.pageAnnotations]);
+
+  const multiSelectedCount = multiSelected
+    ? multiSelected.runs.size + multiSelected.items.size + multiSelected.areas.size + multiSelected.annotations.size
+    : 0;
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!multiSelected || multiSelectedCount === 0) return;
+    history.record();
+    const deletes: Promise<any>[] = [];
+    for (const id of multiSelected.runs) if (id > 0) deletes.push(window.api.deleteTakeoffRun(id));
+    for (const id of multiSelected.items) if (id > 0) deletes.push(window.api.deleteTakeoffItem(id));
+    for (const id of multiSelected.areas) if (id > 0) deletes.push(window.api.deleteTakeoffArea(id));
+    for (const id of multiSelected.annotations) if (id > 0) deletes.push(window.api.deleteTakeoffAnnotation(id));
+    await Promise.all(deletes);
+    await reloadAll();
+    clearMultiSelection();
+    addToast(`Deleted ${multiSelectedCount} object${multiSelectedCount !== 1 ? 's' : ''}.`, 'success');
+  }, [multiSelected, multiSelectedCount, history, reloadAll, clearMultiSelection, addToast]);
+
+  const handleBulkSetUtility = useCallback(async (utilityType: UtilityType) => {
+    if (!multiSelected || multiSelected.runs.size === 0) return;
+    history.record();
+    for (const id of multiSelected.runs) {
+      const run = rm.runs.find((r) => r.id === id);
+      if (run && id > 0) {
+        await window.api.saveTakeoffRun({
+          ...run, utilityType, color: UTILITY_COLORS[utilityType],
+          jobId, sortOrder: rm.runs.indexOf(run),
+        });
+      }
+    }
+    await reloadAll();
+    clearMultiSelection();
+  }, [multiSelected, rm.runs, jobId, history, reloadAll, clearMultiSelection]);
+
+  // -- Annotation helpers --
+
+  const handleStartAnnotation = useCallback((kind: AnnotationKind) => {
+    exitSelectMode();
+    setAnnotationText('');
+    anm.startAnnotation(kind);
+  }, [anm, exitSelectMode]);
+
+  const handleAnnotationTextSave = useCallback(() => {
+    if (annotationText.trim() || editingAnnotationId != null) history.record();
+    anm.commitText(annotationText, editingAnnotationId);
+    setEditingAnnotationId(null);
+    setAnnotationText('');
+  }, [annotationText, editingAnnotationId, anm, history]);
+
+  const handleAnnotationTextCancel = useCallback(() => {
+    anm.cancelAnnotation();
+    setEditingAnnotationId(null);
+    setAnnotationText('');
+  }, [anm]);
 
   // Selecting one kind of object clears the others so only one detail view
   // and canvas highlight is active at a time.
@@ -400,6 +545,15 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       targetData: {},
     });
   }, [rm.isDrawing, am.isDrawing, calibrating]);
+
+  const handleAnnotationContextMenu = useCallback((id: number, screenX: number, screenY: number) => {
+    if (rm.isDrawing || am.isDrawing || anm.isDrawing || calibrating) return;
+    setContextMenu({
+      x: screenX, y: screenY,
+      targetType: 'annotation', targetId: id,
+      targetData: {},
+    });
+  }, [rm.isDrawing, am.isDrawing, anm.isDrawing, calibrating]);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -541,6 +695,24 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (!rm.isDrawing && !am.isDrawing && !calibrating) am.handleAddArea();
         break;
       }
+      // Annotation actions
+      case 'editAnnotationText': {
+        if (targetId != null) {
+          const ann = anm.getById(targetId);
+          if (ann) {
+            setEditingAnnotationId(targetId);
+            setAnnotationText(ann.text);
+          }
+        }
+        break;
+      }
+      case 'deleteAnnotation': {
+        if (targetId != null) {
+          history.record();
+          anm.deleteAnnotation(targetId);
+        }
+        break;
+      }
       case 'addCountItem': {
         // Open item picker for canvas-level placement (no run association)
         setPendingItemPlacement({
@@ -553,7 +725,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       default:
         break;
     }
-  }, [contextMenu, rm, im, am, calibrating, history, nm]);
+  }, [contextMenu, rm, im, am, anm, calibrating, history, nm]);
 
   // Material selected from picker -- place item at the stored location or update existing
   const handleItemPickerSelect = useCallback((material: { id: number; name: string }) => {
@@ -572,12 +744,16 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     setSummaryTab('items');
   }, [pendingItemPlacement, im, pageNum, history]);
 
-  // Overlay mode: calibration > drawing (run or area)
-  const overlayMode = calibrating ? calibration.overlayMode : am.isDrawing ? 'draw' : rm.overlayMode;
+  // Overlay mode: calibration > drawing (run, area, or annotation)
+  const overlayMode = calibrating ? calibration.overlayMode
+    : (am.isDrawing || anm.isDrawing) ? 'draw' : rm.overlayMode;
 
   const zoomPercent = Math.round(scale * 100);
-  const canAddRun = rm.canAddRun && !am.isDrawing && !!pageScalePxPerFt;
-  const canAddArea = !calibrating && !rm.isDrawing && !am.isDrawing && !!pageScalePxPerFt;
+  const noOtherTool = !anm.isDrawing && !selectMode;
+  const canAddRun = rm.canAddRun && !am.isDrawing && noOtherTool && !!pageScalePxPerFt;
+  const canAddArea = !calibrating && !rm.isDrawing && !am.isDrawing && noOtherTool && !!pageScalePxPerFt;
+  const canAnnotate = !calibrating && !rm.isDrawing && !am.isDrawing && !selectMode;
+  const canSelect = !calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing;
   const showPanel = rm.runs.length > 0 || rm.isDrawing || im.items.length > 0
     || am.areas.length > 0 || am.isDrawing;
   const hasTakeoffData = rm.runs.some((r) => r.points.length >= 2) || im.items.length > 0
@@ -596,6 +772,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const visibleAreas = useMemo(
     () => am.pageAreas.filter((a) => a.id === am.activeAreaId || !hiddenLayers.has('areas')),
     [am.pageAreas, am.activeAreaId, hiddenLayers],
+  );
+  const visibleAnnotations = useMemo(
+    () => (hiddenLayers.has('annotations') ? [] : anm.pageAnnotations),
+    [anm.pageAnnotations, hiddenLayers],
   );
 
   useEffect(() => {
@@ -627,6 +807,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (pendingItemPlacement) { setPendingItemPlacement(null); return; }
         if (rm.isDrawing) { finishActiveRun(); return; }
         if (am.isDrawing) { finishActiveArea(); return; }
+        if (anm.isDrawing) { anm.cancelAnnotation(); return; }
+        if (selectMode) { exitSelectMode(); return; }
       }
 
       // Undo/redo: while drawing, Ctrl+Z removes the last placed point;
@@ -664,7 +846,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [totalPages, handleFitToWidth, rm, am, history, finishActiveRun, finishActiveArea, pendingItemPlacement, contextMenu]);
+  }, [totalPages, handleFitToWidth, rm, am, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, pendingItemPlacement, contextMenu]);
 
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
   const anyDrawing = rm.isDrawing || am.isDrawing;
@@ -675,10 +857,13 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: true,
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,
     canAddArea, onAddArea: am.handleAddArea, isDrawingArea: am.isDrawing,
+    canAnnotate, onStartAnnotation: handleStartAnnotation, isAnnotating: anm.isDrawing,
+    selectMode, onToggleSelectMode: () => (selectMode ? exitSelectMode() : setSelectMode(true)),
+    canSelect,
     onRotatePage: handleRotatePage,
     canRotate: !calibrating && !anyDrawing,
-    canUndo: history.canUndo && !anyDrawing && !calibrating,
-    canRedo: history.canRedo && !anyDrawing && !calibrating,
+    canUndo: history.canUndo && !anyDrawing && !anm.isDrawing && !calibrating,
+    canRedo: history.canRedo && !anyDrawing && !anm.isDrawing && !calibrating,
     onUndo: history.undo, onRedo: history.redo,
     hiddenLayers, onToggleLayer: toggleLayer,
     canExport: hasTakeoffData, onExportCsv: handleExportCsv,
@@ -719,14 +904,17 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       {/* Viewer + summary panel */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
         <div ref={viewerWrapRef} onClick={handleViewerClick} onContextMenu={handleContextMenu}
-          style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+          onMouseDown={handleMarqueeMouseDown} onMouseMove={handleMarqueeMouseMove}
+          onMouseUp={handleMarqueeMouseUp}
+          style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative', overflow: 'hidden',
+            cursor: selectMode ? 'crosshair' : undefined }}>
           <PdfViewer
             pdfData={pdfData}
             pageNumber={pageNum}
             scale={scale}
             rotation={pageRotation}
             resetPanKey={resetPanKey}
-            panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing) || spaceHeld}
+            panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing && !selectMode) || spaceHeld}
             onViewportChange={setViewport}
             onDocLoaded={handleDocLoaded}
             onPageSizeKnown={handlePageSizeKnown}
@@ -766,6 +954,13 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             selectedAreaId={am.selectedAreaId}
             onAreaSelect={handleAreaSelect}
             onAreaContextMenu={handleAreaContextMenu}
+            annotations={visibleAnnotations}
+            onAnnotationContextMenu={handleAnnotationContextMenu}
+            annotationPreview={anm.pendingKind && anm.pendingKind !== 'text' && anm.startPoint && anm.mousePos
+              ? { kind: anm.pendingKind, start: anm.startPoint, mouse: anm.mousePos }
+              : null}
+            multiSelected={multiSelected}
+            marqueeRect={marqueeRect}
           >
             {calibration.svgContent}
           </DrawingOverlay>
@@ -778,6 +973,32 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
               onAction={handleContextMenuAction}
               onClose={closeContextMenu}
             />
+          )}
+          {/* Multi-select action bar */}
+          {multiSelectedCount > 0 && (
+            <div style={{
+              position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', zIndex: 700,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>
+                {multiSelectedCount} selected
+              </span>
+              {multiSelected!.runs.size > 0 && (
+                <select className="form-control" style={{ width: 150, fontSize: 12, padding: '3px 6px' }}
+                  value="" onChange={(e) => { if (e.target.value) handleBulkSetUtility(e.target.value as UtilityType); }}>
+                  <option value="">Set utility type...</option>
+                  <option value="sanitary">Sanitary Sewer</option>
+                  <option value="storm">Storm Drain</option>
+                  <option value="water">Water</option>
+                  <option value="fiber">Fiber / Conduit</option>
+                  <option value="other">Other</option>
+                </select>
+              )}
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>Delete</button>
+              <button className="btn btn-secondary btn-sm" onClick={clearMultiSelection}>Clear</button>
+            </div>
           )}
         </div>
 
@@ -846,6 +1067,30 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           initialConfig={am.editingConfig}
           lastAreaConfig={am.lastAreaConfig}
         />
+      )}
+
+      {/* Annotation text modal */}
+      {showAnnotationTextModal && (
+        <div className="modal-overlay" onClick={handleAnnotationTextCancel}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: 12 }}>{editingAnnotationId != null ? 'Edit Note' : 'Add Note'}</h3>
+            <div className="form-group">
+              <textarea className="form-control" rows={3} value={annotationText} autoFocus
+                onChange={(e) => setAnnotationText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAnnotationTextSave();
+                }}
+                placeholder="Note text (Ctrl+Enter to save)" />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={handleAnnotationTextCancel}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAnnotationTextSave}
+                disabled={!annotationText.trim()}>
+                {editingAnnotationId != null ? 'Save' : 'Add Note'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showSendAreasConfirm && (

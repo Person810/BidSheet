@@ -196,6 +196,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 21) {
     migrateV21(db);
   }
+  if (version < 22) {
+    migrateV22(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -686,6 +689,27 @@ function migrateV19(db: Database.Database): void {
     ALTER TABLE bid_sections ADD COLUMN profit_percent_override REAL;
     ALTER TABLE bid_sections ADD COLUMN bond_percent_override REAL;
     INSERT INTO schema_version (version) VALUES (19);
+  `);
+}
+
+// V22: Plan annotations (text notes, arrows, revision clouds)
+function migrateV22(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_annotations (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id    INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      pdf_page  INTEGER NOT NULL DEFAULT 1,
+      kind      TEXT NOT NULL DEFAULT 'text',
+      x1_px     REAL NOT NULL,
+      y1_px     REAL NOT NULL,
+      x2_px     REAL,
+      y2_px     REAL,
+      text      TEXT NOT NULL DEFAULT '',
+      color     TEXT NOT NULL DEFAULT '#EF4444',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX idx_takeoff_annotations_job ON takeoff_annotations(job_id);
+    INSERT INTO schema_version (version) VALUES (22);
   `);
 }
 

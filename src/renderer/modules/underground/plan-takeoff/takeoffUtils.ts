@@ -77,6 +77,24 @@ export function polygonCentroid(points: PdfPoint[]): PdfPoint {
   return { x: cx / (3 * signedArea), y: cy / (3 * signedArea) };
 }
 
+/* ---- Marquee selection ---- */
+
+export interface MarqueeRect { x: number; y: number; w: number; h: number; }
+
+export function rectContains(rect: MarqueeRect, p: PdfPoint): boolean {
+  return p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
+}
+
+/** Normalize two corner points into an x/y/w/h rectangle. */
+export function normalizeRect(p1: PdfPoint, p2: PdfPoint): MarqueeRect {
+  return {
+    x: Math.min(p1.x, p2.x),
+    y: Math.min(p1.y, p2.y),
+    w: Math.abs(p2.x - p1.x),
+    h: Math.abs(p2.y - p1.y),
+  };
+}
+
 /* ---- Geometry helpers for callout labels ---- */
 
 /** Midpoint of a segment. */

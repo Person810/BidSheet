@@ -7,6 +7,8 @@ const ITEM_GLOW = 'rgba(233,30,99,0.3)';
 interface ItemSymbolsProps {
   items: TakeoffItem[];
   selectedItemId: number | null;
+  /** Additional IDs highlighted by marquee multi-selection */
+  multiSelectedIds?: Set<number> | null;
   labelSize: number;
   onSelect: (id: number | null) => void;
   onContextMenu?: (itemId: number, screenX: number, screenY: number) => void;
@@ -17,14 +19,14 @@ function truncate(s: string, max: number): string {
 }
 
 const ItemSymbols = React.memo(function ItemSymbols({
-  items, selectedItemId, labelSize, onSelect, onContextMenu,
+  items, selectedItemId, multiSelectedIds, labelSize, onSelect, onContextMenu,
 }: ItemSymbolsProps) {
   const r = labelSize * 0.45;
 
   return (
     <g>
       {items.map((item) => {
-        const isSelected = item.id === selectedItemId;
+        const isSelected = item.id === selectedItemId || (multiSelectedIds?.has(item.id) ?? false);
         return (
           <g key={item.id}>
             {/* Selection glow */}

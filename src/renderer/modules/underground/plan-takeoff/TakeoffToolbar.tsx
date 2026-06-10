@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { UTILITY_COLORS, AREA_COLORS, type UtilityType } from './types';
+import { UTILITY_COLORS, AREA_COLORS, ANNOTATION_COLOR, type UtilityType, type AnnotationKind } from './types';
 
 function Separator() {
   return <div style={{ width: 1, height: 20, background: 'var(--border-color, #ddd)', margin: '0 4px' }} />;
 }
 
 /** Keys for the overlay layer visibility toggles */
-export type LayerKey = UtilityType | 'items' | 'areas';
+export type LayerKey = UtilityType | 'items' | 'areas' | 'annotations';
 
 const LAYER_OPTIONS: { key: LayerKey; label: string; color: string }[] = [
   { key: 'sanitary', label: 'Sanitary Sewer', color: UTILITY_COLORS.sanitary },
@@ -16,6 +16,13 @@ const LAYER_OPTIONS: { key: LayerKey; label: string; color: string }[] = [
   { key: 'other', label: 'Other Runs', color: UTILITY_COLORS.other },
   { key: 'items', label: 'Count Items', color: '#e91e63' },
   { key: 'areas', label: 'Areas', color: AREA_COLORS.asphalt },
+  { key: 'annotations', label: 'Annotations', color: ANNOTATION_COLOR },
+];
+
+const ANNOTATION_OPTIONS: { kind: AnnotationKind; label: string }[] = [
+  { kind: 'text', label: 'Text Note' },
+  { kind: 'arrow', label: 'Arrow' },
+  { kind: 'cloud', label: 'Revision Cloud' },
 ];
 
 interface TakeoffToolbarProps {
@@ -45,6 +52,14 @@ interface TakeoffToolbarProps {
   canAddArea: boolean;
   onAddArea: () => void;
   isDrawingArea: boolean;
+  // Annotations
+  canAnnotate: boolean;
+  onStartAnnotation: (kind: AnnotationKind) => void;
+  isAnnotating: boolean;
+  // Multi-select
+  selectMode: boolean;
+  onToggleSelectMode: () => void;
+  canSelect: boolean;
   // Rotation
   onRotatePage: () => void;
   canRotate: boolean;
@@ -72,6 +87,8 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
     calibrating, onToggleCalibrate, canCalibrate, scaleDisplay,
     canAddRun, onAddRun, isDrawing,
     canAddArea, onAddArea, isDrawingArea,
+    canAnnotate, onStartAnnotation, isAnnotating,
+    selectMode, onToggleSelectMode, canSelect,
     onRotatePage, canRotate,
     canUndo, canRedo, onUndo, onRedo,
     hiddenLayers, onToggleLayer,
@@ -81,17 +98,22 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
 
   const [layersOpen, setLayersOpen] = useState(false);
   const layersRef = useRef<HTMLDivElement>(null);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
+  const annotateRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!layersOpen) return;
+    if (!layersOpen && !annotateOpen) return;
     const handleMouseDown = (e: MouseEvent) => {
       if (layersRef.current && !layersRef.current.contains(e.target as Node)) {
         setLayersOpen(false);
       }
+      if (annotateRef.current && !annotateRef.current.contains(e.target as Node)) {
+        setAnnotateOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleMouseDown);
     return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, [layersOpen]);
+  }, [layersOpen, annotateOpen]);
 
   return (
     <div style={{
@@ -173,9 +195,57 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
         Add Area
       </button>
 
+      <div ref={annotateRef} style={{ position: 'relative' }}>
+        <button
+          className={`btn btn-sm ${isAnnotating ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setAnnotateOpen((o) => !o)}
+          disabled={!canAnnotate}
+          title="Add a text note, arrow, or revision cloud"
+        >
+          Annotate &#9662;
+        </button>
+        {annotateOpen && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 900,
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            borderRadius: 6, padding: '4px 0', minWidth: 150,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          }}>
+            {ANNOTATION_OPTIONS.map((opt) => (
+              <div key={opt.kind}
+                onClick={() => { setAnnotateOpen(false); onStartAnnotation(opt.kind); }}
+                style={{ padding: '7px 14px', fontSize: 12, cursor: 'pointer', color: 'var(--text-primary)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                {opt.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        className={`btn btn-sm ${selectMode ? 'btn-primary' : 'btn-secondary'}`}
+        onClick={onToggleSelectMode}
+        disabled={!canSelect}
+        title="Drag a rectangle to select multiple runs, items, areas, and annotations"
+      >
+        Select
+      </button>
+
       {(isDrawing || isDrawingArea) && (
         <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
           Drawing &mdash; click to place, right-click to undo, Esc to finish
+        </span>
+      )}
+      {isAnnotating && (
+        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
+          Annotating &mdash; click to place, Esc to cancel
+        </span>
+      )}
+      {selectMode && (
+        <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>
+          Drag to select &mdash; Esc to exit
         </span>
       )}
 
