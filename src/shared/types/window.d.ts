@@ -103,6 +103,9 @@ declare global {
       saveTakeoffArea: (area: any) => Promise<{ id: number }>;
       deleteTakeoffArea: (id: number) => Promise<any>;
       exportTakeoffCsv: (jobId: number, csvContent: string) => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
+      replaceTakeoffState: (jobId: number, state: any) => Promise<{ success: boolean }>;
+      getPageRotation: (jobId: number, pageNumber: number) => Promise<number>;
+      savePageRotation: (jobId: number, pageNumber: number, rotation: number) => Promise<any>;
       listTakeoffNodes: (jobId: number) => Promise<any[]>;
       saveTakeoffNode: (node: any) => Promise<{ id: number }>;
       deleteTakeoffNode: (id: number) => Promise<any>;

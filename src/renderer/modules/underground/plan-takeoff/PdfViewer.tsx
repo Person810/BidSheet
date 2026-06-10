@@ -13,6 +13,8 @@ interface PdfViewerProps {
   pdfData: Uint8Array;
   pageNumber: number;
   scale: number;
+  /** Extra clockwise rotation in degrees (0/90/180/270) on top of the page's own rotation. */
+  rotation?: number;
   /** Increment to reset pan to center (e.g. on fit-to-width). */
   resetPanKey?: number;
   /** When false, mouse-drag panning is disabled (e.g. during calibration). Defaults to true. */
@@ -29,7 +31,7 @@ function clampScale(s: number): number {
 }
 
 export function PdfViewer({
-  pdfData, pageNumber, scale, resetPanKey, panEnabled = true, onViewportChange,
+  pdfData, pageNumber, scale, rotation = 0, resetPanKey, panEnabled = true, onViewportChange,
   onDocLoaded, onPageSizeKnown, onScaleChange,
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -90,11 +92,15 @@ export function PdfViewer({
     try {
       const page = await doc.getPage(pageNumber);
 
-      const baseVp = page.getViewport({ scale: 1.0 });
+      // pdf.js rotation is the TOTAL clockwise rotation, so add the page's
+      // own rotation to the user-applied one
+      const totalRotation = (((page.rotate || 0) + rotation) % 360 + 360) % 360;
+
+      const baseVp = page.getViewport({ scale: 1.0, rotation: totalRotation });
       onPageSizeKnown(baseVp.width, baseVp.height);
 
       const dpr = window.devicePixelRatio || 1;
-      const viewport = page.getViewport({ scale: targetScale });
+      const viewport = page.getViewport({ scale: targetScale, rotation: totalRotation });
 
       // Render onto an offscreen canvas
       const offscreen = document.createElement('canvas');
@@ -134,7 +140,7 @@ export function PdfViewer({
         console.error('PDF render error:', err);
       }
     }
-  }, [pageNumber, onPageSizeKnown]);
+  }, [pageNumber, rotation, onPageSizeKnown]);
 
   // Page change: render immediately
   useEffect(() => {

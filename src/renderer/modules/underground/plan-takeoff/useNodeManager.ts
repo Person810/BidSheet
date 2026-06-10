@@ -15,6 +15,8 @@ export interface NodeManager {
   deleteNode: (nodeId: number) => void;
   findNearbyNode: (point: PdfPoint, threshold: number) => TakeoffNode | null;
   getNodeById: (nodeId: number) => TakeoffNode | undefined;
+  /** Re-fetch state from the DB (used by undo/redo restore) */
+  reload: () => Promise<void>;
 }
 
 let globalNextLocalId = -1;
@@ -22,10 +24,13 @@ let globalNextLocalId = -1;
 export function useNodeManager({ jobId, pageNum }: UseNodeManagerOptions): NodeManager {
   const [nodes, setNodes] = useState<TakeoffNode[]>([]);
 
-  useEffect(() => {
+  const reload = useCallback(async () => {
     if (!jobId) { setNodes([]); return; }
-    window.api.listTakeoffNodes(jobId).then((loaded: TakeoffNode[]) => setNodes(loaded));
+    const loaded: TakeoffNode[] = await window.api.listTakeoffNodes(jobId);
+    setNodes(loaded);
   }, [jobId]);
+
+  useEffect(() => { reload(); }, [reload]);
 
   const pageNodes = useMemo(() => nodes.filter((n) => n.pdfPage === pageNum), [nodes, pageNum]);
 
@@ -98,6 +103,6 @@ export function useNodeManager({ jobId, pageNum }: UseNodeManagerOptions): NodeM
   return {
     nodes, pageNodes,
     createNode, updateNode, moveNode, deleteNode,
-    findNearbyNode, getNodeById,
+    findNearbyNode, getNodeById, reload,
   };
 }

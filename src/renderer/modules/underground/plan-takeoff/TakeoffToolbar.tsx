@@ -45,6 +45,14 @@ interface TakeoffToolbarProps {
   canAddArea: boolean;
   onAddArea: () => void;
   isDrawingArea: boolean;
+  // Rotation
+  onRotatePage: () => void;
+  canRotate: boolean;
+  // Undo/redo
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   // Layers
   hiddenLayers: Set<LayerKey>;
   onToggleLayer: (key: LayerKey) => void;
@@ -64,6 +72,8 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
     calibrating, onToggleCalibrate, canCalibrate, scaleDisplay,
     canAddRun, onAddRun, isDrawing,
     canAddArea, onAddArea, isDrawingArea,
+    onRotatePage, canRotate,
+    canUndo, canRedo, onUndo, onRedo,
     hiddenLayers, onToggleLayer,
     canExport, onExportCsv,
     pdfFilename,
@@ -113,6 +123,20 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       </span>
       <button className="btn btn-secondary btn-sm" onClick={onFitToWidth} title="Fit to width">
         Fit
+      </button>
+      <button className="btn btn-secondary btn-sm" onClick={onRotatePage} disabled={!canRotate}
+        title="Rotate page 90° clockwise">
+        &#8635;
+      </button>
+      <Separator />
+
+      <button className="btn btn-secondary btn-sm" onClick={onUndo} disabled={!canUndo}
+        title="Undo (Ctrl+Z)">
+        &#8617;
+      </button>
+      <button className="btn btn-secondary btn-sm" onClick={onRedo} disabled={!canRedo}
+        title="Redo (Ctrl+Y)">
+        &#8618;
       </button>
       <Separator />
 

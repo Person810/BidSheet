@@ -60,6 +60,8 @@ export interface RunManager {
   syncNodePosition: (nodeId: number, x: number, y: number) => void;
   /** Clear nodeId on all points referencing a deleted node */
   unlinkNode: (nodeId: number) => void;
+  /** Re-fetch state from the DB (used by undo/redo restore) */
+  reload: () => Promise<void>;
 }
 
 function runToConfig(run: TakeoffRun): RunConfig {
@@ -95,15 +97,16 @@ export function useRunManager({
 
   const isDrawing = activeRunId !== null;
 
-  // Load runs from DB when job changes
-  useEffect(() => {
+  // Load runs from DB when job changes (also used by undo/redo restore)
+  const reload = useCallback(async () => {
     if (!jobId) { setRuns([]); return; }
-    window.api.listTakeoffRuns(jobId).then((loaded: TakeoffRun[]) => {
-      setRuns(loaded);
-      setActiveRunId(null);
-      setSelectedRunId(null);
-    });
+    const loaded: TakeoffRun[] = await window.api.listTakeoffRuns(jobId);
+    setRuns(loaded);
+    setActiveRunId(null);
+    setSelectedRunId(null);
   }, [jobId]);
+
+  useEffect(() => { reload(); }, [reload]);
 
   // -- Finish / discard active run --
 
@@ -415,6 +418,6 @@ export function useRunManager({
     updateVertexElevation,
     startMoveVertex, cancelMoveVertex, deleteVertex, addVertexOnSegment,
     continueRun, startNewRunFromNode,
-    syncNodePosition, unlinkNode,
+    syncNodePosition, unlinkNode, reload,
   };
 }

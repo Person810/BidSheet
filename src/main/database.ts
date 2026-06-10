@@ -187,6 +187,12 @@ function runMigrations(db: Database.Database): void {
   if (version < 18) {
     migrateV18(db);
   }
+  if (version < 19) {
+    migrateV19(db);
+  }
+  if (version < 20) {
+    migrateV20(db);
+  }
 }
 
 function migrateV1(db: Database.Database): void {
@@ -666,6 +672,32 @@ function migrateV16(db: Database.Database): void {
     ALTER TABLE takeoff_points ADD COLUMN rim_elev REAL;
     ALTER TABLE takeoff_points ADD COLUMN structure_type TEXT;
     INSERT INTO schema_version (version) VALUES (16);
+  `);
+}
+
+// V19: Bid alternates and per-section markup overrides
+function migrateV19(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE bid_sections ADD COLUMN is_alternate INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE bid_sections ADD COLUMN overhead_percent_override REAL;
+    ALTER TABLE bid_sections ADD COLUMN profit_percent_override REAL;
+    ALTER TABLE bid_sections ADD COLUMN bond_percent_override REAL;
+    INSERT INTO schema_version (version) VALUES (19);
+  `);
+}
+
+// V20: Per-page plan rotation for takeoff
+function migrateV20(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_page_rotations (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      page_number INTEGER NOT NULL,
+      rotation    INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(job_id, page_number)
+    );
+    CREATE INDEX idx_takeoff_page_rotations_job ON takeoff_page_rotations(job_id);
+    INSERT INTO schema_version (version) VALUES (20);
   `);
 }
 

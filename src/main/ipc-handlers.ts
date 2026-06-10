@@ -6,7 +6,33 @@ import { logger } from './logger';
 import type Database from 'better-sqlite3';
 import { isSetupComplete, seedDatabase } from './database';
 import { TradeType } from '../shared/constants/seed-data';
-import { computeBidSummary } from '../shared/bidCalc';
+import { computeBidSummaryFromSections, type SectionCostRow } from '../shared/bidCalc';
+
+/**
+ * Per-section cost roll-up feeding the section-aware bid summary.
+ * Includes empty sections so alternates always appear in summaries.
+ */
+function getSectionCostRows(db: Database.Database, jobId: number): SectionCostRow[] {
+  return db.prepare(
+    `SELECT
+      s.id as section_id,
+      s.name,
+      s.is_alternate,
+      s.overhead_percent_override,
+      s.profit_percent_override,
+      s.bond_percent_override,
+      COALESCE(SUM(li.material_total), 0) as material_total,
+      COALESCE(SUM(li.labor_total), 0) as labor_total,
+      COALESCE(SUM(li.equipment_total), 0) as equipment_total,
+      COALESCE(SUM(li.subcontractor_cost), 0) as subcontractor_total,
+      COALESCE(SUM(li.total_cost), 0) as direct_cost_total
+    FROM bid_sections s
+    LEFT JOIN bid_line_items li ON li.section_id = s.id
+    WHERE s.job_id = ?
+    GROUP BY s.id
+    ORDER BY s.sort_order`
+  ).all(jobId) as SectionCostRow[];
+}
 
 // ================================================================
 // Error handling utilities
@@ -466,8 +492,15 @@ export function registerIpcHandlers(db: Database.Database): void {
       const sections = db.prepare('SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
       for (const section of sections) {
         const newSection = db
-          .prepare('INSERT INTO bid_sections (job_id, name, sort_order) VALUES (?, ?, ?)')
-          .run(newJobId, section.name, section.sort_order);
+          .prepare(
+            `INSERT INTO bid_sections
+              (job_id, name, sort_order, is_alternate,
+               overhead_percent_override, profit_percent_override, bond_percent_override)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(newJobId, section.name, section.sort_order, section.is_alternate ?? 0,
+            section.overhead_percent_override ?? null, section.profit_percent_override ?? null,
+            section.bond_percent_override ?? null);
         const newSectionId = Number(newSection.lastInsertRowid);
 
         const items = db.prepare('SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order').all(section.id) as any[];
@@ -585,6 +618,15 @@ export function registerIpcHandlers(db: Database.Database): void {
         }
       }
 
+      // Copy takeoff page rotations
+      const rotations = db.prepare('SELECT * FROM takeoff_page_rotations WHERE job_id = ?').all(id) as any[];
+      const insertRotation = db.prepare(
+        'INSERT INTO takeoff_page_rotations (job_id, page_number, rotation) VALUES (?, ?, ?)'
+      );
+      for (const r of rotations) {
+        insertRotation.run(newJobId, r.page_number, r.rotation);
+      }
+
       // Copy takeoff job settings (PDF path, legacy scale)
       const takeoffSettings = db.prepare('SELECT * FROM takeoff_job_settings WHERE job_id = ?').get(id) as any;
       if (takeoffSettings) {
@@ -641,23 +683,10 @@ export function registerIpcHandlers(db: Database.Database): void {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job) return null;
 
-    const totals = db
-      .prepare(
-        `SELECT
-          COALESCE(SUM(material_total), 0) as material_total,
-          COALESCE(SUM(labor_total), 0) as labor_total,
-          COALESCE(SUM(equipment_total), 0) as equipment_total,
-          COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
-          COALESCE(SUM(total_cost), 0) as direct_cost_total
-        FROM bid_line_items WHERE job_id = ?`
-      )
-      .get(jobId) as any;
-
-    const summary = computeBidSummary(totals, job);
+    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job);
 
     return {
       jobId,
-      ...totals,
       ...summary,
     };
   });
@@ -669,31 +698,14 @@ export function registerIpcHandlers(db: Database.Database): void {
     const jobs = db.prepare(`SELECT * FROM jobs WHERE id IN (${placeholders})`).all(...jobIds) as any[];
     const jobMap = new Map(jobs.map((j: any) => [j.id, j]));
 
-    const totalsRows = db.prepare(
-      `SELECT job_id,
-        COALESCE(SUM(material_total), 0) as material_total,
-        COALESCE(SUM(labor_total), 0) as labor_total,
-        COALESCE(SUM(equipment_total), 0) as equipment_total,
-        COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
-        COALESCE(SUM(total_cost), 0) as direct_cost_total
-      FROM bid_line_items WHERE job_id IN (${placeholders}) GROUP BY job_id`
-    ).all(...jobIds) as any[];
-    const totalsMap = new Map(totalsRows.map((t: any) => [t.job_id, t]));
-
     return jobIds.map((id) => {
       const job = jobMap.get(id);
       if (!job) return null;
 
-      const totals = totalsMap.get(id) || {
-        material_total: 0, labor_total: 0, equipment_total: 0,
-        subcontractor_total: 0, direct_cost_total: 0,
-      };
-
-      const summary = computeBidSummary(totals, job);
+      const summary = computeBidSummaryFromSections(getSectionCostRows(db, id), job);
 
       return {
         jobId: id,
-        ...totals,
         ...summary,
       };
     }).filter(Boolean);
@@ -708,14 +720,28 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:bid-sections:save', (_event, section: any) => {
+    const isAlternate = section.isAlternate ? 1 : 0;
+    const overheadOverride = section.overheadPercentOverride ?? null;
+    const profitOverride = section.profitPercentOverride ?? null;
+    const bondOverride = section.bondPercentOverride ?? null;
     if (section.id) {
-      db.prepare('UPDATE bid_sections SET name = ?, sort_order = ? WHERE id = ?')
-        .run(section.name, section.sortOrder, section.id);
+      db.prepare(
+        `UPDATE bid_sections SET name = ?, sort_order = ?, is_alternate = ?,
+          overhead_percent_override = ?, profit_percent_override = ?, bond_percent_override = ?
+        WHERE id = ?`
+      ).run(section.name, section.sortOrder, isAlternate,
+        overheadOverride, profitOverride, bondOverride, section.id);
       return { id: section.id };
     } else {
       const result = db
-        .prepare('INSERT INTO bid_sections (job_id, name, sort_order) VALUES (?, ?, ?)')
-        .run(section.jobId, section.name, section.sortOrder);
+        .prepare(
+          `INSERT INTO bid_sections
+            (job_id, name, sort_order, is_alternate,
+             overhead_percent_override, profit_percent_override, bond_percent_override)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(section.jobId, section.name, section.sortOrder, isAlternate,
+          overheadOverride, profitOverride, bondOverride);
       return { id: Number(result.lastInsertRowid) };
     }
   });
@@ -1038,7 +1064,10 @@ export function registerIpcHandlers(db: Database.Database): void {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job) return { success: false, error: 'Job not found.' };
 
-    const sections = db.prepare('SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order').all(jobId) as any[];
+    // QuickBooks export represents the base bid — alternate sections are excluded
+    const sections = db.prepare(
+      'SELECT * FROM bid_sections WHERE job_id = ? AND is_alternate = 0 ORDER BY sort_order'
+    ).all(jobId) as any[];
 
     const lineItemsBySection: Record<number, any[]> = {};
     for (const section of sections) {
@@ -1048,19 +1077,15 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
 
     // Calculate summary (same logic as db:jobs:summary)
-    const totals = db.prepare(
-      `SELECT
-        COALESCE(SUM(material_total), 0) as material_total,
-        COALESCE(SUM(labor_total), 0) as labor_total,
-        COALESCE(SUM(equipment_total), 0) as equipment_total,
-        COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
-        COALESCE(SUM(total_cost), 0) as direct_cost_total
-      FROM bid_line_items WHERE job_id = ?`
-    ).get(jobId) as any;
+    const costRows = getSectionCostRows(db, jobId);
+    const summary = computeBidSummaryFromSections(costRows, job);
+    const hasMarkupOverrides = costRows.some((r) => !r.is_alternate && (
+      r.overhead_percent_override != null
+      || r.profit_percent_override != null
+      || r.bond_percent_override != null
+    ));
 
-    const summary = computeBidSummary(totals, job);
-
-    const csvContent = generateEstimateCSV({ job, sections, lineItemsBySection, summary });
+    const csvContent = generateEstimateCSV({ job, sections, lineItemsBySection, summary, hasMarkupOverrides });
 
     const safeName = (job.job_number || job.name || 'estimate').replace(/[^a-zA-Z0-9_-]/g, '_');
     const result = await dialog.showSaveDialog({
@@ -1084,46 +1109,44 @@ export function registerIpcHandlers(db: Database.Database): void {
   // PDF BID EXPORT
   // ================================================================
 
+  /** Gather everything buildBidPdfHtml needs (shared by export and print). */
+  const gatherBidPdfData = (jobId: number): PdfData => {
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
+    if (!job) throw new Error('Job not found.');
+
+    const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get() as any;
+
+    const sections = db.prepare(
+      'SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order'
+    ).all(jobId) as any[];
+
+    const lineItemsBySection: Record<number, any[]> = {};
+    for (const section of sections) {
+      lineItemsBySection[section.id] = db.prepare(
+        'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
+      ).all(section.id) as any[];
+    }
+
+    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job);
+
+    return {
+      job, settings, sections, lineItemsBySection,
+      totals: summary,
+      overhead: summary.overhead, profit: summary.profit,
+      bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
+      alternates: summary.alternates,
+      overheadPct: job.overhead_percent || 0,
+      profitPct: job.profit_percent || 0,
+      bondPct: job.bond_percent || 0,
+      taxPct: job.tax_percent || 0,
+    };
+  };
+
   safeHandle('jobs:export-pdf', async (_event, jobId: number) => {
     try {
-      const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
-      if (!job) throw new Error('Job not found.');
-
-      const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get() as any;
-
-      const sections = db.prepare(
-        'SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order'
-      ).all(jobId) as any[];
-
-      const lineItemsBySection: Record<number, any[]> = {};
-      for (const section of sections) {
-        lineItemsBySection[section.id] = db.prepare(
-          'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
-        ).all(section.id) as any[];
-      }
-
-      const totals = db.prepare(
-        `SELECT
-          COALESCE(SUM(material_total), 0) as material_total,
-          COALESCE(SUM(labor_total), 0) as labor_total,
-          COALESCE(SUM(equipment_total), 0) as equipment_total,
-          COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
-          COALESCE(SUM(total_cost), 0) as direct_cost_total
-        FROM bid_line_items WHERE job_id = ?`
-      ).get(jobId) as any;
-
-      const summary = computeBidSummary(totals, job);
-      const overheadPct = job.overhead_percent || 0;
-      const profitPct = job.profit_percent || 0;
-      const bondPct = job.bond_percent || 0;
-      const taxPct = job.tax_percent || 0;
-
-      const html = buildBidPdfHtml({
-        job, settings, sections, lineItemsBySection, totals,
-        overhead: summary.overhead, profit: summary.profit,
-        bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
-        overheadPct, profitPct, bondPct, taxPct,
-      });
+      const data = gatherBidPdfData(jobId);
+      const { job, settings } = data;
+      const html = buildBidPdfHtml(data);
 
       // Create hidden BrowserWindow for PDF generation
       const win = new BrowserWindow({
@@ -1177,44 +1200,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   // ---- Print Bid (via PDF pipeline) ----
   safeHandle('jobs:print-bid', async (_event, jobId: number) => {
     try {
-      const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
-      if (!job) throw new Error('Job not found.');
-
-      const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get() as any;
-
-      const sections = db.prepare(
-        'SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order'
-      ).all(jobId) as any[];
-
-      const lineItemsBySection: Record<number, any[]> = {};
-      for (const section of sections) {
-        lineItemsBySection[section.id] = db.prepare(
-          'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
-        ).all(section.id) as any[];
-      }
-
-      const totals = db.prepare(
-        `SELECT
-          COALESCE(SUM(material_total), 0) as material_total,
-          COALESCE(SUM(labor_total), 0) as labor_total,
-          COALESCE(SUM(equipment_total), 0) as equipment_total,
-          COALESCE(SUM(subcontractor_cost), 0) as subcontractor_total,
-          COALESCE(SUM(total_cost), 0) as direct_cost_total
-        FROM bid_line_items WHERE job_id = ?`
-      ).get(jobId) as any;
-
-      const summary = computeBidSummary(totals, job);
-      const overheadPct = job.overhead_percent || 0;
-      const profitPct = job.profit_percent || 0;
-      const bondPct = job.bond_percent || 0;
-      const taxPct = job.tax_percent || 0;
-
-      const html = buildBidPdfHtml({
-        job, settings, sections, lineItemsBySection, totals,
-        overhead: summary.overhead, profit: summary.profit,
-        bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
-        overheadPct, profitPct, bondPct, taxPct,
-      });
+      const html = buildBidPdfHtml(gatherBidPdfData(jobId));
 
       const win = new BrowserWindow({
         show: false,
@@ -1467,6 +1453,21 @@ export function registerIpcHandlers(db: Database.Database): void {
       scale_point2_y: data.scale_point2_y ?? null,
       scale_distance_ft: data.scale_distance_ft ?? null,
     });
+  });
+
+  safeHandle('db:takeoff-page-rotation:get', (_event, jobId: number, pageNumber: number) => {
+    const row = db.prepare(
+      'SELECT rotation FROM takeoff_page_rotations WHERE job_id = ? AND page_number = ?'
+    ).get(jobId, pageNumber) as any;
+    return row?.rotation ?? 0;
+  });
+
+  safeHandle('db:takeoff-page-rotation:save', (_event, jobId: number, pageNumber: number, rotation: number) => {
+    return db.prepare(`
+      INSERT INTO takeoff_page_rotations (job_id, page_number, rotation)
+      VALUES (?, ?, ?)
+      ON CONFLICT(job_id, page_number) DO UPDATE SET rotation = excluded.rotation
+    `).run(jobId, pageNumber, ((rotation % 360) + 360) % 360);
   });
 
   safeHandle('db:takeoff-page-scale:list', (_event, jobId: number) => {
@@ -1756,6 +1757,85 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM takeoff_areas WHERE id = ?').run(id);
   });
 
+  // ---- Takeoff undo/redo state restore ----
+
+  // Replaces the entire takeoff state (runs, points, nodes, items, areas)
+  // for a job in one transaction, preserving entity IDs so history snapshots
+  // stay valid across undo/redo cycles. Negative (never-saved) IDs are skipped.
+  safeHandle('db:takeoff:replace-state', (_event, jobId: number, state: any) => {
+    const replaceTx = db.transaction(() => {
+      db.prepare('DELETE FROM takeoff_items WHERE job_id = ?').run(jobId);
+      db.prepare('DELETE FROM takeoff_areas WHERE job_id = ?').run(jobId);
+      db.prepare('DELETE FROM takeoff_runs WHERE job_id = ?').run(jobId);
+      db.prepare('DELETE FROM takeoff_nodes WHERE job_id = ?').run(jobId);
+
+      // Nodes first — run points reference them
+      const insertNode = db.prepare(
+        `INSERT INTO takeoff_nodes (id, job_id, x_px, y_px, pdf_page, invert_elev, rim_elev, structure_type, label)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const n of state.nodes || []) {
+        if (n.id <= 0) continue;
+        insertNode.run(n.id, jobId, n.xPx, n.yPx, n.pdfPage,
+          n.invertElev ?? null, n.rimElev ?? null, n.structureType ?? null, n.label ?? '');
+      }
+
+      const insertRun = db.prepare(
+        `INSERT INTO takeoff_runs
+          (id, job_id, label, utility_type, pipe_size_in, pipe_material, pipe_material_id,
+           start_depth_ft, grade_pct, trench_width_ft, bench_width_ft, bedding_type,
+           bedding_depth_ft, bedding_material_id, backfill_type, backfill_material_id,
+           color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const insertPt = db.prepare(
+        'INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order, invert_elev, rim_elev, structure_type, node_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      );
+      (state.runs || []).forEach((r: any, idx: number) => {
+        if (r.id <= 0) return;
+        insertRun.run(r.id, jobId, r.label, r.utilityType, r.pipeSizeIn, r.pipeMaterial,
+          r.pipeMaterialId ?? null, r.startDepthFt, r.gradePct, r.trenchWidthFt,
+          r.benchWidthFt, r.beddingType, r.beddingDepthFt, r.beddingMaterialId ?? null,
+          r.backfillType, r.backfillMaterialId ?? null, r.color, idx, r.pdfPage);
+        (r.points || []).forEach((pt: any, i: number) => {
+          insertPt.run(r.id, pt.x, pt.y, i, pt.invertElev ?? null, pt.rimElev ?? null,
+            pt.structureType ?? null, pt.nodeId ?? null);
+        });
+      });
+
+      const insertItem = db.prepare(
+        `INSERT INTO takeoff_items (id, job_id, material_id, x_px, y_px, quantity, label, pdf_page, near_run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const i of state.items || []) {
+        if (i.id <= 0) continue;
+        // A referenced run may have been a negative-ID (skipped) entity
+        const nearRunId = i.nearRunId && i.nearRunId > 0 ? i.nearRunId : null;
+        insertItem.run(i.id, jobId, i.materialId ?? null, i.xPx, i.yPx,
+          i.quantity ?? 1, i.label ?? '', i.pdfPage, nearRunId);
+      }
+
+      const insertArea = db.prepare(
+        `INSERT INTO takeoff_areas (id, job_id, label, area_type, depth_ft, material_id, color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const insertAreaPt = db.prepare(
+        'INSERT INTO takeoff_area_points (area_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
+      );
+      (state.areas || []).forEach((a: any, idx: number) => {
+        if (a.id <= 0) return;
+        insertArea.run(a.id, jobId, a.label, a.areaType, a.depthFt,
+          a.materialId ?? null, a.color, idx, a.pdfPage);
+        (a.points || []).forEach((pt: any, i: number) => {
+          insertAreaPt.run(a.id, pt.x, pt.y, i);
+        });
+      });
+
+      return { success: true };
+    });
+    return replaceTx();
+  });
+
   // ---- Takeoff CSV export ----
 
   safeHandle('takeoff:export-csv', async (_event, jobId: number, csvContent: string) => {
@@ -1845,6 +1925,8 @@ interface PdfData {
   bond: number;
   tax: number;
   grandTotal: number;
+  /** Alternate sections priced independently (excluded from base totals) */
+  alternates: { sectionId: number; name: string; grandTotal: number }[];
   overheadPct: number;
   profitPct: number;
   bondPct: number;
@@ -1853,7 +1935,7 @@ interface PdfData {
 
 function buildBidPdfHtml(data: PdfData): string {
   const { job, settings, sections, lineItemsBySection, totals,
-    overhead, profit, bond, tax, grandTotal,
+    overhead, profit, bond, tax, grandTotal, alternates,
     overheadPct, profitPct, bondPct, taxPct } = data;
 
   const companyName = escHtml(settings?.company_name || '');
@@ -1871,35 +1953,81 @@ function buildBidPdfHtml(data: PdfData): string {
       : job.bid_date;
   }
 
-  // Build line items HTML
-  let tableRows = '';
-  let itemNumber = 0;
-  for (const section of sections) {
-    const items = lineItemsBySection[section.id] || [];
-    // Section header row
-    tableRows += `<tr class="section-header"><td colspan="6">${escHtml(section.name)}</td></tr>\n`;
+  // Build line items HTML — base bid sections only; alternates render in
+  // their own table after the summary
+  const baseSections = sections.filter((s: any) => !s.is_alternate);
+  const altSections = sections.filter((s: any) => s.is_alternate);
 
-    let sectionTotal = 0;
-    items.forEach((item: any, idx: number) => {
-      const rowClass = idx % 2 === 1 ? ' class="stripe"' : '';
-      sectionTotal += item.total_cost || 0;
-      itemNumber++;
-      tableRows += `<tr${rowClass}>
-        <td class="center item-num">${itemNumber}</td>
-        <td class="desc">${escHtml(item.description)}</td>
-        <td class="center">${escHtml(item.unit)}</td>
-        <td class="center">${escHtml(String(item.quantity))}</td>
-        <td class="right">${fmtCurrency(item.unit_cost)}</td>
-        <td class="right">${fmtCurrency(item.total_cost)}</td>
+  const buildSectionRows = (sectionList: any[], startNumber: number): { html: string; nextNumber: number } => {
+    let html = '';
+    let itemNumber = startNumber;
+    for (const section of sectionList) {
+      const items = lineItemsBySection[section.id] || [];
+      // Section header row
+      html += `<tr class="section-header"><td colspan="6">${escHtml(section.name)}</td></tr>\n`;
+
+      let sectionTotal = 0;
+      items.forEach((item: any, idx: number) => {
+        const rowClass = idx % 2 === 1 ? ' class="stripe"' : '';
+        sectionTotal += item.total_cost || 0;
+        itemNumber++;
+        html += `<tr${rowClass}>
+          <td class="center item-num">${itemNumber}</td>
+          <td class="desc">${escHtml(item.description)}</td>
+          <td class="center">${escHtml(item.unit)}</td>
+          <td class="center">${escHtml(String(item.quantity))}</td>
+          <td class="right">${fmtCurrency(item.unit_cost)}</td>
+          <td class="right">${fmtCurrency(item.total_cost)}</td>
+        </tr>\n`;
+      });
+
+      // Section subtotal
+      html += `<tr class="section-subtotal">
+        <td colspan="4"></td>
+        <td class="right subtotal-label">Subtotal</td>
+        <td class="right subtotal-val">${fmtCurrency(sectionTotal)}</td>
       </tr>\n`;
-    });
+    }
+    return { html, nextNumber: itemNumber };
+  };
 
-    // Section subtotal
-    tableRows += `<tr class="section-subtotal">
-      <td colspan="4"></td>
-      <td class="right subtotal-label">Subtotal</td>
-      <td class="right subtotal-val">${fmtCurrency(sectionTotal)}</td>
-    </tr>\n`;
+  const baseRows = buildSectionRows(baseSections, 0);
+  const tableRows = baseRows.html;
+  const altRows = buildSectionRows(altSections, baseRows.nextNumber).html;
+
+  // Add-alternates block: each alternate's marked-up total from the summary
+  let alternatesHtml = '';
+  if (altSections.length > 0) {
+    const altTotalRows = altSections.map((s: any) => {
+      const alt = alternates.find((a) => a.sectionId === s.id);
+      return `<tr class="section-subtotal">
+        <td colspan="4" class="desc" style="font-weight:bold;">ADD ALTERNATE: ${escHtml(s.name)}</td>
+        <td class="right subtotal-label">Add to Base Bid</td>
+        <td class="right subtotal-val">${fmtCurrency(alt?.grandTotal || 0)}</td>
+      </tr>`;
+    }).join('\n');
+
+    alternatesHtml = `
+    <div class="scope-section" style="margin-top:14px;">
+      <div class="scope-heading">Add Alternates</div>
+      <div class="scope-body">The following alternates are priced separately and are not included in the base bid amount.</div>
+    </div>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="left" style="width:5%;">#</th>
+          <th class="left">Description</th>
+          <th>Unit</th>
+          <th>Qty</th>
+          <th>Unit Price</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${altRows}
+        ${altTotalRows}
+      </tbody>
+    </table>`;
   }
 
   // Summary rows (omit zero-percent rows)
@@ -1917,7 +2045,8 @@ function buildBidPdfHtml(data: PdfData): string {
   if (taxPct > 0) {
     summaryRows += `<tr><td class="sum-label">Sales Tax (${taxPct}%)</td><td class="sum-val">${fmtCurrency(tax)}</td></tr>`;
   }
-  summaryRows += `<tr class="total-row"><td class="sum-label">TOTAL BID AMOUNT</td><td class="sum-val">${fmtCurrency(grandTotal)}</td></tr>`;
+  const totalLabel = altSections.length > 0 ? 'TOTAL BASE BID' : 'TOTAL BID AMOUNT';
+  summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtCurrency(grandTotal)}</td></tr>`;
 
   // Cost breakdown summary (material / labor / equipment / sub)
   let costBreakdownRows = '';
@@ -2143,6 +2272,8 @@ ${descriptionHtml}
     ${summaryRows}
   </table>
 </div>
+
+${alternatesHtml}
 
 <!-- Terms & Conditions -->
 <div class="terms-section">

@@ -42,6 +42,8 @@ export interface CSVExportData {
   sections: ExportSection[];
   lineItemsBySection: Record<number, ExportLineItem[]>;
   summary: ExportSummary;
+  /** When sections override the job markups, percent labels would mislead */
+  hasMarkupOverrides?: boolean;
 }
 
 const COLUMNS = [
@@ -116,7 +118,8 @@ function buildRow(
 }
 
 export function generateEstimateCSV(data: CSVExportData): string {
-  const { job, sections, lineItemsBySection, summary } = data;
+  const { job, sections, lineItemsBySection, summary, hasMarkupOverrides } = data;
+  const pctLabel = (pct: number) => hasMarkupOverrides ? '' : ` (${fmt(pct)}%)`;
 
   const customer = job.client || 'Customer';
   const invoiceNo = job.job_number || job.name;
@@ -147,19 +150,19 @@ export function generateEstimateCSV(data: CSVExportData): string {
   if (summary.overhead > 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
-      `Overhead (${fmt(job.overhead_percent)}%)`, 1, fmt(summary.overhead), fmt(summary.overhead),
+      `Overhead${pctLabel(job.overhead_percent)}`, 1, fmt(summary.overhead), fmt(summary.overhead),
     ));
   }
   if (summary.profit > 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
-      `Profit (${fmt(job.profit_percent)}%)`, 1, fmt(summary.profit), fmt(summary.profit),
+      `Profit${pctLabel(job.profit_percent)}`, 1, fmt(summary.profit), fmt(summary.profit),
     ));
   }
   if (summary.bond > 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
-      `Bond (${fmt(job.bond_percent)}%)`, 1, fmt(summary.bond), fmt(summary.bond),
+      `Bond${pctLabel(job.bond_percent)}`, 1, fmt(summary.bond), fmt(summary.bond),
     ));
   }
   if (summary.tax > 0) {

@@ -11,6 +11,7 @@ interface BidGridProps {
   onEditLineItem: (item: any) => void;
   onDeleteLineItem: (id: number) => void;
   onDeleteSection: (id: number) => void;
+  onEditSection: (section: any) => void;
   onOpenAssemblyPicker: (sectionId: number) => void;
   hasAssemblies: boolean;
   approvedCOTotal: number;
@@ -39,6 +40,7 @@ export function BidGrid({
   onEditLineItem,
   onDeleteLineItem,
   onDeleteSection,
+  onEditSection,
   onOpenAssemblyPicker,
   hasAssemblies,
   approvedCOTotal,
@@ -52,6 +54,14 @@ export function BidGrid({
       </div>
     );
   }
+
+  // When any non-alternate section overrides job markups, percent labels in
+  // the footer would be misleading — show a * instead
+  const hasMarkupOverrides = sections.some((s) => s.is_alternate !== 1 && (
+    s.overhead_percent_override != null
+    || s.profit_percent_override != null
+    || s.bond_percent_override != null
+  ));
 
   return (
     <table className="data-table bid-grid">
@@ -89,6 +99,21 @@ export function BidGrid({
               <tr className="bid-grid-section-row">
                 <td colSpan={3}>
                   {section.name}
+                  {section.is_alternate === 1 && (
+                    <span style={{
+                      marginLeft: 8, padding: '1px 6px', borderRadius: 3, fontSize: 10,
+                      fontWeight: 700, background: 'rgba(232,160,32,0.18)', color: '#d97706',
+                      verticalAlign: 'middle',
+                    }} title="Bid alternate — priced separately, excluded from base bid total">ALT</span>
+                  )}
+                  {(section.overhead_percent_override != null
+                    || section.profit_percent_override != null
+                    || section.bond_percent_override != null) && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)', verticalAlign: 'middle' }}
+                      title={`Markup overrides: OH ${section.overhead_percent_override ?? job.overhead_percent}% / Profit ${section.profit_percent_override ?? job.profit_percent}% / Bond ${section.bond_percent_override ?? job.bond_percent}%`}>
+                      &#9881;%
+                    </span>
+                  )}
                   <button className="bid-grid-inline-action no-print" onClick={() => onAddLineItem(section.id)}>
                     + item
                   </button>
@@ -97,6 +122,10 @@ export function BidGrid({
                       + assembly
                     </button>
                   )}
+                  <button className="bid-grid-inline-action no-print" onClick={() => onEditSection(section)}
+                    title="Section settings (alternate, markup overrides)">
+                    settings
+                  </button>
                 </td>
                 <td className="text-right" style={{ color: 'var(--text-secondary)' }}>{formatCurrency(totals.material)}</td>
                 <td className="text-right" style={{ color: 'var(--text-secondary)' }}>{formatCurrency(totals.labor)}</td>
@@ -171,20 +200,20 @@ export function BidGrid({
           </tr>
           {/* Overhead */}
           <tr>
-            <td colSpan={6} className="text-right">Overhead ({job.overhead_percent}%)</td>
+            <td colSpan={6} className="text-right">Overhead{hasMarkupOverrides ? '*' : ` (${job.overhead_percent}%)`}</td>
             <td className="text-right">{formatCurrency(summary.overhead)}</td>
             <td colSpan={2}></td>
           </tr>
           {/* Profit */}
           <tr>
-            <td colSpan={6} className="text-right">Profit ({job.profit_percent}%)</td>
+            <td colSpan={6} className="text-right">Profit{hasMarkupOverrides ? '*' : ` (${job.profit_percent}%)`}</td>
             <td className="text-right">{formatCurrency(summary.profit)}</td>
             <td colSpan={2}></td>
           </tr>
           {/* Bond (conditional) */}
           {summary.bond > 0 && (
             <tr>
-              <td colSpan={6} className="text-right">Bond ({job.bond_percent}%)</td>
+              <td colSpan={6} className="text-right">Bond{hasMarkupOverrides ? '*' : ` (${job.bond_percent}%)`}</td>
               <td className="text-right">{formatCurrency(summary.bond)}</td>
               <td colSpan={2}></td>
             </tr>
@@ -200,13 +229,32 @@ export function BidGrid({
           {/* BID TOTAL */}
           <tr className="bid-grid-footer-total">
             <td colSpan={6} className="text-right" style={{ fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
-              {isChangeOrder ? 'CO TOTAL' : 'BID TOTAL'}
+              {isChangeOrder ? 'CO TOTAL' : (summary.alternates?.length > 0 ? 'BASE BID TOTAL' : 'BID TOTAL')}
             </td>
             <td className="text-right" style={{ fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
               {formatCurrency(summary.grandTotal)}
             </td>
             <td colSpan={2}></td>
           </tr>
+          {/* Alternates (each priced separately with its own markups) */}
+          {(summary.alternates || []).map((alt: any) => (
+            <tr key={alt.sectionId}>
+              <td colSpan={6} className="text-right" style={{ color: '#d97706' }}>
+                Add Alternate: {alt.name}
+              </td>
+              <td className="text-right" style={{ fontWeight: 600, color: '#d97706' }}>
+                {formatCurrency(alt.grandTotal)}
+              </td>
+              <td colSpan={2}></td>
+            </tr>
+          ))}
+          {hasMarkupOverrides && (
+            <tr>
+              <td colSpan={9} className="text-right" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                * includes per-section markup overrides
+              </td>
+            </tr>
+          )}
           {/* Revised total (parent jobs with approved COs) */}
           {!isChangeOrder && approvedCOTotal > 0 && (
             <tr>

@@ -36,23 +36,25 @@ These are genuinely competitive today, and a few are *better* than generic paid 
 | No takeoff reporting | **Export CSV** produces a quantity report: pipe runs with trench volumes, count items grouped by material, measured areas with volumes |
 | Completed shapes swallowed clicks during drawing/calibration | Shapes are now non-interactive while any drawing or calibration is in progress |
 
+## Tier 1 gaps — closed
+
+| Gap | What was added |
+|---|---|
+| No undo/redo beyond in-progress drawing | Full snapshot-based undo/redo (Ctrl+Z / Ctrl+Y, toolbar buttons) across run/item/node/area mutations, restored transactionally to SQLite with entity IDs preserved |
+| No page rotation | Per-page 90° rotation, persisted, with overlay coordinates kept in the unrotated frame so drawings stay put |
+| No bid alternates | Sections can be flagged as alternates: excluded from base bid totals, priced independently with their own markups, shown as "Add Alternate" lines in the grid and an Add Alternates block on the proposal PDF; excluded from QuickBooks export |
+| Global-only markups | Per-section overhead/profit/bond overrides (blank = job default), applied in one shared calculation used by the UI, PDF, and CSV exports |
+| No takeoff visibility on the bid | Takeoff summary card on the job estimate tab: LF by utility, item counts, restoration SY, and uncalibrated-page warnings |
+
 ## Remaining gaps, prioritized
-
-### Tier 1 — highest value per effort (do next)
-
-1. **Full undo/redo history** in takeoff. Today only the in-progress run/area supports point-by-point undo. A command stack over run/item/area mutations (the persistence layer already funnels through a few manager hooks) would match a core expectation from every paid tool.
-2. **Page rotation** in the PDF viewer. Plan sets routinely arrive rotated; pdf.js supports a rotation parameter — the work is keeping overlay coordinates consistent.
-3. **Bid alternates / base-bid + add-alt.** Public and DOT work requires it. Model: flag sections as alternates, exclude from base totals, show separately on the proposal PDF.
-4. **Per-section markup overrides.** HeavyBid users expect markup by trade/department; a nullable per-section override of the job percentages is a small schema change with high perceived value.
-5. **Takeoff summary on the proposal/bid page.** Surface measured quantities (LF by utility, restoration SY) on the job detail page so the estimator can sanity-check the bid against the takeoff.
 
 ### Tier 2 — strong differentiators
 
-6. **Subcontractor/supplier quote tracking** — record competing quotes per scope, pick a winner, flow into line items.
-7. **Unit price schedules** — bid forms with owner-supplied line numbers and units (DOT/municipal work), exportable in the owner's format.
-8. **Cost-code roll-ups and bid-to-actual** — even a simple cost-code field per line item plus a roll-up report opens the door to job costing.
-9. **Assembly-driven takeoff** — let a measured run/area expand a full assembly (pipe + bedding + labor production rate + equipment) instead of material-only line items.
-10. **Material price escalation** — date-based escalation percentage for long-lead bids.
+1. **Subcontractor/supplier quote tracking** — record competing quotes per scope, pick a winner, flow into line items.
+2. **Unit price schedules** — bid forms with owner-supplied line numbers and units (DOT/municipal work), exportable in the owner's format.
+3. **Cost-code roll-ups and bid-to-actual** — even a simple cost-code field per line item plus a roll-up report opens the door to job costing.
+4. **Assembly-driven takeoff** — let a measured run/area expand a full assembly (pipe + bedding + labor production rate + equipment) instead of material-only line items.
+5. **Material price escalation** — date-based escalation percentage for long-lead bids.
 
 ### Tier 3 — parity items, lower urgency for the trade
 
@@ -64,4 +66,4 @@ These are genuinely competitive today, and a few are *better* than generic paid 
 
 ## Positioning
 
-BidSheet should not chase generic-takeoff feature parity item by item. Its edge is **trade depth**: trench math, junction elevations, restoration areas, and crew-based costing in one tool, free and local. Paid generic tools make underground estimators assemble that themselves. Tier 1 above keeps that edge while removing the gaps a paying user would notice in the first week.
+BidSheet should not chase generic-takeoff feature parity item by item. Its edge is **trade depth**: trench math, junction elevations, restoration areas, and crew-based costing in one tool, free and local. Paid generic tools make underground estimators assemble that themselves. With Tier 1 closed, the gaps a paying user would notice in the first week are gone; Tier 2 is where BidSheet starts beating paid tools on their own turf.
