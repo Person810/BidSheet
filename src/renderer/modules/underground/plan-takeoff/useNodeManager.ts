@@ -11,7 +11,7 @@ export interface NodeManager {
   pageNodes: TakeoffNode[];
   createNode: (point: PdfPoint, pdfPage: number, opts?: Partial<TakeoffNode>) => Promise<TakeoffNode>;
   updateNode: (nodeId: number, updates: Partial<TakeoffNode>) => void;
-  moveNode: (nodeId: number, newPos: PdfPoint) => void;
+  moveNode: (nodeId: number, newPos: PdfPoint, opts?: { persist?: boolean }) => void;
   deleteNode: (nodeId: number) => void;
   findNearbyNode: (point: PdfPoint, threshold: number) => TakeoffNode | null;
   getNodeById: (nodeId: number) => TakeoffNode | undefined;
@@ -66,11 +66,12 @@ export function useNodeManager({ jobId, pageNum }: UseNodeManagerOptions): NodeM
     }
   }, [nodes]);
 
-  const moveNode = useCallback((nodeId: number, newPos: PdfPoint) => {
+  const moveNode = useCallback((nodeId: number, newPos: PdfPoint, opts?: { persist?: boolean }) => {
     setNodes((prev) => prev.map((n) =>
       n.id === nodeId ? { ...n, xPx: newPos.x, yPx: newPos.y } : n,
     ));
-    if (nodeId > 0) {
+    // persist: false supports live drag previews — call again with true on release
+    if ((opts?.persist ?? true) && nodeId > 0) {
       const node = nodes.find((n) => n.id === nodeId);
       if (node) window.api.saveTakeoffNode({ ...node, xPx: newPos.x, yPx: newPos.y });
     }

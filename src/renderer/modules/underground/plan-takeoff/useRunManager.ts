@@ -52,6 +52,13 @@ export interface RunManager {
   updateVertexElevation: (runId: number, vertexIndex: number, data: { invertElev: number | null; rimElev: number | null; structureType: string | null }) => void;
   startMoveVertex: (runId: number, vertexIndex: number) => void;
   cancelMoveVertex: () => void;
+  /**
+   * Move a vertex to a new position (drag or click-to-place flows).
+   * Free vertices snap to nearby junction nodes; node-linked vertices move
+   * the shared node so every run referencing it follows. Pass commit: false
+   * for live drag updates (no DB write), then true once on release.
+   */
+  moveVertexTo: (runId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => void;
   deleteVertex: (runId: number, vertexIndex: number) => void;
   addVertexOnSegment: (runId: number, segmentIndex: number, point: PdfPoint) => void;
   continueRun: (runId: number) => void;
@@ -181,6 +188,47 @@ export function useRunManager({
     setPendingStartNodeId(null);
   }, []);
 
+  // -- Vertex repositioning (shared by drag and click-to-place flows) --
+
+  const moveVertexTo = useCallback((runId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => {
+    const run = runsRef.current.find((r) => r.id === runId);
+    const vtx = run?.points[vertexIndex];
+    if (!run || !vtx) return;
+
+    if (vtx.nodeId) {
+      // Node-linked: move the shared node so every run referencing it follows.
+      // Run rows don't need re-saving — point positions are coalesced from the
+      // node on load.
+      const nid = vtx.nodeId;
+      nodeManager.moveNode(nid, point, { persist: commit });
+      setRuns((prev) => prev.map((r) => ({
+        ...r,
+        points: r.points.map((p) =>
+          p.nodeId === nid ? { ...p, x: point.x, y: point.y } : p
+        ),
+      })));
+      return;
+    }
+
+    // Free vertex: snap to a nearby junction node, linking to it on commit
+    const near = nodeManager.findNearbyNode(point, NODE_SNAP_RADIUS_PX);
+    const target = near ? { x: near.xPx, y: near.yPx } : point;
+    setSnapNodeId(!commit && near ? near.id : null);
+
+    const updatedPoints = [...run.points];
+    updatedPoints[vertexIndex] = {
+      ...updatedPoints[vertexIndex],
+      x: target.x, y: target.y,
+      ...(commit && near ? { nodeId: near.id } : {}),
+    };
+    setRuns((prev) => prev.map((r) =>
+      r.id === runId ? { ...r, points: updatedPoints } : r
+    ));
+    if (commit && runId > 0 && jobId) {
+      window.api.saveTakeoffRun({ ...run, points: updatedPoints, jobId, sortOrder: runsRef.current.indexOf(run) });
+    }
+  }, [jobId, nodeManager]);
+
   // -- Drawing --
 
   const handlePointClick = useCallback((point: PdfPoint) => {
@@ -191,35 +239,7 @@ export function useRunManager({
 
     // Move vertex: confirm placement
     if (interactionMode === 'moveVertex' && movingVertex) {
-      const { runId, vertexIndex } = movingVertex;
-      const vtx = runsRef.current.find((r) => r.id === runId)?.points[vertexIndex];
-
-      if (vtx?.nodeId) {
-        // Node-linked: move the node, then sync all runs
-        nodeManager.moveNode(vtx.nodeId, point);
-        setRuns((prev) => prev.map((r) => ({
-          ...r,
-          points: r.points.map((p) =>
-            p.nodeId === vtx.nodeId ? { ...p, x: point.x, y: point.y } : p
-          ),
-        })));
-      } else {
-        // Standalone vertex
-        setRuns((prev) => prev.map((r) => {
-          if (r.id !== runId) return r;
-          const newPoints = [...r.points];
-          newPoints[vertexIndex] = { ...newPoints[vertexIndex], x: point.x, y: point.y };
-          return { ...r, points: newPoints };
-        }));
-        if (runId > 0 && jobId) {
-          const run = runsRef.current.find((r) => r.id === runId);
-          if (run) {
-            const updatedPoints = [...run.points];
-            updatedPoints[vertexIndex] = { ...updatedPoints[vertexIndex], x: point.x, y: point.y };
-            window.api.saveTakeoffRun({ ...run, points: updatedPoints, jobId, sortOrder: runsRef.current.indexOf(run) });
-          }
-        }
-      }
+      moveVertexTo(movingVertex.runId, movingVertex.vertexIndex, point, true);
       setInteractionMode('normal');
       setMovingVertex(null);
       setMovePreviewPos(null);
@@ -237,7 +257,7 @@ export function useRunManager({
     setRuns((prev) => prev.map((r) =>
       r.id === activeRunId ? { ...r, points: [...r.points, vertex] } : r
     ));
-  }, [calibrating, calibrationHandlePointClick, activeRunId, interactionMode, movingVertex, jobId, nodeManager]);
+  }, [calibrating, calibrationHandlePointClick, activeRunId, interactionMode, movingVertex, nodeManager, moveVertexTo]);
 
   const undoLastPoint = useCallback(() => {
     if (!activeRunId) return;
@@ -416,7 +436,7 @@ export function useRunManager({
     handleMouseMove, undoLastPoint, finishActiveRun,
     pendingDeleteId, confirmDelete, cancelDelete,
     updateVertexElevation,
-    startMoveVertex, cancelMoveVertex, deleteVertex, addVertexOnSegment,
+    startMoveVertex, cancelMoveVertex, moveVertexTo, deleteVertex, addVertexOnSegment,
     continueRun, startNewRunFromNode,
     syncNodePosition, unlinkNode, reload,
   };

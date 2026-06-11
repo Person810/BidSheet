@@ -18,6 +18,7 @@ Everything runs locally on your machine.
 - Generate professional bid proposal PDFs
 - Duplicate previous bids as starting points for new jobs
 - Plan takeoff with PDF viewer, scale calibration, page rotation, and pipe run drawing
+- Drag-to-edit takeoff geometry with node snapping and Shift-ortho drawing
 - Area measurement for surface restoration (asphalt, concrete, gravel) with SF/SY/CY quantities
 - Plan annotations (text notes, arrows, revision clouds) and marquee multi-select with bulk edit
 - Full undo/redo, layer visibility toggles, and takeoff quantity CSV export
@@ -54,6 +55,15 @@ Then in a second terminal:
 ```bash
 npm start
 ```
+
+### Tests & Typecheck
+
+```bash
+npm test            # unit tests (bid math, trench volumes, CSV export)
+npm run typecheck   # strict TypeScript check of renderer + main
+```
+
+Both run in CI on every push and pull request.
 
 ### Build Installers
 

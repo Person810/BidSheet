@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('api', {
   // ---- Settings ----
   getSettings: () => ipcRenderer.invoke('db:settings:get'),
   saveSettings: (settings: any) => ipcRenderer.invoke('db:settings:save', settings),
+  chooseLogoFile: () => ipcRenderer.invoke('db:settings:choose-logo'),
 
   // ---- Setup ----
   isSetupComplete: () => ipcRenderer.invoke('db:setup:is-complete'),

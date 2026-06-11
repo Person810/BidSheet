@@ -2130,6 +2130,27 @@ export function registerIpcHandlers(db: Database.Database): void {
     return { success: true };
   });
 
+  safeHandle('db:settings:choose-logo', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose Company Logo',
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const filePath = result.filePaths[0];
+    // Stored inline as a data URL (survives moved/deleted source files);
+    // cap the size so the settings row and proposal PDFs stay reasonable
+    const stat = fs.statSync(filePath);
+    if (stat.size > 2 * 1024 * 1024) {
+      throw new Error('Logo image must be under 2 MB.');
+    }
+    const ext = path.extname(filePath).toLowerCase().replace('.', '');
+    const mime = ext === 'jpg' ? 'jpeg' : ext;
+    const data = fs.readFileSync(filePath).toString('base64');
+    return { dataUrl: `data:image/${mime};base64,${data}` };
+  });
+
   safeHandle('db:settings:save', (_event, settings: any) => {
     return db
       .prepare(

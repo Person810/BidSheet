@@ -59,7 +59,21 @@ interface DrawingOverlayProps {
   /** Marquee multi-selection: highlight sets + the drag rectangle (pdf coords) */
   multiSelected?: { runs: Set<number>; items: Set<number>; areas: Set<number>; annotations: Set<number> } | null;
   marqueeRect?: { x: number; y: number; w: number; h: number } | null;
+  /** True when no tool is active, so vertices/items can be dragged directly */
+  dragEnabled?: boolean;
+  /** Live drag callbacks: commit=false while moving, true once on release */
+  onRunVertexDrag?: (runId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => void;
+  onAreaVertexDrag?: (areaId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => void;
+  onItemDrag?: (itemId: number, point: PdfPoint, commit: boolean) => void;
 }
+
+/** Screen-pixel movement below which a mousedown still counts as a click */
+const DRAG_THRESHOLD_PX = 3;
+
+type DragTarget =
+  | { kind: 'run'; id: number; vertexIndex: number }
+  | { kind: 'area'; id: number; vertexIndex: number }
+  | { kind: 'item'; id: number };
 
 /**
  * Convert a screen position to PDF coordinates in the UNROTATED page frame
@@ -104,6 +118,7 @@ export function DrawingOverlay({
   areas = [], activeAreaId, selectedAreaId, onAreaSelect, onAreaContextMenu,
   annotations = [], onAnnotationContextMenu, annotationPreview,
   multiSelected, marqueeRect,
+  dragEnabled = false, onRunVertexDrag, onAreaVertexDrag, onItemDrag,
 }: DrawingOverlayProps) {
   const isActive = mode !== 'none';
   const svgRef = useRef<SVGSVGElement>(null);
@@ -112,6 +127,59 @@ export function DrawingOverlay({
   // child re-renders when pan/zoom changes.
   const vpRef = useRef({ pageWidth, pageHeight, panX, panY, scale, rotation });
   vpRef.current = { pageWidth, pageHeight, panX, panY, scale, rotation };
+
+  // Drag callbacks read through a ref so the window-level listeners attached
+  // at mousedown never go stale across re-renders during the drag.
+  const dragCbRef = useRef({ onRunVertexDrag, onAreaVertexDrag, onItemDrag });
+  dragCbRef.current = { onRunVertexDrag, onAreaVertexDrag, onItemDrag };
+
+  const beginDrag = useCallback((e: React.MouseEvent, target: DragTarget) => {
+    if (!dragEnabled || e.button !== 0) return;
+    const container = svgRef.current?.parentElement;
+    if (!container) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragging = false;
+
+    const dispatch = (clientX: number, clientY: number, commit: boolean) => {
+      const rect = container.getBoundingClientRect();
+      const vp = vpRef.current;
+      const point = screenToPdf(clientX, clientY, rect, vp.pageWidth, vp.pageHeight, vp.panX, vp.panY, vp.scale, vp.rotation);
+      const cbs = dragCbRef.current;
+      if (target.kind === 'run') cbs.onRunVertexDrag?.(target.id, target.vertexIndex, point, commit);
+      else if (target.kind === 'area') cbs.onAreaVertexDrag?.(target.id, target.vertexIndex, point, commit);
+      else cbs.onItemDrag?.(target.id, point, commit);
+    };
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD_PX) return;
+      dragging = true;
+      dispatch(ev.clientX, ev.clientY, false);
+    };
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      // Below the threshold this was a click — leave it to the click handlers
+      if (dragging) dispatch(ev.clientX, ev.clientY, true);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [dragEnabled]);
+
+  const handleRunVertexMouseDown = useCallback((e: React.MouseEvent, runId: number, vertexIndex: number) => {
+    beginDrag(e, { kind: 'run', id: runId, vertexIndex });
+  }, [beginDrag]);
+
+  const handleAreaVertexMouseDown = useCallback((e: React.MouseEvent, areaId: number, vertexIndex: number) => {
+    beginDrag(e, { kind: 'area', id: areaId, vertexIndex });
+  }, [beginDrag]);
+
+  const handleItemMouseDown = useCallback((e: React.MouseEvent, itemId: number) => {
+    beginDrag(e, { kind: 'item', id: itemId });
+  }, [beginDrag]);
 
   const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (spaceHeld) return;
@@ -189,6 +257,8 @@ export function DrawingOverlay({
           mousePosition={area.id === activeAreaId ? mousePosition : null}
           onSelect={onAreaSelect}
           onContextMenu={onAreaContextMenu}
+          draggable={dragEnabled}
+          onVertexMouseDown={handleAreaVertexMouseDown}
         />
       ))}
       {/* Completed + active runs */}
@@ -208,6 +278,8 @@ export function DrawingOverlay({
           renderedScale={renderedScale}
           movingVertexIndex={movingVertex?.runId === run.id ? movingVertex.vertexIndex : null}
           movePreviewPos={movingVertex?.runId === run.id ? movePreviewPos : null}
+          draggable={dragEnabled}
+          onVertexMouseDown={handleRunVertexMouseDown}
         />
       ))}
       <ItemSymbols
@@ -217,6 +289,8 @@ export function DrawingOverlay({
         labelSize={labelSize}
         onSelect={onItemSelect!}
         onContextMenu={onItemContextMenu}
+        draggable={dragEnabled}
+        onItemMouseDown={handleItemMouseDown}
       />
       {/* Plan annotations (rendered above takeoff geometry) */}
       <AnnotationLayer
@@ -270,11 +344,14 @@ interface AreaPolygonProps {
   mousePosition?: PdfPoint | null;
   onSelect?: (id: number | null) => void;
   onContextMenu?: (areaId: number, screenX: number, screenY: number) => void;
+  /** Vertices can be dragged when no tool is active */
+  draggable?: boolean;
+  onVertexMouseDown?: (e: React.MouseEvent, areaId: number, vertexIndex: number) => void;
 }
 
 const AreaPolygon = React.memo(function AreaPolygon({
   area, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
-  onSelect, onContextMenu,
+  onSelect, onContextMenu, draggable, onVertexMouseDown,
 }: AreaPolygonProps) {
   const pts = area.points;
   if (pts.length === 0) return null;
@@ -325,16 +402,17 @@ const AreaPolygon = React.memo(function AreaPolygon({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {/* Vertices */}
+      {/* Vertices (slightly enlarged when draggable for an easier grab target) */}
       {pts.map((p, i) => (
         <circle
           key={`av-${i}`}
-          cx={p.x} cy={p.y} r={vertexR}
+          cx={p.x} cy={p.y} r={draggable ? vertexR * 1.4 : vertexR}
           fill={area.color} stroke="#fff" strokeWidth={1}
           vectorEffect="non-scaling-stroke"
-          style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
+          style={{ cursor: isActive ? 'crosshair' : draggable ? 'grab' : 'pointer' }}
           onClick={handleClick}
           onContextMenu={handleCtx}
+          onMouseDown={draggable ? (e) => onVertexMouseDown?.(e, area.id, i) : undefined}
         />
       ))}
       {/* Centroid area label */}
@@ -394,12 +472,15 @@ interface RunLinesProps {
   renderedScale: number;
   movingVertexIndex?: number | null;
   movePreviewPos?: PdfPoint | null;
+  /** Vertices can be dragged when no tool is active */
+  draggable?: boolean;
+  onVertexMouseDown?: (e: React.MouseEvent, runId: number, vertexIndex: number) => void;
 }
 
 const RunLines = React.memo(function RunLines({
   run, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
   onSelect, onVertexContextMenu, onSegmentContextMenu,
-  renderedScale, movingVertexIndex, movePreviewPos,
+  renderedScale, movingVertexIndex, movePreviewPos, draggable, onVertexMouseDown,
 }: RunLinesProps) {
   const pts = run.points;
   const strokeW = isSelected || isActive ? 3 : 2;
@@ -494,13 +575,14 @@ const RunLines = React.memo(function RunLines({
               />
             )}
             <circle
-              cx={p.x} cy={p.y} r={r}
+              cx={p.x} cy={p.y} r={draggable ? r * 1.3 : r}
               fill={run.color} stroke="#fff"
               strokeWidth={isNodeLinked ? 2.5 : hasElev ? 2 : 1}
               vectorEffect="non-scaling-stroke"
-              style={{ cursor: isActive ? 'crosshair' : 'pointer' }}
+              style={{ cursor: isActive ? 'crosshair' : draggable ? 'grab' : 'pointer' }}
               onClick={handleRunClick}
               onContextMenu={(e) => handleVertexCtx(e, i)}
+              onMouseDown={draggable ? (e) => onVertexMouseDown?.(e, run.id, i) : undefined}
             />
           </React.Fragment>
         );

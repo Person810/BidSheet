@@ -33,6 +33,11 @@ export interface AreaManager {
   handleMouseMove: (point: PdfPoint) => void;
   undoLastPoint: () => void;
   finishActiveArea: () => void;
+  /**
+   * Move a polygon vertex (drag flow). Pass commit: false for live updates
+   * while dragging (no DB write), then true once on release.
+   */
+  moveAreaVertexTo: (areaId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => void;
   confirmDelete: () => void;
   cancelDelete: () => void;
   /** Re-fetch state from the DB (used by undo/redo restore) */
@@ -161,6 +166,21 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
     if (activeAreaId) setMousePos(point);
   }, [activeAreaId]);
 
+  // -- Vertex repositioning (drag flow) --
+
+  const moveAreaVertexTo = useCallback((areaId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => {
+    const area = areasRef.current.find((a) => a.id === areaId);
+    if (!area || !area.points[vertexIndex]) return;
+    const newPoints = [...area.points];
+    newPoints[vertexIndex] = { x: point.x, y: point.y };
+    setAreas((prev) => prev.map((a) =>
+      a.id === areaId ? { ...a, points: newPoints } : a
+    ));
+    if (commit && areaId > 0 && jobId) {
+      window.api.saveTakeoffArea({ ...area, points: newPoints, jobId, sortOrder: areasRef.current.indexOf(area) });
+    }
+  }, [jobId]);
+
   // -- Selection / Edit / Delete --
 
   const handleAreaSelect = useCallback((areaId: number | null) => {
@@ -207,7 +227,7 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
     pendingDeleteId, pageAreas, lastAreaConfig, editingConfig,
     handleAddArea, handleConfigConfirm, handleConfigCancel,
     handlePointClick, handleAreaSelect, handleEditArea, handleDeleteArea,
-    handleMouseMove, undoLastPoint, finishActiveArea,
+    handleMouseMove, undoLastPoint, finishActiveArea, moveAreaVertexTo,
     confirmDelete, cancelDelete, reload,
   };
 }
