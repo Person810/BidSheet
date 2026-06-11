@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UpdateBanner } from '../components/UpdateBanner';
 import { useToastStore } from '../stores/toast-store';
+import { useWalkthroughStore } from '../stores/walkthrough-store';
 
 export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
+  const openWalkthrough = useWalkthroughStore((s) => s.open);
   const [settings, setSettings] = useState({
     companyName: '',
     companyAddress: '',
@@ -293,6 +295,17 @@ export function SettingsPage() {
           BidSheet checks for updates automatically on launch. You can also check manually below.
         </p>
         <UpdateBanner />
+      </div>
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Help</h3>
+        <p className="text-muted mb-16">
+          New to BidSheet, or want a refresher? Replay the guided tour of the app's
+          main sections. Press <kbd>?</kbd> anywhere to see keyboard shortcuts.
+        </p>
+        <button className="btn btn-secondary" onClick={openWalkthrough}>
+          Replay Walkthrough
+        </button>
       </div>
 
       <div className="card">
