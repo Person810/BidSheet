@@ -8,6 +8,7 @@ import {
 } from '../../components/FuzzyAutocomplete';
 import { formatCurrency } from './helpers';
 import { calcCrewCostPerHour } from '../../../shared/crewCost';
+import { effectiveMaterialUnitCost, isCubicYards } from '../../../shared/unitConversion';
 
 interface LineItemModalProps {
   lineForm: any;
@@ -42,18 +43,52 @@ export function LineItemModal({
     if (item) {
       const mat = materials.find((m: any) => m.id === item.id);
       if (mat) {
-        setLineForm((prev: any) => ({
-          ...prev,
-          materialId: mat.id,
-          materialUnitCost: mat.default_unit_cost,
-          description: prev.description || mat.name,
-          unit: mat.unit,
-        }));
+        setLineForm((prev: any) => {
+          // A line already measured in CY keeps its unit; TON-priced
+          // aggregates use their per-CY price instead of the raw $/TON
+          const eff = effectiveMaterialUnitCost(mat, prev.unit);
+          return {
+            ...prev,
+            materialId: mat.id,
+            materialUnitCost: eff.converted ? eff.cost : mat.default_unit_cost,
+            description: prev.description || mat.name,
+            unit: eff.converted ? prev.unit : mat.unit,
+          };
+        });
       }
     } else {
       setLineForm((prev: any) => ({ ...prev, materialId: 0 }));
     }
   };
+
+  // ---- Unit change: re-price an untouched material cost ----
+  const onUnitChange = (newUnit: string) => {
+    setLineForm((prev: any) => {
+      const mat = prev.materialId ? materials.find((m: any) => m.id === prev.materialId) : null;
+      let cost = prev.materialUnitCost;
+      // Only swap the price if the user hasn't customized it
+      if (mat && prev.materialUnitCost === effectiveMaterialUnitCost(mat, prev.unit).cost) {
+        cost = effectiveMaterialUnitCost(mat, newUnit).cost;
+      }
+      return { ...prev, unit: newUnit, materialUnitCost: cost };
+    });
+  };
+
+  // Warn when a CY line uses a TON-priced material with no CY price
+  const selectedMaterial = lineForm.materialId
+    ? materials.find((m: any) => m.id === lineForm.materialId)
+    : null;
+  const unitMismatch =
+    selectedMaterial &&
+    isCubicYards(lineForm.unit) &&
+    selectedMaterial.unit === 'TON' &&
+    !effectiveMaterialUnitCost(selectedMaterial, lineForm.unit).converted;
+  const conversionApplied =
+    selectedMaterial &&
+    isCubicYards(lineForm.unit) &&
+    selectedMaterial.unit === 'TON' &&
+    effectiveMaterialUnitCost(selectedMaterial, lineForm.unit).converted &&
+    lineForm.materialUnitCost === effectiveMaterialUnitCost(selectedMaterial, lineForm.unit).cost;
 
   // ---- Crew picker handler ----
   const onCrewSelect = (item: any) => {
@@ -149,8 +184,8 @@ export function LineItemModal({
           <div className="form-group">
             <label>Unit</label>
             <select className="form-control" value={lineForm.unit}
-              onChange={(e) => setLineForm({ ...lineForm, unit: e.target.value })}>
-              {['LF', 'EA', 'CYD', 'SY', 'TON', 'VF', 'LS', 'HR', 'SF', 'GAL'].map((u) => (
+              onChange={(e) => onUnitChange(e.target.value)}>
+              {['LF', 'EA', 'CYD', 'CY', 'SY', 'TON', 'VF', 'LS', 'HR', 'SF', 'GAL'].map((u) => (
                 <option key={u} value={u}>{u}</option>
               ))}
             </select>
@@ -195,6 +230,18 @@ export function LineItemModal({
               <div className="form-control computed-field">{formatCurrency(formMatTotal)}</div>
             </div>
           </div>
+          {conversionApplied && (
+            <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Using {selectedMaterial.name}'s per-CY price ({formatCurrency(lineForm.materialUnitCost)}/CY,
+              catalog {formatCurrency(selectedMaterial.default_unit_cost)}/TON).
+            </p>
+          )}
+          {unitMismatch && (
+            <p style={{ fontSize: 12, marginTop: 4, color: 'var(--warning)' }}>
+              {selectedMaterial.name} is priced per TON but this line is measured in cubic yards.
+              Set a "Cost per CY" or density on the material in the catalog, or adjust the unit cost manually.
+            </p>
+          )}
         </div>
 
         {/* Labor Section */}

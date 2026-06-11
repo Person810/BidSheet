@@ -175,25 +175,28 @@ export function registerIpcHandlers(db: Database.Database): void {
           `UPDATE materials SET
             category_id = ?, name = ?, description = ?, unit = ?,
             default_unit_cost = ?, supplier = ?, part_number = ?,
-            last_price_update = datetime('now', 'localtime'), notes = ?, aliases = ?, is_active = ?
+            last_price_update = datetime('now', 'localtime'), notes = ?, aliases = ?, is_active = ?,
+            tons_per_cy = ?, cost_per_cy = ?
           WHERE id = ?`
         )
         .run(
           material.categoryId, material.name, material.description,
           material.unit, material.defaultUnitCost, material.supplier,
           material.partNumber, material.notes, material.aliases || null,
-          material.isActive ? 1 : 0, material.id
+          material.isActive ? 1 : 0, material.tonsPerCy || null,
+          material.costPerCy || null, material.id
         );
     } else {
       return db
         .prepare(
-          `INSERT INTO materials (category_id, name, description, unit, default_unit_cost, supplier, part_number, notes, aliases, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+          `INSERT INTO materials (category_id, name, description, unit, default_unit_cost, supplier, part_number, notes, aliases, is_active, tons_per_cy, cost_per_cy)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
         )
         .run(
           material.categoryId, material.name, material.description,
           material.unit, material.defaultUnitCost, material.supplier,
-          material.partNumber, material.notes, material.aliases || null
+          material.partNumber, material.notes, material.aliases || null,
+          material.tonsPerCy || null, material.costPerCy || null
         );
     }
   });
@@ -217,9 +220,13 @@ export function registerIpcHandlers(db: Database.Database): void {
           `INSERT INTO price_updates (material_id, old_price, new_price, source) VALUES (?, ?, ?, ?)`
         ).run(id, material.default_unit_cost, newPrice, source);
 
+        // A set density links the per-CY price to the per-TON price;
+        // keep them in sync on every price change
         db.prepare(
-          `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now', 'localtime') WHERE id = ?`
-        ).run(newPrice, id);
+          `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now', 'localtime'),
+            cost_per_cy = CASE WHEN tons_per_cy > 0 THEN round(? * tons_per_cy, 2) ELSE cost_per_cy END
+          WHERE id = ?`
+        ).run(newPrice, newPrice, id);
       });
 
       updatePrice();
@@ -1523,7 +1530,8 @@ export function registerIpcHandlers(db: Database.Database): void {
           );
           const updateMat = db.prepare(
             `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now', 'localtime'),
-              supplier = COALESCE(?, supplier), part_number = COALESCE(?, part_number)
+              supplier = COALESCE(?, supplier), part_number = COALESCE(?, part_number),
+              cost_per_cy = CASE WHEN tons_per_cy > 0 THEN round(? * tons_per_cy, 2) ELSE cost_per_cy END
             WHERE id = ?`
           );
 
@@ -1544,6 +1552,7 @@ export function registerIpcHandlers(db: Database.Database): void {
               u.newPrice,
               u.supplier || null,
               u.partNumber || null,
+              u.newPrice,
               u.materialId
             );
             updated++;

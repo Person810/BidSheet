@@ -36,6 +36,8 @@ interface Material {
   notes: string | null;
   is_active: number;
   aliases: string | null;
+  tons_per_cy: number | null;
+  cost_per_cy: number | null;
 }
 
 const EMPTY_MATERIAL = {
@@ -49,6 +51,8 @@ const EMPTY_MATERIAL = {
   aliases: '',
   categoryId: 0,
   isActive: true,
+  tonsPerCy: '',
+  costPerCy: '',
 };
 
 import { UNITS } from '../../shared/constants/units';
@@ -127,6 +131,8 @@ export function MaterialsPage() {
       aliases: mat.aliases || '',
       categoryId: mat.category_id,
       isActive: mat.is_active === 1,
+      tonsPerCy: mat.tons_per_cy != null ? String(mat.tons_per_cy) : '',
+      costPerCy: mat.cost_per_cy != null ? String(mat.cost_per_cy) : '',
     });
     setShowModal(true);
   };
@@ -146,6 +152,8 @@ export function MaterialsPage() {
         aliases: form.aliases || null,
         categoryId: form.categoryId,
         isActive: form.isActive,
+        tonsPerCy: form.unit === 'TON' ? parseFloat(form.tonsPerCy) || null : null,
+        costPerCy: form.unit === 'TON' ? parseFloat(form.costPerCy) || null : null,
       };
 
       await window.api.saveMaterial(payload);
@@ -403,12 +411,80 @@ export function MaterialsPage() {
                   type="number"
                   className="form-control"
                   value={form.defaultUnitCost}
-                  onChange={(e) => setForm({ ...form, defaultUnitCost: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const cost = parseFloat(e.target.value) || 0;
+                    const density = parseFloat(form.tonsPerCy);
+                    setForm({
+                      ...form,
+                      defaultUnitCost: cost,
+                      // A set density links the per-CY price to this one
+                      costPerCy:
+                        form.unit === 'TON' && density > 0
+                          ? (cost * density).toFixed(2)
+                          : form.costPerCy,
+                    });
+                  }}
                   step="0.01"
                   min="0"
                 />
               </div>
             </div>
+            {form.unit === 'TON' && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Cost per CY ($, optional)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={form.costPerCy}
+                    onChange={(e) => {
+                      const cy = parseFloat(e.target.value);
+                      const hasDensity = parseFloat(form.tonsPerCy) > 0;
+                      setForm({
+                        ...form,
+                        costPerCy: e.target.value,
+                        // Keep an existing density link consistent
+                        tonsPerCy:
+                          hasDensity && cy > 0 && form.defaultUnitCost > 0
+                            ? (cy / form.defaultUnitCost).toFixed(2)
+                            : form.tonsPerCy,
+                      });
+                    }}
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 39.20"
+                  />
+                  <span className="text-muted" style={{ fontSize: 12 }}>
+                    Used when a bid line is measured in cubic yards
+                  </span>
+                </div>
+                <div className="form-group">
+                  <label>Density (tons per CY, optional)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={form.tonsPerCy}
+                    onChange={(e) => {
+                      const density = parseFloat(e.target.value);
+                      setForm({
+                        ...form,
+                        tonsPerCy: e.target.value,
+                        costPerCy:
+                          density > 0 && form.defaultUnitCost > 0
+                            ? (form.defaultUnitCost * density).toFixed(2)
+                            : form.costPerCy,
+                      });
+                    }}
+                    step="0.05"
+                    min="0"
+                    placeholder="e.g. 1.4"
+                  />
+                  <span className="text-muted" style={{ fontSize: 12 }}>
+                    Keeps the per-CY price in sync with the per-ton price
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="form-row">
               <div className="form-group">
                 <label>Supplier</label>

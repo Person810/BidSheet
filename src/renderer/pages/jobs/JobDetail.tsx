@@ -4,6 +4,7 @@ import { LineItemModal } from './LineItemModal';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal, statusBadge } from './helpers';
 import { buildAssemblyLineItems } from '../../../shared/assemblyExpansion';
+import { effectiveMaterialUnitCost } from '../../../shared/unitConversion';
 import { BidGrid } from './BidGrid';
 import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
@@ -523,26 +524,36 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       materialId: null, materialUnitCost: 0, notes: profileNote,
     });
 
-    // Bedding line items (one per material type)
-    for (const entry of beddingByKey.values()) {
+    // Bedding/backfill line items (one per material type). Quantities
+    // are CY; TON-priced aggregates use their per-CY price when one is
+    // set, otherwise the price is left at 0 with a note.
+    const volumeItem = (entry: { qty: number; materialId: number | null; name: string }) => {
       const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
-      const unitMismatch = mat && mat.unit !== 'CY' && mat.unit !== 'CYD';
-      await saveItem({
+      let unitCost = 0;
+      let note = profileNote;
+      if (mat) {
+        const eff = effectiveMaterialUnitCost(mat, 'CY');
+        if (mat.unit === 'CY' || mat.unit === 'CYD') {
+          unitCost = mat.default_unit_cost;
+        } else if (eff.converted) {
+          unitCost = eff.cost;
+          note = `${profileNote} | Catalog price ${formatCurrency(mat.default_unit_cost)}/${mat.unit}, using ${formatCurrency(eff.cost)}/CY`;
+        } else {
+          note = `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually`;
+        }
+      }
+      return saveItem({
         description: entry.name, quantity: entry.qty, unit: 'CY',
-        materialId: entry.materialId, materialUnitCost: 0,
-        notes: unitMismatch ? `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually` : profileNote,
+        materialId: entry.materialId, materialUnitCost: unitCost, notes: note,
       });
+    };
+
+    for (const entry of beddingByKey.values()) {
+      await volumeItem(entry);
     }
 
-    // Backfill line items (one per material type)
     for (const entry of backfillByKey.values()) {
-      const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
-      const unitMismatch = mat && mat.unit !== 'CY' && mat.unit !== 'CYD';
-      await saveItem({
-        description: entry.name, quantity: entry.qty, unit: 'CY',
-        materialId: entry.materialId, materialUnitCost: 0,
-        notes: unitMismatch ? `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually` : profileNote,
-      });
+      await volumeItem(entry);
     }
 
     // Tracer Wire (single total)
