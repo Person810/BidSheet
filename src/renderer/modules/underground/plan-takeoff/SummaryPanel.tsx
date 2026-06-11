@@ -46,13 +46,6 @@ function buildTrenchInput(run: TakeoffRun, runLengthLF: number): TrenchInput {
   };
 }
 
-const tabStyle = (active: boolean): React.CSSProperties => ({
-  flex: 1, padding: '8px 0', fontSize: 12, fontWeight: active ? 600 : 400, border: 'none',
-  background: 'transparent', cursor: 'pointer',
-  color: active ? 'var(--accent)' : 'var(--text-muted)',
-  borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
-});
-
 export function SummaryPanel(props: SummaryPanelProps) {
   const {
     runs, allRuns, activeRunId, selectedRunId, scalePxPerFt, pageNumber,
@@ -64,20 +57,28 @@ export function SummaryPanel(props: SummaryPanelProps) {
   } = props;
 
   return (
-    <div style={{
-      width: 280, flexShrink: 0, borderLeft: '1px solid var(--border)',
-      background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
-    }}>
+    <div className="tk-panel">
+      <div className="tk-panel-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+        Measurements
+      </div>
       {/* Tab bar */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <button style={tabStyle(activeTab === 'runs')} onClick={() => onTabChange('runs')}>
+      <div className="tk-panel-tabs">
+        <button className={`tk-panel-tab${activeTab === 'runs' ? ' tk-panel-tab-active' : ''}`}
+          onClick={() => onTabChange('runs')}>
           Runs ({runs.length})
         </button>
-        <button style={tabStyle(activeTab === 'items')} onClick={() => onTabChange('items')}>
+        <button className={`tk-panel-tab${activeTab === 'items' ? ' tk-panel-tab-active' : ''}`}
+          onClick={() => onTabChange('items')}>
           Items ({items.length})
         </button>
-        <button style={tabStyle(activeTab === 'areas')} onClick={() => onTabChange('areas')}>
+        <button className={`tk-panel-tab${activeTab === 'areas' ? ' tk-panel-tab-active' : ''}`}
+          onClick={() => onTabChange('areas')}>
           Areas ({areas.length})
         </button>
       </div>
