@@ -56,10 +56,10 @@ export function TrenchProfiler() {
         <button className="btn btn-secondary" onClick={handleReset}>Reset</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, alignItems: 'start' }}>
         {/* ---- Inputs ---- */}
-        <div className="card" style={{ padding: 20 }}>
-          <h3 style={{ marginBottom: 16, fontSize: 14, fontWeight: 600 }}>Run Inputs</h3>
+        <div className="card">
+          <h3 style={{ marginBottom: 14 }}>Run Inputs</h3>
 
           <div className="form-group">
             <label>Pipe Material</label>
@@ -183,8 +183,8 @@ export function TrenchProfiler() {
         </div>
 
         {/* ---- Outputs ---- */}
-        <div className="card" style={{ padding: 20 }}>
-          <h3 style={{ marginBottom: 16, fontSize: 14, fontWeight: 600 }}>Takeoff Summary</h3>
+        <div className="card">
+          <h3 style={{ marginBottom: 14 }}>Takeoff Summary</h3>
           {result ? (
             <table className="data-table" style={{ fontSize: 13 }}>
               <tbody>

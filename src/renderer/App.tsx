@@ -20,6 +20,8 @@ const TOOL_COMPONENTS: Record<string, React.FC> = {
   '/tools/trench-profiler': TrenchProfiler,
 };
 
+const APP_VERSION = 'v0.9.0-beta';
+
 const SidebarIcons: Record<string, React.ReactNode> = {
   '/': (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -114,6 +116,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [setupComplete, setSetupComplete] = useState(false);
   const [activeModules, setActiveModules] = useState<TradeModule[]>([]);
+  const [companyName, setCompanyName] = useState('');
   const addToast = useToastStore((s) => s.addToast);
 
   // Global safety net: catch any unhandled IPC rejections and show a toast
@@ -140,6 +143,9 @@ export function App() {
         window.api.getSettings().then((s: any) => {
           if (s?.trade_types) {
             setActiveModules(getActiveModules(s.trade_types));
+          }
+          if (s?.company_name) {
+            setCompanyName(s.company_name);
           }
           setLoading(false);
         });
@@ -259,30 +265,37 @@ export function App() {
               </NavLink>
             </li>
           </ul>
-          <div className="sidebar-version">v0.9.0-beta</div>
         </nav>
-        <main className="main-content">
-          <ErrorBoundary>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/jobs" element={<JobsPage />} />
-            <Route path="/materials" element={<MaterialsPage />} />
-            <Route path="/assemblies" element={<AssembliesPage />} />
-            <Route path="/labor" element={<LaborPage />} />
-            <Route path="/equipment" element={<EquipmentPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+        <div className="app-main-col">
+          <main className="main-content">
+            <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/jobs" element={<JobsPage />} />
+              <Route path="/materials" element={<MaterialsPage />} />
+              <Route path="/assemblies" element={<AssembliesPage />} />
+              <Route path="/labor" element={<LaborPage />} />
+              <Route path="/equipment" element={<EquipmentPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
 
-            {/* Trade module tool routes -- populated when tools are added to manifests */}
-            {moduleToolRoutes.map((rt) => {
-              const Comp = TOOL_COMPONENTS[rt.path];
-              return (
-                <Route key={rt.key} path={rt.path}
-                  element={Comp ? <Comp /> : <Navigate to="/" replace />} />
-              );
-            })}
-          </Routes>
-          </ErrorBoundary>
-        </main>
+              {/* Trade module tool routes -- populated when tools are added to manifests */}
+              {moduleToolRoutes.map((rt) => {
+                const Comp = TOOL_COMPONENTS[rt.path];
+                return (
+                  <Route key={rt.key} path={rt.path}
+                    element={Comp ? <Comp /> : <Navigate to="/" replace />} />
+                );
+              })}
+            </Routes>
+            </ErrorBoundary>
+          </main>
+          <footer className="app-statusbar">
+            <span className="tk-status-cell">Ready</span>
+            <span className="tk-status-hint" />
+            {companyName && <span className="tk-status-cell">{companyName}</span>}
+            <span className="tk-status-cell">BidSheet {APP_VERSION}</span>
+          </footer>
+        </div>
         <ToastContainer />
       </div>
     </HashRouter>

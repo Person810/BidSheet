@@ -12,7 +12,12 @@
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --sidebar-width: 220px;
+  --sidebar-width: 200px;
+  /* Workspace chrome metrics — full-bleed layouts (.page-header,
+     .materials-layout, .tk-workspace) offset against these */
+  --content-pad-y: 12px;
+  --content-pad-x: 16px;
+  --statusbar-h: 24px;
 }
 
 * {
@@ -25,7 +30,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
   height: 100vh;
@@ -91,11 +96,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   color: var(--text-secondary);
   text-decoration: none;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: 3px;
+  font-size: 12px;
   font-weight: 500;
   transition: background 0.15s, color 0.15s;
 }
@@ -109,27 +114,62 @@ body {
   background: rgba(59, 130, 246, 0.12);
   color: var(--text-primary);
   border-left: 3px solid var(--accent);
-  border-radius: 0 6px 6px 0;
-  padding-left: 9px;
+  border-radius: 0 3px 3px 0;
+  padding-left: 7px;
+}
+
+/* Right-hand column: content area above the app status bar */
+.app-main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .main-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 24px 32px;
+  padding: var(--content-pad-y) var(--content-pad-x);
 }
 
-/* ---- Page headers ---- */
+/* App-wide status bar (desktop chrome). The takeoff workspace ships its
+   own status bar and goes full-bleed, so hide the global one there. */
+.app-statusbar {
+  display: flex;
+  align-items: center;
+  height: var(--statusbar-h);
+  padding: 0 2px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  user-select: none;
+  overflow: hidden;
+}
+
+.app-main-col:has(.tk-workspace) .app-statusbar {
+  display: none;
+}
+
+/* ---- Page headers — full-bleed title bars, like a document window ---- */
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin: calc(-1 * var(--content-pad-y)) calc(-1 * var(--content-pad-x)) 14px;
+  padding: 7px var(--content-pad-x);
+  min-height: 42px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 
 .page-header h2 {
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -138,13 +178,16 @@ body {
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
+  gap: 5px;
+  padding: 4px 10px;
+  min-height: 26px;
   border: none;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: 3px;
+  font-size: 12px;
   font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
+  white-space: nowrap;
   transition: background 0.15s;
 }
 
@@ -177,8 +220,9 @@ body {
 }
 
 .btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 2px 8px;
+  min-height: 22px;
+  font-size: 11px;
 }
 
 .btn-ghost {
@@ -203,13 +247,13 @@ body {
 
 .data-table th,
 .data-table td {
-  padding: 10px 12px;
+  padding: 6px 10px;
   text-align: left;
   border-bottom: 1px solid var(--border);
 }
 
 .data-table th {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -220,7 +264,7 @@ body {
 }
 
 .data-table td {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .data-table tr:hover td {
@@ -353,12 +397,12 @@ body {
   display: flex;
   gap: 0;
   border-bottom: 2px solid var(--border);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .job-tab {
-  padding: 8px 16px;
-  font-size: 13px;
+  padding: 6px 14px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   background: none;
@@ -414,27 +458,28 @@ body {
 /* ---- Forms ---- */
 
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .form-group label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
 }
 
 .form-control {
   width: 100%;
-  padding: 8px 12px;
+  padding: 5px 9px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12.5px;
   font-family: inherit;
-  border-radius: 4px;
   transition: border-color 0.15s;
 }
 
@@ -447,33 +492,44 @@ body {
 .form-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
-/* ---- Cards ---- */
+/* ---- Cards — docked-panel look ---- */
 
 .card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 20px;
+  border-radius: 4px;
+  padding: 14px 16px;
+}
+
+/* Card titles read as panel headers, matching .tk-panel-header */
+.card > h3 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  user-select: none;
 }
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -498,10 +554,11 @@ body {
 
 .badge {
   display: inline-block;
-  padding: 2px 7px;
-  border-radius: 3px;
-  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -514,11 +571,11 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  padding: 7px 12px;
   background: rgba(245, 158, 11, 0.08);
   border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: 3px;
+  font-size: 12px;
   color: var(--warning);
 }
 
@@ -573,10 +630,10 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 5px 10px;
   color: var(--text-secondary);
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: 3px;
   font-size: 12px;
   font-weight: 500;
   transition: background 0.15s, color 0.15s;
@@ -591,8 +648,8 @@ body {
   background: rgba(59, 130, 246, 0.12);
   color: var(--text-primary);
   border-left: 3px solid var(--accent);
-  border-radius: 0 6px 6px 0;
-  padding-left: 9px;
+  border-radius: 0 3px 3px 0;
+  padding-left: 7px;
 }
 
 .nav-icon {
@@ -605,14 +662,6 @@ body {
 .nav-links a.active .nav-icon,
 .nav-links-nested a.active .nav-icon {
   opacity: 1;
-}
-
-.sidebar-version {
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: auto;
 }
 
 /* ---- Scrollbar ---- */
@@ -794,34 +843,37 @@ body {
 .materials-layout {
   display: flex;
   gap: 0;
-  margin: -24px -32px;
-  height: calc(100vh);
+  margin: calc(-1 * var(--content-pad-y)) calc(-1 * var(--content-pad-x));
+  height: calc(100vh - var(--statusbar-h));
 }
 
 .materials-sidebar {
-  width: 220px;
+  width: 200px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   overflow-y: auto;
   flex-shrink: 0;
 }
 
+/* Docked-panel header, matching .tk-panel-header */
 .materials-sidebar-header {
-  padding: 16px;
+  padding: 7px 12px;
+  background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 
 .materials-sidebar-header h3 {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
 .cat-item {
-  padding: 8px 16px;
-  font-size: 13px;
+  padding: 6px 12px;
+  font-size: 12px;
   cursor: pointer;
   color: var(--text-secondary);
   transition: background 0.1s, color 0.1s;
@@ -844,7 +896,7 @@ body {
 
 .materials-main {
   flex: 1;
-  padding: 24px 32px;
+  padding: var(--content-pad-y) var(--content-pad-x);
   overflow-y: auto;
 }
 
@@ -901,25 +953,40 @@ body {
 .modal {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 28px;
+  border-radius: 5px;
+  padding: 20px 22px;
   width: 560px;
   max-height: 80vh;
   overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Dialog title bar, bleeding to the modal edges */
+.modal > h3:first-child {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin: -20px -22px 16px;
+  padding: 9px 22px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 
 .modal h3 {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
 }
 
@@ -1001,7 +1068,7 @@ body {
   overflow-y: auto;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   margin-top: 2px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
@@ -1092,7 +1159,7 @@ body {
 .assembly-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
@@ -1100,7 +1167,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 9px 12px;
   transition: background 0.1s;
 }
 
@@ -1147,9 +1214,11 @@ body {
 
 .empty-state {
   text-align: center;
-  padding: 48px 24px;
+  padding: 32px 20px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
 }
 
 .form-label {
@@ -1197,8 +1266,17 @@ body {
     height: auto;
   }
 
-  .sidebar, .no-print, .job-tabs {
+  .sidebar, .no-print, .job-tabs, .app-statusbar {
     display: none !important;
+  }
+
+  /* Title bars revert to plain headings on paper */
+  .page-header {
+    margin: 0 0 16px;
+    padding: 0;
+    background: #fff !important;
+    border-bottom: none;
+    min-height: 0;
   }
 
   .print-only {
@@ -1313,7 +1391,7 @@ body {
 .tk-workspace {
   display: flex;
   flex-direction: column;
-  margin: -24px -32px;
+  margin: calc(-1 * var(--content-pad-y)) calc(-1 * var(--content-pad-x));
   height: 100vh;
   overflow: hidden;
 }
