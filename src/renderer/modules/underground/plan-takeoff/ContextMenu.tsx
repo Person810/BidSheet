@@ -25,9 +25,11 @@ export function getMenuItems(targetType: ContextTargetType): ContextMenuItem[] {
         { label: 'Delete Vertex', action: 'deleteVertex' },
         { label: 'Insert Fitting', action: 'insertFitting' },
         { label: 'Start New Run From Here', action: 'startRunFromHere' },
+        { label: 'View Profile', action: 'viewProfile' },
       ];
     case 'segment':
       return [
+        { label: 'View Profile', action: 'viewProfile' },
         { label: 'Add Vertex Here', action: 'addVertexHere' },
         { label: 'Insert Fitting Here', action: 'insertFittingHere' },
         { label: 'Delete Run', action: 'deleteRun' },
