@@ -12,6 +12,9 @@ interface ItemSymbolsProps {
   labelSize: number;
   onSelect: (id: number | null) => void;
   onContextMenu?: (itemId: number, screenX: number, screenY: number) => void;
+  /** Items can be dragged to reposition when no tool is active */
+  draggable?: boolean;
+  onItemMouseDown?: (e: React.MouseEvent, itemId: number) => void;
 }
 
 function truncate(s: string, max: number): string {
@@ -20,6 +23,7 @@ function truncate(s: string, max: number): string {
 
 const ItemSymbols = React.memo(function ItemSymbols({
   items, selectedItemId, multiSelectedIds, labelSize, onSelect, onContextMenu,
+  draggable, onItemMouseDown,
 }: ItemSymbolsProps) {
   const r = labelSize * 0.45;
 
@@ -46,7 +50,8 @@ const ItemSymbols = React.memo(function ItemSymbols({
               transform={`rotate(45 ${item.xPx} ${item.yPx})`}
               fill={ITEM_COLOR} stroke="#fff" strokeWidth={1.2}
               vectorEffect="non-scaling-stroke"
-              style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+              style={{ cursor: draggable ? 'grab' : 'pointer', pointerEvents: 'auto' }}
+              onMouseDown={draggable ? (e) => onItemMouseDown?.(e, item.id) : undefined}
               onClick={(e) => { e.stopPropagation(); onSelect(item.id); }}
               onContextMenu={(e) => {
                 e.preventDefault();

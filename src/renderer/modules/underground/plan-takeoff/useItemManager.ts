@@ -23,6 +23,11 @@ export interface ItemManager {
   cancelDelete: () => void;
   updateItem: (id: number, material: { id: number; name: string }) => void;
   duplicateItem: (id: number) => void;
+  /**
+   * Move a count item (drag flow). Pass commit: false for live updates
+   * while dragging (no DB write), then true once on release.
+   */
+  moveItemTo: (id: number, point: PdfPoint, commit: boolean) => void;
   /** Re-fetch state from the DB (used by undo/redo restore) */
   reload: () => Promise<void>;
 }
@@ -115,6 +120,16 @@ export function useItemManager({
     }
   }, [items]);
 
+  const moveItemTo = useCallback((id: number, point: PdfPoint, commit: boolean) => {
+    setItems((prev) => prev.map((i) =>
+      i.id === id ? { ...i, xPx: point.x, yPx: point.y } : i
+    ));
+    if (commit && id > 0) {
+      const item = items.find((i) => i.id === id);
+      if (item) window.api.saveTakeoffItem({ ...item, xPx: point.x, yPx: point.y });
+    }
+  }, [items]);
+
   const duplicateItem = useCallback((id: number) => {
     if (!jobId) return;
     const original = items.find((i) => i.id === id);
@@ -152,6 +167,7 @@ export function useItemManager({
     cancelDelete,
     updateItem,
     duplicateItem,
+    moveItemTo,
     reload,
   };
 }

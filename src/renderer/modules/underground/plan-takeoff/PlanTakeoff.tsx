@@ -12,7 +12,7 @@ import { useNodeManager } from './useNodeManager';
 import { useAreaManager } from './useAreaManager';
 import { useAnnotationManager } from './useAnnotationManager';
 import { useTakeoffHistory } from './useTakeoffHistory';
-import { rectContains, normalizeRect, type MarqueeRect } from './takeoffUtils';
+import { rectContains, normalizeRect, orthoConstrainPoint, type MarqueeRect } from './takeoffUtils';
 import { UTILITY_COLORS, type UtilityType, type AnnotationKind } from './types';
 import TakeoffToolbar, { type LayerKey } from './TakeoffToolbar';
 import ItemPickerModal from './ItemPickerModal';
@@ -47,6 +47,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const [viewport, setViewport] = useState({ panX: 0, panY: 0, renderedScale: 1, cssZoom: 1 });
   const [calibrating, setCalibrating] = useState(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
+  const [shiftHeld, setShiftHeld] = useState(false);
 
   // -- Per-page scale --
   const [pageScalePxPerFt, setPageScalePxPerFt] = useState<number | null>(null);
@@ -310,6 +311,25 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     setResetPanKey((k) => k + 1);
   }, []);
 
+  // Hold Shift to constrain the next point to the nearest axis from the
+  // anchor (last placed point while drawing, neighboring vertex while
+  // dragging). Axis-aligned in the unrotated drawing frame stays axis-aligned
+  // on screen for 90° page rotations.
+  const orthoConstrain = useCallback((point: PdfPoint, anchor: PdfPoint | null | undefined): PdfPoint => {
+    if (!shiftHeld) return point;
+    return orthoConstrainPoint(point, anchor);
+  }, [shiftHeld]);
+
+  const activeRunLastPoint = useCallback((): PdfPoint | undefined => {
+    const run = rm.runs.find((r) => r.id === rm.activeRunId);
+    return run?.points[run.points.length - 1];
+  }, [rm.runs, rm.activeRunId]);
+
+  const activeAreaLastPoint = useCallback((): PdfPoint | undefined => {
+    const area = am.areas.find((a) => a.id === am.activeAreaId);
+    return area?.points[area.points.length - 1];
+  }, [am.areas, am.activeAreaId]);
+
   // Route overlay clicks/moves to whichever tool is active.
   // Calibration and run interactions (move-vertex, run drawing) are handled
   // inside rm.handlePointClick; area drawing is checked first since the run
@@ -322,15 +342,15 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       return;
     }
     if (!calibrating && am.isDrawing) {
-      am.handlePointClick(point);
+      am.handlePointClick(orthoConstrain(point, activeAreaLastPoint()));
       return;
     }
     // Confirming a vertex move mutates the run (and possibly a shared node)
     if (!calibrating && rm.interactionMode === 'moveVertex' && rm.movingVertex) {
       history.record();
     }
-    rm.handlePointClick(point);
-  }, [calibrating, anm, am, rm, history]);
+    rm.handlePointClick(orthoConstrain(point, activeRunLastPoint()));
+  }, [calibrating, anm, am, rm, history, orthoConstrain, activeRunLastPoint, activeAreaLastPoint]);
 
   // Finish the active run/area, recording history for newly created shapes.
   // Snapshots exclude negative (unsaved) IDs, so a capture taken just before
@@ -352,10 +372,47 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   }, [am, history]);
 
   const handleOverlayMouseMove = useCallback((point: PdfPoint) => {
-    rm.handleMouseMove(point);
-    am.handleMouseMove(point);
+    rm.handleMouseMove(orthoConstrain(point, activeRunLastPoint()));
+    am.handleMouseMove(orthoConstrain(point, activeAreaLastPoint()));
     anm.handleMouseMove(point);
-  }, [rm, am, anm]);
+  }, [rm, am, anm, orthoConstrain, activeRunLastPoint, activeAreaLastPoint]);
+
+  // -- Direct vertex/item dragging (no tool active) --
+
+  // History snapshots capture pre-mutation state, so record once at the first
+  // real movement of a drag — not on release, when the state already moved.
+  const dragRecordedRef = useRef(false);
+
+  const recordDragOnce = useCallback(() => {
+    if (!dragRecordedRef.current) {
+      history.record();
+      dragRecordedRef.current = true;
+    }
+  }, [history]);
+
+  const handleRunVertexDrag = useCallback((runId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => {
+    recordDragOnce();
+    // Shift constrains against the previous vertex (or the next one when
+    // dragging the run's start point)
+    const run = rm.runs.find((r) => r.id === runId);
+    const anchor = run ? (vertexIndex > 0 ? run.points[vertexIndex - 1] : run.points[1]) : undefined;
+    rm.moveVertexTo(runId, vertexIndex, orthoConstrain(point, anchor), commit);
+    if (commit) dragRecordedRef.current = false;
+  }, [rm, recordDragOnce, orthoConstrain]);
+
+  const handleAreaVertexDrag = useCallback((areaId: number, vertexIndex: number, point: PdfPoint, commit: boolean) => {
+    recordDragOnce();
+    const area = am.areas.find((a) => a.id === areaId);
+    const anchor = area ? (vertexIndex > 0 ? area.points[vertexIndex - 1] : area.points[1]) : undefined;
+    am.moveAreaVertexTo(areaId, vertexIndex, orthoConstrain(point, anchor), commit);
+    if (commit) dragRecordedRef.current = false;
+  }, [am, recordDragOnce, orthoConstrain]);
+
+  const handleItemDrag = useCallback((itemId: number, point: PdfPoint, commit: boolean) => {
+    recordDragOnce();
+    im.moveItemTo(itemId, point, commit);
+    if (commit) dragRecordedRef.current = false;
+  }, [im, recordDragOnce]);
 
   // -- Marquee selection (handled at the wrapper so it works over all layers) --
 
@@ -806,6 +863,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(true);
+
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
@@ -853,6 +912,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') setSpaceHeld(false);
+      if (e.key === 'Shift') setShiftHeld(false);
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -893,7 +953,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     statusHint = 'Calibrating scale — click two points a known distance apart';
     statusHintActive = true;
   } else if (rm.isDrawing || am.isDrawing) {
-    statusHint = 'Drawing — click to place points · right-click to undo last point · Esc to finish';
+    statusHint = 'Drawing — click to place points · hold Shift for straight lines · right-click to undo · Esc to finish';
     statusHintActive = true;
   } else if (anm.isDrawing) {
     statusHint = 'Markup — click to place · Esc to cancel';
@@ -903,6 +963,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     statusHintActive = true;
   } else if (!pageScalePxPerFt) {
     statusHint = <span className="tk-status-warn">Page not calibrated — use the Scale tool to start measuring</span>;
+  } else if (rm.pageRuns.length > 0 || am.pageAreas.length > 0 || im.pageItems.length > 0) {
+    statusHint = 'Ready — drag a vertex or symbol to adjust · right-click shapes for options';
   }
 
   if (!pdfData) return (
@@ -1018,6 +1080,11 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
               : null}
             multiSelected={multiSelected}
             marqueeRect={marqueeRect}
+            dragEnabled={!calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing
+              && !selectMode && !spaceHeld && rm.interactionMode === 'normal'}
+            onRunVertexDrag={handleRunVertexDrag}
+            onAreaVertexDrag={handleAreaVertexDrag}
+            onItemDrag={handleItemDrag}
           >
             {calibration.svgContent}
           </DrawingOverlay>

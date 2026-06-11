@@ -77,6 +77,17 @@ export function polygonCentroid(points: PdfPoint[]): PdfPoint {
   return { x: cx / (3 * signedArea), y: cy / (3 * signedArea) };
 }
 
+/**
+ * Constrain a point to the nearest axis through the anchor (ortho/Shift
+ * drawing). Returns the point unchanged when there is no anchor.
+ */
+export function orthoConstrainPoint(point: PdfPoint, anchor: PdfPoint | null | undefined): PdfPoint {
+  if (!anchor) return point;
+  const dx = Math.abs(point.x - anchor.x);
+  const dy = Math.abs(point.y - anchor.y);
+  return dx >= dy ? { x: point.x, y: anchor.y } : { x: anchor.x, y: point.y };
+}
+
 /* ---- Marquee selection ---- */
 
 export interface MarqueeRect { x: number; y: number; w: number; h: number; }
