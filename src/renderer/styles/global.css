@@ -52,15 +52,30 @@ body {
 }
 
 .sidebar-header {
-  padding: 20px 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 14px;
   border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 
 .sidebar-header h1 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: 0.02em;
+}
+
+.sidebar-brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, var(--accent), #1d4ed8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .nav-links {
@@ -124,9 +139,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 7px 14px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -419,6 +434,7 @@ body {
   color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
+  border-radius: 4px;
   transition: border-color 0.15s;
 }
 
@@ -439,7 +455,7 @@ body {
 .card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 20px;
 }
 
@@ -482,8 +498,8 @@ body {
 
 .badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -885,7 +901,7 @@ body {
 .modal {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 6px;
   padding: 28px;
   width: 560px;
   max-height: 80vh;
@@ -1286,6 +1302,296 @@ body {
   .fuzzy-dropdown {
     display: none !important;
   }
+}
+
+/* ============================================================
+   TAKEOFF WORKSPACE (desktop-app chrome)
+   ============================================================ */
+
+/* Full-bleed workspace — cancels .main-content padding so the takeoff
+   screen fills the window edge-to-edge like a real document workspace */
+.tk-workspace {
+  display: flex;
+  flex-direction: column;
+  margin: -24px -32px;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.tk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  user-select: none;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.tk-toolbar::-webkit-scrollbar {
+  height: 0;
+}
+
+.tk-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+.tk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.tk-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.tk-btn:active:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.tk-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tk-btn svg {
+  flex-shrink: 0;
+}
+
+/* Active (pressed-in) tool — the "this tool is engaged" look.
+   Stays lit even when disabled (e.g. mid-draw) so the engaged tool is obvious. */
+.tk-btn-active,
+.tk-btn-active:hover:not(:disabled),
+.tk-btn-active:disabled {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+  opacity: 1;
+}
+
+.tk-btn-primary {
+  color: var(--text-primary);
+}
+
+.tk-readout {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.tk-page-input {
+  width: 38px;
+  height: 24px;
+  padding: 0 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: center;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.tk-page-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Dropdown menus hanging off toolbar buttons */
+.tk-menu {
+  position: absolute;
+  top: 100%;
+  margin-top: 4px;
+  z-index: 900;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 0;
+  min-width: 180px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.tk-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.tk-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.tk-menu-item svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Status bar pinned to the bottom of the takeoff workspace */
+.tk-statusbar {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  user-select: none;
+  gap: 0;
+  overflow: hidden;
+}
+
+.tk-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-right: 1px solid var(--border);
+  height: 100%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.tk-status-cell:last-child {
+  border-right: none;
+}
+
+.tk-status-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  padding-right: 10px;
+}
+
+.tk-status-hint-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tk-status-warn {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Docked side panel (measurements) */
+.tk-panel {
+  width: 290px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tk-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.tk-panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+.tk-panel-tab {
+  flex: 1;
+  padding: 7px 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.tk-panel-tab:hover {
+  color: var(--text-primary);
+}
+
+.tk-panel-tab-active {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+/* Empty state for the takeoff workspace (no plan loaded) */
+.tk-empty-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at center, rgba(59, 130, 246, 0.04), transparent 70%),
+    var(--bg-primary);
+}
+
+.tk-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 56px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  text-align: center;
 }
 
 /* Toast slide-in animation */

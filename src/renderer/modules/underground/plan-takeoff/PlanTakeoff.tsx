@@ -287,6 +287,9 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const prevPage = useCallback(() => setPageNum((p) => Math.max(1, p - 1)), []);
   const nextPage = useCallback(() => setPageNum((p) => Math.min(totalPages, p + 1)), [totalPages]);
+  const goToPage = useCallback((page: number) => setPageNum(page), []);
+  const zoomIn = useCallback(() => setScale((s) => Math.min(MAX_SCALE, s + 0.1)), []);
+  const zoomOut = useCallback(() => setScale((s) => Math.max(MIN_SCALE, s - 0.1)), []);
   const handleFitToWidth = useCallback(() => {
     const wrap = viewerWrapRef.current;
     if (!wrap || pageSizeRef.current.width === 0) return;
@@ -853,7 +856,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const toolbarProps = {
     onBack,
     onLoadPlan: handleLoadPlan, loading, pageNum, totalPages, onPrevPage: prevPage,
-    onNextPage: nextPage, zoomPercent, onFitToWidth: handleFitToWidth, calibrating,
+    onNextPage: nextPage, onSetPage: goToPage, zoomPercent,
+    onZoomIn: zoomIn, onZoomOut: zoomOut, onFitToWidth: handleFitToWidth, calibrating,
     onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: true,
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,
     canAddArea, onAddArea: am.handleAddArea, isDrawingArea: am.isDrawing,
@@ -867,31 +871,73 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     onUndo: history.undo, onRedo: history.redo,
     hiddenLayers, onToggleLayer: toggleLayer,
     canExport: hasTakeoffData, onExportCsv: handleExportCsv,
-    pdfFilename: pdfPath ? pdfPath.split(/[\\/]/).pop() || '' : '',
   };
 
+  const pdfFilename = pdfPath ? pdfPath.split(/[\\/]/).pop() || '' : '';
+
+  // The status bar surfaces the active mode like desktop CAD/takeoff apps do.
+  let statusHint: React.ReactNode = 'Ready';
+  let statusHintActive = false;
+  if (calibrating) {
+    statusHint = 'Calibrating scale — click two points a known distance apart';
+    statusHintActive = true;
+  } else if (rm.isDrawing || am.isDrawing) {
+    statusHint = 'Drawing — click to place points · right-click to undo last point · Esc to finish';
+    statusHintActive = true;
+  } else if (anm.isDrawing) {
+    statusHint = 'Markup — click to place · Esc to cancel';
+    statusHintActive = true;
+  } else if (selectMode) {
+    statusHint = 'Select — drag a rectangle around objects · Esc to exit';
+    statusHintActive = true;
+  } else if (!pageScalePxPerFt) {
+    statusHint = <span className="tk-status-warn">Page not calibrated — use the Scale tool to start measuring</span>;
+  }
+
   if (!pdfData) return (
-    <div>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button className="btn btn-sm btn-secondary" onClick={onBack}>&#8592; Back to Job</button>
-        <h2 style={{ margin: 0 }}>Plan Takeoff</h2>
+    <div className="tk-workspace">
+      <div className="tk-toolbar">
+        <button className="tk-btn" onClick={onBack} title="Back to Job">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+          </svg>
+          <span>Back to Job</span>
+        </button>
+        <div className="tk-sep" />
+        <span className="tk-readout" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Plan Takeoff</span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', height: 'calc(100vh - 160px)', gap: 16 }}>
-        <p className="text-muted" style={{ fontSize: 15, marginBottom: 8 }}>
-          {loading ? 'Loading plan...' : 'Load a plan sheet PDF to start measuring pipe runs.'}
-        </p>
-        {!loading && (
-          <button className="btn btn-primary" onClick={handleLoadPlan}>
-            Load Plan
-          </button>
-        )}
+      <div className="tk-empty-stage">
+        <div className="tk-empty-card">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)"
+            strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" />
+          </svg>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+              {loading ? 'Loading plan…' : 'No plan loaded'}
+            </div>
+            <div className="text-muted" style={{ fontSize: 12 }}>
+              {loading ? 'Reading PDF data' : 'Open a plan sheet PDF to start measuring pipe runs, areas, and counts.'}
+            </div>
+          </div>
+          {!loading && (
+            <button className="btn btn-primary" onClick={handleLoadPlan}>
+              Open Plan PDF
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="tk-statusbar">
+        <span className="tk-status-hint">No document</span>
       </div>
     </div>
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)' }}>
+    <div className="tk-workspace">
       <TakeoffToolbar {...toolbarProps} />
 
       {loadError && (
@@ -1030,6 +1076,30 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             activeTab={summaryTab}
             onTabChange={setSummaryTab}
           />
+        )}
+      </div>
+
+      {/* Status bar — mode hints and document readouts */}
+      <div className="tk-statusbar">
+        <span className={`tk-status-hint${statusHintActive ? ' tk-status-hint-active' : ''}`}>
+          {statusHint}
+        </span>
+        <span className="tk-status-cell" title="Plan scale">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.3 8.7l-6-6L2.7 15.3l6 6L21.3 8.7z" />
+          </svg>
+          {scaleDisplay ?? 'Not calibrated'}
+        </span>
+        <span className="tk-status-cell" title="Current page">
+          Page {pageNum} of {totalPages || '—'}
+        </span>
+        <span className="tk-status-cell" title="Zoom level">{zoomPercent}%</span>
+        {pdfFilename && (
+          <span className="tk-status-cell" title={pdfPath ?? undefined}
+            style={{ maxWidth: 260, overflow: 'hidden' }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{pdfFilename}</span>
+          </span>
         )}
       </div>
 

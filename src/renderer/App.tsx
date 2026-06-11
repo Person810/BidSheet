@@ -189,6 +189,12 @@ export function App() {
       <div className="app-layout">
         <nav className="sidebar">
           <div className="sidebar-header">
+            <div className="sidebar-brand-mark">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 20h20" />
+                <path d="M6 20V8l4 4 4-4 4 4V20" />
+              </svg>
+            </div>
             <h1>BidSheet</h1>
           </div>
           <ul className="nav-links">
