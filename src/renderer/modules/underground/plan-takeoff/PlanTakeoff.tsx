@@ -24,6 +24,7 @@ import { sendAreasToBid } from './sendAreasToBid';
 import { buildTakeoffCsv } from './exportTakeoffCsv';
 import { ContextMenu, getMenuItems } from './ContextMenu';
 import { EditVertexDialog } from './EditVertexDialog';
+import { RunProfileView } from './RunProfileView';
 import type { TakeoffJobSettings, PdfPoint, ContextMenuState } from './types';
 
 interface PlanTakeoffProps {
@@ -58,6 +59,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // -- Context menu --
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [editingVertex, setEditingVertex] = useState<{ runId: number; vertexIndex: number } | null>(null);
+  const [profileRunId, setProfileRunId] = useState<number | null>(null);
 
   // -- Item placement via context menu --
   const [pendingItemPlacement, setPendingItemPlacement] = useState<{ runId: number | null; point: PdfPoint; pipeSizeIn?: number } | null>(null);
@@ -685,6 +687,16 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (targetId != null) rm.handleDeleteRun(targetId);
         break;
       }
+      case 'viewProfile': {
+        if (targetId != null) {
+          if (!pageScalePxPerFt) {
+            addToast('Calibrate the page scale first to view a profile.', 'warn');
+          } else {
+            setProfileRunId(targetId);
+          }
+        }
+        break;
+      }
       // Fitting/item actions
       case 'removeFitting':
       case 'removeItem': {
@@ -825,7 +837,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       default:
         break;
     }
-  }, [contextMenu, rm, im, am, anm, calibrating, history, nm]);
+  }, [contextMenu, rm, im, am, anm, calibrating, history, nm, pageScalePxPerFt, addToast]);
 
   // Material selected from picker -- place item at the stored location or update existing
   const handleItemPickerSelect = useCallback((material: { id: number; name: string }) => {
@@ -1344,6 +1356,22 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             }}
             onClose={() => setEditingVertex(null)}
           />
+        );
+      })()}
+
+      {profileRunId != null && pageScalePxPerFt && (() => {
+        const run = rm.runs.find((r) => r.id === profileRunId);
+        if (!run) return null;
+        return (
+          <div className="modal-overlay" onClick={() => setProfileRunId(null)}>
+            <div className="modal" style={{ maxWidth: 960, width: '92vw' }} onClick={(e) => e.stopPropagation()}>
+              <h3>Profile — {run.label || 'Untitled Run'}</h3>
+              <RunProfileView run={run} scalePxPerFt={pageScalePxPerFt} />
+              <div className="modal-actions">
+                <button className="btn btn-secondary" onClick={() => setProfileRunId(null)}>Close</button>
+              </div>
+            </div>
+          </div>
         );
       })()}
     </div>

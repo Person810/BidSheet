@@ -9,6 +9,7 @@ import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { QuotesTab } from './QuotesTab';
 import { CostCodeReportModal } from './CostCodeReportModal';
+import { BidItemImportModal } from './BidItemImportModal';
 import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
@@ -51,6 +52,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [profileCount, setProfileCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
+  const [showBidItemImport, setShowBidItemImport] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [showLineItemModal, setShowLineItemModal] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<number | null>(null);
@@ -785,7 +787,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             </div>
           </div>
         ) : (
-          <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
+          <div className="flex gap-8">
+            <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
+            <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowBidItemImport(true))}
+              title="Scaffold line items from an owner's bid schedule CSV">Import Bid Items…</button>
+          </div>
         )}
       </div>
       </>)}
@@ -999,6 +1005,16 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           sections={sections}
           lineItems={lineItems}
           onClose={() => setShowCostCodeReport(false)}
+        />
+      )}
+
+      {/* Bid Item Import Modal */}
+      {showBidItemImport && (
+        <BidItemImportModal
+          jobId={jobId}
+          sections={sections}
+          onDone={loadJob}
+          onClose={() => setShowBidItemImport(false)}
         />
       )}
 

@@ -32,6 +32,19 @@ export function emptyLineForm() {
   };
 }
 
+/**
+ * Parse a quantity cell from an owner's bid schedule: strips commas and
+ * trailing units ("1,250 LF" → 1250). Returns 0 for unparseable values so
+ * imported rows stay editable rather than failing.
+ */
+export function parseImportQuantity(raw: string | undefined | null): number {
+  if (!raw) return 0;
+  const cleaned = String(raw).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+  if (!cleaned) return 0;
+  const n = parseFloat(cleaned[0]);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 export function jobToPayload(job: any) {
   return {
     id: job.id, name: job.name, jobNumber: job.job_number, client: job.client,
