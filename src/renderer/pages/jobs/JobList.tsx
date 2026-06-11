@@ -46,7 +46,7 @@ export function JobList({ onOpenJob }: JobListProps) {
 
   const handleCreate = async () => {
     const settings = await window.api.getSettings();
-    await window.api.saveJob({
+    const result = await window.api.saveJob({
       name: form.name, jobNumber: form.jobNumber || null, client: form.client,
       location: form.location || null, bidDate: form.bidDate || null, startDate: null,
       description: form.description || null, status: 'draft',
@@ -57,7 +57,12 @@ export function JobList({ onOpenJob }: JobListProps) {
     });
     setShowCreate(false);
     setForm({ name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '' });
-    loadJobs();
+    // Drop the user straight into the job they just created
+    if (result?.lastInsertRowid) {
+      onOpenJob(Number(result.lastInsertRowid));
+    } else {
+      loadJobs();
+    }
   };
 
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);

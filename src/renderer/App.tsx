@@ -151,6 +151,24 @@ export function App() {
       setLoading(false);
     });
 
+  // Esc closes the topmost open dialog, matching what the shortcuts
+  // overlay promises. Every modal already closes on backdrop click, so
+  // Esc simply triggers that. Components that consume Esc themselves
+  // (e.g. autocomplete dropdowns) stop propagation before this fires.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const overlays = Array.from(document.querySelectorAll<HTMLElement>('.modal-overlay'));
+      if (overlays.length === 0) return;
+      const top = overlays.reduce((a, b) =>
+        (parseInt(getComputedStyle(b).zIndex, 10) || 0) >= (parseInt(getComputedStyle(a).zIndex, 10) || 0) ? b : a
+      );
+      top.click();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   useEffect(() => {
     window.api.isSetupComplete().then((complete) => {
       setSetupComplete(complete);
