@@ -1427,10 +1427,12 @@ body {
   border-color: var(--accent);
 }
 
-/* Dropdown menus hanging off toolbar buttons */
+/* Dropdown menus hanging off toolbar buttons. Fixed positioning (anchored
+   from the button's screen rect in JS) so the menu escapes the toolbar's
+   clipping — overflow-x: auto forces overflow-y: visible to compute to
+   auto, which clips any absolutely-positioned child. */
 .tk-menu {
-  position: absolute;
-  top: 100%;
+  position: fixed;
   margin-top: 4px;
   z-index: 900;
   background: var(--bg-secondary);

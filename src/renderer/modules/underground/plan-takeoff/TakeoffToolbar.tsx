@@ -155,10 +155,14 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
     canExport, onExportCsv,
   } = props;
 
+  // Menus are position: fixed (anchored from the button's screen rect) so
+  // they aren't clipped by the toolbar's overflow-x scrolling.
   const [layersOpen, setLayersOpen] = useState(false);
   const layersRef = useRef<HTMLDivElement>(null);
+  const [layersPos, setLayersPos] = useState({ top: 0, right: 0 });
   const [annotateOpen, setAnnotateOpen] = useState(false);
   const annotateRef = useRef<HTMLDivElement>(null);
+  const [annotatePos, setAnnotatePos] = useState({ top: 0, left: 0 });
 
   // Page number input is buffered so partial typing doesn't jump pages
   const [pageDraft, setPageDraft] = useState(String(pageNum));
@@ -242,7 +246,11 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       <div ref={annotateRef} style={{ position: 'relative', flexShrink: 0 }}>
         <button
           className={`tk-btn tk-btn-primary${isAnnotating ? ' tk-btn-active' : ''}`}
-          onClick={() => setAnnotateOpen((o) => !o)}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setAnnotatePos({ top: rect.bottom, left: rect.left });
+            setAnnotateOpen((o) => !o);
+          }}
           disabled={!canAnnotate}
           title="Add a text note, arrow, or revision cloud"
         >
@@ -251,7 +259,7 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
           {Icons.chevDown}
         </button>
         {annotateOpen && (
-          <div className="tk-menu" style={{ left: 0 }}>
+          <div className="tk-menu" style={{ top: annotatePos.top, left: annotatePos.left }}>
             {ANNOTATION_OPTIONS.map((opt) => (
               <div key={opt.kind} className="tk-menu-item"
                 onClick={() => { setAnnotateOpen(false); onStartAnnotation(opt.kind); }}>
@@ -268,7 +276,11 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       <div ref={layersRef} style={{ position: 'relative', flexShrink: 0 }}>
         <button
           className={`tk-btn tk-btn-primary${hiddenLayers.size > 0 ? ' tk-btn-active' : ''}`}
-          onClick={() => setLayersOpen((o) => !o)}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setLayersPos({ top: rect.bottom, right: window.innerWidth - rect.right });
+            setLayersOpen((o) => !o);
+          }}
           title="Show/hide takeoff layers"
         >
           {Icons.layers}
@@ -276,7 +288,7 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
           {Icons.chevDown}
         </button>
         {layersOpen && (
-          <div className="tk-menu" style={{ right: 0 }}>
+          <div className="tk-menu" style={{ top: layersPos.top, right: layersPos.right }}>
             {LAYER_OPTIONS.map((opt) => {
               const visible = !hiddenLayers.has(opt.key);
               return (
