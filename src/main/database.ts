@@ -99,6 +99,9 @@ export function seedDatabase(
       }
     }
 
+    // Seeded TON aggregates get ballpark densities for CY conversion
+    applyDefaultDensities(db);
+
     const insertRole = db.prepare(
       'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes) VALUES (?, ?, ?, ?)'
     );
@@ -199,6 +202,48 @@ function runMigrations(db: Database.Database): void {
   if (version < 22) {
     migrateV22(db);
   }
+  if (version < 23) {
+    migrateV23(db);
+  }
+}
+
+/**
+ * Ballpark densities for aggregates priced by the TON, used to derive
+ * a per-CY price for cubic-yard takeoff quantities. Rough
+ * loose-material figures -- both the density and the per-CY price are
+ * editable per material in the catalog.
+ */
+export function applyDefaultDensities(db: Database.Database): void {
+  db.exec(`
+    UPDATE materials SET tons_per_cy = 1.4
+      WHERE unit = 'TON' AND tons_per_cy IS NULL AND (
+        lower(name) LIKE '%stone%' OR lower(name) LIKE '%gravel%' OR
+        lower(name) LIKE '%rip rap%' OR lower(name) LIKE '%riprap%' OR
+        lower(name) LIKE '%rock%' OR lower(name) LIKE '%limestone%'
+      );
+    UPDATE materials SET tons_per_cy = 1.35
+      WHERE unit = 'TON' AND tons_per_cy IS NULL AND lower(name) LIKE '%sand%';
+    UPDATE materials SET tons_per_cy = 1.3
+      WHERE unit = 'TON' AND tons_per_cy IS NULL AND (
+        lower(name) LIKE '%fill%' OR lower(name) LIKE '%base%' OR
+        lower(name) LIKE '%borrow%'
+      );
+    UPDATE materials SET cost_per_cy = round(default_unit_cost * tons_per_cy, 2)
+      WHERE unit = 'TON' AND cost_per_cy IS NULL
+        AND tons_per_cy IS NOT NULL AND default_unit_cost > 0;
+  `);
+}
+
+// V23: Optional per-CY price (and tons-per-CY density to keep it in
+// sync) on TON-priced materials, so cubic-yard trench/takeoff
+// quantities are never multiplied by a raw $/TON rate
+function migrateV23(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE materials ADD COLUMN tons_per_cy REAL;
+    ALTER TABLE materials ADD COLUMN cost_per_cy REAL;
+  `);
+  applyDefaultDensities(db);
+  db.exec(`INSERT INTO schema_version (version) VALUES (23);`);
 }
 
 function migrateV1(db: Database.Database): void {

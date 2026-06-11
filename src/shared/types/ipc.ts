@@ -43,6 +43,8 @@ export interface MaterialRow {
   notes: string | null;
   is_active: number;
   aliases: string | null;
+  tons_per_cy: number | null;
+  cost_per_cy: number | null;
 }
 
 export interface MaterialWithCategoryRow extends MaterialRow {
@@ -61,6 +63,8 @@ export interface SaveMaterialPayload {
   notes?: string | null;
   aliases?: string | null;
   isActive?: boolean | number;
+  tonsPerCy?: number | null;
+  costPerCy?: number | null;
 }
 
 export interface SaveLaborRolePayload {
