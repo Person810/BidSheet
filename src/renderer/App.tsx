@@ -3,7 +3,9 @@ import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { SetupWizard } from './components/SetupWizard';
 import { ToastContainer } from './components/Toast';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { Walkthrough } from './components/Walkthrough';
 import { useToastStore } from './stores/toast-store';
+import { useWalkthroughStore, hasSeenWalkthrough } from './stores/walkthrough-store';
 import { Dashboard } from './pages/Dashboard';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { LaborPage } from './pages/LaborPage';
@@ -119,6 +121,7 @@ export function App() {
   const [activeModules, setActiveModules] = useState<TradeModule[]>([]);
   const [companyName, setCompanyName] = useState('');
   const addToast = useToastStore((s) => s.addToast);
+  const openWalkthrough = useWalkthroughStore((s) => s.open);
 
   // Global safety net: catch any unhandled IPC rejections and show a toast
   // so errors never vanish silently. Pages can still catch their own errors
@@ -136,20 +139,23 @@ export function App() {
     return () => window.removeEventListener('unhandledrejection', handler);
   }, [addToast]);
 
+  // Load trade_types to determine which modules are active
+  const loadSettings = () =>
+    window.api.getSettings().then((s: any) => {
+      if (s?.trade_types) {
+        setActiveModules(getActiveModules(s.trade_types));
+      }
+      if (s?.company_name) {
+        setCompanyName(s.company_name);
+      }
+      setLoading(false);
+    });
+
   useEffect(() => {
     window.api.isSetupComplete().then((complete) => {
       setSetupComplete(complete);
       if (complete) {
-        // Load trade_types to determine which modules are active
-        window.api.getSettings().then((s: any) => {
-          if (s?.trade_types) {
-            setActiveModules(getActiveModules(s.trade_types));
-          }
-          if (s?.company_name) {
-            setCompanyName(s.company_name);
-          }
-          setLoading(false);
-        });
+        loadSettings();
 
         // Check if a backup reminder is needed after a database upgrade
         window.api.checkBackupReminder().then((reminder) => {
@@ -177,7 +183,16 @@ export function App() {
   if (!setupComplete) {
     return (
       <>
-        <SetupWizard onComplete={() => setSetupComplete(true)} />
+        <SetupWizard
+          onComplete={() => {
+            setSetupComplete(true);
+            loadSettings();
+            // Fresh install: walk the user through the app once.
+            // Skipped if this machine already saw the tour (e.g. the
+            // database was reset and setup ran again).
+            if (!hasSeenWalkthrough()) openWalkthrough();
+          }}
+        />
         <ToastContainer />
       </>
     );
@@ -212,39 +227,39 @@ export function App() {
               </NavLink>
             </li>
             <li>
-              <NavLink to="/jobs" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/jobs" data-tour="jobs" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/jobs']}</span>
                 Jobs & Bids
               </NavLink>
             </li>
             <li>
-              <NavLink to="/materials" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/materials" data-tour="materials" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/materials']}</span>
                 Materials
               </NavLink>
             </li>
             <li>
-              <NavLink to="/assemblies" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/assemblies" data-tour="assemblies" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/assemblies']}</span>
                 Assemblies
               </NavLink>
             </li>
             <li>
-              <NavLink to="/labor" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/labor" data-tour="labor" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/labor']}</span>
                 Labor & Crews
               </NavLink>
             </li>
             <li>
-              <NavLink to="/equipment" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/equipment" data-tour="equipment" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/equipment']}</span>
                 Equipment
               </NavLink>
             </li>
 
             {/* Trade module tools -- only renders when modules have tools registered */}
-            {modulesWithTools.map((mod) => (
-              <li key={mod.id}>
+            {modulesWithTools.map((mod, modIdx) => (
+              <li key={mod.id} data-tour={modIdx === 0 ? 'tools' : undefined}>
                 <div className="nav-section-label">{mod.name}</div>
                 <ul className="nav-links-nested">
                   {mod.tools.map((tool) => (
@@ -260,7 +275,7 @@ export function App() {
             ))}
 
             <li>
-              <NavLink to="/settings" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/settings" data-tour="settings" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/settings']}</span>
                 Settings
               </NavLink>
@@ -299,6 +314,7 @@ export function App() {
         </div>
         <ToastContainer />
         <ShortcutsOverlay />
+        <Walkthrough />
       </div>
     </HashRouter>
   );

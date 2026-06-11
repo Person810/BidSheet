@@ -1746,3 +1746,104 @@ body {
     transform: translateX(0);
   }
 }
+
+/* ================================================================
+   FIRST-RUN WALKTHROUGH (guided tour)
+   ================================================================ */
+
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+
+/* Centered steps (welcome / finish) dim the whole screen themselves
+   and flex-center their card; spotlighted steps get their dimming
+   from the spotlight box-shadow */
+.tour-overlay-dim {
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tour-spotlight {
+  position: fixed;
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  transition: top 0.2s ease, height 0.2s ease;
+}
+
+.tour-tooltip {
+  position: fixed;
+  width: 340px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 18px 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  animation: toast-slide-in 0.18s ease;
+}
+
+.tour-tooltip-centered {
+  position: static;
+  animation: tour-fade-in 0.18s ease;
+}
+
+@keyframes tour-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tour-tooltip h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.tour-tooltip p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  cursor: pointer;
+}
+
+.tour-dot.active {
+  background: var(--accent);
+}
+
+.tour-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tour-skip {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.tour-skip:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
