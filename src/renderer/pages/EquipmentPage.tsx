@@ -5,6 +5,7 @@ import {
 } from '../components/FuzzyAutocomplete';
 import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SortableTh, useSortableRows } from '../components/SortableTable';
 
 interface EquipmentItem {
   id: number;
@@ -19,6 +20,15 @@ interface EquipmentItem {
   is_active: number;
   aliases: string | null;
 }
+
+const EQUIPMENT_SORT_ACCESSORS = {
+  name: (e: EquipmentItem) => e.name,
+  category: (e: EquipmentItem) => e.category,
+  is_owned: (e: EquipmentItem) => e.is_owned,
+  hourly_rate: (e: EquipmentItem) => e.hourly_rate,
+  daily_rate: (e: EquipmentItem) => e.daily_rate,
+  mobilization_cost: (e: EquipmentItem) => e.mobilization_cost,
+};
 
 const EMPTY_FORM = {
   name: '',
@@ -68,6 +78,7 @@ export function EquipmentPage() {
       (e.aliases || '').toLowerCase().includes(searchTerm.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+  const { sorted: sortedEquipment, sort, toggleSort } = useSortableRows(filtered, EQUIPMENT_SORT_ACCESSORS);
 
   // Get unique categories from actual data for filter buttons
   const usedCategories = [...new Set(equipment.map((e) => e.category))].sort();
@@ -208,12 +219,12 @@ export function EquipmentPage() {
       <table className="data-table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Category</th>
-            <th>Type</th>
-            <th className="text-right">Hourly Rate</th>
-            <th className="text-right">Daily Rate</th>
-            <th className="text-right">Mobilization</th>
+            <SortableTh label="Name" sortKey="name" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Category" sortKey="category" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Type" sortKey="is_owned" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Hourly Rate" sortKey="hourly_rate" sort={sort} onToggle={toggleSort} className="text-right" />
+            <SortableTh label="Daily Rate" sortKey="daily_rate" sort={sort} onToggle={toggleSort} className="text-right" />
+            <SortableTh label="Mobilization" sortKey="mobilization_cost" sort={sort} onToggle={toggleSort} className="text-right" />
             <th style={{ width: 80 }}></th>
           </tr>
         </thead>
@@ -233,7 +244,7 @@ export function EquipmentPage() {
               </td>
             </tr>
           ) : (
-            filtered.map((item) => (
+            sortedEquipment.map((item) => (
               <tr key={item.id} style={item.is_active === 0 ? { opacity: 0.5 } : {}}>
                 <td>
                   <span className="material-name-link" onClick={() => openEdit(item)}>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { SetupWizard } from './components/SetupWizard';
 import { ToastContainer } from './components/Toast';
+import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { useToastStore } from './stores/toast-store';
 import { Dashboard } from './pages/Dashboard';
 import { MaterialsPage } from './pages/MaterialsPage';
@@ -297,6 +298,7 @@ export function App() {
           </footer>
         </div>
         <ToastContainer />
+        <ShortcutsOverlay />
       </div>
     </HashRouter>
   );

@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
 import { formatDateLocal, statusBadge } from './helpers';
+
+const JOB_SORT_ACCESSORS = {
+  name: (j: any) => j.name,
+  job_number: (j: any) => j.job_number,
+  client: (j: any) => j.client,
+  bid_date: (j: any) => j.bid_date,
+  status: (j: any) => j.status,
+  updated_at: (j: any) => j.updated_at,
+};
 
 interface JobListProps {
   onOpenJob: (id: number) => void;
@@ -51,6 +61,7 @@ export function JobList({ onOpenJob }: JobListProps) {
   };
 
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const { sorted: sortedJobs, sort, toggleSort } = useSortableRows(jobs, JOB_SORT_ACCESSORS);
 
   const handleDelete = async (id: number) => {
     const coCount = jobCOs[id]?.length || 0;
@@ -103,12 +114,12 @@ export function JobList({ onOpenJob }: JobListProps) {
       <table className="data-table">
         <thead>
           <tr>
-            <th>Job Name</th>
-            <th>Job #</th>
-            <th>Client</th>
-            <th>Bid Date</th>
-            <th>Status</th>
-            <th>Updated</th>
+            <SortableTh label="Job Name" sortKey="name" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Job #" sortKey="job_number" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Client" sortKey="client" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Bid Date" sortKey="bid_date" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Status" sortKey="status" sort={sort} onToggle={toggleSort} />
+            <SortableTh label="Updated" sortKey="updated_at" sort={sort} onToggle={toggleSort} />
             <th style={{ width: 140 }}></th>
           </tr>
         </thead>
@@ -120,7 +131,7 @@ export function JobList({ onOpenJob }: JobListProps) {
               </td>
             </tr>
           ) : (
-            jobs.map((job) => (
+            sortedJobs.map((job) => (
               <React.Fragment key={job.id}>
                 <tr className="clickable-row" onClick={() => onOpenJob(job.id)}>
                   <td>

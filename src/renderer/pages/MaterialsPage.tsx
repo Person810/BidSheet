@@ -6,6 +6,16 @@ import {
 import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CsvImportModal } from '../components/CsvImportModal';
+import { SortableTh, useSortableRows } from '../components/SortableTable';
+
+const MATERIAL_SORT_ACCESSORS = {
+  name: (m: Material) => m.name,
+  unit: (m: Material) => m.unit,
+  default_unit_cost: (m: Material) => m.default_unit_cost,
+  supplier: (m: Material) => m.supplier,
+  part_number: (m: Material) => m.part_number,
+  last_price_update: (m: Material) => m.last_price_update,
+};
 
 interface Category {
   id: number;
@@ -87,6 +97,7 @@ export function MaterialsPage() {
         (m.aliases || '').toLowerCase().includes(searchTerm.toLowerCase())
       : true
   );
+  const { sorted: sortedMaterials, sort, toggleSort } = useSortableRows(filteredMaterials, MATERIAL_SORT_ACCESSORS);
 
   const openAdd = () => {
     setEditingMaterial(null);
@@ -223,12 +234,12 @@ export function MaterialsPage() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Unit</th>
-              <th className="text-right">Unit Cost</th>
-              <th>Supplier</th>
-              <th>Part #</th>
-              <th>Last Updated</th>
+              <SortableTh label="Name" sortKey="name" sort={sort} onToggle={toggleSort} />
+              <SortableTh label="Unit" sortKey="unit" sort={sort} onToggle={toggleSort} />
+              <SortableTh label="Unit Cost" sortKey="default_unit_cost" sort={sort} onToggle={toggleSort} className="text-right" />
+              <SortableTh label="Supplier" sortKey="supplier" sort={sort} onToggle={toggleSort} />
+              <SortableTh label="Part #" sortKey="part_number" sort={sort} onToggle={toggleSort} />
+              <SortableTh label="Last Updated" sortKey="last_price_update" sort={sort} onToggle={toggleSort} />
               <th style={{ width: 80 }}></th>
             </tr>
           </thead>
@@ -248,7 +259,7 @@ export function MaterialsPage() {
                 </td>
               </tr>
             ) : (
-              filteredMaterials.map((mat) => (
+              sortedMaterials.map((mat) => (
                 <tr key={mat.id} style={mat.is_active === 0 ? { opacity: 0.5 } : {}}>
                   <td>
                     <span

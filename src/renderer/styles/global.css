@@ -267,6 +267,67 @@ body {
   font-size: 12px;
 }
 
+/* Clickable column-sort headers */
+.th-sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.th-sortable:hover {
+  color: var(--text-primary);
+}
+
+.th-sort-indicator {
+  display: inline-block;
+  width: 14px;
+  margin-left: 3px;
+  font-size: 9px;
+  color: var(--accent);
+}
+
+/* Keyboard shortcuts overlay (toggled with ?) */
+.shortcut-section {
+  margin: 16px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.shortcut-table td {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-table td:first-child {
+  width: 170px;
+  white-space: nowrap;
+}
+
+.shortcut-keys kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: 11px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+.shortcut-plus {
+  margin: 0 3px;
+  color: var(--text-muted);
+}
+
 .data-table tr:hover td {
   background: var(--bg-hover);
 }
