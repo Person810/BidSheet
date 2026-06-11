@@ -377,6 +377,35 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     anm.handleMouseMove(point);
   }, [rm, am, anm, orthoConstrain, activeRunLastPoint, activeAreaLastPoint]);
 
+  // -- Don't lose in-progress drawings --
+
+  // An active run/area lives only in React state until finished. Finish
+  // (which saves shapes with enough points) instead of silently discarding
+  // when the user leaves the takeoff or closes the app.
+  const finishersRef = useRef({ finishActiveRun, finishActiveArea });
+  finishersRef.current = { finishActiveRun, finishActiveArea };
+
+  const handleBack = useCallback(() => {
+    finishersRef.current.finishActiveRun();
+    finishersRef.current.finishActiveArea();
+    onBack();
+  }, [onBack]);
+
+  useEffect(() => {
+    // App close / reload: the save IPC is fire-and-forget here, but losing
+    // that race is no worse than the guaranteed loss without it
+    const handler = () => {
+      finishersRef.current.finishActiveRun();
+      finishersRef.current.finishActiveArea();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => {
+      window.removeEventListener('beforeunload', handler);
+      // Unmount (back button bypassed, job switched, etc.)
+      handler();
+    };
+  }, []);
+
   // -- Direct vertex/item dragging (no tool active) --
 
   // History snapshots capture pre-mutation state, so record once at the first
@@ -925,7 +954,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
   const anyDrawing = rm.isDrawing || am.isDrawing;
   const toolbarProps = {
-    onBack,
+    onBack: handleBack,
     onLoadPlan: handleLoadPlan, loading, pageNum, totalPages, onPrevPage: prevPage,
     onNextPage: nextPage, onSetPage: goToPage, zoomPercent,
     onZoomIn: zoomIn, onZoomOut: zoomOut, onFitToWidth: handleFitToWidth, calibrating,
