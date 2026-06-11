@@ -191,12 +191,19 @@ body {
   transition: background 0.15s;
 }
 
+/* Disabled buttons must look disabled -- otherwise gated saves
+   (e.g. Add Equipment with no category) read as "click did nothing" */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn-primary {
   background: var(--accent);
   color: #fff;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
@@ -206,7 +213,7 @@ body {
   border: 1px solid var(--border);
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background: var(--bg-hover);
 }
 
@@ -215,7 +222,7 @@ body {
   color: #fff;
 }
 
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   background: #dc2626;
 }
 

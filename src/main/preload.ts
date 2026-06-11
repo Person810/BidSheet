@@ -1,143 +1,157 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// Electron prefixes errors crossing IPC with
+// "Error invoking remote method 'channel': Error: ..." -- strip that
+// plumbing so the renderer's toasts show only the friendly message
+// produced by safeHandle in ipc-handlers.ts.
+function invoke(channel: string, ...args: any[]): Promise<any> {
+  return ipcRenderer.invoke(channel, ...args).catch((err: any) => {
+    const msg = String(err?.message || err).replace(
+      /^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/,
+      ''
+    );
+    throw new Error(msg);
+  });
+}
+
 // Expose a safe API to the renderer process
 contextBridge.exposeInMainWorld('api', {
   // ---- Materials ----
-  getMaterialCategories: () => ipcRenderer.invoke('db:material-categories:list'),
-  getMaterials: (categoryId?: number, includeInactive?: boolean) => ipcRenderer.invoke('db:materials:list', categoryId, includeInactive),
-  getMaterial: (id: number) => ipcRenderer.invoke('db:materials:get', id),
-  saveMaterial: (material: any) => ipcRenderer.invoke('db:materials:save', material),
-  deleteMaterial: (id: number) => ipcRenderer.invoke('db:materials:delete', id),
-  restoreMaterial: (id: number) => ipcRenderer.invoke('db:materials:restore', id),
+  getMaterialCategories: () => invoke('db:material-categories:list'),
+  getMaterials: (categoryId?: number, includeInactive?: boolean) => invoke('db:materials:list', categoryId, includeInactive),
+  getMaterial: (id: number) => invoke('db:materials:get', id),
+  saveMaterial: (material: any) => invoke('db:materials:save', material),
+  deleteMaterial: (id: number) => invoke('db:materials:delete', id),
+  restoreMaterial: (id: number) => invoke('db:materials:restore', id),
   updateMaterialPrice: (id: number, newPrice: number, source: string) =>
-    ipcRenderer.invoke('db:materials:update-price', id, newPrice, source),
-  getMaterialsByCategoryName: (name: string) => ipcRenderer.invoke('db:materials:list-by-category-name', name),
+    invoke('db:materials:update-price', id, newPrice, source),
+  getMaterialsByCategoryName: (name: string) => invoke('db:materials:list-by-category-name', name),
 
   // ---- Labor ----
-  getLaborRoles: () => ipcRenderer.invoke('db:labor-roles:list'),
-  saveLaborRole: (role: any) => ipcRenderer.invoke('db:labor-roles:save', role),
-  deleteLaborRole: (id: number) => ipcRenderer.invoke('db:labor-roles:delete', id),
-  getCrewTemplates: () => ipcRenderer.invoke('db:crew-templates:list'),
-  getCrewTemplate: (id: number) => ipcRenderer.invoke('db:crew-templates:get', id),
-  saveCrewTemplate: (template: any) => ipcRenderer.invoke('db:crew-templates:save', template),
-  deleteCrewTemplate: (id: number) => ipcRenderer.invoke('db:crew-templates:delete', id),
-  getProductionRates: () => ipcRenderer.invoke('db:production-rates:list'),
-  saveProductionRate: (rate: any) => ipcRenderer.invoke('db:production-rates:save', rate),
-  deleteProductionRate: (id: number) => ipcRenderer.invoke('db:production-rates:delete', id),
+  getLaborRoles: () => invoke('db:labor-roles:list'),
+  saveLaborRole: (role: any) => invoke('db:labor-roles:save', role),
+  deleteLaborRole: (id: number) => invoke('db:labor-roles:delete', id),
+  getCrewTemplates: () => invoke('db:crew-templates:list'),
+  getCrewTemplate: (id: number) => invoke('db:crew-templates:get', id),
+  saveCrewTemplate: (template: any) => invoke('db:crew-templates:save', template),
+  deleteCrewTemplate: (id: number) => invoke('db:crew-templates:delete', id),
+  getProductionRates: () => invoke('db:production-rates:list'),
+  saveProductionRate: (rate: any) => invoke('db:production-rates:save', rate),
+  deleteProductionRate: (id: number) => invoke('db:production-rates:delete', id),
 
   // ---- Equipment ----
-  getEquipment: (includeInactive?: boolean) => ipcRenderer.invoke('db:equipment:list', includeInactive),
-  saveEquipment: (equip: any) => ipcRenderer.invoke('db:equipment:save', equip),
-  deleteEquipment: (id: number) => ipcRenderer.invoke('db:equipment:delete', id),
-  restoreEquipment: (id: number) => ipcRenderer.invoke('db:equipment:restore', id),
+  getEquipment: (includeInactive?: boolean) => invoke('db:equipment:list', includeInactive),
+  saveEquipment: (equip: any) => invoke('db:equipment:save', equip),
+  deleteEquipment: (id: number) => invoke('db:equipment:delete', id),
+  restoreEquipment: (id: number) => invoke('db:equipment:restore', id),
 
   // ---- Jobs / Bids ----
-  getJobs: (status?: string) => ipcRenderer.invoke('db:jobs:list', status),
-  getJob: (id: number) => ipcRenderer.invoke('db:jobs:get', id),
-  saveJob: (job: any) => ipcRenderer.invoke('db:jobs:save', job),
-  deleteJob: (id: number) => ipcRenderer.invoke('db:jobs:delete', id),
-  duplicateJob: (id: number, newName?: string, newBidDate?: string) => ipcRenderer.invoke('db:jobs:duplicate', id, newName, newBidDate),
-  getChangeOrders: (parentJobId: number) => ipcRenderer.invoke('db:jobs:change-orders', parentJobId),
-  createChangeOrder: (parentJobId: number) => ipcRenderer.invoke('db:jobs:create-change-order', parentJobId),
+  getJobs: (status?: string) => invoke('db:jobs:list', status),
+  getJob: (id: number) => invoke('db:jobs:get', id),
+  saveJob: (job: any) => invoke('db:jobs:save', job),
+  deleteJob: (id: number) => invoke('db:jobs:delete', id),
+  duplicateJob: (id: number, newName?: string, newBidDate?: string) => invoke('db:jobs:duplicate', id, newName, newBidDate),
+  getChangeOrders: (parentJobId: number) => invoke('db:jobs:change-orders', parentJobId),
+  createChangeOrder: (parentJobId: number) => invoke('db:jobs:create-change-order', parentJobId),
 
-  getBidSections: (jobId: number) => ipcRenderer.invoke('db:bid-sections:list', jobId),
-  saveBidSection: (section: any) => ipcRenderer.invoke('db:bid-sections:save', section),
-  deleteBidSection: (id: number) => ipcRenderer.invoke('db:bid-sections:delete', id),
+  getBidSections: (jobId: number) => invoke('db:bid-sections:list', jobId),
+  saveBidSection: (section: any) => invoke('db:bid-sections:save', section),
+  deleteBidSection: (id: number) => invoke('db:bid-sections:delete', id),
 
-  getBidLineItems: (sectionId: number) => ipcRenderer.invoke('db:line-items:list', sectionId),
-  saveBidLineItem: (item: any) => ipcRenderer.invoke('db:line-items:save', item),
-  deleteBidLineItem: (id: number) => ipcRenderer.invoke('db:line-items:delete', id),
+  getBidLineItems: (sectionId: number) => invoke('db:line-items:list', sectionId),
+  saveBidLineItem: (item: any) => invoke('db:line-items:save', item),
+  deleteBidLineItem: (id: number) => invoke('db:line-items:delete', id),
   importBidItems: (jobId: number, sectionId: number, items: any[]) =>
-    ipcRenderer.invoke('db:line-items:import', jobId, sectionId, items),
+    invoke('db:line-items:import', jobId, sectionId, items),
 
-  getBidSummary: (jobId: number) => ipcRenderer.invoke('db:jobs:summary', jobId),
-  getBidSummaryBatch: (jobIds: number[]) => ipcRenderer.invoke('db:jobs:summary-batch', jobIds),
+  getBidSummary: (jobId: number) => invoke('db:jobs:summary', jobId),
+  getBidSummaryBatch: (jobIds: number[]) => invoke('db:jobs:summary-batch', jobIds),
 
   // ---- Trench Profiles ----
-  getTrenchProfiles: (jobId: number) => ipcRenderer.invoke('db:trench-profiles:list', jobId),
-  saveTrenchProfile: (profile: any) => ipcRenderer.invoke('db:trench-profiles:save', profile),
-  deleteTrenchProfile: (id: number) => ipcRenderer.invoke('db:trench-profiles:delete', id),
-  reorderTrenchProfiles: (items: any[]) => ipcRenderer.invoke('db:trench-profiles:reorder', items),
+  getTrenchProfiles: (jobId: number) => invoke('db:trench-profiles:list', jobId),
+  saveTrenchProfile: (profile: any) => invoke('db:trench-profiles:save', profile),
+  deleteTrenchProfile: (id: number) => invoke('db:trench-profiles:delete', id),
+  reorderTrenchProfiles: (items: any[]) => invoke('db:trench-profiles:reorder', items),
 
   // ---- Assemblies ----
-  getAssemblies: () => ipcRenderer.invoke('db:assemblies:list'),
-  getAssembly: (id: number) => ipcRenderer.invoke('db:assemblies:get', id),
-  saveAssembly: (assembly: any) => ipcRenderer.invoke('db:assemblies:save', assembly),
-  deleteAssembly: (id: number) => ipcRenderer.invoke('db:assemblies:delete', id),
+  getAssemblies: () => invoke('db:assemblies:list'),
+  getAssembly: (id: number) => invoke('db:assemblies:get', id),
+  saveAssembly: (assembly: any) => invoke('db:assemblies:save', assembly),
+  deleteAssembly: (id: number) => invoke('db:assemblies:delete', id),
 
   // ---- Settings ----
-  getSettings: () => ipcRenderer.invoke('db:settings:get'),
-  saveSettings: (settings: any) => ipcRenderer.invoke('db:settings:save', settings),
-  chooseLogoFile: () => ipcRenderer.invoke('db:settings:choose-logo'),
+  getSettings: () => invoke('db:settings:get'),
+  saveSettings: (settings: any) => invoke('db:settings:save', settings),
+  chooseLogoFile: () => invoke('db:settings:choose-logo'),
 
   // ---- Setup ----
-  isSetupComplete: () => ipcRenderer.invoke('db:setup:is-complete'),
+  isSetupComplete: () => invoke('db:setup:is-complete'),
   runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string) =>
-    ipcRenderer.invoke('db:setup:run', trades, includeBallparkPrices, companyName),
+    invoke('db:setup:run', trades, includeBallparkPrices, companyName),
 
   // ---- CSV Import ----
-  openCsvFile: () => ipcRenderer.invoke('db:csv:open'),
-  parseCsvPath: (filePath: string) => ipcRenderer.invoke('db:csv:parse-path', filePath),
+  openCsvFile: () => invoke('db:csv:open'),
+  parseCsvPath: (filePath: string) => invoke('db:csv:parse-path', filePath),
   importPriceSheet: (updates: any[], source: string) =>
-    ipcRenderer.invoke('db:materials:import-prices', updates, source),
+    invoke('db:materials:import-prices', updates, source),
 
   // ---- Plan Takeoff ----
-  openTakeoffPdf: () => ipcRenderer.invoke('db:takeoff:open-pdf'),
-  readTakeoffPdf: (filePath: string) => ipcRenderer.invoke('db:takeoff:read-pdf', filePath),
-  getTakeoffSettings: (jobId: number) => ipcRenderer.invoke('db:takeoff-settings:get', jobId),
-  saveTakeoffSettings: (settings: any) => ipcRenderer.invoke('db:takeoff-settings:save', settings),
-  getPageScale: (jobId: number, pageNumber: number) => ipcRenderer.invoke('db:takeoff-page-scale:get', jobId, pageNumber),
-  savePageScale: (data: any) => ipcRenderer.invoke('db:takeoff-page-scale:save', data),
-  listPageScales: (jobId: number) => ipcRenderer.invoke('db:takeoff-page-scale:list', jobId),
-  listTakeoffRuns: (jobId: number) => ipcRenderer.invoke('db:takeoff-runs:list', jobId),
-  saveTakeoffRun: (run: any) => ipcRenderer.invoke('db:takeoff-runs:save', run),
-  deleteTakeoffRun: (id: number) => ipcRenderer.invoke('db:takeoff-runs:delete', id),
-  updateTakeoffPoint: (data: any) => ipcRenderer.invoke('db:takeoff-points:update', data),
-  listTakeoffItems: (jobId: number) => ipcRenderer.invoke('db:takeoff-items:list', jobId),
-  saveTakeoffItem: (item: any) => ipcRenderer.invoke('db:takeoff-items:save', item),
-  deleteTakeoffItem: (id: number) => ipcRenderer.invoke('db:takeoff-items:delete', id),
-  listTakeoffAreas: (jobId: number) => ipcRenderer.invoke('db:takeoff-areas:list', jobId),
-  saveTakeoffArea: (area: any) => ipcRenderer.invoke('db:takeoff-areas:save', area),
-  deleteTakeoffArea: (id: number) => ipcRenderer.invoke('db:takeoff-areas:delete', id),
-  exportTakeoffCsv: (jobId: number, csvContent: string) => ipcRenderer.invoke('takeoff:export-csv', jobId, csvContent),
-  replaceTakeoffState: (jobId: number, state: any) => ipcRenderer.invoke('db:takeoff:replace-state', jobId, state),
-  listTakeoffAnnotations: (jobId: number) => ipcRenderer.invoke('db:takeoff-annotations:list', jobId),
-  saveTakeoffAnnotation: (ann: any) => ipcRenderer.invoke('db:takeoff-annotations:save', ann),
-  deleteTakeoffAnnotation: (id: number) => ipcRenderer.invoke('db:takeoff-annotations:delete', id),
-  getPageRotation: (jobId: number, pageNumber: number) => ipcRenderer.invoke('db:takeoff-page-rotation:get', jobId, pageNumber),
-  savePageRotation: (jobId: number, pageNumber: number, rotation: number) => ipcRenderer.invoke('db:takeoff-page-rotation:save', jobId, pageNumber, rotation),
-  listTakeoffNodes: (jobId: number) => ipcRenderer.invoke('db:takeoff-nodes:list', jobId),
-  saveTakeoffNode: (node: any) => ipcRenderer.invoke('db:takeoff-nodes:save', node),
-  deleteTakeoffNode: (id: number) => ipcRenderer.invoke('db:takeoff-nodes:delete', id),
-  getNodeConnectedRuns: (nodeId: number) => ipcRenderer.invoke('db:takeoff-nodes:connected-runs', nodeId),
+  openTakeoffPdf: () => invoke('db:takeoff:open-pdf'),
+  readTakeoffPdf: (filePath: string) => invoke('db:takeoff:read-pdf', filePath),
+  getTakeoffSettings: (jobId: number) => invoke('db:takeoff-settings:get', jobId),
+  saveTakeoffSettings: (settings: any) => invoke('db:takeoff-settings:save', settings),
+  getPageScale: (jobId: number, pageNumber: number) => invoke('db:takeoff-page-scale:get', jobId, pageNumber),
+  savePageScale: (data: any) => invoke('db:takeoff-page-scale:save', data),
+  listPageScales: (jobId: number) => invoke('db:takeoff-page-scale:list', jobId),
+  listTakeoffRuns: (jobId: number) => invoke('db:takeoff-runs:list', jobId),
+  saveTakeoffRun: (run: any) => invoke('db:takeoff-runs:save', run),
+  deleteTakeoffRun: (id: number) => invoke('db:takeoff-runs:delete', id),
+  updateTakeoffPoint: (data: any) => invoke('db:takeoff-points:update', data),
+  listTakeoffItems: (jobId: number) => invoke('db:takeoff-items:list', jobId),
+  saveTakeoffItem: (item: any) => invoke('db:takeoff-items:save', item),
+  deleteTakeoffItem: (id: number) => invoke('db:takeoff-items:delete', id),
+  listTakeoffAreas: (jobId: number) => invoke('db:takeoff-areas:list', jobId),
+  saveTakeoffArea: (area: any) => invoke('db:takeoff-areas:save', area),
+  deleteTakeoffArea: (id: number) => invoke('db:takeoff-areas:delete', id),
+  exportTakeoffCsv: (jobId: number, csvContent: string) => invoke('takeoff:export-csv', jobId, csvContent),
+  replaceTakeoffState: (jobId: number, state: any) => invoke('db:takeoff:replace-state', jobId, state),
+  listTakeoffAnnotations: (jobId: number) => invoke('db:takeoff-annotations:list', jobId),
+  saveTakeoffAnnotation: (ann: any) => invoke('db:takeoff-annotations:save', ann),
+  deleteTakeoffAnnotation: (id: number) => invoke('db:takeoff-annotations:delete', id),
+  getPageRotation: (jobId: number, pageNumber: number) => invoke('db:takeoff-page-rotation:get', jobId, pageNumber),
+  savePageRotation: (jobId: number, pageNumber: number, rotation: number) => invoke('db:takeoff-page-rotation:save', jobId, pageNumber, rotation),
+  listTakeoffNodes: (jobId: number) => invoke('db:takeoff-nodes:list', jobId),
+  saveTakeoffNode: (node: any) => invoke('db:takeoff-nodes:save', node),
+  deleteTakeoffNode: (id: number) => invoke('db:takeoff-nodes:delete', id),
+  getNodeConnectedRuns: (nodeId: number) => invoke('db:takeoff-nodes:connected-runs', nodeId),
 
   // ---- Quotes ----
-  getQuotes: (jobId: number) => ipcRenderer.invoke('db:quotes:list', jobId),
-  saveQuote: (quote: any) => ipcRenderer.invoke('db:quotes:save', quote),
-  selectQuote: (jobId: number, scope: string, quoteId: number | null) => ipcRenderer.invoke('db:quotes:select', jobId, scope, quoteId),
-  deleteQuote: (id: number) => ipcRenderer.invoke('db:quotes:delete', id),
+  getQuotes: (jobId: number) => invoke('db:quotes:list', jobId),
+  saveQuote: (quote: any) => invoke('db:quotes:save', quote),
+  selectQuote: (jobId: number, scope: string, quoteId: number | null) => invoke('db:quotes:select', jobId, scope, quoteId),
+  deleteQuote: (id: number) => invoke('db:quotes:delete', id),
 
   // ---- Export ----
-  exportQuickBooksCSV: (jobId: number) => ipcRenderer.invoke('export:quickbooks-csv', jobId),
-  exportUnitPriceCSV: (jobId: number) => ipcRenderer.invoke('export:unit-price-csv', jobId),
-  saveCsv: (defaultName: string, title: string, csvContent: string) => ipcRenderer.invoke('export:save-csv', defaultName, title, csvContent),
-  exportBidPdf: (jobId: number) => ipcRenderer.invoke('jobs:export-pdf', jobId),
-  printBid: (jobId: number) => ipcRenderer.invoke('jobs:print-bid', jobId),
+  exportQuickBooksCSV: (jobId: number) => invoke('export:quickbooks-csv', jobId),
+  exportUnitPriceCSV: (jobId: number) => invoke('export:unit-price-csv', jobId),
+  saveCsv: (defaultName: string, title: string, csvContent: string) => invoke('export:save-csv', defaultName, title, csvContent),
+  exportBidPdf: (jobId: number) => invoke('jobs:export-pdf', jobId),
+  printBid: (jobId: number) => invoke('jobs:print-bid', jobId),
 
   // ---- Backup/Restore ----
-  exportDatabase: () => ipcRenderer.invoke('db:export'),
-  restoreDatabase: () => ipcRenderer.invoke('db:restore'),
-  checkBackupReminder: () => ipcRenderer.invoke('db:settings:backup-reminder-needed'),
-  dismissBackupReminder: () => ipcRenderer.invoke('db:settings:dismiss-backup-reminder'),
+  exportDatabase: () => invoke('db:export'),
+  restoreDatabase: () => invoke('db:restore'),
+  checkBackupReminder: () => invoke('db:settings:backup-reminder-needed'),
+  dismissBackupReminder: () => invoke('db:settings:dismiss-backup-reminder'),
 
   // ---- App Info ----
-  getLogDir: () => ipcRenderer.invoke('app:log-dir'),
+  getLogDir: () => invoke('app:log-dir'),
 
   // ---- Updates ----
-  checkForUpdate: () => ipcRenderer.invoke('updater:check'),
-  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
-  installUpdate: () => ipcRenderer.invoke('updater:install'),
-  getAppVersion: () => ipcRenderer.invoke('updater:get-version'),
+  checkForUpdate: () => invoke('updater:check'),
+  downloadUpdate: () => invoke('updater:download'),
+  installUpdate: () => invoke('updater:install'),
+  getAppVersion: () => invoke('updater:get-version'),
   onUpdateStatus: (callback: (data: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('update-status', handler);
