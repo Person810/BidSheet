@@ -81,7 +81,7 @@ export function ToastContainer() {
               }}
               title="Dismiss"
             >
-              \u2715
+              {'\u2715'}
             </button>
           </div>
         );
