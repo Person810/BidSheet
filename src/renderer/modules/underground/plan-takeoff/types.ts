@@ -1,7 +1,20 @@
+// Wire-format unions are defined once in the IPC contract so the renderer
+// state and what crosses the bridge can't drift apart.
+import type { AnnotationKind, AreaType, UtilityType } from '../../../../shared/types/ipc';
+
+export type { AnnotationKind, AreaType, UtilityType };
+
 export interface TakeoffJobSettings {
   id?: number;
   job_id: number;
   pdf_path: string | null;
+  /** Legacy job-level scale (superseded by per-page scales, still stored) */
+  scale_px_per_ft?: number | null;
+  scale_point1_x?: number | null;
+  scale_point1_y?: number | null;
+  scale_point2_x?: number | null;
+  scale_point2_y?: number | null;
+  scale_distance_ft?: number | null;
 }
 
 /** Per-page scale calibration data */
@@ -51,7 +64,6 @@ export interface TakeoffNode {
 /** Interaction mode for the drawing overlay */
 export type OverlayMode = 'none' | 'calibrate-p1' | 'calibrate-p2' | 'draw';
 
-export type UtilityType = 'sanitary' | 'storm' | 'water' | 'fiber' | 'other';
 
 /**
  * A single pipe run on the plan.
@@ -117,7 +129,6 @@ export interface TakeoffItem {
   nearRunId: number | null;
 }
 
-export type AreaType = 'asphalt' | 'concrete' | 'gravel' | 'topsoil' | 'other';
 
 /**
  * A measured surface area polygon (pavement patch, restoration, grading limits).
@@ -148,7 +159,6 @@ export interface AreaConfig {
   assemblyId: number | null;
 }
 
-export type AnnotationKind = 'text' | 'arrow' | 'cloud';
 
 /**
  * A plan markup: a text note (x1,y1), an arrow (x1,y1 → x2,y2), or a

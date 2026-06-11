@@ -108,6 +108,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         window.api.getSettings(),
         window.api.getAssemblies(),
       ]);
+      if (!j) {
+        addToast('Job not found.', 'error');
+        return;
+      }
       setJob(j);
       setSections(s);
       setMaterials(mats);
@@ -143,7 +147,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       // Load parent job if this is a CO
       if (j.parent_job_id) {
         const p = await window.api.getJob(j.parent_job_id);
-        setParentJob(p);
+        setParentJob(p ?? null);
       } else {
         setParentJob(null);
       }
@@ -158,7 +162,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     setActiveTab('estimate');
   }, [loadJob]);
 
-  const updateStatus = async (status: string) => {
+  const updateStatus = async (status: 'draft' | 'submitted' | 'won' | 'lost' | 'archived') => {
     if (!job) return;
     // Auto-lock when marking won or lost, unless the setting is disabled
     const shouldAutoLock = (status === 'won' || status === 'lost') && settings?.auto_lock_on_close !== 0;
@@ -214,7 +218,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       ...jobToPayload(job),
       name: editJobForm.name.trim(),
       jobNumber: editJobForm.jobNumber || null,
-      client: editJobForm.client || null,
+      // jobs.client is NOT NULL — binding null throws a constraint error
+      client: editJobForm.client || '',
       location: editJobForm.location || null,
       bidDate: editJobForm.bidDate || null,
       description: editJobForm.description || null,
@@ -361,7 +366,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     const sectionItems = lineItems[editingSectionId!] || [];
     await window.api.saveBidLineItem({
       id: editingLineItem?.id,
-      sectionId: editingSectionId,
+      sectionId: editingSectionId!,
       jobId,
       description: lineForm.description,
       itemNumber: lineForm.itemNumber || null,

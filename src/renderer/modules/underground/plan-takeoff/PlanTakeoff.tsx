@@ -265,9 +265,20 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         setScale(1.0);
         setLoadError(false);
 
-        const settings = { ...jobSettings, job_id: jobId, pdf_path: result.filePath };
+        // The upsert binds every named param, so missing scale fields must
+        // be explicit nulls — a partial object throws and nothing persists
+        const settings = {
+          job_id: jobId,
+          pdf_path: result.filePath,
+          scale_px_per_ft: jobSettings?.scale_px_per_ft ?? null,
+          scale_point1_x: jobSettings?.scale_point1_x ?? null,
+          scale_point1_y: jobSettings?.scale_point1_y ?? null,
+          scale_point2_x: jobSettings?.scale_point2_x ?? null,
+          scale_point2_y: jobSettings?.scale_point2_y ?? null,
+          scale_distance_ft: jobSettings?.scale_distance_ft ?? null,
+        };
         window.api.saveTakeoffSettings(settings);
-        setJobSettings(settings as TakeoffJobSettings);
+        setJobSettings(settings);
       }
     } catch (err) {
       console.error('Failed to open PDF:', err);

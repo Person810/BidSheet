@@ -55,6 +55,15 @@ Then in a second terminal:
 npm start
 ```
 
+### Tests & Typecheck
+
+```bash
+npm test            # unit tests (bid math, trench volumes, CSV export)
+npm run typecheck   # strict TypeScript check of renderer + main
+```
+
+Both run in CI on every push and pull request.
+
 ### Build Installers
 
 ```bash

@@ -10,7 +10,7 @@ import { CsvImportModal } from '../components/CsvImportModal';
 interface Category {
   id: number;
   name: string;
-  description: string;
+  description: string | null;
 }
 
 interface Material {
