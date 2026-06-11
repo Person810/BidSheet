@@ -74,12 +74,12 @@ export function MaterialsPage() {
     }
   }, []);
 
+  // Always load the full catalog; the category filter is applied
+  // client-side so searching can span every category.
   const loadMaterials = useCallback(async () => {
-    const mats = selectedCategory
-      ? await window.api.getMaterials(selectedCategory, showArchived)
-      : await window.api.getMaterials(undefined, showArchived);
+    const mats = await window.api.getMaterials(undefined, showArchived);
     setMaterials(mats);
-  }, [selectedCategory, showArchived]);
+  }, [showArchived]);
 
   useEffect(() => {
     loadCategories();
@@ -89,7 +89,15 @@ export function MaterialsPage() {
     loadMaterials();
   }, [loadMaterials]);
 
-  const filteredMaterials = materials.filter((m) =>
+  // While a search is active it spans the whole catalog, not just the
+  // selected category -- otherwise "gasket" finds nothing when you
+  // happen to be sitting in Bedding & Backfill.
+  const searching = searchTerm.trim().length > 0;
+  const categoryMaterials =
+    selectedCategory === null
+      ? materials
+      : materials.filter((m) => m.category_id === selectedCategory);
+  const filteredMaterials = (searching ? materials : categoryMaterials).filter((m) =>
     searchTerm
       ? m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (m.supplier || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -97,6 +105,7 @@ export function MaterialsPage() {
         (m.aliases || '').toLowerCase().includes(searchTerm.toLowerCase())
       : true
   );
+  const categoryNames = new Map(categories.map((c) => [c.id, c.name]));
   const { sorted: sortedMaterials, sort, toggleSort } = useSortableRows(filteredMaterials, MATERIAL_SORT_ACCESSORS);
 
   const openAdd = () => {
@@ -229,6 +238,7 @@ export function MaterialsPage() {
 
         <div className="materials-count">
           {filteredMaterials.length} material{filteredMaterials.length !== 1 ? 's' : ''}
+          {searching && ' matching across all categories'}
         </div>
 
         <table className="data-table">
@@ -268,6 +278,11 @@ export function MaterialsPage() {
                     >
                       {mat.name}
                     </span>
+                    {searching && (
+                      <span className="badge badge-draft" style={{ marginLeft: 8, fontSize: 10 }}>
+                        {categoryNames.get(mat.category_id) || 'Uncategorized'}
+                      </span>
+                    )}
                     {mat.is_active === 0 && (
                       <span className="badge badge-draft" style={{ marginLeft: 8, fontSize: 10 }}>archived</span>
                     )}

@@ -193,19 +193,27 @@ export function FuzzyAutocomplete({
       setActiveIndex((prev) => Math.max(prev - 1, allowManualEntry ? -1 : 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (activeIndex === -1 && allowManualEntry) {
-        selectItem(null);
-      } else if (activeIndex >= 0) {
+      if (activeIndex >= 0) {
         const adjustedIndex = allowManualEntry ? activeIndex - 1 : activeIndex;
         if (adjustedIndex === -1 && allowManualEntry) {
           selectItem(null);
         } else if (adjustedIndex >= 0 && adjustedIndex < filtered.length) {
           selectItem(filtered[adjustedIndex]);
         }
+      } else if (isOpen && inputValue.trim() && filtered.length > 0) {
+        // Nothing highlighted but the user typed a query: commit the
+        // top match instead of silently doing nothing
+        selectItem(filtered[0]);
+      } else if (allowManualEntry) {
+        selectItem(null);
       }
     } else if (e.key === 'Escape') {
-      setIsOpen(false);
-      inputRef.current?.blur();
+      if (isOpen) {
+        // Only close the dropdown; keep the modal underneath open
+        e.stopPropagation();
+        setIsOpen(false);
+        inputRef.current?.blur();
+      }
     } else if (e.key === 'Tab') {
       if (isOpen && filtered.length > 0) {
         const idx = Math.max(activeIndex, allowManualEntry ? 1 : 0);
