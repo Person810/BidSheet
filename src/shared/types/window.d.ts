@@ -2,6 +2,7 @@ import type {
   AppSettingsRow,
   AssemblyRow,
   BackupReminderStatus,
+  BidItemImportRow,
   BidLineItemRow,
   BidSectionRow,
   CsvParseResult,
@@ -94,6 +95,7 @@ declare global {
       getBidLineItems: (sectionId: number) => Promise<BidLineItemRow[]>;
       saveBidLineItem: (item: SaveBidLineItemPayload) => Promise<SqlRunResult>;
       deleteBidLineItem: (id: number) => Promise<SqlRunResult>;
+      importBidItems: (jobId: number, sectionId: number, items: BidItemImportRow[]) => Promise<{ imported: number }>;
       getBidSummary: (jobId: number) => Promise<JobBidSummary | null>;
       getBidSummaryBatch: (jobIds: number[]) => Promise<JobBidSummary[]>;
 

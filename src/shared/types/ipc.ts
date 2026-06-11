@@ -256,6 +256,14 @@ export interface SaveBidLineItemPayload {
 /** Summary returned by db:jobs:summary / summary-batch (bidCalc + jobId). */
 export type JobBidSummary = FullBidSummary & { jobId: number };
 
+/** One unpriced row scaffolded from an owner's bid schedule. */
+export interface BidItemImportRow {
+  description: string;
+  quantity: number;
+  unit: string;
+  itemNumber: string | null;
+}
+
 export interface QuoteRow {
   id: number;
   job_id: number;

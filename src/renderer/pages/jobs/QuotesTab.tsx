@@ -29,10 +29,20 @@ export function QuotesTab({ jobId, onSendToBid }: {
   const [form, setForm] = useState<QuoteForm>({ ...EMPTY_FORM });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
   const [sending, setSending] = useState(false);
+  // Self-perform comparison: per-section direct cost, and which section each
+  // scope is being compared against (session-local choice)
+  const [sectionCosts, setSectionCosts] = useState<{ id: number; name: string; directCost: number }[]>([]);
+  const [compareSections, setCompareSections] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     try {
       setQuotes(await window.api.getQuotes(jobId));
+      const sections = await window.api.getBidSections(jobId);
+      const costs = await Promise.all(sections.map(async (s) => {
+        const items = await window.api.getBidLineItems(s.id);
+        return { id: s.id, name: s.name, directCost: items.reduce((sum, i) => sum + (i.total_cost || 0), 0) };
+      }));
+      setSectionCosts(costs);
     } catch (err: any) {
       addToast(err?.message || 'Failed to load quotes.', 'error');
     }
@@ -160,6 +170,9 @@ export function QuotesTab({ jobId, onSendToBid }: {
       ) : (
         scopes.map(([scope, list]) => {
           const lowest = Math.min(...list.map((q: any) => q.amount));
+          const compareSection = sectionCosts.find((s) => s.id === compareSections[scope]);
+          const selfCost = compareSection?.directCost ?? null;
+          const delta = selfCost != null ? selfCost - lowest : null;
           return (
             <div key={scope} style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -168,7 +181,34 @@ export function QuotesTab({ jobId, onSendToBid }: {
                   {list.length} quote{list.length !== 1 ? 's' : ''}
                 </span>
                 <button className="bid-grid-inline-action" onClick={() => openNew(scope)}>+ quote</button>
+                <span style={{ flex: 1 }} />
+                <label className="text-muted" style={{ fontSize: 11 }}>vs self-perform:</label>
+                <select className="form-control" style={{ width: 180, fontSize: 12, padding: '2px 6px' }}
+                  value={compareSections[scope] ?? ''}
+                  onChange={(e) => setCompareSections({
+                    ...compareSections,
+                    [scope]: Number(e.target.value) || 0,
+                  })}>
+                  <option value="">— pick a section —</option>
+                  {sectionCosts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
               </div>
+              {selfCost != null && compareSection && (
+                <div style={{ fontSize: 12, marginBottom: 6, padding: '6px 10px', borderRadius: 6,
+                  background: 'var(--bg-tertiary)', display: 'flex', gap: 14 }}>
+                  <span>
+                    Self-perform ({compareSection.name}): <strong>{formatCurrency(selfCost)}</strong> direct cost
+                  </span>
+                  <span>Low quote: <strong>{formatCurrency(lowest)}</strong></span>
+                  {delta != null && delta !== 0 && (
+                    <span style={{ color: delta > 0 ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }}>
+                      {delta > 0
+                        ? `Subbing saves ${formatCurrency(delta)} (${((delta / selfCost) * 100).toFixed(0)}%)`
+                        : `Self-perform saves ${formatCurrency(-delta)} (${((-delta / lowest) * 100).toFixed(0)}%)`}
+                    </span>
+                  )}
+                </div>
+              )}
               <table className="data-table" style={{ marginBottom: 0 }}>
                 <thead>
                   <tr>

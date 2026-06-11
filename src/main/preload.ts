@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('api', {
   getBidLineItems: (sectionId: number) => ipcRenderer.invoke('db:line-items:list', sectionId),
   saveBidLineItem: (item: any) => ipcRenderer.invoke('db:line-items:save', item),
   deleteBidLineItem: (id: number) => ipcRenderer.invoke('db:line-items:delete', id),
+  importBidItems: (jobId: number, sectionId: number, items: any[]) =>
+    ipcRenderer.invoke('db:line-items:import', jobId, sectionId, items),
 
   getBidSummary: (jobId: number) => ipcRenderer.invoke('db:jobs:summary', jobId),
   getBidSummaryBatch: (jobIds: number[]) => ipcRenderer.invoke('db:jobs:summary-batch', jobIds),

@@ -836,6 +836,31 @@ export function registerIpcHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM bid_line_items WHERE id = ?').run(id);
   });
 
+  // Scaffold a bid schedule from an owner's item list (DOT/municipal bid
+  // forms). Items arrive unpriced; cost columns rely on their 0 defaults.
+  safeHandle(
+    'db:line-items:import',
+    (_event, jobId: number, sectionId: number,
+      items: { description: string; quantity: number; unit: string; itemNumber: string | null }[]) => {
+      const existing = db.prepare(
+        'SELECT COUNT(*) as count FROM bid_line_items WHERE section_id = ?'
+      ).get(sectionId) as { count: number };
+      const insert = db.prepare(
+        `INSERT INTO bid_line_items (section_id, job_id, description, quantity, unit, sort_order, item_number)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      const importAll = db.transaction(() => {
+        let sortOrder = existing.count;
+        for (const item of items) {
+          insert.run(sectionId, jobId, item.description, item.quantity, item.unit, sortOrder++, item.itemNumber);
+        }
+      });
+      importAll();
+      logger.info('bid:import-items', `Imported ${items.length} bid items into section ${sectionId} (job ${jobId})`);
+      return { imported: items.length };
+    }
+  );
+
   // ================================================================
   // SUBCONTRACTOR / SUPPLIER QUOTES
   // ================================================================
