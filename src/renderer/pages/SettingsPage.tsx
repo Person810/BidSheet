@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UpdateBanner } from '../components/UpdateBanner';
+import { useToastStore } from '../stores/toast-store';
 
 export function SettingsPage() {
+  const addToast = useToastStore((s) => s.addToast);
   const [settings, setSettings] = useState({
     companyName: '',
     companyAddress: '',
     companyPhone: '',
     companyEmail: '',
     companyTagline: '',
+    companyLogo: '',
     defaultOverheadPercent: 10,
     defaultProfitPercent: 10,
     defaultTaxPercent: 0,
@@ -30,6 +33,7 @@ export function SettingsPage() {
           companyPhone: s.company_phone || '',
           companyEmail: s.company_email || '',
           companyTagline: s.company_tagline || '',
+          companyLogo: s.company_logo || '',
           defaultOverheadPercent: s.default_overhead_percent,
           defaultProfitPercent: s.default_profit_percent,
           defaultTaxPercent: s.default_tax_percent || 0,
@@ -48,7 +52,7 @@ export function SettingsPage() {
       companyPhone: settings.companyPhone || null,
       companyEmail: settings.companyEmail || null,
       companyTagline: settings.companyTagline || null,
-      companyLogo: null,
+      companyLogo: settings.companyLogo || null,
       defaultOverheadPercent: settings.defaultOverheadPercent,
       defaultProfitPercent: settings.defaultProfitPercent,
       defaultTaxPercent: settings.defaultTaxPercent,
@@ -62,6 +66,15 @@ export function SettingsPage() {
   const update = (field: string, value: any) => {
     setSettings({ ...settings, [field]: value });
     setSaved(false);
+  };
+
+  const handleChooseLogo = async () => {
+    try {
+      const result = await window.api.chooseLogoFile();
+      if (result?.dataUrl) update('companyLogo', result.dataUrl);
+    } catch (err: any) {
+      addToast(err?.message || 'Could not load that image.', 'error');
+    }
   };
 
   const tradeLabels: Record<string, string> = {
@@ -140,6 +153,26 @@ export function SettingsPage() {
               onChange={(e) => update('companyTagline', e.target.value)}
               placeholder="e.g. Underground Utility Contractor"
             />
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Logo (shown on proposal PDFs in place of the company name)</label>
+          <div className="flex gap-8 items-center">
+            {settings.companyLogo ? (
+              <img src={settings.companyLogo} alt="Company logo"
+                style={{ maxHeight: 48, maxWidth: 160, objectFit: 'contain',
+                  background: '#fff', borderRadius: 4, padding: 4 }} />
+            ) : (
+              <span className="text-muted" style={{ fontSize: 12 }}>No logo set</span>
+            )}
+            <button className="btn btn-sm btn-secondary" onClick={handleChooseLogo}>
+              {settings.companyLogo ? 'Change Logo' : 'Choose Logo'}
+            </button>
+            {settings.companyLogo && (
+              <button className="btn btn-sm btn-secondary" onClick={() => update('companyLogo', '')}>
+                Remove
+              </button>
+            )}
           </div>
         </div>
       </div>

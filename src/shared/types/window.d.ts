@@ -112,6 +112,7 @@ declare global {
       // Settings
       getSettings: () => Promise<AppSettingsRow>;
       saveSettings: (settings: SaveSettingsPayload) => Promise<SqlRunResult>;
+      chooseLogoFile: () => Promise<{ dataUrl: string } | null>;
 
       // Setup
       isSetupComplete: () => Promise<boolean>;
