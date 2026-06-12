@@ -8,6 +8,12 @@ import { logger } from './logger';
  * and compares the current app version against the latest GitHub Release tag.
  */
 export function initAutoUpdater(mainWindow: BrowserWindow): void {
+  // These handlers stay on raw ipcMain.handle rather than safeHandle on
+  // purpose: failures here must never throw into the renderer (an update
+  // problem should never look like an app problem). Each catch logs and
+  // returns a sentinel; user-visible errors flow through the
+  // 'update-status' events instead.
+
   // Version handler always works (dev and production)
   ipcMain.handle('updater:get-version', () => {
     return app.getVersion();
@@ -16,6 +22,13 @@ export function initAutoUpdater(mainWindow: BrowserWindow): void {
   // Don't run updater in dev mode
   if (!app.isPackaged) {
     logger.info('updater', 'Skipping auto-updater in dev mode');
+    return;
+  }
+
+  // Inside Flatpak or Snap the store owns updates; electron-updater's
+  // quitAndInstall would misbehave. Same skip as dev mode.
+  if (process.env.FLATPAK_ID || process.env.SNAP) {
+    logger.info('updater', 'Skipping auto-updater: updates are managed by the package store');
     return;
   }
 
