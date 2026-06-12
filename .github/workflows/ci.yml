@@ -18,10 +18,17 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      # Native modules and the Electron binary aren't needed for
-      # typechecking or the pure-function test suite
+      # --ignore-scripts keeps dependency postinstalls (incl. the Electron
+      # binary download) from running arbitrary code during install.
       - name: Install dependencies
         run: npm ci --ignore-scripts
+
+      # The one native module the tests need: the sync/import suite runs
+      # against a real SQLite database, and --ignore-scripts skipped the
+      # binding build. Rebuild runs only this package's install script
+      # (prebuilt binary download, or a local gyp compile).
+      - name: Build better-sqlite3 binding
+        run: npm rebuild better-sqlite3
 
       - name: Typecheck
         run: npm run typecheck
