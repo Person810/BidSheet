@@ -118,7 +118,7 @@ declare global {
 
       // Setup
       isSetupComplete: () => Promise<boolean>;
-      runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string) => Promise<{ success: boolean }>;
+      runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean) => Promise<{ success: boolean }>;
 
       // CSV Import
       openCsvFile: () => Promise<CsvParseResult | null>;

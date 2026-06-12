@@ -406,6 +406,7 @@ export interface AppSettingsRow {
   trade_types: string | null;
   auto_lock_on_close: number;
   last_backup_schema_version: number;
+  local_only_mode: number;
 }
 
 export interface SaveSettingsPayload {
@@ -420,6 +421,7 @@ export interface SaveSettingsPayload {
   defaultTaxPercent: number;
   defaultBondPercent: number;
   autoLockOnClose?: boolean | number;
+  localOnlyMode?: boolean | number;
 }
 
 export interface CsvParseResult {

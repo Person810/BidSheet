@@ -22,6 +22,22 @@ function handle(channel: string, fn: (...args: any[]) => any): void {
   });
 }
 
+/**
+ * Registered instead of the real handlers when local-only mode is on.
+ * Nothing cloud-related is constructed — no Supabase client, no Worker
+ * requests, no sync timers — so the app's only network activity is the
+ * GitHub update check. Only cloud:status gets a handler; every cloud
+ * entry point in the renderer hides itself behind this signed-out shape.
+ */
+export function registerLocalOnlyCloudStub(): void {
+  handle('cloud:status', () => ({
+    auth: { signedIn: false, email: null, aal: null, needsEnroll: false, needsTotp: false },
+    sync: null,
+    localOnly: true,
+  }));
+  logger.info('cloud', 'Local-only mode: cloud sync disabled, no cloud modules loaded');
+}
+
 export function registerCloudHandlers(db: Database.Database): SyncEngine {
   const auth = new CloudAuth(db);
   const api = new CloudApiClient(auth);

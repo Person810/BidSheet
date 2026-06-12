@@ -17,6 +17,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [companyName, setCompanyName] = useState('');
   const [selectedTrades, setSelectedTrades] = useState<string[]>([]);
   const [includePrices, setIncludePrices] = useState<boolean | null>(null);
+  const [cloudChoice, setCloudChoice] = useState<'yes' | 'later' | 'never' | null>(null);
   const [loading, setLoading] = useState(false);
 
   const toggleTrade = (key: string) => {
@@ -28,7 +29,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const handleFinish = async () => {
     setLoading(true);
     try {
-      await window.api.runSetup(selectedTrades, includePrices === true, companyName);
+      await window.api.runSetup(
+        selectedTrades,
+        includePrices === true,
+        companyName,
+        cloudChoice === 'never'
+      );
       onComplete();
     } catch (err) {
       console.error('Setup failed:', err);
@@ -40,7 +46,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     <div className="setup-overlay">
       <div className="setup-wizard">
         <div className="setup-progress">
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2, 3].map((i) => (
             <div key={i} className={`setup-dot ${step >= i ? 'active' : ''}`} />
           ))}
         </div>
@@ -148,8 +154,62 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </button>
               <button
                 className="btn btn-primary"
+                onClick={() => setStep(3)}
+                disabled={includePrices === null}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="setup-step">
+            <h2>Cloud Sync (Beta)</h2>
+            <p className="setup-desc">
+              BidSheet is fully local — your bids live on this computer, no account needed.
+              Optional cloud sync ($20/mo after a free trial) adds online backup and
+              multi-computer sync. Think you'll ever use it?
+            </p>
+            <div className="price-options">
+              <div
+                className={`price-option ${cloudChoice === 'yes' ? 'selected' : ''}`}
+                onClick={() => setCloudChoice('yes')}
+              >
+                <div className="price-option-title">Yes</div>
+                <div className="price-option-desc">
+                  You can set it up anytime from Settings.
+                </div>
+              </div>
+              <div
+                className={`price-option ${cloudChoice === 'later' ? 'selected' : ''}`}
+                onClick={() => setCloudChoice('later')}
+              >
+                <div className="price-option-title">Maybe later</div>
+                <div className="price-option-desc">
+                  The option stays in Settings if you change your mind.
+                </div>
+              </div>
+              <div
+                className={`price-option ${cloudChoice === 'never' ? 'selected' : ''}`}
+                onClick={() => setCloudChoice('never')}
+              >
+                <div className="price-option-title">Never — keep everything local</div>
+                <div className="price-option-desc">
+                  Hides cloud sync and never loads any cloud code. The app makes no
+                  network connections except checking GitHub for updates. Reversible
+                  in Settings.
+                </div>
+              </div>
+            </div>
+            <div className="setup-nav">
+              <button className="btn btn-secondary" onClick={() => setStep(2)}>
+                Back
+              </button>
+              <button
+                className="btn btn-primary"
                 onClick={handleFinish}
-                disabled={includePrices === null || loading}
+                disabled={cloudChoice === null || loading}
               >
                 {loading ? 'Setting up...' : 'Finish Setup'}
               </button>

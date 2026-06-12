@@ -29,7 +29,8 @@ export function seedDatabase(
   db: Database.Database,
   trades: TradeType[],
   includeBallparkPrices: boolean,
-  companyName: string
+  companyName: string,
+  localOnlyMode = false
 ): void {
   const seed = db.transaction(() => {
     const categoryMap = new Map<string, string>();
@@ -120,8 +121,8 @@ export function seedDatabase(
     const schemaVersion = (db.prepare('SELECT MAX(version) as v FROM schema_version').get() as any)?.v ?? 0;
 
     db.prepare(
-      'UPDATE app_settings SET setup_complete = 1, company_name = ?, trade_types = ?, last_backup_schema_version = ? WHERE id = 1'
-    ).run(companyName, trades.join(','), schemaVersion);
+      'UPDATE app_settings SET setup_complete = 1, company_name = ?, trade_types = ?, last_backup_schema_version = ?, local_only_mode = ? WHERE id = 1'
+    ).run(companyName, trades.join(','), schemaVersion, localOnlyMode ? 1 : 0);
   });
 
   seed();
@@ -207,6 +208,9 @@ function runMigrations(db: Database.Database): void {
   }
   if (version < 24) {
     migrateV24(db);
+  }
+  if (version < 25) {
+    migrateV25(db);
   }
 }
 
@@ -899,6 +903,16 @@ function migrateV24(db: Database.Database): void {
     );
 
     INSERT INTO schema_version (version) VALUES (24);
+  `);
+}
+
+function migrateV25(db: Database.Database): void {
+  // Local-only mode: user opted out of cloud sync entirely. When set, the
+  // main process never constructs the cloud auth/sync modules, so the app
+  // makes no network requests beyond the GitHub update check.
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN local_only_mode INTEGER NOT NULL DEFAULT 0;
+    INSERT INTO schema_version (version) VALUES (25);
   `);
 }
 
