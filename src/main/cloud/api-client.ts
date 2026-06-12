@@ -28,6 +28,7 @@ export interface CloudAccount {
   name: string;
   plan: string;
   storage_bytes_used: number;
+  storage_cap_bytes: number;
 }
 
 export class CloudApiError extends Error {
@@ -63,7 +64,9 @@ export class CloudApiClient {
       const msg =
         code === 'mfa_required'
           ? 'Cloud session needs a new authenticator code. Open Settings → Cloud Sync.'
-          : data.error || `Cloud API error (HTTP ${res.status}).`;
+          : code === 'storage_cap_exceeded'
+            ? 'Cloud storage is full. Turn off sync for old jobs to free space — they stay on this computer.'
+            : data.error || `Cloud API error (HTTP ${res.status}).`;
       throw new CloudApiError(msg, res.status, code);
     }
     return res;

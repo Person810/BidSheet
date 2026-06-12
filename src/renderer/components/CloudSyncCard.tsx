@@ -26,13 +26,14 @@ export function CloudSyncCard() {
 
   const ready = auth?.aal === 'aal2';
 
+  // Re-fetched after every sync pass so the storage bar tracks uploads.
   useEffect(() => {
     if (ready) {
       window.api.cloudMe().then((me) => setAccount(me.account)).catch(() => {});
     } else {
       setAccount(null);
     }
-  }, [ready]);
+  }, [ready, sync?.lastCheckAt]);
 
   const act = async (fn: () => Promise<any>) => {
     setBusy(true);
@@ -73,10 +74,13 @@ export function CloudSyncCard() {
     });
 
   const fmtBytes = (n: number) => {
-    if (n >= 1 << 30) return `${(n / (1 << 30)).toFixed(2)} GB`;
-    if (n >= 1 << 20) return `${(n / (1 << 20)).toFixed(1)} MB`;
+    if (n >= 1 << 30) return `${parseFloat((n / (1 << 30)).toFixed(2))} GB`;
+    if (n >= 1 << 20) return `${parseFloat((n / (1 << 20)).toFixed(1))} MB`;
     return `${Math.ceil(n / 1024)} KB`;
   };
+
+  const usedFrac =
+    account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;
 
   return (
     <div className="card mb-24">
@@ -158,10 +162,34 @@ export function CloudSyncCard() {
             Connected as <strong>{auth.email}</strong>
             {account && (
               <span className="text-muted" style={{ marginLeft: 8, fontSize: 13 }}>
-                — {fmtBytes(account.storage_bytes_used || 0)} stored in the cloud
+                — {fmtBytes(account.storage_bytes_used || 0)}
+                {account.storage_cap_bytes > 0 && ` of ${fmtBytes(account.storage_cap_bytes)}`} cloud
+                storage used
               </span>
             )}
           </p>
+          {account && account.storage_cap_bytes > 0 && (
+            <div style={{ maxWidth: 360, marginBottom: 8 }}>
+              <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-tertiary)' }}>
+                <div
+                  style={{
+                    width: `${Math.min(100, usedFrac * 100)}%`,
+                    height: 6,
+                    borderRadius: 3,
+                    background:
+                      usedFrac >= 1 ? 'var(--danger)' : usedFrac >= 0.9 ? 'var(--warning)' : 'var(--accent)',
+                  }}
+                />
+              </div>
+              {usedFrac >= 0.9 && (
+                <p className={usedFrac >= 1 ? 'text-danger' : 'text-warning'} style={{ fontSize: 12, marginTop: 4 }}>
+                  {usedFrac >= 1
+                    ? 'Cloud storage is full — uploads are paused. Turn off sync for old jobs to free space; they stay on this computer.'
+                    : 'Cloud storage is almost full. Turn off sync for old jobs to free space; they stay on this computer.'}
+                </p>
+              )}
+            </div>
+          )}
           {sync?.lastCheckAt && (
             <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
               Last checked {new Date(sync.lastCheckAt).toLocaleTimeString()}
