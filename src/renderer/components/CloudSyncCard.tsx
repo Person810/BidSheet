@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useToastStore } from '../stores/toast-store';
-import { useCloudStore, initCloudStore } from '../stores/cloud-store';
+import { useCloudStore, initCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
+import { CloudAccountSetupModal } from './CloudAccountSetupModal';
 
 /**
  * Settings → Cloud Sync card. Walks the whole auth ladder: signed out →
@@ -19,6 +20,10 @@ export function CloudSyncCard() {
   const [busy, setBusy] = useState(false);
   const [enroll, setEnroll] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
   const [account, setAccount] = useState<any | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
+  const unmounted = useRef(false);
+  useEffect(() => () => { unmounted.current = true; }, []);
 
   useEffect(() => {
     initCloudStore();
@@ -48,11 +53,6 @@ export function CloudSyncCard() {
   };
 
   const handleSignIn = () => act(() => window.api.cloudSignIn(email.trim(), password));
-  const handleSignUp = () =>
-    act(async () => {
-      await window.api.cloudSignUp(email.trim(), password);
-      addToast('Account created. Now set up your authenticator app.', 'success');
-    });
   const handleEnroll = () =>
     act(async () => {
       const e = await window.api.cloudEnrollTotp();
@@ -82,6 +82,30 @@ export function CloudSyncCard() {
   const usedFrac =
     account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;
 
+  const subStatus: string | undefined = account?.subscription_status;
+  const trialEnd = account?.trial_ends_at
+    ? new Date(account.trial_ends_at.replace(' ', 'T') + 'Z')
+    : null;
+  const trialDaysLeft = trialEnd ? Math.ceil((trialEnd.getTime() - Date.now()) / 86400000) : null;
+  const trialExpired = subStatus === 'trial' && trialDaysLeft !== null && trialDaysLeft <= 0;
+
+  // Not act(): the activation poll can run minutes and must not lock the card.
+  const handleSubscribe = async () => {
+    setAwaitingPayment(true);
+    try {
+      const active = await openCheckoutAndAwaitActivation(() => unmounted.current);
+      if (active) {
+        addToast('Subscription active — full 100 GB unlocked.', 'success');
+        window.api.cloudMe().then((me) => setAccount(me.account)).catch(() => {});
+      }
+    } catch (err: any) {
+      addToast(err?.message || 'Could not open checkout.', 'error');
+    } finally {
+      setAwaitingPayment(false);
+    }
+  };
+  const handlePortal = () => act(async () => { await window.api.cloudBillingPortal(); });
+
   return (
     <div className="card mb-24">
       <h3 style={{ marginBottom: 8 }}>Cloud Sync</h3>
@@ -109,8 +133,14 @@ export function CloudSyncCard() {
           <div className="flex gap-8">
             <button className="btn btn-primary" disabled={busy || !email.trim() || !password}
               onClick={handleSignIn}>Sign In</button>
-            <button className="btn btn-secondary" disabled={busy || !email.trim() || !password}
-              onClick={handleSignUp}>Create Account</button>
+          </div>
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <p className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+              New to BidSheet Cloud? First 30 days free, then $20/month for your whole company.
+            </p>
+            <button className="btn btn-secondary" disabled={busy} onClick={() => setShowSetup(true)}>
+              Create Account
+            </button>
           </div>
         </div>
       ) : !ready ? (
@@ -190,6 +220,41 @@ export function CloudSyncCard() {
               )}
             </div>
           )}
+          {subStatus && subStatus !== 'comped' && (
+            <div className="flex gap-8 items-center" style={{ marginBottom: 12 }}>
+              {subStatus === 'active' ? (
+                <>
+                  <span className="text-muted" style={{ fontSize: 12 }}>Subscription active.</span>
+                  <button className="btn btn-sm btn-secondary" disabled={busy} onClick={handlePortal}>
+                    Manage Billing
+                  </button>
+                </>
+              ) : subStatus === 'past_due' ? (
+                <>
+                  <span className="text-warning" style={{ fontSize: 12 }}>
+                    Payment problem — syncing is paused until your card is updated.
+                  </span>
+                  <button className="btn btn-sm btn-primary" disabled={busy} onClick={handlePortal}>
+                    Update Card
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className={trialExpired || subStatus === 'canceled' ? 'text-danger' : 'text-muted'}
+                    style={{ fontSize: 12 }}>
+                    {subStatus === 'canceled'
+                      ? 'Subscription ended — syncing is paused. Your cloud data is still there to download.'
+                      : trialExpired
+                        ? 'Free trial ended — syncing is paused. Your cloud data is still there to download.'
+                        : `Free trial — ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left.`}
+                  </span>
+                  <button className="btn btn-sm btn-primary" disabled={awaitingPayment} onClick={handleSubscribe}>
+                    {awaitingPayment ? 'Waiting for payment…' : 'Subscribe — $20/mo'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           {sync?.lastCheckAt && (
             <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
               Last checked {new Date(sync.lastCheckAt).toLocaleTimeString()}
@@ -212,6 +277,15 @@ export function CloudSyncCard() {
             few minutes while the app is open.
           </p>
         </div>
+      )}
+
+      {showSetup && (
+        <CloudAccountSetupModal
+          onClose={() => {
+            setShowSetup(false);
+            refresh().catch(() => {});
+          }}
+        />
       )}
     </div>
   );

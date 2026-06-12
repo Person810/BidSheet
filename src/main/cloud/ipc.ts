@@ -4,7 +4,7 @@
  * messages (CloudAuthError/CloudApiError messages already are).
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import type Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { CloudAuth } from './supabase-auth';
@@ -66,6 +66,22 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   });
   handle('cloud:sign-out', () => auth.signOut());
   handle('cloud:me', () => api.me());
+
+  // ---- billing ----
+  // Payment happens on Paddle's hosted page in the system browser — card
+  // details never touch the app. The Worker's Paddle webhook flips the
+  // account, which the renderer picks up by polling cloud:me.
+  handle('cloud:billing-checkout', async () => {
+    const url = await api.checkout();
+    logger.info('cloud:billing-checkout', 'Opening hosted checkout in browser');
+    await shell.openExternal(url);
+    return url;
+  });
+  handle('cloud:billing-portal', async () => {
+    const url = await api.billingPortal();
+    await shell.openExternal(url);
+    return url;
+  });
 
   // ---- sync ----
   handle('cloud:sync-now', () => engine.checkAll());

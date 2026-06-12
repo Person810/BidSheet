@@ -29,6 +29,9 @@ export interface CloudAccount {
   plan: string;
   storage_bytes_used: number;
   storage_cap_bytes: number;
+  /** trial | active | past_due | canceled | comped */
+  subscription_status: string;
+  trial_ends_at: string | null;
 }
 
 export class CloudApiError extends Error {
@@ -66,7 +69,9 @@ export class CloudApiClient {
           ? 'Cloud session needs a new authenticator code. Open Settings → Cloud Sync.'
           : code === 'storage_cap_exceeded'
             ? 'Cloud storage is full. Turn off sync for old jobs to free space — they stay on this computer.'
-            : data.error || `Cloud API error (HTTP ${res.status}).`;
+            : code === 'subscription_required'
+              ? 'Cloud subscription needed — your free trial has ended. Subscribe in Settings → Cloud Sync; your synced data is still there to download.'
+              : data.error || `Cloud API error (HTTP ${res.status}).`;
       throw new CloudApiError(msg, res.status, code);
     }
     return res;
@@ -74,6 +79,18 @@ export class CloudApiClient {
 
   async me(): Promise<{ user_id: string; email: string; account: CloudAccount }> {
     return (await this.request('/me')).json() as any;
+  }
+
+  /** Paddle hosted-checkout URL for the $20/mo subscription. */
+  async checkout(): Promise<string> {
+    const data: any = await (await this.request('/billing/checkout', { method: 'POST' })).json();
+    return data.checkout_url;
+  }
+
+  /** Paddle customer-portal URL (manage card, cancel). */
+  async billingPortal(): Promise<string> {
+    const data: any = await (await this.request('/billing/portal', { method: 'POST' })).json();
+    return data.portal_url;
   }
 
   async listJobs(): Promise<CloudJob[]> {
