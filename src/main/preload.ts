@@ -176,6 +176,12 @@ contextBridge.exposeInMainWorld('api', {
   cloudPullJob: (cloudId: string) => invoke('cloud:job-pull', cloudId),
   cloudResolveConflict: (jobId: number, keep: 'local' | 'cloud') =>
     invoke('cloud:resolve-conflict', jobId, keep),
+  cloudRestoreAll: () => invoke('cloud:restore-all'),
+  cloudBackupStatus: () => invoke('cloud:backup-status'),
+  cloudBackupEnable: (passphrase: string) => invoke('cloud:backup-enable', passphrase),
+  cloudBackupNow: () => invoke('cloud:backup-now'),
+  cloudBackupDisable: () => invoke('cloud:backup-disable'),
+  cloudBackupRestore: (passphrase: string) => invoke('cloud:backup-restore', passphrase),
   onCloudSyncStatus: (callback: (data: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('cloud-sync-status', handler);

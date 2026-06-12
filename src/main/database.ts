@@ -215,6 +215,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 26) {
     migrateV26(db);
   }
+  if (version < 27) {
+    migrateV27(db);
+  }
 }
 
 /**
@@ -920,6 +923,21 @@ function migrateV26(db: Database.Database): void {
     ALTER TABLE labor_roles ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE equipment ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0;
     INSERT INTO schema_version (version) VALUES (26);
+  `);
+}
+
+function migrateV27(db: Database.Database): void {
+  // Encrypted cloud backup state. backup_salt (hex) + backup_key_enc
+  // (safeStorage-wrapped passphrase-derived key) make backups automatic on
+  // this machine without re-prompting; the salt also rides in the uploaded
+  // file's header so a fresh machine can re-derive the key from the
+  // passphrase alone. The passphrase itself is never stored anywhere.
+  db.exec(`
+    ALTER TABLE cloud_auth ADD COLUMN backup_salt TEXT;
+    ALTER TABLE cloud_auth ADD COLUMN backup_key_enc TEXT;
+    ALTER TABLE cloud_auth ADD COLUMN backup_last_at TEXT;
+    ALTER TABLE cloud_auth ADD COLUMN backup_last_hash TEXT;
+    INSERT INTO schema_version (version) VALUES (27);
   `);
 }
 

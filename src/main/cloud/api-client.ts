@@ -34,6 +34,14 @@ export interface CloudAccount {
   trial_ends_at: string | null;
 }
 
+export interface CloudBackupMeta {
+  account_id: string;
+  size_bytes: number;
+  app_version: string | null;
+  schema_version: number | null;
+  created_at: string;
+}
+
 export class CloudApiError extends Error {
   constructor(message: string, public httpStatus: number, public code?: string) {
     super(message);
@@ -125,6 +133,36 @@ export class CloudApiClient {
 
   async deleteFile(key: string): Promise<void> {
     await this.request(`/files/${encodeKey(key)}`, { method: 'DELETE' });
+  }
+
+  // ---- encrypted whole-DB backup (Phase 3a) ----
+  // The body is ciphertext before it gets here; the Worker stores it as an
+  // opaque blob and only ever returns it to this account.
+
+  async putBackup(body: Buffer, appVersion: string, schemaVersion: number): Promise<void> {
+    const params = new URLSearchParams({
+      app_version: appVersion,
+      schema_version: String(schemaVersion),
+    });
+    await this.request(`/backup?${params}`, {
+      method: 'PUT',
+      body,
+      contentType: 'application/octet-stream',
+    });
+  }
+
+  async getBackup(): Promise<Buffer> {
+    const res = await this.request('/backup');
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  async getBackupMeta(): Promise<CloudBackupMeta | null> {
+    const data: any = await (await this.request('/backup/meta')).json();
+    return data.backup ?? null;
+  }
+
+  async deleteBackup(): Promise<void> {
+    await this.request('/backup', { method: 'DELETE' });
   }
 
   async listJobFiles(cloudJobId: string): Promise<any[]> {

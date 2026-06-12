@@ -92,17 +92,18 @@ function decodeJwtPayload(jwt: string): any {
   }
 }
 
-function encryptToken(token: string): string {
+/** safeStorage-wrap a secret for at-rest storage (also used for the backup key). */
+export function encryptToken(token: string): string {
   if (safeStorage.isEncryptionAvailable()) {
     return 'enc:' + safeStorage.encryptString(token).toString('base64');
   }
   // No OS keyring (some Linux setups). Obfuscation only -- logged so it's
   // never a silent downgrade.
-  logger.warn('cloud-auth', 'OS keyring unavailable; storing refresh token base64-encoded only');
+  logger.warn('cloud-auth', 'OS keyring unavailable; storing secret base64-encoded only');
   return 'b64:' + Buffer.from(token).toString('base64');
 }
 
-function decryptToken(stored: string): string | null {
+export function decryptToken(stored: string): string | null {
   try {
     if (stored.startsWith('enc:')) {
       return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'));

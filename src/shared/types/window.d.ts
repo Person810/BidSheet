@@ -200,6 +200,23 @@ declare global {
       cloudPushJob: (jobId: number) => Promise<void>;
       cloudPullJob: (cloudId: string) => Promise<number>;
       cloudResolveConflict: (jobId: number, keep: 'local' | 'cloud') => Promise<void>;
+      cloudRestoreAll: () => Promise<
+        { cloudId: string; name: string; ok: boolean; error: string | null }[]
+      >;
+      cloudBackupStatus: () => Promise<{
+        configured: boolean;
+        lastBackupAt: string | null;
+        remote: {
+          size_bytes: number;
+          app_version: string | null;
+          schema_version: number | null;
+          created_at: string;
+        } | null;
+      }>;
+      cloudBackupEnable: (passphrase: string) => Promise<void>;
+      cloudBackupNow: () => Promise<{ uploaded: boolean }>;
+      cloudBackupDisable: () => Promise<void>;
+      cloudBackupRestore: (passphrase: string) => Promise<void>;
       onCloudSyncStatus: (callback: (data: any) => void) => () => void;
     };
   }

@@ -82,6 +82,8 @@ export function CloudSyncCard() {
   const usedFrac =
     account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;
 
+  const cloudOnlyCount = sync?.cloudOnly?.length ?? 0;
+
   const subStatus: string | undefined = account?.subscription_status;
   const trialEnd = account?.trial_ends_at
     ? new Date(account.trial_ends_at.replace(' ', 'T') + 'Z')
@@ -105,6 +107,32 @@ export function CloudSyncCard() {
     }
   };
   const handlePortal = () => act(async () => { await window.api.cloudBillingPortal(); });
+
+  const [restoringAll, setRestoringAll] = useState(false);
+  // Per-job results, surfaced honestly — a partial restore is never a
+  // silent success toast.
+  const handleRestoreAll = async () => {
+    setRestoringAll(true);
+    try {
+      const results = await window.api.cloudRestoreAll();
+      const failed = results.filter((r) => !r.ok);
+      const restored = results.length - failed.length;
+      if (restored > 0) {
+        addToast(`Restored ${restored} job${restored === 1 ? '' : 's'} from the cloud.`, 'success');
+      }
+      for (const f of failed) {
+        addToast(`Could not restore "${f.name}": ${f.error}`, 'error');
+      }
+      if (results.length === 0) {
+        addToast('Nothing to restore — every cloud job is already on this computer.', 'info');
+      }
+      await refresh();
+    } catch (err: any) {
+      addToast(err?.message || 'Restore failed.', 'error');
+    } finally {
+      setRestoringAll(false);
+    }
+  };
 
   return (
     <div className="card mb-24">
@@ -272,6 +300,21 @@ export function CloudSyncCard() {
               {sync.cloudOnly.length > 0 && `, ${sync.cloudOnly.length} in cloud only`}
             </p>
           )}
+          {cloudOnlyCount > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <p className="text-muted" style={{ fontSize: 13, marginBottom: 6 }}>
+                You have {cloudOnlyCount} job{cloudOnlyCount === 1 ? '' : 's'} in
+                the cloud that {cloudOnlyCount === 1 ? "isn't" : "aren't"} on this
+                computer{cloudOnlyCount === 1 ? '' : ' yet'}.
+              </p>
+              <button className="btn btn-sm btn-secondary" disabled={busy || restoringAll}
+                onClick={handleRestoreAll}>
+                {restoringAll
+                  ? 'Restoring…'
+                  : `Restore all ${cloudOnlyCount} cloud job${cloudOnlyCount === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          )}
           <div className="flex gap-8">
             <button className="btn btn-primary" disabled={busy || sync?.syncing}
               onClick={() => act(() => window.api.cloudSyncNow())}>
@@ -285,6 +328,7 @@ export function CloudSyncCard() {
             Turn sync on per job from the Jobs &amp; Bids list. Jobs sync automatically every
             few minutes while the app is open.
           </p>
+          <BackupSection lastCheckAt={sync?.lastCheckAt ?? null} />
         </div>
       )}
 
@@ -295,6 +339,200 @@ export function CloudSyncCard() {
             refresh().catch(() => {});
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Encrypted whole-database backup (Phase 3a). Three states:
+ *   - not set up, no cloud backup → passphrase setup with loud
+ *     "we cannot recover this" copy
+ *   - cloud backup exists → "backup from <date> found" + passphrase restore
+ *     (the dead-laptop flow), with setup still reachable
+ *   - set up on this machine → last-backed-up time, Back Up Now, Turn Off
+ */
+function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
+  const addToast = useToastStore((s) => s.addToast);
+  const [status, setStatus] = useState<{
+    configured: boolean;
+    lastBackupAt: string | null;
+    remote: { size_bytes: number; created_at: string } | null;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [pass, setPass] = useState('');
+  const [pass2, setPass2] = useState('');
+  const [restorePass, setRestorePass] = useState('');
+  const [showRestore, setShowRestore] = useState(false);
+
+  const load = () => window.api.cloudBackupStatus().then(setStatus).catch(() => {});
+  // Re-check after every sync pass — backups ride sync, so lastBackupAt
+  // moves when lastCheckAt does.
+  useEffect(() => { load(); }, [lastCheckAt]);
+
+  if (!status) return null;
+
+  const handleEnable = async () => {
+    setBusy(true);
+    try {
+      await window.api.cloudBackupEnable(pass);
+      setPass('');
+      setPass2('');
+      setShowSetup(false);
+      addToast('Encrypted backup is on. First backup uploaded.', 'success');
+      await load();
+    } catch (err: any) {
+      addToast(err?.message || 'Could not set up encrypted backup.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleBackupNow = async () => {
+    setBusy(true);
+    try {
+      await window.api.cloudBackupNow();
+      addToast('Backup uploaded.', 'success');
+      await load();
+    } catch (err: any) {
+      addToast(err?.message || 'Backup failed.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDisable = async () => {
+    setBusy(true);
+    try {
+      await window.api.cloudBackupDisable();
+      addToast('Encrypted backup turned off. The cloud copy was removed.', 'info');
+      await load();
+    } catch (err: any) {
+      addToast(err?.message || 'Could not turn off backup.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // On success the app relaunches into the restored database — only errors
+  // ever come back from this call.
+  const handleRestore = async () => {
+    setBusy(true);
+    try {
+      await window.api.cloudBackupRestore(restorePass);
+    } catch (err: any) {
+      addToast(err?.message || 'Restore failed. Nothing on this computer was changed.', 'error');
+      setBusy(false);
+    }
+  };
+
+  const fmtDate = (s: string) => new Date(s.replace(' ', 'T') + (s.includes('Z') ? '' : 'Z')).toLocaleString();
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+      <h4 style={{ marginBottom: 4 }}>Encrypted Backup</h4>
+      <p className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+        Backs up your entire BidSheet database to the cloud, encrypted on this computer with a
+        passphrase only you know. We can store it, but we can never read it.
+      </p>
+
+      {status.configured ? (
+        <div>
+          <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+            {status.lastBackupAt
+              ? `Last backed up ${new Date(status.lastBackupAt.replace(' ', 'T')).toLocaleString()}.`
+              : 'No backup uploaded yet.'}{' '}
+            Backups upload automatically after each sync when something changed.
+          </p>
+          <div className="flex gap-8">
+            <button className="btn btn-sm btn-secondary" disabled={busy} onClick={handleBackupNow}>
+              {busy ? 'Working…' : 'Back Up Now'}
+            </button>
+            <button className="btn btn-sm btn-secondary" disabled={busy} onClick={handleDisable}>
+              Turn Off &amp; Remove Cloud Copy
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ maxWidth: 480 }}>
+          {status.remote && !showSetup && (
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ fontSize: 13, marginBottom: 8 }}>
+                <strong>Encrypted backup from {fmtDate(status.remote.created_at)} found</strong> in
+                your cloud account. Enter your backup passphrase to bring everything onto this
+                computer.
+              </p>
+              {!showRestore ? (
+                <button className="btn btn-sm btn-primary" onClick={() => setShowRestore(true)}>
+                  Restore This Backup…
+                </button>
+              ) : (
+                <div>
+                  <p className="text-danger" style={{ fontSize: 12, marginBottom: 8 }}>
+                    Restoring replaces everything currently in BidSheet on this computer with the
+                    backup. This cannot be undone.
+                  </p>
+                  <div className="form-group">
+                    <label>Backup passphrase</label>
+                    <input type="password" className="form-control" value={restorePass}
+                      onChange={(e) => setRestorePass(e.target.value)} autoFocus />
+                  </div>
+                  <div className="flex gap-8">
+                    <button className="btn btn-sm btn-danger" disabled={busy || !restorePass}
+                      onClick={handleRestore}>
+                      {busy ? 'Restoring…' : 'Replace Local Data & Restore'}
+                    </button>
+                    <button className="btn btn-sm btn-secondary" disabled={busy}
+                      onClick={() => { setShowRestore(false); setRestorePass(''); }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {!showSetup ? (
+            <button className="btn btn-sm btn-secondary" onClick={() => setShowSetup(true)}>
+              {status.remote ? 'Set Up Backups From This Computer Instead…' : 'Set Up Encrypted Backup…'}
+            </button>
+          ) : (
+            <div>
+              <p className="text-warning" style={{ fontSize: 12, marginBottom: 8 }}>
+                Write this passphrase down and keep it somewhere safe. It never leaves this
+                computer — if you lose it, <strong>nobody can recover your backup, including
+                us</strong>.
+                {status.remote && ' Setting up here replaces the existing cloud backup.'}
+              </p>
+              <div className="form-group">
+                <label>Backup passphrase (10+ characters)</label>
+                <input type="password" className="form-control" value={pass}
+                  onChange={(e) => setPass(e.target.value)} autoFocus />
+              </div>
+              <div className="form-group">
+                <label>Repeat passphrase</label>
+                <input type="password" className="form-control" value={pass2}
+                  onChange={(e) => setPass2(e.target.value)} />
+              </div>
+              {pass2 && pass !== pass2 && (
+                <p className="text-danger" style={{ fontSize: 12, marginBottom: 8 }}>
+                  Passphrases don't match.
+                </p>
+              )}
+              <div className="flex gap-8">
+                <button className="btn btn-sm btn-primary"
+                  disabled={busy || pass.length < 10 || pass !== pass2}
+                  onClick={handleEnable}>
+                  {busy ? 'Encrypting & Uploading…' : 'Turn On Encrypted Backup'}
+                </button>
+                <button className="btn btn-sm btn-secondary" disabled={busy}
+                  onClick={() => { setShowSetup(false); setPass(''); setPass2(''); }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
