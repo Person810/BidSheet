@@ -23,7 +23,7 @@ import { app, BrowserWindow } from 'electron';
 import type Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { CloudAuth } from './supabase-auth';
-import { CloudApiClient, CloudJob } from './api-client';
+import { CloudApiClient, CloudJob, CloudCatalogMeta } from './api-client';
 import {
   exportJob,
   importJob,
@@ -32,8 +32,10 @@ import {
   JobSnapshot,
 } from './serializer';
 import { validateSnapshot } from './validate-snapshot';
+import { exportCatalog, importCatalog, catalogHash, CatalogSnapshot } from './catalog-sync';
 
-const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+/** Back-to-back window focuses don't re-sync; Sync Now always does. */
+const FOREGROUND_SYNC_THROTTLE_MS = 2 * 60 * 1000;
 
 export interface JobSyncInfo {
   jobId: number;
@@ -71,7 +73,7 @@ export class SyncEngine {
   private syncing = false;
   private lastCheckAt: string | null = null;
   private cloudOnly: CloudOnlyJob[] = [];
-  private timer: NodeJS.Timeout | null = null;
+  private lastForegroundSync = 0;
   /** Runs after every successful full pass (encrypted backup rides here). */
   onSyncSuccess: (() => Promise<void>) | null = null;
 
@@ -81,14 +83,20 @@ export class SyncEngine {
     private api: CloudApiClient
   ) {}
 
+  /**
+   * No idle polling, ever (roadmap §8 design rule): a fleet of devices on a
+   * timer costs more idle than active. Sync happens when the user returns
+   * to the app (throttled), on launch, and on the manual Sync Now button.
+   */
   startAutoSync(): void {
-    if (this.timer) return;
-    this.timer = setInterval(() => {
-      if (this.auth.status().aal === 'aal2') {
-        this.checkAll().catch((err) => logger.warn('cloud-sync', 'Auto-sync failed', err.message));
-      }
-    }, AUTO_SYNC_INTERVAL_MS);
-    this.timer.unref();
+    app.on('browser-window-focus', () => {
+      if (this.auth.status().aal !== 'aal2' || this.syncing) return;
+      if (Date.now() - this.lastForegroundSync < FOREGROUND_SYNC_THROTTLE_MS) return;
+      this.lastForegroundSync = Date.now();
+      this.checkAll().catch((err) =>
+        logger.warn('cloud-sync', 'Foreground sync failed', err.message)
+      );
+    });
   }
 
   // ---- per-job controls ----
@@ -250,7 +258,17 @@ export class SyncEngine {
     try {
       const accountId = await this.requireAccountId();
       void accountId;
-      const remote = new Map((await this.api.listJobs()).map((j) => [j.id, j]));
+      const cloud = await this.api.listSync();
+      const remote = new Map(cloud.jobs.map((j) => [j.id, j]));
+
+      // Catalog before jobs, so a pulled job's catalog UUID refs resolve
+      // against rows that arrived in the same pass. A catalog failure is
+      // logged, not fatal — job sync still runs.
+      try {
+        await this.syncCatalog(cloud.catalog);
+      } catch (err: any) {
+        logger.warn('cloud-sync', 'Catalog sync failed', err.message);
+      }
 
       const local = this.db
         .prepare(
@@ -327,6 +345,54 @@ export class SyncEngine {
     this.cloudOnly = this.cloudOnly.filter((j) => !results.some((r) => r.ok && r.cloudId === j.cloudId));
     this.notifyRenderer();
     return results;
+  }
+
+  /**
+   * Catalog sync (Phase 3d): row-level merge keyed on the v28 UUIDs.
+   * Remote changes are pulled and merged in (remote wins per row, with a
+   * visible toast — never silent); if the merged result still differs from
+   * the cloud (local additions/edits), it's pushed back. Two seats editing
+   * different rows both survive; same-row collisions go to the last pusher.
+   */
+  private async syncCatalog(remoteMeta: CloudCatalogMeta | null): Promise<void> {
+    const state = this.db.prepare('SELECT * FROM cloud_catalog_sync WHERE id = 1').get() as any;
+    let snapshot = exportCatalog(this.db);
+    let localHash = catalogHash(snapshot);
+    const localChanged = localHash !== state?.last_hash_local;
+    const remoteChanged = !!remoteMeta?.hash && remoteMeta.hash !== state?.last_hash_remote;
+    if (remoteMeta && !localChanged && !remoteChanged) return;
+
+    let remoteHash = remoteMeta?.hash ?? null;
+    if (remoteChanged && remoteHash !== localHash) {
+      const remoteCatalog = await this.api.getCatalogJson<CatalogSnapshot>();
+      const result = importCatalog(this.db, remoteCatalog);
+      if (result.applied > 0) {
+        logger.info('cloud-catalog', `Catalog updated from cloud (${result.applied} change(s))`);
+        // "Catalog updated from cloud" toast — never silent.
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) {
+            win.webContents.send('cloud-catalog-updated', { applied: result.applied });
+          }
+        }
+      }
+      snapshot = exportCatalog(this.db);
+      localHash = catalogHash(snapshot);
+    }
+
+    if (!remoteMeta || localHash !== remoteHash) {
+      snapshot.pushed_at = new Date().toISOString();
+      snapshot.app_version = app.getVersion();
+      await this.api.putCatalog(JSON.stringify(snapshot), localHash);
+      remoteHash = localHash;
+      logger.info('cloud-catalog', 'Pushed catalog to cloud');
+    }
+
+    this.db
+      .prepare(
+        `UPDATE cloud_catalog_sync SET last_hash_local = ?, last_hash_remote = ?,
+                last_synced_at = datetime('now', 'localtime') WHERE id = 1`
+      )
+      .run(localHash, remoteHash);
   }
 
   /** User picked a side for a conflicted job. */
@@ -434,10 +500,16 @@ export class SyncEngine {
       );
       this.db.prepare('DELETE FROM cloud_sync_state').run();
       this.db.prepare('UPDATE jobs SET cloud_id = NULL WHERE cloud_id IS NOT NULL').run();
-      // Backup bookkeeping is account-scoped too: clear the change hash so
-      // the next sync pass uploads a full backup to the new account.
+      // Backup and catalog bookkeeping are account-scoped too: clear the
+      // change hashes so the next pass does a full backup + catalog sync
+      // against the new account.
       this.db
         .prepare('UPDATE cloud_auth SET backup_last_hash = NULL, backup_last_at = NULL WHERE id = 1')
+        .run();
+      this.db
+        .prepare(
+          'UPDATE cloud_catalog_sync SET last_hash_local = NULL, last_hash_remote = NULL WHERE id = 1'
+        )
         .run();
       this.notifyRenderer();
     }
