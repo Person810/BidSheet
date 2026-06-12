@@ -81,6 +81,10 @@ describe('calculateTrench', () => {
     expect(out.endDepthFt).toBeCloseTo(6); // 2 ft fall per 100 ft
     expect(out.avgDepthFt).toBeCloseTo(5);
     expect(out.pipeLF).toBeCloseTo(Math.sqrt(100 ** 2 + 2 ** 2), 2);
+    // Tracer wire is taped to the pipe (follows slope); warning tape is
+    // near-surface (horizontal)
+    expect(out.tracerWireLF).toBeCloseTo(out.pipeLF, 2);
+    expect(out.warningTapeLF).toBe(100);
   });
 
   it('never returns negative backfill', () => {
@@ -103,7 +107,12 @@ describe('parsePipeSizeFromName', () => {
     expect(parsePipeSizeFromName('1.5" HDPE')).toBe(1.5);
   });
 
-  it('returns 0 when the name has no leading size', () => {
+  it('reads sizes that are not at the start of the name', () => {
+    expect(parsePipeSizeFromName('PVC 8"')).toBe(8);
+    expect(parsePipeSizeFromName('C-900 12" PVC')).toBe(12);
+  });
+
+  it('returns 0 when the name has no inch-marked size', () => {
     expect(parsePipeSizeFromName('PVC SDR-35 8 inch')).toBe(0);
     expect(parsePipeSizeFromName('')).toBe(0);
   });
