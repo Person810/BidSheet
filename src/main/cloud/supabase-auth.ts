@@ -238,9 +238,17 @@ export class CloudAuth {
       { factor_type: 'totp', friendly_name: 'BidSheet Desktop' },
       this.accessToken!
     );
-    // GoTrue returns the QR as raw SVG markup; the renderer wants an <img> src.
+    // GoTrue returns the QR as raw SVG markup; the renderer wants an <img>
+    // src. The SVG also ships without a viewBox, which makes it unscalable
+    // (clipped) inside a sized <img> — derive one from its width/height.
     let qrCode: string = data.totp?.qr_code ?? '';
     if (qrCode && !qrCode.startsWith('data:')) {
+      const tag = qrCode.match(/<svg[^>]*>/i)?.[0] ?? '';
+      const w = tag.match(/width="(\d+(?:\.\d+)?)"/)?.[1];
+      const h = tag.match(/height="(\d+(?:\.\d+)?)"/)?.[1];
+      if (w && h && !/viewBox/i.test(tag)) {
+        qrCode = qrCode.replace(/<svg/i, `<svg viewBox="0 0 ${w} ${h}"`);
+      }
       qrCode = `data:image/svg+xml;base64,${Buffer.from(qrCode).toString('base64')}`;
     }
     return {
