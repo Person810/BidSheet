@@ -369,16 +369,35 @@ export class SyncEngine {
       .run(...Object.values(fields), jobId);
   }
 
+  /** User the cached account id was verified for (one /me per sign-in). */
+  private accountVerifiedForUser: string | null = null;
+
   private async requireAccountId(): Promise<string> {
     if (this.auth.status().aal !== 'aal2') {
       throw new Error('Sign in (with your authenticator code) to use cloud sync.');
     }
-    let accountId = this.auth.getAccountId();
-    if (!accountId) {
-      const me = await this.api.me();
-      accountId = me.account.id;
-      this.auth.setAccountId(accountId);
+    const userId = this.auth.getUserId();
+    const stored = this.auth.getAccountId();
+    if (stored && this.accountVerifiedForUser === userId) return stored;
+
+    const me = await this.api.me();
+    const accountId = me.account.id;
+    if (stored && stored !== accountId) {
+      // Signed into a different account than the one this machine's cloud
+      // ids belong to. Those ids (and the pushed-plan hashes) are meaningless
+      // against the new account — keep them and pushes half-attach to the old
+      // account's records. Reset; each job re-enables with a fresh id and a
+      // full push.
+      logger.warn(
+        'cloud-sync',
+        `Cloud account changed (${stored} -> ${accountId}) — resetting per-job sync state`
+      );
+      this.db.prepare('DELETE FROM cloud_sync_state').run();
+      this.db.prepare('UPDATE jobs SET cloud_id = NULL WHERE cloud_id IS NOT NULL').run();
+      this.notifyRenderer();
     }
+    this.auth.setAccountId(accountId);
+    this.accountVerifiedForUser = userId;
     return accountId;
   }
 
