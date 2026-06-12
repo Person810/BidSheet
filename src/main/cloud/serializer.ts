@@ -7,10 +7,13 @@
  * reverse: upserts the snapshot into the local database, remapping row ids
  * (local ids are AUTOINCREMENT integers and differ across machines).
  *
- * Catalog references (materials, crews, equipment, assemblies, production
- * rates) are NOT synced in Phase 3 — line items carry denormalized costs, so
- * bids stay intact on another machine; a catalog FK is kept when a local row
- * with that id exists (same-machine round trip) and nulled otherwise.
+ * Format 2 (migration v28): catalog references travel as stable UUIDs —
+ * `material_id: 7` becomes `material_uuid: "…"` — and import resolves the
+ * UUID back to this machine's integer id, so links survive across machines
+ * and restored catalogs. A reference whose UUID isn't in the local catalog
+ * is nulled (costs are denormalized on the line item, so the bid's numbers
+ * stay intact either way). Format-1 snapshots (pre-UUID clients) still
+ * import with the old integer-id-if-it-exists behavior.
  *
  * Hashing: snapshotHash() is a sha256 of the stably-stringified document
  * minus volatile metadata (pushed_at, app_version). Row ids ARE part of the
@@ -20,6 +23,7 @@
 
 import crypto from 'crypto';
 import type Database from 'better-sqlite3';
+import { validateSnapshot } from './validate-snapshot';
 
 export interface PlanRef {
   filename: string;
@@ -28,7 +32,8 @@ export interface PlanRef {
 }
 
 export interface JobSnapshot {
-  format: 1;
+  /** 1 = integer catalog refs (legacy), 2 = UUID catalog refs. */
+  format: 1 | 2;
   pushed_at?: string;
   app_version?: string;
   job: Record<string, any>;
@@ -93,6 +98,25 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
   delete jobOut.cloud_id;
   delete jobOut.parent_job_id;
 
+  // Format 2: catalog FKs leave the machine as stable UUIDs, never as
+  // integer ids (which differ across installs).
+  const uuidOf = (refTable: string, id: any): string | null =>
+    id == null
+      ? null
+      : ((db.prepare(`SELECT uuid FROM ${refTable} WHERE id = ?`).get(id) as any)?.uuid ?? null);
+  const withUuidRefs = (table: string, rows: any[]): any[] => {
+    const fks = CATALOG_FKS[table];
+    if (!fks) return rows;
+    return rows.map((row) => {
+      const out = { ...row };
+      for (const [col, refTable] of Object.entries(fks)) {
+        out[col.replace(/_id$/, '_uuid')] = uuidOf(refTable, out[col]);
+        delete out[col];
+      }
+      return out;
+    });
+  };
+
   const settings = db
     .prepare('SELECT * FROM takeoff_job_settings WHERE job_id = ?')
     .get(jobId) as any;
@@ -105,11 +129,17 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
   }
 
   return {
-    format: 1,
+    format: 2,
     job: jobOut,
     sections: all('SELECT * FROM bid_sections WHERE job_id = ? ORDER BY id'),
-    line_items: all('SELECT * FROM bid_line_items WHERE job_id = ? ORDER BY id'),
-    trench_profiles: all('SELECT * FROM trench_profiles WHERE job_id = ? ORDER BY id'),
+    line_items: withUuidRefs(
+      'bid_line_items',
+      all('SELECT * FROM bid_line_items WHERE job_id = ? ORDER BY id')
+    ),
+    trench_profiles: withUuidRefs(
+      'trench_profiles',
+      all('SELECT * FROM trench_profiles WHERE job_id = ? ORDER BY id')
+    ),
     quotes: all('SELECT * FROM quotes WHERE job_id = ? ORDER BY id'),
     takeoff: {
       settings: settingsOut,
@@ -118,14 +148,14 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
         'SELECT * FROM takeoff_page_rotations WHERE job_id = ? ORDER BY page_number'
       ),
       nodes: all('SELECT * FROM takeoff_nodes WHERE job_id = ? ORDER BY id'),
-      runs: all('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY id'),
+      runs: withUuidRefs('takeoff_runs', all('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY id')),
       points: all(
         `SELECT p.* FROM takeoff_points p
          JOIN takeoff_runs r ON r.id = p.run_id
          WHERE r.job_id = ? ORDER BY p.id`
       ),
-      items: all('SELECT * FROM takeoff_items WHERE job_id = ? ORDER BY id'),
-      areas: all('SELECT * FROM takeoff_areas WHERE job_id = ? ORDER BY id'),
+      items: withUuidRefs('takeoff_items', all('SELECT * FROM takeoff_items WHERE job_id = ? ORDER BY id')),
+      areas: withUuidRefs('takeoff_areas', all('SELECT * FROM takeoff_areas WHERE job_id = ? ORDER BY id')),
       area_points: all(
         `SELECT ap.* FROM takeoff_area_points ap
          JOIN takeoff_areas a ON a.id = ap.area_id
@@ -140,7 +170,8 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
 /** The phone-facing markup overlay document (Phase 4 pulls this, not job.json). */
 export function buildMarkupDoc(snapshot: JobSnapshot): Record<string, any> {
   return {
-    format: 1,
+    // Tracks the snapshot format: 2 = takeoff rows carry *_uuid catalog refs.
+    format: snapshot.format,
     job_name: snapshot.job.name,
     plan: snapshot.plan,
     takeoff: snapshot.takeoff,
@@ -180,9 +211,10 @@ export function importJob(
   snapshot: JobSnapshot,
   opts: { pdfPath?: string } = {}
 ): ImportResult {
-  if (snapshot.format !== 1) {
-    throw new Error(`Unsupported snapshot format ${(snapshot as any).format}`);
-  }
+  // Untrusted-input boundary: structural validation first, whole-snapshot
+  // reject on failure — nothing below runs on a malformed document.
+  snapshot = validateSnapshot(snapshot);
+  const uuidRefs = snapshot.format >= 2;
   let dropped = 0;
 
   // SQL-injection invariant for everything below: snapshots are untrusted
@@ -199,22 +231,56 @@ export function importJob(
   const exists = (table: string, id: any): boolean =>
     id != null && !!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
 
+  /** Local integer id for a catalog row's stable uuid, or null. */
+  const idForUuid = (table: string, uuid: any): number | null => {
+    if (typeof uuid !== 'string') return null;
+    const row = db.prepare(`SELECT id FROM ${table} WHERE uuid = ?`).get(uuid) as any;
+    return row?.id ?? null;
+  };
+
   /** Insert `row` into `table`, keeping only real columns, dropping 'id'. */
   const insertRow = (table: string, row: Record<string, any>): number => {
     const cols = columnsOf(table);
+    const fks = CATALOG_FKS[table];
+
+    // Format 2: resolve <col>_uuid → this machine's integer id before the
+    // column filter (the _uuid keys aren't real columns and would be
+    // dropped). Unresolvable refs are nulled and counted.
+    const source: Record<string, any> = { ...row };
+    if (fks && uuidRefs) {
+      for (const [col, refTable] of Object.entries(fks)) {
+        const uuidKey = col.replace(/_id$/, '_uuid');
+        const refUuid = source[uuidKey];
+        delete source[uuidKey];
+        const localId = refUuid == null ? null : idForUuid(refTable, refUuid);
+        if (refUuid != null && localId == null) dropped++;
+        source[col] = localId;
+      }
+    }
+
     const clean: Record<string, any> = {};
-    for (const [k, v] of Object.entries(row)) {
+    for (const [k, v] of Object.entries(source)) {
       if (k === 'id' || !cols.has(k)) continue;
       clean[k] = v;
     }
-    const fks = CATALOG_FKS[table];
-    if (fks) {
-      for (const [col, refTable] of Object.entries(fks)) {
-        if (clean[col] != null && !exists(refTable, clean[col])) {
+    // Format 1 (legacy): integer refs are kept only when a local row with
+    // that exact id exists (same-machine round trip), nulled otherwise.
+    if (fks && !uuidRefs) {
+      for (const col of Object.keys(fks)) {
+        if (clean[col] != null && !exists(fks[col], clean[col])) {
           clean[col] = null;
           dropped++;
         }
       }
+    }
+    // Row uuids normally survive the trip — that's the stable identity
+    // future row-level merge diffs on. But if another local job already
+    // holds this uuid (e.g. the same snapshot pulled into a second account's
+    // job), this row is a new entity here: drop it and let the v28 trigger
+    // assign a fresh one instead of failing the unique index.
+    if (clean.uuid != null && cols.has('uuid') &&
+        db.prepare(`SELECT 1 FROM ${table} WHERE uuid = ?`).get(clean.uuid)) {
+      delete clean.uuid;
     }
     const keys = Object.keys(clean);
     const info = db
