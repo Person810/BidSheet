@@ -28,6 +28,21 @@ Everything runs locally on your machine.
 - Win/loss tracking and bid status management
 - Database backup and restore
 
+## Pricing
+
+BidSheet is free. The app is GPLv3 open source and runs fully local — your
+catalog, bids, and plans live in a SQLite database on your machine, with no
+account and no internet connection required.
+
+Optional cloud sync ($20/month, currently in beta) adds online backup and
+multi-computer sync, and funds development of the free app. Your data always
+lives locally regardless of subscription status, and a local-only mode in
+Settings hides cloud sync entirely for shops that will never use it.
+
+## Platforms
+
+Windows and Linux today. **macOS is planned, alongside the iOS companion app.**
+
 ## Screenshots
 
 *(coming soon)*
