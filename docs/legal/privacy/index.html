@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — BidSheet</title>
+  <meta name="description" content="BidSheet's privacy policy. Local-only users: we collect nothing. Cloud sync users: here is exactly what we store, where, and how to delete it.">
+  <link rel="canonical" href="https://bidsheet.co/legal/privacy/">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/icon.png" type="image/png">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <nav class="site-nav" aria-label="Main">
+    <a href="/" class="nav-brand">
+      <img src="/icon.png" alt="">
+      <span>BidSheet</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features" class="nav-hide-sm">Features</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/contact/" class="nav-hide-sm">Contact</a>
+      <a href="https://github.com/Person810/BidSheet" class="nav-github" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <main id="main" class="page">
+    <header class="page-header">
+      <p class="eyebrow">Legal</p>
+      <h1>Privacy policy</h1>
+      <p class="dateline">Last updated: June 12, 2026</p>
+    </header>
+
+    <div class="prose">
+      <div class="callout">
+        <p><strong>The short version:</strong> the BidSheet app runs on your computer and we collect
+        nothing from it — no analytics, no telemetry, no account. If you use the optional cloud
+        sync service, we store what you sync (that's the product) and the minimum account
+        information needed to run it. We don't sell data, we don't run ads, and we don't use
+        tracking cookies anywhere.</p>
+      </div>
+
+      <p>This policy is provided by [YOUR LEGAL ENTITY NAME] ("BidSheet", "we"), the operator of
+      the BidSheet application and the BidSheet Cloud service. Contact:
+      <a href="mailto:support@bidsheet.co">support@bidsheet.co</a>.</p>
+
+      <h2>If you use the app without cloud sync</h2>
+      <p>We collect nothing. The app has no analytics or telemetry, requires no account, and your
+      estimating data lives in a database file on your computer. The only network request the app
+      makes is a check against GitHub for new versions (GitHub receives your IP address as part of
+      serving that request, per <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub's privacy statement</a>).
+      Local-only mode disables even the cloud machinery from initializing.</p>
+
+      <h2>If you create a cloud sync account</h2>
+      <h3>Account information</h3>
+      <ul>
+        <li><strong>Email address and credentials.</strong> Authentication is handled by Supabase;
+        passwords are stored only as cryptographic hashes. Two-factor authentication (TOTP)
+        enrollment data is stored to verify your sign-ins.</li>
+        <li><strong>Subscription status.</strong> Whether your account is on trial, active, or
+        lapsed, and identifiers linking it to your Paddle subscription. We never see or store
+        your card number — payment details go directly to Paddle.</li>
+      </ul>
+      <h3>Content you sync</h3>
+      <ul>
+        <li><strong>Jobs, bids, and catalog data</strong> you choose to sync, stored so your other
+        computers can download them. Encrypted in transit (TLS) and at rest.</li>
+        <li><strong>Encrypted backups.</strong> Whole-database backups are encrypted on your
+        computer with a key derived from your passphrase before upload. We store the sealed file
+        and cannot read its contents — and cannot recover it if you lose the passphrase.</li>
+      </ul>
+      <h3>Operational records</h3>
+      <ul>
+        <li>Standard service logs (request timestamps, IP addresses, error details) kept briefly
+        for security, abuse prevention, and debugging — not for profiling.</li>
+      </ul>
+
+      <h2>Who processes data for us</h2>
+      <table>
+        <caption class="visually-hidden">Subprocessors and what they handle</caption>
+        <thead>
+          <tr><th scope="col">Provider</th><th scope="col">What they handle</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Supabase</td><td>Account authentication (email, password hash, TOTP)</td></tr>
+          <tr><td>Cloudflare</td><td>API, synced data, and backup file storage (Workers, D1, R2)</td></tr>
+          <tr><td>Paddle</td><td>Payments, as merchant of record — card details, billing address, tax</td></tr>
+          <tr><td>GitHub</td><td>Website hosting, app downloads, update checks</td></tr>
+        </tbody>
+      </table>
+
+      <h2>This website</h2>
+      <p>bidsheet.co is a static site with no cookies and no analytics. The home page asks
+      GitHub's API for the latest release version so the download button is current. The checkout
+      page loads Paddle's payment software, which handles the payment session under
+      <a href="https://www.paddle.com/legal/privacy" rel="noopener">Paddle's privacy policy</a>.</p>
+
+      <h2>How long we keep things</h2>
+      <ul>
+        <li>Account and synced data: for as long as your account is active.</li>
+        <li>After your subscription or trial lapses: synced data remains downloadable during a
+        wind-down period of at least 30 days, after which it may be deleted from our servers.</li>
+        <li>Encrypted backups: deleted when you turn the backup feature off, when you delete your
+        account, or after the post-lapse wind-down.</li>
+        <li>Your local data is yours and is never touched by any of this.</li>
+      </ul>
+
+      <h2>Deleting your account</h2>
+      <p>Email <a href="mailto:support@bidsheet.co">support@bidsheet.co</a> from your account
+      address and we will delete your account and all synced content. In-app account deletion is
+      planned. Deletion is permanent on our side; your local data stays on your computer.</p>
+
+      <h2>Your rights</h2>
+      <p>Depending on where you live (GDPR, UK GDPR, CCPA, and similar), you may have rights to
+      access, correct, export, or delete your personal data, and to object to or restrict certain
+      processing. Email us and we'll honor them — exporting your data is also built into the
+      product itself. We do not sell personal information.</p>
+
+      <h2>Changes</h2>
+      <p>If this policy changes materially, we'll note it here with a new date and mention it in
+      release notes. The current version always lives at this address.</p>
+
+      <h2>Contact</h2>
+      <p><a href="mailto:support@bidsheet.co">support@bidsheet.co</a> · [YOUR LEGAL ENTITY NAME], [MAILING ADDRESS OR STATE]</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="/" class="nav-brand">
+          <img src="/icon.png" alt="">
+          <span>BidSheet</span>
+        </a>
+        <p>Free, open-source construction estimating software for underground utility subcontractors. Licensed under GPLv3.</p>
+      </div>
+      <div class="footer-cols">
+        <nav class="footer-col" aria-label="Product">
+          <h2>Product</h2>
+          <ul>
+            <li><a href="/#features">Features</a></li>
+            <li><a href="/pricing/">Pricing</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases/latest" rel="noopener">Download</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases" rel="noopener">All releases</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Project">
+          <h2>Project</h2>
+          <ul>
+            <li><a href="https://github.com/Person810/BidSheet" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/issues" rel="noopener">Report a bug</a></li>
+            <li><a href="https://www.gnu.org/licenses/gpl-3.0.html" rel="noopener">License (GPLv3)</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Legal">
+          <h2>Legal</h2>
+          <ul>
+            <li><a href="/legal/privacy/" aria-current="page">Privacy policy</a></li>
+            <li><a href="/legal/terms/">Terms of service</a></li>
+            <li><a href="/legal/refunds/">Refund policy</a></li>
+            <li><a href="/contact/">Contact</a></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>BidSheet is free software: estimates and calculations must be independently verified before use in any bid. See the <a href="/legal/terms/">terms of service</a>.</p>
+    </div>
+  </footer>
+</body>
+</html>
