@@ -167,6 +167,8 @@ contextBridge.exposeInMainWorld('api', {
   cloudVerifyTotp: (code: string, factorId?: string) => invoke('cloud:verify-totp', code, factorId),
   cloudSignOut: () => invoke('cloud:sign-out'),
   cloudMe: () => invoke('cloud:me'),
+  cloudBillingCheckout: () => invoke('cloud:billing-checkout'),
+  cloudBillingPortal: () => invoke('cloud:billing-portal'),
   cloudSyncNow: () => invoke('cloud:sync-now'),
   cloudEnableJob: (jobId: number) => invoke('cloud:job-enable', jobId),
   cloudDisableJob: (jobId: number) => invoke('cloud:job-disable', jobId),

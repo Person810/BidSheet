@@ -192,6 +192,8 @@ declare global {
       cloudVerifyTotp: (code: string, factorId?: string) => Promise<any>;
       cloudSignOut: () => Promise<void>;
       cloudMe: () => Promise<{ user_id: string; email: string; account: any }>;
+      cloudBillingCheckout: () => Promise<string>;
+      cloudBillingPortal: () => Promise<string>;
       cloudSyncNow: () => Promise<any>;
       cloudEnableJob: (jobId: number) => Promise<void>;
       cloudDisableJob: (jobId: number) => Promise<void>;
