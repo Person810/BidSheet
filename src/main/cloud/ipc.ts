@@ -10,6 +10,7 @@ import { logger } from '../logger';
 import { CloudAuth } from './supabase-auth';
 import { CloudApiClient } from './api-client';
 import { SyncEngine } from './sync-engine';
+import { BackupEngine } from './backup';
 
 function handle(channel: string, fn: (...args: any[]) => any): void {
   ipcMain.handle(channel, async (_event, ...args) => {
@@ -42,6 +43,11 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   const auth = new CloudAuth(db);
   const api = new CloudApiClient(auth);
   const engine = new SyncEngine(db, auth, api);
+  const backup = new BackupEngine(db, auth, api);
+
+  // Encrypted backup rides every successful sync pass — change-detected, so
+  // an untouched database costs one local hash, not an upload.
+  engine.onSyncSuccess = () => backup.afterSync();
 
   // Restore the previous session in the background; if it comes back at
   // aal2, kick off a sync pass so a second seat picks up changes on launch.
@@ -108,6 +114,24 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   handle('cloud:resolve-conflict', (jobId: number, keep: 'local' | 'cloud') =>
     engine.resolveConflict(jobId, keep)
   );
+  handle('cloud:restore-all', () => engine.restoreAll());
+
+  // ---- encrypted backup (Phase 3a) ----
+  handle('cloud:backup-status', async () => {
+    const local = backup.status();
+    let remote = null;
+    if (auth.status().aal === 'aal2') {
+      remote = await backup.remoteMeta().catch(() => null);
+    }
+    return { ...local, remote };
+  });
+  handle('cloud:backup-enable', (passphrase: string) => backup.enable(passphrase));
+  handle('cloud:backup-now', () => backup.backupNow(true));
+  handle('cloud:backup-disable', () => backup.disable());
+  handle('cloud:backup-restore', async (passphrase: string) => {
+    logger.info('cloud:backup-restore', 'Restoring database from encrypted cloud backup');
+    await backup.restore(passphrase);
+  });
 
   return engine;
 }

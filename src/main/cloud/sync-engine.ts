@@ -59,11 +59,20 @@ export interface SyncOverview {
   lastCheckAt: string | null;
 }
 
+export interface RestoreResult {
+  cloudId: string;
+  name: string;
+  ok: boolean;
+  error: string | null;
+}
+
 export class SyncEngine {
   private syncing = false;
   private lastCheckAt: string | null = null;
   private cloudOnly: CloudOnlyJob[] = [];
   private timer: NodeJS.Timeout | null = null;
+  /** Runs after every successful full pass (encrypted backup rides here). */
+  onSyncSuccess: (() => Promise<void>) | null = null;
 
   constructor(
     private db: Database.Database,
@@ -282,11 +291,35 @@ export class SyncEngine {
           bytesUsed: j.bytes_used,
         }));
       this.lastCheckAt = new Date().toISOString();
+      if (this.onSyncSuccess) await this.onSyncSuccess();
       return this.overview();
     } finally {
       this.syncing = false;
       this.notifyRenderer();
     }
+  }
+
+  /**
+   * Fresh-install restore (Phase 3b): pull every cloud job that has no
+   * local copy. Failures are collected per job and surfaced honestly —
+   * never a silent partial restore.
+   */
+  async restoreAll(): Promise<RestoreResult[]> {
+    await this.checkAll(); // refresh the cloud-only list first
+    const targets = [...this.cloudOnly];
+    const results: RestoreResult[] = [];
+    for (const job of targets) {
+      try {
+        await this.pullJob(job.cloudId);
+        results.push({ cloudId: job.cloudId, name: job.name, ok: true, error: null });
+      } catch (err: any) {
+        results.push({ cloudId: job.cloudId, name: job.name, ok: false, error: err.message });
+        logger.warn('cloud-sync', `Restore failed for cloud job ${job.cloudId} (${job.name})`, err.message);
+      }
+    }
+    this.cloudOnly = this.cloudOnly.filter((j) => !results.some((r) => r.ok && r.cloudId === j.cloudId));
+    this.notifyRenderer();
+    return results;
   }
 
   /** User picked a side for a conflicted job. */
@@ -394,6 +427,11 @@ export class SyncEngine {
       );
       this.db.prepare('DELETE FROM cloud_sync_state').run();
       this.db.prepare('UPDATE jobs SET cloud_id = NULL WHERE cloud_id IS NOT NULL').run();
+      // Backup bookkeeping is account-scoped too: clear the change hash so
+      // the next sync pass uploads a full backup to the new account.
+      this.db
+        .prepare('UPDATE cloud_auth SET backup_last_hash = NULL, backup_last_at = NULL WHERE id = 1')
+        .run();
       this.notifyRenderer();
     }
     this.auth.setAccountId(accountId);
