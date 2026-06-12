@@ -24,6 +24,7 @@
 
 import { z } from 'zod';
 import type { JobSnapshot } from './serializer';
+import type { CatalogSnapshot } from './catalog-sync';
 
 const MAX_ROWS = 100_000;
 const MAX_ROW_KEYS = 100;
@@ -81,6 +82,28 @@ const snapshotSchema = z.strictObject({
     .nullable(),
 });
 
+// Company settings travel as one row; company_logo is a data URI, so its
+// values get a larger string budget than table rows.
+const settingsRow = z
+  .record(rowKey, z.union([z.string().max(2_000_000), z.number().finite(), z.null()]))
+  .refine((r) => Object.keys(r).length <= MAX_ROW_KEYS, 'too many columns');
+
+const catalogSchema = z.strictObject({
+  format: z.literal(1),
+  pushed_at: z.string().max(64).optional(),
+  app_version: z.string().max(64).optional(),
+  settings: settingsRow.nullable(),
+  material_categories: rows,
+  materials: rows,
+  labor_roles: rows,
+  equipment: rows,
+  crew_templates: rows,
+  crew_members: rows,
+  production_rates: rows,
+  assemblies: rows,
+  assembly_items: rows,
+});
+
 // Checked by a manual pre-scan: zod's record handling quietly tolerates an
 // own `__proto__` key (JSON.parse creates one) instead of running it through
 // the key schema, so the defense must not depend on zod internals.
@@ -110,15 +133,24 @@ function assertSafeStructure(value: unknown, depth = 0): void {
  * on anything malformed; returns the typed snapshot otherwise.
  */
 export function validateSnapshot(value: unknown): JobSnapshot {
+  return parseStrict(snapshotSchema, value, 'snapshot') as JobSnapshot;
+}
+
+/** Same boundary, catalog document (Phase 3d full-DB sync). */
+export function validateCatalog(value: unknown): CatalogSnapshot {
+  return parseStrict(catalogSchema, value, 'catalog') as CatalogSnapshot;
+}
+
+function parseStrict(schema: z.ZodType, value: unknown, kind: string): unknown {
   assertSafeStructure(value);
-  const result = snapshotSchema.safeParse(value);
+  const result = schema.safeParse(value);
   if (!result.success) {
     const first = result.error.issues[0];
     const where = first?.path?.length ? ` at ${first.path.join('.')}` : '';
     throw new Error(
-      `Cloud snapshot failed validation${where}: ${first?.message ?? 'malformed document'}. ` +
-        'The snapshot was rejected and nothing was imported.'
+      `Cloud ${kind} failed validation${where}: ${first?.message ?? 'malformed document'}. ` +
+        `The ${kind} was rejected and nothing was imported.`
     );
   }
-  return result.data as JobSnapshot;
+  return result.data;
 }

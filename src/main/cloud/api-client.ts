@@ -34,6 +34,12 @@ export interface CloudAccount {
   trial_ends_at: string | null;
 }
 
+export interface CloudCatalogMeta {
+  hash: string | null;
+  size_bytes: number;
+  updated_at: string;
+}
+
 export interface CloudBackupMeta {
   account_id: string;
   size_bytes: number;
@@ -102,8 +108,30 @@ export class CloudApiClient {
   }
 
   async listJobs(): Promise<CloudJob[]> {
+    return (await this.listSync()).jobs;
+  }
+
+  /**
+   * The account's whole sync surface in one request: every job's
+   * snapshot_hash plus the catalog meta — the §8 "anything changed?" check.
+   */
+  async listSync(): Promise<{ jobs: CloudJob[]; catalog: CloudCatalogMeta | null }> {
     const data: any = await (await this.request('/jobs')).json();
-    return data.jobs as CloudJob[];
+    return { jobs: data.jobs as CloudJob[], catalog: data.catalog ?? null };
+  }
+
+  // ---- catalog snapshot (Phase 3d) ----
+
+  async putCatalog(body: string, hash: string): Promise<void> {
+    await this.request(`/catalog?hash=${encodeURIComponent(hash)}`, {
+      method: 'PUT',
+      body,
+      contentType: 'application/json',
+    });
+  }
+
+  async getCatalogJson<T>(): Promise<T> {
+    return (await this.request('/catalog')).json() as Promise<T>;
   }
 
   async putJob(cloudJobId: string, body: { name: string; status?: string | null; snapshot_hash: string }): Promise<void> {

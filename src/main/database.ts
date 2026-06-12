@@ -277,6 +277,25 @@ function runMigrations(db: Database.Database): void {
   if (version < 28) {
     migrateV28(db);
   }
+  if (version < 29) {
+    migrateV29(db);
+  }
+}
+
+function migrateV29(db: Database.Database): void {
+  // Catalog sync bookkeeping (Phase 3d) — same two-hash pattern as
+  // cloud_sync_state, account-wide instead of per-job: local hash detects
+  // local catalog edits, remote hash detects another seat's push.
+  db.exec(`
+    CREATE TABLE cloud_catalog_sync (
+      id               INTEGER PRIMARY KEY CHECK (id = 1),
+      last_hash_local  TEXT,
+      last_hash_remote TEXT,
+      last_synced_at   TEXT
+    );
+    INSERT INTO cloud_catalog_sync (id) VALUES (1);
+    INSERT INTO schema_version (version) VALUES (29);
+  `);
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */

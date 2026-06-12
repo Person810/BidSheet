@@ -187,5 +187,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('cloud-sync-status', handler);
     return () => ipcRenderer.removeListener('cloud-sync-status', handler);
   },
+  onCloudCatalogUpdated: (callback: (data: { applied: number }) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('cloud-catalog-updated', handler);
+    return () => ipcRenderer.removeListener('cloud-catalog-updated', handler);
+  },
 
 });

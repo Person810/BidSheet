@@ -325,8 +325,8 @@ export function CloudSyncCard() {
             </button>
           </div>
           <p className="text-muted" style={{ fontSize: 12, marginTop: 12 }}>
-            Turn sync on per job from the Jobs &amp; Bids list. Jobs sync automatically every
-            few minutes while the app is open.
+            Turn sync on per job from the Jobs &amp; Bids list. Your catalog and jobs sync when
+            you open or return to the app, or whenever you hit Sync Now.
           </p>
           <BackupSection lastCheckAt={sync?.lastCheckAt ?? null} />
         </div>

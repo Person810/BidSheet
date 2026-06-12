@@ -8,6 +8,7 @@
  */
 
 import { create } from 'zustand';
+import { useToastStore } from './toast-store';
 
 export interface CloudAuthStatus {
   signedIn: boolean;
@@ -91,5 +92,14 @@ export function initCloudStore(): void {
     useCloudStore.setState({ sync });
     // Auth can flip (token expiry) without a dedicated event; cheap to re-ask.
     window.api.cloudStatus().then((s) => useCloudStore.setState({ auth: s.auth })).catch(() => {});
+  });
+  // Another seat changed the shared catalog — never apply that silently.
+  window.api.onCloudCatalogUpdated(({ applied }) => {
+    useToastStore
+      .getState()
+      .addToast(
+        `Catalog updated from cloud (${applied} change${applied === 1 ? '' : 's'}).`,
+        'info'
+      );
   });
 }

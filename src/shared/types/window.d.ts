@@ -218,6 +218,7 @@ declare global {
       cloudBackupDisable: () => Promise<void>;
       cloudBackupRestore: (passphrase: string) => Promise<void>;
       onCloudSyncStatus: (callback: (data: any) => void) => () => void;
+      onCloudCatalogUpdated: (callback: (data: { applied: number }) => void) => () => void;
     };
   }
 }
