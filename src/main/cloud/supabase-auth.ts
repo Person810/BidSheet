@@ -183,6 +183,10 @@ export class CloudAuth {
     return row?.account_id ?? null;
   }
 
+  getUserId(): string | null {
+    return this.userId;
+  }
+
   /** Restore the previous session from the encrypted refresh token, if any. */
   async restore(): Promise<AuthStatus> {
     const row = this.db
@@ -325,7 +329,14 @@ export class CloudAuth {
     this.email = null;
     this.userId = null;
     this.hasVerifiedTotp = false;
-    this.db.prepare('DELETE FROM cloud_auth WHERE id = 1').run();
+    // Drop the token but keep the row — account_id stays as a record of which
+    // account this machine's cloud_ids belong to, so the sync engine can
+    // detect a sign-in to a *different* account and reset its bookkeeping.
+    this.db
+      .prepare(
+        `UPDATE cloud_auth SET refresh_token_enc = NULL, updated_at = datetime('now', 'localtime') WHERE id = 1`
+      )
+      .run();
   }
 
   private requireSession(): void {
