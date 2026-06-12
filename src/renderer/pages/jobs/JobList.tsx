@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
+import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
 import { formatDateLocal, statusBadge } from './helpers';
 
 const JOB_SORT_ACCESSORS = {
@@ -68,6 +69,73 @@ export function JobList({ onOpenJob }: JobListProps) {
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
   const { sorted: sortedJobs, sort, toggleSort } = useSortableRows(jobs, JOB_SORT_ACCESSORS);
 
+  // ---- Cloud sync ----
+  const { auth, sync } = useCloudStore();
+  const cloudReady = auth?.aal === 'aal2';
+  const [conflictJobId, setConflictJobId] = useState<number | null>(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
+
+  useEffect(() => { initCloudStore(); }, []);
+
+  const syncByJobId = new Map<number, CloudJobSync>((sync?.jobs || []).map((j) => [j.jobId, j]));
+
+  const cloudAction = async (fn: () => Promise<any>, reloadJobs = false) => {
+    setCloudBusy(true);
+    try {
+      await fn();
+      if (reloadJobs) await loadJobs();
+    } catch (err: any) {
+      addToast(err?.message || 'Cloud sync error.', 'error');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const cloudCell = (jobId: number) => {
+    const s = syncByJobId.get(jobId);
+    if (!s || !s.enabled) {
+      return (
+        <button className="btn btn-sm btn-secondary" disabled={cloudBusy} title="Back this job up to the cloud"
+          onClick={(e) => { e.stopPropagation(); cloudAction(() => window.api.cloudEnableJob(jobId)); }}>
+          Sync
+        </button>
+      );
+    }
+    if (s.status === 'conflict') {
+      return (
+        <button className="btn btn-sm btn-primary" disabled={cloudBusy}
+          onClick={(e) => { e.stopPropagation(); setConflictJobId(jobId); }}>
+          Resolve…
+        </button>
+      );
+    }
+    if (s.status === 'error') {
+      return (
+        <span className="badge badge-lost" style={{ cursor: 'pointer' }}
+          title={`${s.error || 'Sync failed.'} Click to retry.`}
+          onClick={(e) => { e.stopPropagation(); cloudAction(() => window.api.cloudPushJob(jobId)); }}>
+          Sync error
+        </span>
+      );
+    }
+    return (
+      <span className={`badge ${s.status === 'synced' ? 'badge-won' : 'badge-submitted'}`}
+        style={{ cursor: 'pointer' }}
+        title={`${s.status === 'synced' ? 'Backed up to the cloud' : 'Waiting to sync'}${s.lastSyncedAt ? ` (last sync ${s.lastSyncedAt})` : ''}. Click to turn sync off for this job.`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setConfirmState({
+            msg: 'Turn off cloud sync for this job? The cloud copy stays for now; this computer just stops syncing it.',
+            onYes: () => { setConfirmState(null); cloudAction(() => window.api.cloudDisableJob(jobId)); },
+          });
+        }}>
+        {s.status === 'synced' ? 'Synced' : 'Pending'}
+      </span>
+    );
+  };
+
+  const columnCount = cloudReady ? 8 : 7;
+
   const handleDelete = async (id: number) => {
     const coCount = jobCOs[id]?.length || 0;
     const coWarning = coCount > 0 ? ` This will also delete ${coCount} change order${coCount !== 1 ? 's' : ''}.` : '';
@@ -124,6 +192,7 @@ export function JobList({ onOpenJob }: JobListProps) {
             <SortableTh label="Client" sortKey="client" sort={sort} onToggle={toggleSort} />
             <SortableTh label="Bid Date" sortKey="bid_date" sort={sort} onToggle={toggleSort} />
             <SortableTh label="Status" sortKey="status" sort={sort} onToggle={toggleSort} />
+            {cloudReady && <th>Cloud</th>}
             <SortableTh label="Updated" sortKey="updated_at" sort={sort} onToggle={toggleSort} />
             <th style={{ width: 140 }}></th>
           </tr>
@@ -131,7 +200,7 @@ export function JobList({ onOpenJob }: JobListProps) {
         <tbody>
           {jobs.length === 0 ? (
             <tr>
-              <td colSpan={7} className="text-muted" style={{ textAlign: 'center', padding: 32 }}>
+              <td colSpan={columnCount} className="text-muted" style={{ textAlign: 'center', padding: 32 }}>
                 No jobs found. Click "+ New Job" to create your first bid.
               </td>
             </tr>
@@ -153,6 +222,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                     {job.bid_date ? formatDateLocal(job.bid_date) : '--'}
                   </td>
                   <td>{statusBadge(job.status)}</td>
+                  {cloudReady && <td>{cloudCell(job.id)}</td>}
                   <td className="text-muted" style={{ fontSize: 12 }}>
                     {new Date(job.updated_at).toLocaleDateString()}
                   </td>
@@ -176,6 +246,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                     <td></td>
                     <td></td>
                     <td>{statusBadge(co.status)}</td>
+                    {cloudReady && <td>{cloudCell(co.id)}</td>}
                     <td className="text-muted" style={{ fontSize: 12 }}>
                       {new Date(co.updated_at).toLocaleDateString()}
                     </td>
@@ -189,6 +260,69 @@ export function JobList({ onOpenJob }: JobListProps) {
           )}
         </tbody>
       </table>
+
+      {cloudReady && (sync?.cloudOnly.length || 0) > 0 && (
+        <div className="card" style={{ marginTop: 24 }}>
+          <h3 style={{ marginBottom: 8 }}>In the Cloud, Not on This Computer</h3>
+          <p className="text-muted mb-16">
+            Jobs synced from another computer on your account. Pull one to work on it here.
+          </p>
+          <table className="data-table">
+            <tbody>
+              {sync!.cloudOnly.map((cj) => (
+                <tr key={cj.cloudId}>
+                  <td>{cj.name}</td>
+                  <td>{statusBadge(cj.status || 'draft')}</td>
+                  <td className="text-muted" style={{ fontSize: 12 }}>
+                    {cj.updatedAt ? `updated ${cj.updatedAt}` : ''}
+                  </td>
+                  <td style={{ width: 120 }}>
+                    <button className="btn btn-sm btn-primary" disabled={cloudBusy}
+                      onClick={() => cloudAction(async () => {
+                        await window.api.cloudPullJob(cj.cloudId);
+                        addToast(`Pulled "${cj.name}" from the cloud.`, 'success');
+                        await window.api.cloudSyncNow().catch(() => {});
+                      }, true)}>
+                      Pull
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {conflictJobId !== null && (
+        <div className="modal-overlay" onClick={() => setConflictJobId(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Sync Conflict</h3>
+            <p className="text-muted" style={{ marginBottom: 16 }}>
+              This job changed both on this computer and in the cloud since the last sync.
+              Pick which copy to keep — the other one is overwritten.
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConflictJobId(null)}>Cancel</button>
+              <button className="btn btn-secondary" disabled={cloudBusy}
+                onClick={() => {
+                  const id = conflictJobId;
+                  setConflictJobId(null);
+                  cloudAction(() => window.api.cloudResolveConflict(id, 'cloud'), true);
+                }}>
+                Use Cloud Copy
+              </button>
+              <button className="btn btn-primary" disabled={cloudBusy}
+                onClick={() => {
+                  const id = conflictJobId;
+                  setConflictJobId(null);
+                  cloudAction(() => window.api.cloudResolveConflict(id, 'local'));
+                }}>
+                Keep This Computer's
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
