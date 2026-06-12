@@ -1,8 +1,8 @@
-import { app, BrowserWindow, dialog, Menu } from 'electron';
+import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
 import path from 'path';
 import { initializeDatabase } from './database';
 import { registerIpcHandlers } from './ipc-handlers';
-import { registerCloudHandlers } from './cloud/ipc';
+import { registerCloudHandlers, registerLocalOnlyCloudStub } from './cloud/ipc';
 import { initAutoUpdater } from './updater';
 import { logger } from './logger';
 import type Database from 'better-sqlite3';
@@ -50,7 +50,28 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
+  });
+
+  // The renderer parses untrusted PDFs (plan rooms, GC emails) — treat it
+  // like a browser tab. The app is a single local page: any navigation away
+  // from it is a bug or an exploit attempt, and new windows only ever mean
+  // external links, which belong in the system browser.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const allowedDev = isDev && url.startsWith('http://localhost:5173');
+    if (!allowedDev && !url.startsWith('file://')) {
+      logger.warn('security', `Blocked navigation to ${url}`);
+      event.preventDefault();
+    }
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) {
+      shell.openExternal(url);
+    } else {
+      logger.warn('security', `Blocked window.open to ${url}`);
+    }
+    return { action: 'deny' };
   });
 
   if (isDev) {
@@ -90,7 +111,17 @@ app.whenReady().then(() => {
 
   // Register IPC handlers so renderer can talk to the database
   registerIpcHandlers(db);
-  registerCloudHandlers(db);
+
+  // Local-only mode skips cloud init entirely — no Supabase client, no
+  // Worker requests. Read at startup; toggling it in Settings takes effect
+  // on the next launch.
+  const localOnly = (db.prepare('SELECT local_only_mode FROM app_settings WHERE id = 1').get() as any)
+    ?.local_only_mode === 1;
+  if (localOnly) {
+    registerLocalOnlyCloudStub();
+  } else {
+    registerCloudHandlers(db);
+  }
 
   createWindow();
 

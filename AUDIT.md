@@ -4,11 +4,21 @@
 **Scope:** Every source file in the repository (~6,415 LOC across 40+ files)
 **Method:** Full read of every file, pattern analysis, cross-reference of duplicated logic
 
+**Status update 2026-06-12:** all Critical findings and H1 verified fixed in
+code — marked ✅ RESOLVED inline below. Remaining findings are unverified and
+should be assumed open until checked.
+
 ---
 
 ## CRITICAL
 
-### C1. Bid Summary Calculation Triplicated (Data Integrity Risk)
+### C1. ✅ RESOLVED (2026-06-12) — Bid Summary Calculation Triplicated
+
+Extracted to `src/shared/bidCalc.ts` (`computeBidSummary` /
+`computeBidSummaryFromSections`, unit-tested in `bidCalc.test.ts`); all
+summary/PDF/CSV handlers in `ipc-handlers.ts` now call the shared functions.
+
+<details><summary>Original finding</summary>
 
 The bid total/tax/markup calculation is copy-pasted in **three separate locations** in `ipc-handlers.ts`. If the formula changes in one place but not the others, exported PDFs, QuickBooks CSVs, and the UI will show different totals for the same job.
 
@@ -36,7 +46,17 @@ const total = afterMarkup + taxAmt;
 export function computeBidSummary(rows, job) { ... }
 ```
 
-### C2. Raw IPC Handlers Silently Swallow Errors
+</details>
+
+### C2. ✅ RESOLVED (2026-06-12) — Raw IPC Handlers Silently Swallow Errors
+
+All seven handlers listed below now use `safeHandle`. The only remaining raw
+`ipcMain.handle` calls are the four updater handlers in `updater.ts`, which
+are intentionally exempt (failures return sentinels and surface through
+`update-status` events instead of renderer-facing throws — see the comment in
+`initAutoUpdater`).
+
+<details><summary>Original finding</summary>
 
 7 handlers use bare `ipcMain.handle` instead of the `safeHandle` wrapper. When these throw, the renderer gets an opaque rejection with no user-facing message, and the error may not be logged.
 
@@ -54,7 +74,14 @@ These are some of the most failure-prone operations (file I/O, DB backup/restore
 
 **Fix:** Convert all to `safeHandle` with appropriate user-facing error messages.
 
-### C3. Module-Level Mutable ID Counters Shared Across Renders
+</details>
+
+### C3. ✅ RESOLVED (2026-06-12) — Module-Level Mutable ID Counters Shared Across Renders
+
+The takeoff hooks no longer use module-level counters (the only remaining
+module-level counter is the toast store's, tracked separately as M8).
+
+<details><summary>Original finding</summary>
 
 Both `useRunManager.ts:6` and `useItemManager.ts:6` use:
 ```ts
@@ -69,11 +96,18 @@ This is module-scoped mutable state that:
 
 **Fix:** Use `useRef` inside the hook, or initialize from the current max ID in the items/runs array.
 
+</details>
+
 ---
 
 ## HIGH
 
-### H1. N+1 Query Pattern in Dashboard
+### H1. ✅ RESOLVED (2026-06-12) — N+1 Query Pattern in Dashboard
+
+`Dashboard.tsx` now fetches all summaries in one IPC call via
+`getBidSummaryBatch(jobIds)`.
+
+<details><summary>Original finding</summary>
 
 `Dashboard.tsx:31` — For every job, a separate IPC call fetches the bid summary:
 ```ts
@@ -86,6 +120,8 @@ for (const job of jobs) {
 With 50 jobs this fires 51 IPC round-trips (1 for jobs + 50 for summaries). Each crosses the Electron IPC bridge and hits SQLite.
 
 **Fix:** Add a single `getBidSummariesBatch(jobIds)` IPC handler that returns all summaries in one query using `WHERE job_id IN (...)`.
+
+</details>
 
 ### H2. Full PDF Buffers Passed Through IPC
 
@@ -349,4 +385,5 @@ Ironically, `csv-export.ts` correctly implements RFC 4180 escaping for *output* 
 | State & Data Integrity | C3 | H1 | M5, M8 | — |
 | Dead Code / Debt | — | — | M6 | L4, L6 |
 
-**Total: 3 Critical, 6 High, 9 Medium, 6 Low**
+**Total: 3 Critical, 6 High, 9 Medium, 6 Low — of which C1, C2, C3, H1
+resolved as of 2026-06-12.**

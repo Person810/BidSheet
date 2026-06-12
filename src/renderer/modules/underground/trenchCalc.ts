@@ -45,8 +45,11 @@ export function validateInput(input: TrenchInput): ValidationError[] {
     errors.push({ field: 'pipeSizeIn', message: 'Pipe size must be > 0' });
   if (input.startDepthFt <= 0)
     errors.push({ field: 'startDepthFt', message: 'Starting depth must be > 0' });
+  // Convention: enter the run from its upstream (shallow) end so the pipe
+  // always falls downstream. A rising run is the same trench measured from
+  // the other end.
   if (input.gradePct < 0)
-    errors.push({ field: 'gradePct', message: 'Grade cannot be negative' });
+    errors.push({ field: 'gradePct', message: 'Grade cannot be negative — measure from the upstream (shallow) end' });
   if (input.runLengthLF <= 0)
     errors.push({ field: 'runLengthLF', message: 'Run length must be > 0' });
   if (input.trenchWidthFt <= 0)
@@ -97,12 +100,16 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   const pipeRadiusFt = (pipeSizeIn / 12) / 2;
   const pipeCF = Math.PI * pipeRadiusFt ** 2 * pipeLF;
 
-  // Backfill = excavation - bedding - pipe
+  // Backfill = excavation - bedding - pipe. Subtracting the full cylinder
+  // assumes the pipe sits entirely above the bedding zone (bedding to
+  // invert). For bedding-to-springline specs this slightly understates
+  // backfill -- conservative, and within takeoff tolerance.
   const backfillCF = Math.max(excavationCF - beddingCF - pipeCF, 0);
   const backfillCY = backfillCF / 27;
 
-  // Tracer wire and warning tape run the full horizontal length
-  const tracerWireLF = runLengthLF;
+  // Tracer wire is taped to the pipe, so it follows the pipe slope; warning
+  // tape is buried near-surface and runs the horizontal length.
+  const tracerWireLF = pipeLF;
   const warningTapeLF = runLengthLF;
 
   return {
@@ -121,9 +128,13 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Extract leading pipe size (inches) from a material name like '8" PVC SDR-35'. */
+/**
+ * Extract the first inch-marked size from a material name -- '8" PVC SDR-35'
+ * and 'PVC 8"' both parse as 8. The digits must be followed by an inch mark,
+ * so spec numbers like 'SDR-35' or 'C-900' never match.
+ */
 export function parsePipeSizeFromName(name: string): number {
-  const match = name.match(/^(\d+(?:\/\d+)?(?:\.\d+)?)\s*['"]/);
+  const match = name.match(/(\d+(?:\/\d+)?(?:\.\d+)?)\s*['"]/);
   if (!match) return 0;
   const raw = match[1];
   if (raw.includes('/')) {

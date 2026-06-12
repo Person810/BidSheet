@@ -21,6 +21,7 @@ export function SettingsPage() {
     defaultBondPercent: 0,
     tradeTypes: '',
     autoLockOnClose: true,
+    localOnlyMode: false,
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,7 @@ export function SettingsPage() {
           defaultBondPercent: s.default_bond_percent || 0,
           tradeTypes: s.trade_types || '',
           autoLockOnClose: s.auto_lock_on_close !== 0,
+          localOnlyMode: s.local_only_mode === 1,
         });
       }
     }).finally(() => setLoading(false));
@@ -61,6 +63,7 @@ export function SettingsPage() {
       defaultTaxPercent: settings.defaultTaxPercent,
       defaultBondPercent: settings.defaultBondPercent,
       autoLockOnClose: settings.autoLockOnClose,
+      localOnlyMode: settings.localOnlyMode,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -245,7 +248,30 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <CloudSyncCard />
+      {!settings.localOnlyMode && <CloudSyncCard />}
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Privacy</h3>
+        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            id="localOnlyMode"
+            checked={settings.localOnlyMode}
+            onChange={(e) => update('localOnlyMode', e.target.checked)}
+            style={{ width: 16, height: 16, cursor: 'pointer' }}
+          />
+          <label htmlFor="localOnlyMode" style={{ margin: 0, cursor: 'pointer' }}>
+            Local-only mode — I'll never use cloud sync, hide it
+          </label>
+        </div>
+        <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+          Hides the Cloud Sync section and never loads any cloud code: no accounts,
+          no servers, no network connections except checking GitHub for app updates.
+          Your data lives only on this computer, so keep regular backups (below).
+          Uncheck anytime to bring cloud sync back. Takes effect after saving and
+          restarting BidSheet.
+        </p>
+      </div>
 
       <div className="card mb-24">
         <h3 style={{ marginBottom: 16 }}>Data Management</h3>
