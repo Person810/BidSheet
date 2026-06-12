@@ -147,6 +147,8 @@ export function registerIpcHandlers(db: Database.Database): void {
   // ================================================================
 
   safeHandle('db:materials:list', (_event, categoryId?: number, includeInactive?: boolean) => {
+    // Interpolated SQL fragments are fixed strings chosen by a boolean —
+    // user-supplied values only ever bind as ? parameters.
     const activeFilter = includeInactive ? '' : 'AND is_active = 1';
     if (categoryId) {
       return db

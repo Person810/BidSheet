@@ -185,6 +185,12 @@ export function importJob(
   }
   let dropped = 0;
 
+  // SQL-injection invariant for everything below: snapshots are untrusted
+  // input, and the only strings ever interpolated into SQL text are (a)
+  // table names from this file's own call sites / CATALOG_FKS and (b)
+  // column names filtered through columnsOf(), i.e. derived from the local
+  // schema via PRAGMA — never from the payload. Payload values only ever
+  // bind as ? parameters. Keep it that way.
   const columnsOf = (table: string): Set<string> => {
     const rows = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
     return new Set(rows.map((r) => r.name));

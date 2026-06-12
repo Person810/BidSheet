@@ -81,7 +81,7 @@ export function seedDatabase(
     }
 
     const insertCat = db.prepare(
-      'INSERT OR IGNORE INTO material_categories (name, description) VALUES (?, ?)'
+      'INSERT OR IGNORE INTO material_categories (name, description, is_seed) VALUES (?, ?, 1)'
     );
     for (const [name, desc] of categoryMap) {
       insertCat.run(name, desc);
@@ -91,7 +91,7 @@ export function seedDatabase(
     const catIdByName = new Map(catRows.map((r) => [r.name, r.id]));
 
     const insertMat = db.prepare(
-      'INSERT INTO materials (category_id, name, description, unit, default_unit_cost, aliases) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO materials (category_id, name, description, unit, default_unit_cost, aliases, is_seed) VALUES (?, ?, ?, ?, ?, ?, 1)'
     );
     for (const mat of allMaterials) {
       const catId = catIdByName.get(mat.category);
@@ -104,14 +104,14 @@ export function seedDatabase(
     applyDefaultDensities(db);
 
     const insertRole = db.prepare(
-      'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes) VALUES (?, ?, ?, ?)'
+      'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, is_seed) VALUES (?, ?, ?, ?, 1)'
     );
     for (const [name, role] of laborMap) {
       insertRole.run(name, role.rate, role.burden, role.notes);
     }
 
     const insertEquip = db.prepare(
-      'INSERT OR IGNORE INTO equipment (name, category, hourly_rate, mobilization_cost, is_owned, notes) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT OR IGNORE INTO equipment (name, category, hourly_rate, mobilization_cost, is_owned, notes, is_seed) VALUES (?, ?, ?, ?, ?, ?, 1)'
     );
     for (const [name, equip] of equipmentMap) {
       insertEquip.run(name, equip.category, equip.hourlyRate, equip.mobilization, equip.isOwned ? 1 : 0, equip.notes);
@@ -211,6 +211,9 @@ function runMigrations(db: Database.Database): void {
   }
   if (version < 25) {
     migrateV25(db);
+  }
+  if (version < 26) {
+    migrateV26(db);
   }
 }
 
@@ -903,6 +906,20 @@ function migrateV24(db: Database.Database): void {
     );
 
     INSERT INTO schema_version (version) VALUES (24);
+  `);
+}
+
+function migrateV26(db: Database.Database): void {
+  // Marks rows inserted by the setup wizard's sample catalog, so a future
+  // "Remove sample items" action can delete unreferenced seed rows. Rows
+  // seeded before this migration stay unflagged (default 0) — flagging by
+  // name-matching could mark user-curated rows for deletion later.
+  db.exec(`
+    ALTER TABLE material_categories ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE materials ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE labor_roles ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE equipment ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0;
+    INSERT INTO schema_version (version) VALUES (26);
   `);
 }
 
