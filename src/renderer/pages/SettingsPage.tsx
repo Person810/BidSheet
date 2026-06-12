@@ -3,6 +3,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UpdateBanner } from '../components/UpdateBanner';
 import { useToastStore } from '../stores/toast-store';
 import { useWalkthroughStore } from '../stores/walkthrough-store';
+import { CloudSyncCard } from '../components/CloudSyncCard';
 
 export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
@@ -243,6 +244,8 @@ export function SettingsPage() {
           </label>
         </div>
       </div>
+
+      <CloudSyncCard />
 
       <div className="card mb-24">
         <h3 style={{ marginBottom: 16 }}>Data Management</h3>

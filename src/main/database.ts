@@ -205,6 +205,9 @@ function runMigrations(db: Database.Database): void {
   if (version < 23) {
     migrateV23(db);
   }
+  if (version < 24) {
+    migrateV24(db);
+  }
 }
 
 /**
@@ -836,6 +839,66 @@ function migrateV18(db: Database.Database): void {
     CREATE INDEX idx_takeoff_area_points_area ON takeoff_area_points(area_id);
 
     INSERT INTO schema_version (version) VALUES (18);
+  `);
+}
+
+// V24: Cloud sync (Phase 3) -- per-job cloud identity + sync state, and a
+// single-row table holding the signed-in cloud session (refresh token is
+// encrypted with Electron safeStorage before it lands here).
+//
+// Written defensively: a pre-merge build shipped this same DDL under
+// version 23 (which mainline used for the materials per-CY columns), so a
+// database can arrive here already having the cloud tables, the materials
+// columns, neither, or one of each. Each piece is applied only if missing.
+function migrateV24(db: Database.Database): void {
+  const hasColumn = (table: string, column: string): boolean =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some(
+      (c) => c.name === column
+    );
+
+  // Heal databases whose version-23 slot was the cloud DDL instead of the
+  // materials per-CY pricing columns.
+  if (!hasColumn('materials', 'tons_per_cy')) {
+    db.exec(`
+      ALTER TABLE materials ADD COLUMN tons_per_cy REAL;
+      ALTER TABLE materials ADD COLUMN cost_per_cy REAL;
+    `);
+    applyDefaultDensities(db);
+  }
+
+  if (!hasColumn('jobs', 'cloud_id')) {
+    db.exec(`ALTER TABLE jobs ADD COLUMN cloud_id TEXT;`);
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_cloud_id ON jobs(cloud_id) WHERE cloud_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS cloud_sync_state (
+      job_id           INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      enabled          INTEGER NOT NULL DEFAULT 1,
+      -- Hash of this machine's serialization at the last successful sync
+      -- (detects local edits) vs. the hash the cloud currently advertises
+      -- (detects remote edits). They differ after a pull because local row
+      -- ids change on import.
+      last_hash_local  TEXT,
+      last_hash_remote TEXT,
+      plan_hash        TEXT,
+      status           TEXT NOT NULL DEFAULT 'pending'
+                       CHECK (status IN ('pending', 'synced', 'conflict', 'error')),
+      error            TEXT,
+      last_synced_at   TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS cloud_auth (
+      id                INTEGER PRIMARY KEY CHECK (id = 1),
+      email             TEXT,
+      user_id           TEXT,
+      account_id        TEXT,
+      refresh_token_enc TEXT,
+      updated_at        TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    INSERT INTO schema_version (version) VALUES (24);
   `);
 }
 

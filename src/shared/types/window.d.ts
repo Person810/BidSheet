@@ -183,6 +183,22 @@ declare global {
       installUpdate: () => Promise<void>;
       getAppVersion: () => Promise<string>;
       onUpdateStatus: (callback: (data: UpdateStatusEvent) => void) => () => void;
+
+      // Cloud Sync
+      cloudStatus: () => Promise<{ auth: any; sync: any }>;
+      cloudSignUp: (email: string, password: string) => Promise<any>;
+      cloudSignIn: (email: string, password: string) => Promise<any>;
+      cloudEnrollTotp: () => Promise<{ factorId: string; qrCode: string; secret: string; uri: string }>;
+      cloudVerifyTotp: (code: string, factorId?: string) => Promise<any>;
+      cloudSignOut: () => Promise<void>;
+      cloudMe: () => Promise<{ user_id: string; email: string; account: any }>;
+      cloudSyncNow: () => Promise<any>;
+      cloudEnableJob: (jobId: number) => Promise<void>;
+      cloudDisableJob: (jobId: number) => Promise<void>;
+      cloudPushJob: (jobId: number) => Promise<void>;
+      cloudPullJob: (cloudId: string) => Promise<number>;
+      cloudResolveConflict: (jobId: number, keep: 'local' | 'cloud') => Promise<void>;
+      onCloudSyncStatus: (callback: (data: any) => void) => () => void;
     };
   }
 }

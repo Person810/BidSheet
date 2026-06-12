@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, Menu } from 'electron';
 import path from 'path';
 import { initializeDatabase } from './database';
 import { registerIpcHandlers } from './ipc-handlers';
+import { registerCloudHandlers } from './cloud/ipc';
 import { initAutoUpdater } from './updater';
 import { logger } from './logger';
 import type Database from 'better-sqlite3';
@@ -89,6 +90,7 @@ app.whenReady().then(() => {
 
   // Register IPC handlers so renderer can talk to the database
   registerIpcHandlers(db);
+  registerCloudHandlers(db);
 
   createWindow();
 

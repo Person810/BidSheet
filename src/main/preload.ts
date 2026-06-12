@@ -159,4 +159,25 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('update-status', handler);
   },
 
+  // ---- Cloud Sync ----
+  cloudStatus: () => invoke('cloud:status'),
+  cloudSignUp: (email: string, password: string) => invoke('cloud:sign-up', email, password),
+  cloudSignIn: (email: string, password: string) => invoke('cloud:sign-in', email, password),
+  cloudEnrollTotp: () => invoke('cloud:enroll-totp'),
+  cloudVerifyTotp: (code: string, factorId?: string) => invoke('cloud:verify-totp', code, factorId),
+  cloudSignOut: () => invoke('cloud:sign-out'),
+  cloudMe: () => invoke('cloud:me'),
+  cloudSyncNow: () => invoke('cloud:sync-now'),
+  cloudEnableJob: (jobId: number) => invoke('cloud:job-enable', jobId),
+  cloudDisableJob: (jobId: number) => invoke('cloud:job-disable', jobId),
+  cloudPushJob: (jobId: number) => invoke('cloud:job-push', jobId),
+  cloudPullJob: (cloudId: string) => invoke('cloud:job-pull', cloudId),
+  cloudResolveConflict: (jobId: number, keep: 'local' | 'cloud') =>
+    invoke('cloud:resolve-conflict', jobId, keep),
+  onCloudSyncStatus: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('cloud-sync-status', handler);
+    return () => ipcRenderer.removeListener('cloud-sync-status', handler);
+  },
+
 });
