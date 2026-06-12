@@ -1,7 +1,52 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import crypto from 'crypto';
 import { app } from 'electron';
 import { TRADE_SEED_DATA, TradeType } from '../shared/constants/seed-data';
+
+/**
+ * Tables that get a stable `uuid` column in migration v28. Catalog rows sync
+ * by UUID (integer PKs stay local-only — they differ across machines), and
+ * job-side entities carry one so future row-level merge has a stable
+ * identity to diff on. Vertex tables (takeoff_points, takeoff_area_points)
+ * and page-level state are excluded: they aren't mergeable entities, they
+ * ride with their parent.
+ */
+export const UUID_TABLES = [
+  // catalog
+  'material_categories',
+  'materials',
+  'labor_roles',
+  'crew_templates',
+  'production_rates',
+  'equipment',
+  'assemblies',
+  'assembly_items',
+  // job-side synced entities
+  'bid_sections',
+  'bid_line_items',
+  'trench_profiles',
+  'quotes',
+  'takeoff_nodes',
+  'takeoff_runs',
+  'takeoff_items',
+  'takeoff_areas',
+  'takeoff_annotations',
+] as const;
+
+/**
+ * Deterministic UUID for a seed-catalog row, derived from its identity so
+ * the same sample item gets the same UUID on every install. That makes
+ * cross-install catalog references resolve for seeded items out of the box,
+ * and enables "replace sample item with yours" matching later.
+ */
+export function seedUuid(table: string, name: string): string {
+  const h = crypto.createHash('sha256').update(`bidsheet-seed:${table}:${name}`).digest();
+  h[6] = (h[6] & 0x0f) | 0x50; // name-derived, version-5 style
+  h[8] = (h[8] & 0x3f) | 0x80; // RFC 4122 variant
+  const hex = h.subarray(0, 16).toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
 
 export function getDbPath(): string {
   const userDataPath = app.getPath('userData');
@@ -80,23 +125,31 @@ export function seedDatabase(
       }
     }
 
+    // Seed rows carry deterministic UUIDs (seedUuid) so the same sample
+    // item has the same identity on every install — cross-install catalog
+    // references in synced jobs resolve out of the box.
     const insertCat = db.prepare(
-      'INSERT OR IGNORE INTO material_categories (name, description, is_seed) VALUES (?, ?, 1)'
+      'INSERT OR IGNORE INTO material_categories (name, description, is_seed, uuid) VALUES (?, ?, 1, ?)'
     );
     for (const [name, desc] of categoryMap) {
-      insertCat.run(name, desc);
+      insertCat.run(name, desc, seedUuid('material_categories', name));
     }
 
     const catRows = db.prepare('SELECT id, name FROM material_categories').all() as { id: number; name: string }[];
     const catIdByName = new Map(catRows.map((r) => [r.name, r.id]));
 
+    // OR IGNORE: the deterministic uuid makes re-seeding a no-op instead of
+    // a duplicate row (or, post-v28, a unique-constraint crash).
     const insertMat = db.prepare(
-      'INSERT INTO materials (category_id, name, description, unit, default_unit_cost, aliases, is_seed) VALUES (?, ?, ?, ?, ?, ?, 1)'
+      'INSERT OR IGNORE INTO materials (category_id, name, description, unit, default_unit_cost, aliases, is_seed, uuid) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
     );
     for (const mat of allMaterials) {
       const catId = catIdByName.get(mat.category);
       if (catId) {
-        insertMat.run(catId, mat.name, mat.description || null, mat.unit, mat.price, mat.aliases || null);
+        insertMat.run(
+          catId, mat.name, mat.description || null, mat.unit, mat.price, mat.aliases || null,
+          seedUuid('materials', `${mat.category}/${mat.name}`)
+        );
       }
     }
 
@@ -104,17 +157,20 @@ export function seedDatabase(
     applyDefaultDensities(db);
 
     const insertRole = db.prepare(
-      'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, is_seed) VALUES (?, ?, ?, ?, 1)'
+      'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, is_seed, uuid) VALUES (?, ?, ?, ?, 1, ?)'
     );
     for (const [name, role] of laborMap) {
-      insertRole.run(name, role.rate, role.burden, role.notes);
+      insertRole.run(name, role.rate, role.burden, role.notes, seedUuid('labor_roles', name));
     }
 
     const insertEquip = db.prepare(
-      'INSERT OR IGNORE INTO equipment (name, category, hourly_rate, mobilization_cost, is_owned, notes, is_seed) VALUES (?, ?, ?, ?, ?, ?, 1)'
+      'INSERT OR IGNORE INTO equipment (name, category, hourly_rate, mobilization_cost, is_owned, notes, is_seed, uuid) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
     );
     for (const [name, equip] of equipmentMap) {
-      insertEquip.run(name, equip.category, equip.hourlyRate, equip.mobilization, equip.isOwned ? 1 : 0, equip.notes);
+      insertEquip.run(
+        name, equip.category, equip.hourlyRate, equip.mobilization, equip.isOwned ? 1 : 0,
+        equip.notes, seedUuid('equipment', name)
+      );
     }
 
     // Get current schema version to suppress backup reminder on fresh installs
@@ -218,6 +274,76 @@ function runMigrations(db: Database.Database): void {
   if (version < 27) {
     migrateV27(db);
   }
+  if (version < 28) {
+    migrateV28(db);
+  }
+}
+
+/** UUIDv4 as a SQLite expression — evaluated fresh per row. */
+const SQL_RANDOM_UUID = `lower(
+  hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
+  substr(hex(randomblob(2)), 2) || '-' ||
+  substr('89ab', abs(random()) % 4 + 1, 1) ||
+  substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))
+)`;
+
+function migrateV28(db: Database.Database): void {
+  // Stable UUIDs (the pre-iOS gate): catalog rows sync by uuid instead of
+  // integer id, so a restored catalog with different AUTOINCREMENT ids no
+  // longer breaks every synced job's material/crew/equipment links.
+  // Job-side entities get one too, for future row-level merge.
+  //
+  // Wizard-seeded rows (is_seed = 1) are backfilled with deterministic
+  // name-derived UUIDs so the same sample item has the same identity on
+  // every install; everything else gets a random v4. AFTER INSERT triggers
+  // keep new rows covered without touching any of the existing insert
+  // sites — an explicit uuid in the INSERT (seeding, snapshot import) wins.
+  const migrate = db.transaction(() => {
+    for (const t of UUID_TABLES) {
+      db.exec(`ALTER TABLE ${t} ADD COLUMN uuid TEXT;`);
+    }
+
+    const seeded = new Set<string>(); // skip duplicate names defensively
+    const backfillSeed = (table: string, rows: { id: number; key: string }[]) => {
+      const upd = db.prepare(`UPDATE ${table} SET uuid = ? WHERE id = ?`);
+      for (const row of rows) {
+        const u = seedUuid(table, row.key);
+        if (seeded.has(u)) continue;
+        seeded.add(u);
+        upd.run(u, row.id);
+      }
+    };
+    for (const t of ['material_categories', 'labor_roles', 'equipment']) {
+      backfillSeed(
+        t,
+        (db.prepare(`SELECT id, name AS key FROM ${t} WHERE is_seed = 1`).all() as any[])
+      );
+    }
+    backfillSeed(
+      'materials',
+      db
+        .prepare(
+          `SELECT m.id, c.name || '/' || m.name AS key
+           FROM materials m JOIN material_categories c ON c.id = m.category_id
+           WHERE m.is_seed = 1`
+        )
+        .all() as any[]
+    );
+
+    for (const t of UUID_TABLES) {
+      db.exec(`
+        UPDATE ${t} SET uuid = ${SQL_RANDOM_UUID} WHERE uuid IS NULL;
+        CREATE UNIQUE INDEX idx_${t}_uuid ON ${t}(uuid);
+        CREATE TRIGGER trg_${t}_uuid AFTER INSERT ON ${t} WHEN NEW.uuid IS NULL
+        BEGIN
+          UPDATE ${t} SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+        END;
+      `);
+    }
+
+    db.exec(`INSERT INTO schema_version (version) VALUES (28)`);
+  });
+  migrate();
 }
 
 /**

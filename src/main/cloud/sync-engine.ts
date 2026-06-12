@@ -31,6 +31,7 @@ import {
   snapshotHash,
   JobSnapshot,
 } from './serializer';
+import { validateSnapshot } from './validate-snapshot';
 
 const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -179,7 +180,11 @@ export class SyncEngine {
   /** Pull a cloud job down, creating or replacing its local copy. */
   async pullJob(cloudId: string): Promise<number> {
     const accountId = await this.requireAccountId();
-    const snapshot = await this.api.getFileJson<JobSnapshot>(`${accountId}/${cloudId}/job/job.json`);
+    // Validate immediately after download — the snapshot is untrusted input
+    // and plan.filename below touches the filesystem.
+    const snapshot = validateSnapshot(
+      await this.api.getFileJson<JobSnapshot>(`${accountId}/${cloudId}/job/job.json`)
+    );
     const remoteHash = snapshotHash(snapshot);
 
     // Download the plan unless this machine already has the same bytes.
@@ -200,7 +205,9 @@ export class SyncEngine {
         const bytes = await this.api.getFile(`${accountId}/${cloudId}/plans/${snapshot.plan.filename}`);
         const dir = path.join(app.getPath('userData'), 'cloud-plans', cloudId);
         fs.mkdirSync(dir, { recursive: true });
-        pdfPath = path.join(dir, snapshot.plan.filename);
+        // basename: validation already rejects separators in plan.filename,
+        // but a server-supplied name never gets to pick the directory.
+        pdfPath = path.join(dir, path.basename(snapshot.plan.filename));
         fs.writeFileSync(pdfPath, bytes);
       }
     }

@@ -1,6 +1,6 @@
 {
   "name": "bidsheet",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Open source underground utility estimating software for subcontractors",
   "author": {
     "name": "Person810",
@@ -83,6 +83,7 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.23.0",
+    "zod": "^4.4.3",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
