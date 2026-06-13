@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteBidLineItem: (id: number) => invoke('db:line-items:delete', id),
   importBidItems: (jobId: number, sectionId: number, items: any[]) =>
     invoke('db:line-items:import', jobId, sectionId, items),
+  replaceBidState: (jobId: number, state: any) => invoke('db:bid:replace-state', jobId, state),
 
   getBidSummary: (jobId: number) => invoke('db:jobs:summary', jobId),
   getBidSummaryBatch: (jobIds: number[]) => invoke('db:jobs:summary-batch', jobIds),

@@ -50,6 +50,7 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
+            release/*.rpm
             release/latest.yml
             release/latest-linux.yml
 

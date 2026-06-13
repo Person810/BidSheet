@@ -870,6 +870,71 @@ export function registerIpcHandlers(db: Database.Database): void {
     }
   );
 
+  // ---- Bid grid undo/redo state restore ----
+
+  // Replaces all bid sections + line items for a job in one transaction,
+  // preserving both id AND uuid so history snapshots stay valid across
+  // undo/redo cycles and cloud-sync identity stays stable. Re-inserting with
+  // an explicit uuid suppresses the auto-uuid AFTER INSERT trigger; without
+  // that, every undo would mint new uuids and churn the sync layer.
+  safeHandle('db:bid:replace-state', (_event, jobId: number, state: any) => {
+    const sections: any[] = state?.sections || [];
+    const lineItemsBySection: Record<number, any[]> = state?.lineItems || {};
+
+    const insertSection = db.prepare(
+      `INSERT INTO bid_sections
+        (id, uuid, job_id, name, sort_order, is_alternate,
+         overhead_percent_override, profit_percent_override, bond_percent_override)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const insertItem = db.prepare(
+      `INSERT INTO bid_line_items (
+        id, uuid, section_id, job_id, description, quantity, unit, sort_order,
+        material_id, material_unit_cost, material_total,
+        crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
+        equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
+        subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+
+    const replaceTx = db.transaction(() => {
+      // Line items first (FK → bid_sections), then the sections themselves.
+      db.prepare('DELETE FROM bid_line_items WHERE job_id = ?').run(jobId);
+      db.prepare('DELETE FROM bid_sections WHERE job_id = ?').run(jobId);
+
+      // Sections before line items so the section_id FK resolves on insert.
+      sections.forEach((s, idx) => {
+        insertSection.run(
+          s.id, s.uuid ?? null, jobId, s.name, s.sort_order ?? idx,
+          s.is_alternate ?? 0,
+          s.overhead_percent_override ?? null,
+          s.profit_percent_override ?? null,
+          s.bond_percent_override ?? null
+        );
+      });
+
+      for (const section of sections) {
+        const items = lineItemsBySection[section.id] || [];
+        items.forEach((i, idx) => {
+          insertItem.run(
+            i.id, i.uuid ?? null, section.id, jobId, i.description,
+            i.quantity ?? 0, i.unit ?? 'LF', i.sort_order ?? idx,
+            i.material_id ?? null, i.material_unit_cost ?? 0, i.material_total ?? 0,
+            i.crew_template_id ?? null, i.production_rate_id ?? null,
+            i.labor_hours ?? 0, i.labor_cost_per_hour ?? 0, i.labor_total ?? 0,
+            i.equipment_id ?? null, i.equipment_cost_per_hour ?? 0,
+            i.equipment_hours ?? 0, i.equipment_total ?? 0,
+            i.subcontractor_cost ?? 0, i.unit_cost ?? 0, i.total_cost ?? 0,
+            i.notes ?? null, i.item_number ?? null, i.cost_code ?? null
+          );
+        });
+      }
+
+      return { success: true };
+    });
+    return replaceTx();
+  });
+
   // ================================================================
   // SUBCONTRACTOR / SUPPLIER QUOTES
   // ================================================================
