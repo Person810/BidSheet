@@ -70,17 +70,28 @@ body {
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: 0.02em;
+  /* Company names can run long; truncate instead of overflowing the sidebar. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .sidebar-brand-mark {
   width: 24px;
   height: 24px;
   border-radius: 5px;
-  background: linear-gradient(135deg, var(--accent), #1d4ed8);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.sidebar-brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .nav-links {
