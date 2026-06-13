@@ -5,6 +5,7 @@ import {
 } from '../components/FuzzyAutocomplete';
 import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToastStore } from '../stores/toast-store';
 import { CsvImportModal } from '../components/CsvImportModal';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
 
@@ -58,6 +59,7 @@ const EMPTY_MATERIAL = {
 import { UNITS } from '../../shared/constants/units';
 
 export function MaterialsPage() {
+  const addToast = useToastStore((s) => s.addToast);
   const [categories, setCategories] = useState<Category[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -159,6 +161,8 @@ export function MaterialsPage() {
       await window.api.saveMaterial(payload);
       setShowModal(false);
       loadMaterials();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save material.', 'error');
     } finally {
       setIsSaving(false);
     }

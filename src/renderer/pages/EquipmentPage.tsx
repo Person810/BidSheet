@@ -5,6 +5,7 @@ import {
 } from '../components/FuzzyAutocomplete';
 import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToastStore } from '../stores/toast-store';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
 
 interface EquipmentItem {
@@ -50,6 +51,7 @@ const CATEGORIES = [
 ];
 
 export function EquipmentPage() {
+  const addToast = useToastStore((s) => s.addToast);
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -127,6 +129,8 @@ export function EquipmentPage() {
       await window.api.saveEquipment(payload);
       setShowModal(false);
       loadEquipment();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save equipment.', 'error');
     } finally {
       setIsSaving(false);
     }

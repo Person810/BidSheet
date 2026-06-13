@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
+import { EditJobModal, type EditJobForm } from './EditJobModal';
+import { ChangeOrdersTab } from './ChangeOrdersTab';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
-import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal, statusBadge } from './helpers';
+import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
 import { buildAssemblyLineItems } from '../../../shared/assemblyExpansion';
+import { buildLineItemPayload, lineItemRowToPayload } from '../../../shared/lineItemPayload';
 import { effectiveMaterialUnitCost } from '../../../shared/unitConversion';
 import { BidGrid } from './BidGrid';
 import { SectionSettingsModal } from './SectionSettingsModal';
@@ -75,7 +78,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; onNo?: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
   const [showEditJob, setShowEditJob] = useState(false);
-  const [editJobForm, setEditJobForm] = useState({
+  const [editJobForm, setEditJobForm] = useState<EditJobForm>({
     name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
     overheadPercent: 0, profitPercent: 0, bondPercent: 0, taxPercent: 0, escalationPercent: 0,
   });
@@ -255,25 +258,16 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     });
     let sortOrder = 0;
     for (const q of selected) {
-      await window.api.saveBidLineItem({
+      await window.api.saveBidLineItem(buildLineItemPayload({
         sectionId: sectionResult.id,
         jobId,
         description: `${q.scope} — ${q.vendor}`,
         quantity: 1,
         unit: 'LS',
         sortOrder: sortOrder++,
-        materialId: null,
-        materialUnitCost: 0,
-        crewTemplateId: null,
-        productionRateId: null,
-        laborHours: 0,
-        laborCostPerHour: 0,
-        equipmentId: null,
-        equipmentCostPerHour: 0,
-        equipmentHours: 0,
         subcontractorCost: q.amount,
         notes: q.notes ? `Quote: ${q.notes}` : 'From quote tracking',
-      });
+      }));
     }
     await loadJob();
   };
@@ -304,6 +298,12 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
   const [editingSection, setEditingSection] = useState<any>(null);
 
+  // Single gate for "is any modal/overlay open" — keeps the keyboard-shortcut
+  // effect's deps to one value instead of an easy-to-forget list, so adding a
+  // future modal only requires updating this one expression.
+  const anyModalOpen = !!(showLineItemModal || editingSection || showEditJob || showAssemblyPicker
+    || showBidItemImport || showCompare || showCostCodeReport || confirmState);
+
   // Ctrl/Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo — estimate tab only, and
   // never while focus is in an editable field or a modal is open (so inline
   // cell editors keep their own native text undo).
@@ -316,16 +316,14 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
-      if (showLineItemModal || editingSection || showEditJob || showAssemblyPicker
-        || showBidItemImport || showCompare || showCostCodeReport || confirmState) return;
+      if (anyModalOpen) return;
       e.preventDefault();
       if (key === 'y' || e.shiftKey) history.redo();
       else history.undo();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeTab, history, showLineItemModal, editingSection, showEditJob,
-    showAssemblyPicker, showBidItemImport, showCompare, showCostCodeReport, confirmState]);
+  }, [activeTab, history, anyModalOpen]);
 
   const openSectionSettings = (section: any) => {
     withLockCheck(() => setEditingSection(section));
@@ -435,28 +433,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const commitInlineEdit = async (item: any, changes: { quantity?: number; materialUnitCost?: number }) => {
     try {
       history.record();
-      await window.api.saveBidLineItem({
-        id: item.id,
-        sectionId: item.section_id,
+      await window.api.saveBidLineItem(lineItemRowToPayload(item, {
         jobId,
-        description: item.description,
-        itemNumber: item.item_number || null,
-        costCode: item.cost_code || null,
         quantity: changes.quantity ?? item.quantity,
-        unit: item.unit,
-        sortOrder: item.sort_order,
-        materialId: item.material_id || null,
         materialUnitCost: changes.materialUnitCost ?? item.material_unit_cost,
-        crewTemplateId: item.crew_template_id || null,
-        productionRateId: item.production_rate_id || null,
-        laborHours: item.labor_hours,
-        laborCostPerHour: item.labor_cost_per_hour,
-        equipmentId: item.equipment_id || null,
-        equipmentCostPerHour: item.equipment_cost_per_hour,
-        equipmentHours: item.equipment_hours,
-        subcontractorCost: item.subcontractor_cost,
-        notes: item.notes || null,
-      });
+      }));
       await loadJob();
     } catch (err: any) {
       addToast(err?.message || 'Failed to save edit.', 'error');
@@ -572,15 +553,12 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     let sortOrder = 0;
 
     const saveItem = (opts: { description: string; quantity: number; unit: string; materialId: number | null; materialUnitCost: number; notes: string }) =>
-      window.api.saveBidLineItem({
+      window.api.saveBidLineItem(buildLineItemPayload({
         sectionId, jobId, sortOrder: sortOrder++,
         description: opts.description, quantity: opts.quantity, unit: opts.unit,
         materialId: opts.materialId, materialUnitCost: opts.materialUnitCost,
-        crewTemplateId: null, productionRateId: null,
-        laborHours: 0, laborCostPerHour: 0,
-        equipmentId: null, equipmentCostPerHour: 0, equipmentHours: 0,
-        subcontractorCost: 0, notes: opts.notes,
-      });
+        notes: opts.notes,
+      }));
 
     // Pipe line items (one per material type)
     for (const entry of pipeByKey.values()) {
@@ -656,6 +634,19 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       await loadJob();
       onOpenJob(result.newJobId);
     }
+  };
+
+  const handleDeleteCO = (co: any) => {
+    withLockCheck(() => {
+      setConfirmState({
+        msg: `Delete CO #${co.change_order_number} and all its bid data? This cannot be undone.`,
+        onYes: async () => {
+          setConfirmState(null);
+          await window.api.deleteJob(co.id);
+          loadJob();
+        },
+      });
+    });
   };
 
   // Revised total: original bid + approved (won) COs
@@ -907,70 +898,13 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
       {/* Changes tab */}
       {activeTab === 'changes' && !isChangeOrder && (
-        <div className="card mb-24">
-          <div className="flex justify-between items-center mb-16">
-            <h3 style={{ fontSize: 15 }}>Change Orders</h3>
-            <button className="btn btn-sm btn-primary no-print" onClick={() => withLockCheck(handleCreateCO)}>+ Change Order</button>
-          </div>
-
-          {changeOrders.length === 0 ? (
-            <p className="text-muted" style={{ fontSize: 13 }}>No change orders. Click "+ Change Order" to create one.</p>
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>CO #</th>
-                  <th>Description</th>
-                  <th>Status</th>
-                  <th className="text-right">Direct Cost</th>
-                  <th className="text-right">Total</th>
-                  <th className="no-print" style={{ width: 80 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {changeOrders.map((co) => {
-                  const coSum = coSummaries[co.id];
-                  return (
-                    <tr key={co.id}>
-                      <td>
-                        <span className="badge badge-submitted" style={{ fontSize: 11 }}>#{co.change_order_number}</span>
-                      </td>
-                      <td>
-                        <span className="material-name-link no-print" onClick={() => onOpenJob(co.id)}>{co.name}</span>
-                        <span className="print-only">{co.name}</span>
-                      </td>
-                      <td>{statusBadge(co.status)}</td>
-                      <td className="text-right">{coSum ? formatCurrency(coSum.direct_cost_total) : '--'}</td>
-                      <td className="text-right" style={{ fontWeight: 600 }}>{coSum ? formatCurrency(coSum.grandTotal) : '--'}</td>
-                      <td className="no-print">
-                        <div className="flex gap-8">
-                          <button className="btn btn-sm btn-secondary" onClick={() => onOpenJob(co.id)}>Open</button>
-                          <button className="btn btn-sm btn-secondary" onClick={() => withLockCheck(() => {
-                            setConfirmState({
-                              msg: `Delete CO #${co.change_order_number} and all its bid data? This cannot be undone.`,
-                              onYes: async () => {
-                                setConfirmState(null);
-                                await window.api.deleteJob(co.id);
-                                loadJob();
-                              },
-                            });
-                          })}>&times;</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                <tr>
-                  <td colSpan={4} className="text-right" style={{ fontWeight: 600 }}>COs Total</td>
-                  <td className="text-right" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                    {formatCurrency(changeOrders.reduce((s, co) => s + (coSummaries[co.id]?.grandTotal || 0), 0))}
-                  </td>
-                  <td></td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-        </div>
+        <ChangeOrdersTab
+          changeOrders={changeOrders}
+          coSummaries={coSummaries}
+          onOpenJob={onOpenJob}
+          onCreateCO={() => withLockCheck(handleCreateCO)}
+          onDeleteCO={handleDeleteCO}
+        />
       )}
 
       {/* Line Item Modal */}
@@ -1010,79 +944,12 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
       {/* Edit Job Info Modal */}
       {showEditJob && (
-        <div className="modal-overlay" onClick={() => setShowEditJob(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Edit Job</h3>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Job Name</label>
-                <input type="text" className="form-control" value={editJobForm.name}
-                  onChange={(e) => setEditJobForm({ ...editJobForm, name: e.target.value })}
-                  autoFocus />
-              </div>
-              <div className="form-group">
-                <label>Job Number</label>
-                <input type="text" className="form-control" value={editJobForm.jobNumber}
-                  onChange={(e) => setEditJobForm({ ...editJobForm, jobNumber: e.target.value })}
-                  placeholder="optional" />
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Client / GC</label>
-                <input type="text" className="form-control" value={editJobForm.client}
-                  onChange={(e) => setEditJobForm({ ...editJobForm, client: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>Bid Date</label>
-                <input type="date" className="form-control" value={editJobForm.bidDate}
-                  onChange={(e) => setEditJobForm({ ...editJobForm, bidDate: e.target.value })} />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Location</label>
-              <input type="text" className="form-control" value={editJobForm.location}
-                onChange={(e) => setEditJobForm({ ...editJobForm, location: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label>Description</label>
-              <input type="text" className="form-control" value={editJobForm.description}
-                onChange={(e) => setEditJobForm({ ...editJobForm, description: e.target.value })} />
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 8px' }}>Markups &amp; Escalation</div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Overhead %</label>
-                <input type="number" className="form-control" value={editJobForm.overheadPercent} step="0.5"
-                  onChange={(e) => setEditJobForm({ ...editJobForm, overheadPercent: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div className="form-group">
-                <label>Profit %</label>
-                <input type="number" className="form-control" value={editJobForm.profitPercent} step="0.5"
-                  onChange={(e) => setEditJobForm({ ...editJobForm, profitPercent: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div className="form-group">
-                <label>Bond %</label>
-                <input type="number" className="form-control" value={editJobForm.bondPercent} step="0.1"
-                  onChange={(e) => setEditJobForm({ ...editJobForm, bondPercent: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div className="form-group">
-                <label>Tax %</label>
-                <input type="number" className="form-control" value={editJobForm.taxPercent} step="0.1"
-                  onChange={(e) => setEditJobForm({ ...editJobForm, taxPercent: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div className="form-group">
-                <label title="Material price escalation for long-lead bids — raises material direct cost before markups">Escalation %</label>
-                <input type="number" className="form-control" value={editJobForm.escalationPercent} step="0.5"
-                  onChange={(e) => setEditJobForm({ ...editJobForm, escalationPercent: parseFloat(e.target.value) || 0 })} />
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowEditJob(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveJobInfo} disabled={!editJobForm.name.trim()}>Save</button>
-            </div>
-          </div>
-        </div>
+        <EditJobModal
+          form={editJobForm}
+          setForm={setEditJobForm}
+          onSave={saveJobInfo}
+          onClose={() => setShowEditJob(false)}
+        />
       )}
 
       {/* Compare Jobs Modal */}

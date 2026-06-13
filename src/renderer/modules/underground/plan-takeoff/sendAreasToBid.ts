@@ -2,6 +2,7 @@ import type { TakeoffArea } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import { computePolygonAreaSF, ftToInches, loadPageScaleMap } from './takeoffUtils';
 import { buildAssemblyLineItems } from '../../../../shared/assemblyExpansion';
+import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
 
 interface AreaGroup {
   areaType: TakeoffArea['areaType'];
@@ -113,7 +114,7 @@ export async function sendAreasToBid(
       mat && mat.unit !== 'SY' ? `Material "${mat.name}" priced per ${mat.unit} — set unit cost manually` : '',
     ].filter(Boolean).join(' — ');
 
-    await window.api.saveBidLineItem({
+    await window.api.saveBidLineItem(buildLineItemPayload({
       sectionId,
       jobId,
       description,
@@ -122,16 +123,8 @@ export async function sendAreasToBid(
       sortOrder: sortOrder++,
       materialId: g.materialId,
       materialUnitCost: unitCost,
-      crewTemplateId: null,
-      productionRateId: null,
-      laborHours: 0,
-      laborCostPerHour: 0,
-      equipmentId: null,
-      equipmentCostPerHour: 0,
-      equipmentHours: 0,
-      subcontractorCost: 0,
       notes,
-    });
+    }));
     createdCount += 1;
   }
 

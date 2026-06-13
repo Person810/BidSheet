@@ -8,6 +8,7 @@ import {
   AutocompleteItem,
 } from '../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToastStore } from '../stores/toast-store';
 
 // ============================================================
 // LOCAL TYPES (match DB snake_case from IPC)
@@ -64,6 +65,7 @@ const EMPTY_FORM = {
 // ============================================================
 
 export function AssembliesPage() {
+  const addToast = useToastStore((s) => s.addToast);
   const [assemblies, setAssemblies] = useState<AssemblyRow[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [productionRates, setProductionRates] = useState<any[]>([]);
@@ -207,6 +209,8 @@ export function AssembliesPage() {
 
       closeModal();
       loadAssemblies();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save assembly.', 'error');
     } finally {
       setIsSaving(false);
     }

@@ -1,5 +1,9 @@
 import React from 'react';
 
+// Formatting helpers live in the neutral utils module; re-exported here so the
+// many jobs-area importers keep their existing import path.
+export { formatCurrency, formatDateLocal } from '../../utils/format';
+
 export function statusBadge(status: string) {
   const classes: Record<string, string> = {
     draft: 'badge-draft',
@@ -57,16 +61,3 @@ export function jobToPayload(job: any) {
   };
 }
 
-export function formatCurrency(val: number | null | undefined, opts?: { maximumFractionDigits?: number }) {
-  if (val == null) return '--';
-  return (val ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', ...opts });
-}
-
-/** Parse a YYYY-MM-DD date string without timezone shift. */
-export function formatDateLocal(dateStr: string): string {
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) {
-    return new Date(+match[1], +match[2] - 1, +match[3]).toLocaleDateString();
-  }
-  return new Date(dateStr).toLocaleDateString();
-}

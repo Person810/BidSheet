@@ -1,4 +1,5 @@
 import type { TakeoffItem } from './types';
+import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
 
 interface MaterialGroup {
   materialId: number | null;
@@ -50,7 +51,7 @@ export async function sendItemsToBid(
   let sortOrder = 0;
   for (const g of groups.values()) {
     const mat = g.materialId ? materials.find((m: any) => m.id === g.materialId) : null;
-    await window.api.saveBidLineItem({
+    await window.api.saveBidLineItem(buildLineItemPayload({
       sectionId,
       jobId,
       description: g.materialName,
@@ -59,16 +60,8 @@ export async function sendItemsToBid(
       sortOrder: sortOrder++,
       materialId: g.materialId,
       materialUnitCost: mat?.default_unit_cost || 0,
-      crewTemplateId: null,
-      productionRateId: null,
-      laborHours: 0,
-      laborCostPerHour: 0,
-      equipmentId: null,
-      equipmentCostPerHour: 0,
-      equipmentHours: 0,
-      subcontractorCost: 0,
       notes: 'From plan takeoff',
-    });
+    }));
   }
 
   return groups.size;

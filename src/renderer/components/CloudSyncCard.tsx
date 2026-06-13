@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, initCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
 import { CloudAccountSetupModal } from './CloudAccountSetupModal';
+import { formatBytes, formatDateTime } from '../utils/format';
 
 /**
  * Settings → Cloud Sync card. Walks the whole auth ladder: signed out →
@@ -78,12 +79,6 @@ export function CloudSyncCard() {
       setEnroll(null);
       setCode('');
     });
-
-  const fmtBytes = (n: number) => {
-    if (n >= 1 << 30) return `${parseFloat((n / (1 << 30)).toFixed(2))} GB`;
-    if (n >= 1 << 20) return `${parseFloat((n / (1 << 20)).toFixed(1))} MB`;
-    return `${Math.ceil(n / 1024)} KB`;
-  };
 
   const usedFrac =
     account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;
@@ -235,8 +230,8 @@ export function CloudSyncCard() {
             Connected as <strong>{auth.email}</strong>
             {account && (
               <span className="text-muted" style={{ marginLeft: 8, fontSize: 13 }}>
-                — {fmtBytes(account.storage_bytes_used || 0)}
-                {account.storage_cap_bytes > 0 && ` of ${fmtBytes(account.storage_cap_bytes)}`} cloud
+                — {formatBytes(account.storage_bytes_used || 0)}
+                {account.storage_cap_bytes > 0 && ` of ${formatBytes(account.storage_cap_bytes)}`} cloud
                 storage used
               </span>
             )}
@@ -439,7 +434,6 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     }
   };
 
-  const fmtDate = (s: string) => new Date(s.replace(' ', 'T') + (s.includes('Z') ? '' : 'Z')).toLocaleString();
 
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
@@ -471,7 +465,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
           {status.remote && !showSetup && (
             <div style={{ marginBottom: 12 }}>
               <p style={{ fontSize: 13, marginBottom: 8 }}>
-                <strong>Encrypted backup from {fmtDate(status.remote.created_at)} found</strong> in
+                <strong>Encrypted backup from {formatDateTime(status.remote.created_at)} found</strong> in
                 your cloud account. Enter your backup passphrase to bring everything onto this
                 computer.
               </p>
