@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://person810.github.io/BidSheet/sitemap.xml
+Sitemap: https://bidsheet.co/sitemap.xml

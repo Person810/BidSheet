@@ -5,56 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BidSheet Cloud — Checkout</title>
   <meta name="robots" content="noindex">
-  <link rel="icon" href="../icon.png" type="image/png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <link rel="icon" href="/icon.png" type="image/png">
+  <link rel="stylesheet" href="/assets/site.css">
   <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    :root {
-      --navy-deep: #0a1628;
-      --navy: #122240;
-      --gold: #d4a843;
-      --text: #e2e8f0;
-      --text-muted: #8a9bb8;
-      --border: rgba(255, 255, 255, 0.06);
-    }
     body {
-      font-family: 'DM Sans', sans-serif;
-      background: var(--navy-deep);
-      color: var(--text);
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       text-align: center;
       padding: 24px;
+      gap: 24px;
     }
-    .card {
+    .card-checkout {
+      position: relative;
+      z-index: 1;
       background: var(--navy);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 40px 36px;
       max-width: 460px;
     }
-    h1 {
-      font-family: 'DM Serif Display', serif;
+    .card-checkout h1 {
+      font-family: var(--serif);
       font-size: 1.7rem;
       margin-bottom: 12px;
     }
-    h1 span { color: var(--gold); }
-    p { color: var(--text-muted); line-height: 1.6; font-size: 0.95rem; }
-    p + p { margin-top: 10px; }
-    a { color: var(--gold); text-decoration: none; }
+    .card-checkout h1 span { color: var(--gold); }
+    .card-checkout p { color: var(--text-muted); line-height: 1.6; font-size: 0.95rem; }
+    .card-checkout p + p { margin-top: 10px; }
+    .card-checkout a { color: var(--gold); text-decoration: none; }
+    .card-checkout a:hover, .card-checkout a:focus-visible { text-decoration: underline; }
+    .checkout-links {
+      position: relative;
+      z-index: 1;
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+      justify-content: center;
+    }
+    .checkout-links a { color: var(--text-muted); text-decoration: none; }
+    .checkout-links a:hover, .checkout-links a:focus-visible { color: var(--text); text-decoration: underline; }
   </style>
 </head>
 <body>
-  <div class="card">
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <main class="card-checkout">
     <h1>BidSheet <span>Cloud</span></h1>
-    <p id="status">Loading secure checkout…</p>
+    <p id="status" role="status">Loading secure checkout…</p>
     <p>Payment is handled by Paddle, our merchant of record. After paying, you can
        close this tab — the BidSheet app picks up your subscription automatically.</p>
-  </div>
+  </main>
+
+  <nav class="checkout-links" aria-label="Legal">
+    <a href="/pricing/">Pricing</a>
+    <a href="/legal/terms/">Terms</a>
+    <a href="/legal/privacy/">Privacy</a>
+    <a href="/legal/refunds/">Refunds</a>
+    <a href="/contact/">Contact</a>
+  </nav>
 
   <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
   <script>

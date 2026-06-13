@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing — BidSheet</title>
+  <meta name="description" content="BidSheet is free forever and fully local. Optional cloud sync is $20/month with a 30-day free trial — encrypted backup, multi-computer sync, and restore.">
+  <link rel="canonical" href="https://bidsheet.co/pricing/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="BidSheet">
+  <meta property="og:title" content="Pricing — BidSheet">
+  <meta property="og:description" content="The app is free forever, fully local. Optional cloud sync is $20/month after a 30-day free trial, and it funds development.">
+  <meta property="og:url" content="https://bidsheet.co/pricing/">
+  <meta property="og:image" content="https://bidsheet.co/icon.png">
+  <link rel="icon" href="/icon.png" type="image/png">
+  <link rel="stylesheet" href="/assets/site.css">
+  <style>
+    .plans {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 72px;
+    }
+    .plan {
+      padding: 40px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+    }
+    .plan.featured { border-color: rgba(212, 168, 67, 0.3); background: rgba(212, 168, 67, 0.04); }
+    .plan .eyebrow { margin-bottom: 18px; }
+    .plan h2 { font-family: var(--serif); font-size: 28px; letter-spacing: -0.01em; margin-bottom: 6px; }
+    .plan .price {
+      font-family: var(--mono);
+      font-size: 34px;
+      font-weight: 500;
+      margin: 10px 0 2px;
+    }
+    .plan .price .per { font-size: 15px; color: var(--text-muted); }
+    .plan .price-note { font-family: var(--mono); font-size: 13px; color: var(--gold); margin-bottom: 18px; }
+    .plan > p { color: var(--text-muted); font-size: 15px; margin-bottom: 18px; }
+    .plan ul { list-style: none; margin: 0 0 28px; flex: 1; }
+    .plan li {
+      display: flex;
+      gap: 12px;
+      align-items: baseline;
+      padding: 9px 0;
+      border-top: 1px solid var(--border);
+      font-size: 14.5px;
+    }
+    .plan li::before { content: '+'; font-family: var(--mono); color: var(--gold); flex-shrink: 0; }
+    .plan li.minus::before { content: '–'; color: var(--text-muted); }
+    .plan li.minus { color: var(--text-muted); }
+    .plan .btn { justify-content: center; }
+
+    .pricing-note {
+      max-width: var(--measure);
+      color: var(--text-muted);
+      font-size: 14px;
+      margin: -48px 0 72px;
+    }
+    .pricing-note a { color: var(--gold); }
+
+    .faq { max-width: 760px; }
+    .faq h2 { font-family: var(--serif); font-size: clamp(24px, 3vw, 32px); margin-bottom: 24px; }
+    .faq details {
+      border-top: 1px solid var(--border);
+      padding: 4px 0;
+    }
+    .faq details:last-child { border-bottom: 1px solid var(--border); }
+    .faq summary {
+      cursor: pointer;
+      padding: 16px 8px;
+      font-weight: 600;
+      font-size: 15.5px;
+      list-style-position: outside;
+    }
+    .faq summary:hover { color: var(--gold-light); }
+    .faq details > div { padding: 0 8px 18px; color: var(--text-muted); font-size: 14.5px; }
+    .faq details > div p { margin-bottom: 10px; }
+    .faq details > div p:last-child { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <nav class="site-nav" aria-label="Main">
+    <a href="/" class="nav-brand">
+      <img src="/icon.png" alt="">
+      <span>BidSheet</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features" class="nav-hide-sm">Features</a>
+      <a href="/pricing/" aria-current="page">Pricing</a>
+      <a href="/contact/" class="nav-hide-sm">Contact</a>
+      <a href="https://github.com/Person810/BidSheet" class="nav-github" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <main id="main" class="page">
+    <header class="page-header">
+      <p class="eyebrow">Pricing</p>
+      <h1>The app is free. The cloud is optional.</h1>
+      <p>
+        BidSheet is free forever, fully local, and open source — no account, no trial clock,
+        no feature gates. Cloud sync costs real money to run, so it costs money to use,
+        and it funds development.
+      </p>
+    </header>
+
+    <div class="plans">
+      <section class="plan" aria-labelledby="plan-local">
+        <p class="eyebrow">Forever</p>
+        <h2 id="plan-local">BidSheet</h2>
+        <p class="price">$0</p>
+        <p class="price-note">free forever · GPLv3 open source</p>
+        <p>The full estimating application. Everything runs on your computer; your data is a file on your disk.</p>
+        <ul>
+          <li>Bid proposals, takeoff, trench volumes, catalog, crews — all of it</li>
+          <li>Works completely offline</li>
+          <li>No account required</li>
+          <li>Local-only mode: zero network traffic, verifiable</li>
+          <li>Free updates</li>
+        </ul>
+        <a href="https://github.com/Person810/BidSheet/releases/latest" class="btn btn-secondary" rel="noopener">Download free</a>
+      </section>
+
+      <section class="plan featured" aria-labelledby="plan-cloud">
+        <p class="eyebrow">Optional add-on · Beta</p>
+        <h2 id="plan-cloud">Cloud Sync</h2>
+        <p class="price">$20<span class="per"> / month</span></p>
+        <p class="price-note">first 30 days free · no card required to try</p>
+        <p>Online backup and multi-computer sync for your jobs and catalog, on top of the same local-first app.</p>
+        <ul>
+          <li>Encrypted whole-database backup — sealed with a passphrase only you know</li>
+          <li>Sync jobs and catalog across all your computers</li>
+          <li>Dead-laptop restore: sign in on a new machine, get everything back</li>
+          <li>100 GB storage (10 GB during the trial)</li>
+          <li>Cancel anytime — your local data is never touched</li>
+        </ul>
+        <a href="https://github.com/Person810/BidSheet/releases/latest" class="btn btn-primary" rel="noopener">Start in the app</a>
+      </section>
+    </div>
+
+    <p class="pricing-note">
+      Subscriptions start inside the app (Settings → Cloud Sync) and are billed in USD by
+      <a href="https://www.paddle.com" rel="noopener">Paddle</a>, our merchant of record —
+      Paddle handles checkout, sales tax/VAT, and appears on your card statement.
+      See the <a href="/legal/refunds/">refund policy</a> and <a href="/legal/terms/">terms of service</a>.
+    </p>
+
+    <section class="faq" aria-labelledby="faq-title">
+      <h2 id="faq-title">Common questions</h2>
+
+      <details>
+        <summary>Is my data still on my computer if I subscribe?</summary>
+        <div>
+          <p>Yes, always. Cloud sync is a copy, not a move. The app reads and writes your local
+          database first; sync uploads copies so your other computers (and a future fresh install)
+          can pull them down. Cancel, go offline, or delete your account — the local app and your
+          local data keep working untouched.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Can you read my backups?</summary>
+        <div>
+          <p>Encrypted backups: no. The whole-database backup is encrypted on your computer with a
+          key derived from a passphrase only you know, before it's uploaded. We store the sealed
+          file; we cannot open it. That also means we genuinely cannot recover it if you lose the
+          passphrase — write it down.</p>
+          <p>Synced jobs and catalog data are encrypted in transit and at rest on our
+          infrastructure, but are not yet sealed with your passphrase. Full end-to-end encryption
+          of synced data is on the roadmap.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>What does "Beta" mean here?</summary>
+        <div>
+          <p>Cloud sync is newer than the estimating app and still earning trust. It's tested,
+          live, and backed up — but expect rough edges, and expect us to be honest about them.
+          The local app does not depend on it in any way.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>What happens when I cancel?</summary>
+        <div>
+          <p>Your subscription runs to the end of the period you paid for, then uploads stop.
+          Your local data is unaffected — the app keeps working in full. Your synced data stays
+          available for download for a wind-down period after lapse so you can pull everything
+          to your machines, after which it may be deleted from our servers. Details are in the
+          <a href="/legal/terms/">terms of service</a>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>How does the free trial work?</summary>
+        <div>
+          <p>Creating a cloud account starts a 30-day trial with 10 GB of storage — no payment
+          details required. If you subscribe, storage grows to 100 GB. If you don't, uploads
+          stop at day 30; your local data is untouched and anything synced remains downloadable
+          during the wind-down period.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>I need more than 100 GB.</summary>
+        <div>
+          <p>100 GB is roughly tens of thousands of compressed plan pages and photos — most shops
+          never get near it. If you do, <a href="/contact/">contact us</a> and we'll sort out a
+          larger tier.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Can I self-host the cloud?</summary>
+        <div>
+          <p>The desktop app is GPLv3, and pointing it at your own infrastructure is possible if
+          you're technical — unsupported, but we won't stand in your way. The hosted service
+          exists for everyone who would rather pay $20 than run servers.</p>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="/" class="nav-brand">
+          <img src="/icon.png" alt="">
+          <span>BidSheet</span>
+        </a>
+        <p>Free, open-source construction estimating software for underground utility subcontractors. Licensed under GPLv3.</p>
+      </div>
+      <div class="footer-cols">
+        <nav class="footer-col" aria-label="Product">
+          <h2>Product</h2>
+          <ul>
+            <li><a href="/#features">Features</a></li>
+            <li><a href="/pricing/">Pricing</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases/latest" rel="noopener">Download</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases" rel="noopener">All releases</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Project">
+          <h2>Project</h2>
+          <ul>
+            <li><a href="https://github.com/Person810/BidSheet" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/issues" rel="noopener">Report a bug</a></li>
+            <li><a href="https://www.gnu.org/licenses/gpl-3.0.html" rel="noopener">License (GPLv3)</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Legal">
+          <h2>Legal</h2>
+          <ul>
+            <li><a href="/legal/privacy/">Privacy policy</a></li>
+            <li><a href="/legal/terms/">Terms of service</a></li>
+            <li><a href="/legal/refunds/">Refund policy</a></li>
+            <li><a href="/contact/">Contact</a></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>BidSheet is free software: estimates and calculations must be independently verified before use in any bid. See the <a href="/legal/terms/">terms of service</a>.</p>
+    </div>
+  </footer>
+</body>
+</html>

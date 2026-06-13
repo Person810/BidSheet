@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact — BidSheet</title>
+  <meta name="description" content="Get in touch with BidSheet — support email for cloud sync and billing, GitHub issues for bugs and feature requests.">
+  <link rel="canonical" href="https://bidsheet.co/contact/">
+  <link rel="icon" href="/icon.png" type="image/png">
+  <link rel="stylesheet" href="/assets/site.css">
+  <style>
+    .contact-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 760px;
+    }
+    .contact-card h2 { font-family: var(--serif); font-size: 22px; margin-bottom: 8px; }
+    .contact-card p { color: var(--text-muted); font-size: 14.5px; margin-bottom: 16px; }
+    .contact-card a.big {
+      font-family: var(--mono);
+      font-size: 15px;
+      color: var(--gold);
+      text-decoration: none;
+    }
+    .contact-card a.big:hover, .contact-card a.big:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
+    .response-note {
+      max-width: 760px;
+      margin-top: 28px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <nav class="site-nav" aria-label="Main">
+    <a href="/" class="nav-brand">
+      <img src="/icon.png" alt="">
+      <span>BidSheet</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features" class="nav-hide-sm">Features</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/contact/" aria-current="page" class="nav-hide-sm">Contact</a>
+      <a href="https://github.com/Person810/BidSheet" class="nav-github" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <main id="main" class="page">
+    <header class="page-header">
+      <p class="eyebrow">Contact</p>
+      <h1>Get in touch</h1>
+      <p>Email reaches the people who actually build BidSheet.</p>
+    </header>
+
+    <div class="contact-grid">
+      <div class="card contact-card">
+        <h2>Support &amp; billing</h2>
+        <p>Cloud sync, subscriptions, refunds, account deletion, or anything private — email from
+        your account address if it's about your account.</p>
+        <a class="big" href="mailto:support@bidsheet.co">support@bidsheet.co</a>
+      </div>
+      <div class="card contact-card">
+        <h2>Bugs &amp; feature requests</h2>
+        <p>Found something broken, or wish the app did something it doesn't? File an issue —
+        public issues help every other contractor too.</p>
+        <a class="big" href="https://github.com/Person810/BidSheet/issues" rel="noopener">github.com/Person810/BidSheet/issues</a>
+      </div>
+    </div>
+
+    <p class="response-note">We read everything that comes in and reply as soon as we can.
+    Billing questions about a charge on your statement can also go to Paddle, our payment
+    provider, by replying to your receipt email.</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="/" class="nav-brand">
+          <img src="/icon.png" alt="">
+          <span>BidSheet</span>
+        </a>
+        <p>Free, open-source construction estimating software for underground utility subcontractors. Licensed under GPLv3.</p>
+      </div>
+      <div class="footer-cols">
+        <nav class="footer-col" aria-label="Product">
+          <h2>Product</h2>
+          <ul>
+            <li><a href="/#features">Features</a></li>
+            <li><a href="/pricing/">Pricing</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases/latest" rel="noopener">Download</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases" rel="noopener">All releases</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Project">
+          <h2>Project</h2>
+          <ul>
+            <li><a href="https://github.com/Person810/BidSheet" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/issues" rel="noopener">Report a bug</a></li>
+            <li><a href="https://www.gnu.org/licenses/gpl-3.0.html" rel="noopener">License (GPLv3)</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Legal">
+          <h2>Legal</h2>
+          <ul>
+            <li><a href="/legal/privacy/">Privacy policy</a></li>
+            <li><a href="/legal/terms/">Terms of service</a></li>
+            <li><a href="/legal/refunds/">Refund policy</a></li>
+            <li><a href="/contact/" aria-current="page">Contact</a></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>BidSheet is free software: estimates and calculations must be independently verified before use in any bid. See the <a href="/legal/terms/">terms of service</a>.</p>
+    </div>
+  </footer>
+</body>
+</html>
