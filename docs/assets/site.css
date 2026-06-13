@@ -83,25 +83,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Graph-paper ground — the quiet nod to plan sheets */
+/* Drawing-sheet ground: minor 28px white grid, major 140px blueprint-blue,
+   the way engineering graph paper actually reads. */
 .bg-grid {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
-  background-size: 60px 60px;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.bg-glow {
-  position: fixed;
-  top: -200px;
-  right: -200px;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(212, 168, 67, 0.06) 0%, transparent 70%);
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(rgba(125,167,217,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125,167,217,0.05) 1px, transparent 1px);
+  background-size: 28px 28px, 28px 28px, 140px 140px, 140px 140px;
   pointer-events: none;
   z-index: 0;
 }
@@ -205,24 +197,20 @@ body {
   text-decoration: none;
   cursor: pointer;
   border: none;
-  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
   font-family: inherit;
 }
 .btn-primary {
-  background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  background: var(--gold);
   color: var(--navy-deep);
-  box-shadow: 0 4px 24px rgba(212, 168, 67, 0.25);
 }
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(212, 168, 67, 0.35);
-}
+.btn-primary:hover { background: var(--gold-light); }
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
   color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
 }
-.btn-secondary:hover { background: rgba(255, 255, 255, 0.08); transform: translateY(-2px); }
+.btn-secondary:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.3); }
 .btn svg { width: 18px; height: 18px; }
 
 /* ---------- Section furniture ---------- */
