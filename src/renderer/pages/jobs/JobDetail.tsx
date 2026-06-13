@@ -14,6 +14,7 @@ import { BidItemImportModal } from './BidItemImportModal';
 import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
+import { useBidHistory, type BidSnapshot } from './useBidHistory';
 
 // Lock icon SVGs -- inline to avoid any import dependency
 const LockClosedIcon = () => (
@@ -159,6 +160,13 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     }
   }, [jobId, addToast]);
 
+  // ---- Undo/redo: snapshot history over sections + line items ----
+  const getBidState = useCallback<() => BidSnapshot>(
+    () => ({ sections, lineItems }),
+    [sections, lineItems],
+  );
+  const history = useBidHistory({ jobId, getState: getBidState, reloadAll: loadJob });
+
   useEffect(() => {
     loadJob();
     setLockBypassed(false);
@@ -239,6 +247,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // ---- Quotes → bid ----
   const handleSendQuotesToBid = async (selected: { scope: string; vendor: string; amount: number; notes: string | null }[]) => {
     if (selected.length === 0) return;
+    history.record();
     const sectionResult = await window.api.saveBidSection({
       jobId,
       name: 'Subcontractors',
@@ -286,6 +295,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // ---- Sections ----
   const addSection = async () => {
     if (!newSectionName.trim()) return;
+    history.record();
     await window.api.saveBidSection({ jobId, name: newSectionName, sortOrder: sections.length });
     setNewSectionName('');
     setShowAddSection(false);
@@ -293,6 +303,29 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   };
 
   const [editingSection, setEditingSection] = useState<any>(null);
+
+  // Ctrl/Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo — estimate tab only, and
+  // never while focus is in an editable field or a modal is open (so inline
+  // cell editors keep their own native text undo).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (activeTab !== 'estimate') return;
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (!mod || (key !== 'z' && key !== 'y')) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      if (showLineItemModal || editingSection || showEditJob || showAssemblyPicker
+        || showBidItemImport || showCompare || showCostCodeReport || confirmState) return;
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) history.redo();
+      else history.undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeTab, history, showLineItemModal, editingSection, showEditJob,
+    showAssemblyPicker, showBidItemImport, showCompare, showCostCodeReport, confirmState]);
 
   const openSectionSettings = (section: any) => {
     withLockCheck(() => setEditingSection(section));
@@ -306,6 +339,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     bondPercentOverride: number | null;
   }) => {
     if (!editingSection) return;
+    history.record();
     await window.api.saveBidSection({
       id: editingSection.id,
       jobId,
@@ -322,6 +356,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         msg: 'Delete this section and all its line items?',
         onYes: async () => {
           setConfirmState(null);
+          history.record();
           await window.api.deleteBidSection(id);
           loadJob();
         },
@@ -367,6 +402,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
   const saveLineItem = async () => {
     const sectionItems = lineItems[editingSectionId!] || [];
+    history.record();
     await window.api.saveBidLineItem({
       id: editingLineItem?.id,
       sectionId: editingSectionId!,
@@ -393,12 +429,48 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     loadJob();
   };
 
+  // Inline cell edit from the bid grid (quantity / material unit price). Builds
+  // the full save payload from the existing row so the server recomputes
+  // totals, and records a history snapshot first so the edit is undoable.
+  const commitInlineEdit = async (item: any, changes: { quantity?: number; materialUnitCost?: number }) => {
+    try {
+      history.record();
+      await window.api.saveBidLineItem({
+        id: item.id,
+        sectionId: item.section_id,
+        jobId,
+        description: item.description,
+        itemNumber: item.item_number || null,
+        costCode: item.cost_code || null,
+        quantity: changes.quantity ?? item.quantity,
+        unit: item.unit,
+        sortOrder: item.sort_order,
+        materialId: item.material_id || null,
+        materialUnitCost: changes.materialUnitCost ?? item.material_unit_cost,
+        crewTemplateId: item.crew_template_id || null,
+        productionRateId: item.production_rate_id || null,
+        laborHours: item.labor_hours,
+        laborCostPerHour: item.labor_cost_per_hour,
+        equipmentId: item.equipment_id || null,
+        equipmentCostPerHour: item.equipment_cost_per_hour,
+        equipmentHours: item.equipment_hours,
+        subcontractorCost: item.subcontractor_cost,
+        notes: item.notes || null,
+      });
+      await loadJob();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save edit.', 'error');
+      await loadJob().catch(() => { /* already reporting the primary error */ });
+    }
+  };
+
   const deleteLineItem = (id: number) => {
     withLockCheck(() => {
       setConfirmState({
         msg: 'Delete this line item?',
         onYes: async () => {
           setConfirmState(null);
+          history.record();
           await window.api.deleteBidLineItem(id);
           await loadJob();
           setLockBypassed(false);
@@ -419,6 +491,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     if (!assemblySectionId) return;
     const assembly = assemblies.find((a: any) => a.id === assemblyId);
     if (!assembly) return;
+    history.record();
     const sectionItems = lineItems[assemblySectionId] || [];
     let sortOrder = sectionItems.length;
 
@@ -437,6 +510,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
   // ---- Convert trench profiles to bid sections ----
   const handleConvertToBid = async (profileData: ConvertToBidProfile[]) => {
+    history.record();
     const tracerMat = materials.find((m: any) => m.name.toLowerCase().includes('tracer wire'));
     const tapeMat = materials.find((m: any) => m.name.toLowerCase().includes('warning tape'));
 
@@ -765,6 +839,12 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       {/* Estimate tab */}
       {activeTab === 'estimate' && (<>
       <TakeoffSummaryCard jobId={jobId} onOpenTakeoff={onOpenTakeoff} />
+      <div className="no-print flex gap-8" style={{ marginBottom: 8 }}>
+        <button className="btn btn-sm btn-secondary" onClick={() => history.undo()}
+          disabled={!history.canUndo} title="Undo (Ctrl+Z)">&#8634; Undo</button>
+        <button className="btn btn-sm btn-secondary" onClick={() => history.redo()}
+          disabled={!history.canRedo} title="Redo (Ctrl+Shift+Z)">&#8635; Redo</button>
+      </div>
       <BidGrid
         sections={sections}
         lineItems={lineItems}
@@ -777,6 +857,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         onDeleteSection={deleteSection}
         onEditSection={openSectionSettings}
         onOpenAssemblyPicker={openAssemblyPicker}
+        onCommitInlineEdit={commitInlineEdit}
         hasAssemblies={assemblies.length > 0}
         approvedCOTotal={approvedCOTotal}
         revisedTotal={revisedTotal}
@@ -1024,7 +1105,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         <BidItemImportModal
           jobId={jobId}
           sections={sections}
-          onDone={loadJob}
+          onDone={() => { history.record(); loadJob(); }}
           onClose={() => setShowBidItemImport(false)}
         />
       )}

@@ -96,6 +96,10 @@ declare global {
       saveBidLineItem: (item: SaveBidLineItemPayload) => Promise<SqlRunResult>;
       deleteBidLineItem: (id: number) => Promise<SqlRunResult>;
       importBidItems: (jobId: number, sectionId: number, items: BidItemImportRow[]) => Promise<{ imported: number }>;
+      replaceBidState: (
+        jobId: number,
+        state: { sections: BidSectionRow[]; lineItems: Record<number, BidLineItemRow[]> },
+      ) => Promise<{ success: boolean }>;
       getBidSummary: (jobId: number) => Promise<JobBidSummary | null>;
       getBidSummaryBatch: (jobIds: number[]) => Promise<JobBidSummary[]>;
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { formatCurrency } from './helpers';
 
 interface BidGridProps {
@@ -13,6 +13,8 @@ interface BidGridProps {
   onDeleteSection: (id: number) => void;
   onEditSection: (section: any) => void;
   onOpenAssemblyPicker: (sectionId: number) => void;
+  /** Commit an inline cell edit (quantity or material unit cost). */
+  onCommitInlineEdit: (item: any, changes: { quantity?: number; materialUnitCost?: number }) => void;
   hasAssemblies: boolean;
   approvedCOTotal: number;
   revisedTotal: number;
@@ -21,6 +23,9 @@ interface BidGridProps {
 
 const COL_COUNT = 9;
 
+type EditField = 'quantity' | 'materialUnitCost';
+const FIELDS: EditField[] = ['quantity', 'materialUnitCost'];
+
 function sectionTotals(items: any[]) {
   return {
     material: items.reduce((s, i) => s + (i.material_total || 0), 0),
@@ -28,6 +33,10 @@ function sectionTotals(items: any[]) {
     equipment: items.reduce((s, i) => s + (i.equipment_total || 0), 0),
     total: items.reduce((s, i) => s + (i.total_cost || 0), 0),
   };
+}
+
+function fieldValue(item: any, field: EditField): number {
+  return field === 'quantity' ? item.quantity : item.material_unit_cost;
 }
 
 export function BidGrid({
@@ -42,11 +51,139 @@ export function BidGrid({
   onDeleteSection,
   onEditSection,
   onOpenAssemblyPicker,
+  onCommitInlineEdit,
   hasAssemblies,
   approvedCOTotal,
   revisedTotal,
   isChangeOrder,
 }: BidGridProps) {
+  // ---- Inline cell editing ----
+  // One cell edits at a time (spreadsheet-style). `editing` holds the target
+  // cell by line-item id + field; `draft` is the in-progress text value.
+  const [editing, setEditing] = useState<{ id: number; field: EditField } | null>(null);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  // True while we move focus between cells, so the input's blur handler
+  // doesn't fire a spurious commit that would cancel the navigation.
+  const navigating = useRef(false);
+  // Locked bids keep the modal flow (which warns before editing); inline
+  // editing is only wired up when the bid is freely editable.
+  const inlineEnabled = !isLocked;
+
+  // Flat, display-ordered list of editable line items + their cells, used to
+  // resolve Tab/Enter/Arrow navigation to the adjacent cell.
+  const editableItems: any[] = [];
+  for (const section of sections) {
+    for (const item of lineItems[section.id] || []) editableItems.push(item);
+  }
+  const cellList: { id: number; field: EditField }[] = [];
+  for (const item of editableItems) {
+    for (const field of FIELDS) cellList.push({ id: item.id, field });
+  }
+
+  // Focus + select the active input whenever the edited cell changes, and
+  // clear the navigation guard once the move has settled.
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+    navigating.current = false;
+  }, [editing]);
+
+  const isEditing = (id: number, field: EditField) => editing?.id === id && editing?.field === field;
+
+  const beginEdit = (item: any, field: EditField) => {
+    if (!inlineEnabled) return;
+    setEditing({ id: item.id, field });
+    setDraft(String(fieldValue(item, field)));
+  };
+
+  const moveTo = (target: { id: number; field: EditField } | null) => {
+    if (!target) {
+      setEditing(null);
+      setDraft('');
+      return;
+    }
+    setEditing(target);
+    const it = editableItems.find((i) => i.id === target.id);
+    setDraft(it ? String(fieldValue(it, target.field)) : '');
+  };
+
+  const neighbor = (direction: 'next' | 'prev' | 'up' | 'down') => {
+    if (!editing) return null;
+    if (direction === 'next' || direction === 'prev') {
+      const idx = cellList.findIndex((c) => c.id === editing.id && c.field === editing.field);
+      if (idx < 0) return null;
+      return cellList[direction === 'next' ? idx + 1 : idx - 1] || null;
+    }
+    // up/down: stay in the same column, step one line item.
+    const ii = editableItems.findIndex((i) => i.id === editing.id);
+    if (ii < 0) return null;
+    const nit = editableItems[direction === 'down' ? ii + 1 : ii - 1];
+    return nit ? { id: nit.id, field: editing.field } : null;
+  };
+
+  // Save the draft (if it parsed to a new, valid value) then move to the next
+  // cell — or exit editing when there's no move target.
+  const commit = (move: 'next' | 'prev' | 'up' | 'down' | null) => {
+    if (!editing) return;
+    const item = editableItems.find((i) => i.id === editing.id);
+    const parsed = parseFloat(draft);
+    if (item && Number.isFinite(parsed) && parsed >= 0 && parsed !== fieldValue(item, editing.field)) {
+      onCommitInlineEdit(
+        item,
+        editing.field === 'quantity' ? { quantity: parsed } : { materialUnitCost: parsed },
+      );
+    }
+    moveTo(move ? neighbor(move) : null);
+  };
+
+  const onCellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    switch (e.key) {
+      case 'Enter':
+        e.preventDefault();
+        navigating.current = true;
+        commit(e.shiftKey ? 'up' : 'down');
+        break;
+      case 'Tab':
+        e.preventDefault();
+        navigating.current = true;
+        commit(e.shiftKey ? 'prev' : 'next');
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        navigating.current = true;
+        commit('down');
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        navigating.current = true;
+        commit('up');
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setEditing(null);
+        setDraft('');
+        break;
+      default:
+        break;
+    }
+  };
+
+  const renderInput = () => (
+    <input
+      ref={inputRef}
+      className="bid-grid-cell-input"
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={onCellKeyDown}
+      onBlur={() => { if (!navigating.current) commit(null); }}
+    />
+  );
+
   if (sections.length === 0) {
     return (
       <div className="card mb-24" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
@@ -171,9 +308,36 @@ export function BidGrid({
                         </span>
                       )}
                     </td>
-                    <td className="text-right">{item.quantity}</td>
+
+                    {/* Quantity — inline editable */}
+                    {inlineEnabled && isEditing(item.id, 'quantity') ? (
+                      <td className="text-right" style={{ padding: 0 }}>{renderInput()}</td>
+                    ) : inlineEnabled ? (
+                      <td className="text-right bid-grid-editable" title="Click to edit quantity"
+                        onClick={() => beginEdit(item, 'quantity')}>{item.quantity}</td>
+                    ) : (
+                      <td className="text-right">{item.quantity}</td>
+                    )}
+
                     <td>{item.unit}</td>
-                    <td className="text-right">{formatCurrency(item.material_total)}</td>
+
+                    {/* Material — inline editable. Edits the material unit price;
+                        the cell shows the extended total with the unit price
+                        beneath it (the @-price hint is screen-only). */}
+                    {inlineEnabled && isEditing(item.id, 'materialUnitCost') ? (
+                      <td className="text-right" style={{ padding: 0 }}>{renderInput()}</td>
+                    ) : inlineEnabled ? (
+                      <td className="text-right bid-grid-editable" title="Click to edit material unit price"
+                        onClick={() => beginEdit(item, 'materialUnitCost')}>
+                        {formatCurrency(item.material_total)}
+                        {item.material_unit_cost > 0 && (
+                          <div className="bid-grid-unit-cost no-print">@ {formatCurrency(item.material_unit_cost)}</div>
+                        )}
+                      </td>
+                    ) : (
+                      <td className="text-right">{formatCurrency(item.material_total)}</td>
+                    )}
+
                     <td className="text-right">{formatCurrency(item.labor_total)}</td>
                     <td className="text-right">{formatCurrency(item.equipment_total)}</td>
                     <td className="text-right" style={{ fontWeight: 600 }}>{formatCurrency(item.total_cost)}</td>
