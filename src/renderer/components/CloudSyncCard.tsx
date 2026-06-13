@@ -20,6 +20,9 @@ export function CloudSyncCard() {
   const [busy, setBusy] = useState(false);
   const [enroll, setEnroll] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
   const [account, setAccount] = useState<any | null>(null);
+  // Server-reported: are paid plans actually open? Defaults false (trials-only)
+  // so an old/undeployed server never shows a Subscribe button that can't work.
+  const [billingEnabled, setBillingEnabled] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [awaitingPayment, setAwaitingPayment] = useState(false);
   const unmounted = useRef(false);
@@ -34,7 +37,10 @@ export function CloudSyncCard() {
   // Re-fetched after every sync pass so the storage bar tracks uploads.
   useEffect(() => {
     if (ready) {
-      window.api.cloudMe().then((me) => setAccount(me.account)).catch(() => {});
+      window.api.cloudMe().then((me) => {
+        setAccount(me.account);
+        setBillingEnabled(!!me.billing_enabled);
+      }).catch(() => {});
     } else {
       setAccount(null);
     }
@@ -285,9 +291,15 @@ export function CloudSyncCard() {
                         ? 'Free trial ended — syncing is paused. Your cloud data is still there to download.'
                         : `Free trial — ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left.`}
                   </span>
-                  <button className="btn btn-sm btn-primary" disabled={awaitingPayment} onClick={handleSubscribe}>
-                    {awaitingPayment ? 'Waiting for payment…' : 'Subscribe — $20/mo'}
-                  </button>
+                  {billingEnabled ? (
+                    <button className="btn btn-sm btn-primary" disabled={awaitingPayment} onClick={handleSubscribe}>
+                      {awaitingPayment ? 'Waiting for payment…' : 'Subscribe — $20/mo'}
+                    </button>
+                  ) : (
+                    <span className="text-muted" style={{ fontSize: 12, fontStyle: 'italic' }}>
+                      Paid plans coming soon.
+                    </span>
+                  )}
                 </>
               )}
             </div>

@@ -193,7 +193,7 @@ declare global {
       cloudEnrollTotp: () => Promise<{ factorId: string; qrCode: string; secret: string; uri: string }>;
       cloudVerifyTotp: (code: string, factorId?: string) => Promise<any>;
       cloudSignOut: () => Promise<void>;
-      cloudMe: () => Promise<{ user_id: string; email: string; account: any }>;
+      cloudMe: () => Promise<{ user_id: string; email: string; account: any; billing_enabled?: boolean }>;
       cloudBillingCheckout: () => Promise<string>;
       cloudBillingPortal: () => Promise<string>;
       cloudSyncNow: () => Promise<any>;
