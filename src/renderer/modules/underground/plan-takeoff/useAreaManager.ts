@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { TakeoffArea, AreaConfig, PdfPoint } from './types';
 import { AREA_COLORS } from './types';
+import { reportSaveError } from './takeoffPersistence';
 
 interface UseAreaManagerOptions {
   jobId: number | null;
@@ -61,6 +62,9 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
   const [areas, setAreas] = useState<TakeoffArea[]>([]);
   const areasRef = useRef<TakeoffArea[]>([]);
   areasRef.current = areas;
+  // Local ids of areas deleted while their create-save was still in flight (see
+  // useRunManager) so the save's completion removes the persisted row.
+  const pendingDeletesRef = useRef<Set<number>>(new Set());
   const [activeAreaId, setActiveAreaId] = useState<number | null>(null);
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -91,8 +95,20 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
     } else if (jobId) {
       const payload = { ...area, jobId, sortOrder: areasRef.current.indexOf(area) };
       window.api.saveTakeoffArea(payload).then((result: { id: number }) => {
-        setAreas((cur) => cur.map((a) => a.id === localId ? { ...a, id: result.id } : a));
-      });
+        const realId = result.id;
+        if (pendingDeletesRef.current.has(localId)) {
+          pendingDeletesRef.current.delete(localId);
+          window.api.deleteTakeoffArea(realId).catch(reportSaveError('area deletion'));
+          setAreas((cur) => cur.filter((a) => a.id !== localId && a.id !== realId));
+          return;
+        }
+        setAreas((cur) => cur.map((a) => a.id === localId ? { ...a, id: realId } : a));
+        const latest = areasRef.current.find((a) => a.id === localId);
+        if (latest) {
+          window.api.saveTakeoffArea({ ...latest, id: realId, jobId, sortOrder: areasRef.current.indexOf(latest) })
+            .catch(reportSaveError('area'));
+        }
+      }).catch(reportSaveError('area'));
     }
     setActiveAreaId(null);
     setMousePos(null);
@@ -107,19 +123,19 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
 
   const handleConfigConfirm = useCallback((config: AreaConfig) => {
     if (editingAreaId !== null) {
-      setAreas((prev) => {
-        const updated = prev.map((a) => {
-          if (a.id !== editingAreaId) return a;
-          return { ...a, ...config, color: AREA_COLORS[config.areaType] };
-        });
-        if (editingAreaId > 0 && jobId) {
-          const area = updated.find((a) => a.id === editingAreaId);
-          if (area) {
-            window.api.saveTakeoffArea({ ...area, jobId, sortOrder: updated.indexOf(area) });
-          }
+      // Persist OUTSIDE the state updater — a doubled StrictMode/concurrent
+      // updater run must not double-fire the IPC save.
+      const updated = areasRef.current.map((a) =>
+        a.id === editingAreaId ? { ...a, ...config, color: AREA_COLORS[config.areaType] } : a
+      );
+      setAreas(updated);
+      if (editingAreaId > 0 && jobId) {
+        const area = updated.find((a) => a.id === editingAreaId);
+        if (area) {
+          window.api.saveTakeoffArea({ ...area, jobId, sortOrder: updated.indexOf(area) })
+            .catch(reportSaveError('area'));
         }
-        return updated;
-      });
+      }
       setShowConfigModal(false);
       setEditingAreaId(null);
       return;
@@ -177,7 +193,8 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
       a.id === areaId ? { ...a, points: newPoints } : a
     ));
     if (commit && areaId > 0 && jobId) {
-      window.api.saveTakeoffArea({ ...area, points: newPoints, jobId, sortOrder: areasRef.current.indexOf(area) });
+      window.api.saveTakeoffArea({ ...area, points: newPoints, jobId, sortOrder: areasRef.current.indexOf(area) })
+        .catch(reportSaveError('area'));
     }
   }, [jobId]);
 
@@ -199,7 +216,11 @@ export function useAreaManager({ jobId, pageNum }: UseAreaManagerOptions): AreaM
 
   const confirmDelete = useCallback(() => {
     if (pendingDeleteId === null) return;
-    if (pendingDeleteId > 0) window.api.deleteTakeoffArea(pendingDeleteId);
+    if (pendingDeleteId > 0) {
+      window.api.deleteTakeoffArea(pendingDeleteId).catch(reportSaveError('area deletion'));
+    } else {
+      pendingDeletesRef.current.add(pendingDeleteId);
+    }
     setAreas((prev) => prev.filter((a) => a.id !== pendingDeleteId));
     if (selectedAreaId === pendingDeleteId) setSelectedAreaId(null);
     setPendingDeleteId(null);

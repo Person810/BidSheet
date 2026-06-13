@@ -160,8 +160,14 @@ export function CsvImportModal({
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
 
-    // Electron exposes the real filesystem path on File objects
-    const filePath = (file as any).path as string;
+    // Electron 32+ removed File.path; webUtils.getPathForFile (exposed in the
+    // preload) is the supported way to resolve a dropped file to its path.
+    let filePath = '';
+    try {
+      filePath = window.api.getDroppedFilePath(file);
+    } catch {
+      filePath = '';
+    }
     if (!filePath) {
       setError('Could not read file path.');
       return;
@@ -263,7 +269,16 @@ export function CsvImportModal({
     const unmatched = previewRows.filter((r) => !r.matchedMaterial);
     const priceChanges = previewRows.filter((r) => r.priceChanged);
     const included = previewRows.filter((r) => r.included);
-    return { matched: matched.length, unmatched: unmatched.length, priceChanges: priceChanges.length, included: included.length };
+    // Rows that *can* be included: a NaN/empty-price match can never be checked,
+    // so the header "select all" must compare against these, not all matches.
+    const selectable = previewRows.filter(
+      (r) => r.matchedMaterial && r.csvUnitCost !== null && !isNaN(r.csvUnitCost),
+    );
+    return {
+      matched: matched.length, unmatched: unmatched.length,
+      priceChanges: priceChanges.length, included: included.length,
+      selectable: selectable.length,
+    };
   }, [previewRows]);
 
   const handleCommit = async () => {
@@ -554,7 +569,7 @@ export function CsvImportModal({
                     <th style={{ width: 36 }}>
                       <input
                         type="checkbox"
-                        checked={stats.included === stats.matched && stats.matched > 0}
+                        checked={stats.included === stats.selectable && stats.selectable > 0}
                         onChange={(e) => toggleAll(e.target.checked)}
                         title="Select all matched rows"
                       />

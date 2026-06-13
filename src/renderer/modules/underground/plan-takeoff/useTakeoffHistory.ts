@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import type { TakeoffRun, TakeoffItem, TakeoffNode, TakeoffArea, TakeoffAnnotation } from './types';
+import { reportSaveError } from './takeoffPersistence';
 
 const MAX_HISTORY = 50;
 
@@ -73,6 +74,11 @@ export function useTakeoffHistory({ jobId, getState, reloadAll }: UseTakeoffHist
     try {
       await window.api.replaceTakeoffState(jobId, snapshot);
       await reloadAll();
+    } catch (err) {
+      // Don't let an undo/redo write reject silently into the void — surface it
+      // and resync local state from the DB so the view matches what persisted.
+      reportSaveError('undo/redo')(err);
+      await reloadAll().catch(() => { /* already reporting the primary error */ });
     } finally {
       restoring.current = false;
     }

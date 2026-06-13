@@ -1,6 +1,7 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { TakeoffAnnotation, AnnotationKind, PdfPoint } from './types';
 import { ANNOTATION_COLOR } from './types';
+import { reportSaveError } from './takeoffPersistence';
 
 interface UseAnnotationManagerOptions {
   jobId: number | null;
@@ -39,6 +40,10 @@ let globalNextLocalId = -1;
 
 export function useAnnotationManager({ jobId, pageNum }: UseAnnotationManagerOptions): AnnotationManager {
   const [annotations, setAnnotations] = useState<TakeoffAnnotation[]>([]);
+  const annotationsRef = useRef<TakeoffAnnotation[]>([]);
+  annotationsRef.current = annotations;
+  // Local ids of annotations deleted while their create-save was in flight.
+  const pendingDeletesRef = useRef<Set<number>>(new Set());
   const [pendingKind, setPendingKind] = useState<AnnotationKind | null>(null);
   const [startPoint, setStartPoint] = useState<PdfPoint | null>(null);
   const [mousePos, setMousePos] = useState<PdfPoint | null>(null);
@@ -68,10 +73,24 @@ export function useAnnotationManager({ jobId, pageNum }: UseAnnotationManagerOpt
   }, []);
 
   const saveAnnotation = useCallback((ann: TakeoffAnnotation) => {
+    const localId = ann.id;
     setAnnotations((prev) => [...prev, ann]);
     window.api.saveTakeoffAnnotation(ann).then((result: { id: number }) => {
-      setAnnotations((cur) => cur.map((a) => a.id === ann.id ? { ...a, id: result.id } : a));
-    });
+      const realId = result.id;
+      // Deleted mid-save: remove the persisted row instead of resurrecting it.
+      if (pendingDeletesRef.current.has(localId)) {
+        pendingDeletesRef.current.delete(localId);
+        window.api.deleteTakeoffAnnotation(realId).catch(reportSaveError('annotation deletion'));
+        setAnnotations((cur) => cur.filter((a) => a.id !== localId && a.id !== realId));
+        return;
+      }
+      setAnnotations((cur) => cur.map((a) => a.id === localId ? { ...a, id: realId } : a));
+      // Re-persist any text edit the id>0 guard skipped while mid-save.
+      const latest = annotationsRef.current.find((a) => a.id === localId);
+      if (latest) {
+        window.api.saveTakeoffAnnotation({ ...latest, id: realId }).catch(reportSaveError('annotation'));
+      }
+    }).catch(reportSaveError('annotation'));
   }, []);
 
   const handlePointClick = useCallback((point: PdfPoint) => {
@@ -113,12 +132,14 @@ export function useAnnotationManager({ jobId, pageNum }: UseAnnotationManagerOpt
 
   const commitText = useCallback((text: string, editingId?: number | null) => {
     if (editingId != null) {
-      setAnnotations((prev) => prev.map((a) => {
-        if (a.id !== editingId) return a;
-        const updated = { ...a, text };
-        if (a.id > 0) window.api.saveTakeoffAnnotation(updated);
-        return updated;
-      }));
+      // Persist OUTSIDE the updater so a doubled StrictMode/concurrent run
+      // can't double-write.
+      const updated = annotationsRef.current.map((a) => a.id === editingId ? { ...a, text } : a);
+      setAnnotations(updated);
+      if (editingId > 0) {
+        const ann = updated.find((a) => a.id === editingId);
+        if (ann) window.api.saveTakeoffAnnotation(ann).catch(reportSaveError('annotation'));
+      }
       return;
     }
     if (!pendingTextPoint || !jobId) return;
@@ -141,7 +162,12 @@ export function useAnnotationManager({ jobId, pageNum }: UseAnnotationManagerOpt
 
   const deleteAnnotation = useCallback((id: number) => {
     setAnnotations((prev) => prev.filter((a) => a.id !== id));
-    if (id > 0) window.api.deleteTakeoffAnnotation(id);
+    if (id > 0) {
+      window.api.deleteTakeoffAnnotation(id).catch(reportSaveError('annotation deletion'));
+    } else {
+      // Still mid-save: defer to the create-save completion.
+      pendingDeletesRef.current.add(id);
+    }
   }, []);
 
   const getById = useCallback(

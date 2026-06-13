@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { formatCurrency } from './helpers';
 import { useToastStore } from '../../stores/toast-store';
+import { neutralizeCsvFormula } from '../../../shared/csvSafe';
 
 interface CodeRollup {
   code: string;
@@ -13,7 +14,7 @@ interface CodeRollup {
 }
 
 function csvEscape(value: string | number): string {
-  const s = String(value);
+  const s = neutralizeCsvFormula(String(value));
   if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return '"' + s.replace(/"/g, '""') + '"';
   }

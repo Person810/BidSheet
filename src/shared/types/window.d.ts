@@ -123,6 +123,8 @@ declare global {
       // CSV Import
       openCsvFile: () => Promise<CsvParseResult | null>;
       parseCsvPath: (filePath: string) => Promise<CsvParseResult>;
+      /** Resolve a drag-and-dropped File to its on-disk path (Electron webUtils). */
+      getDroppedFilePath: (file: File) => string;
       importPriceSheet: (updates: PriceImportUpdate[], source: string) => Promise<PriceImportResult>;
 
       // Quotes

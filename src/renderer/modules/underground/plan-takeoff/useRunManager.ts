@@ -3,6 +3,7 @@ import type { TakeoffRun, RunConfig, PdfPoint, OverlayMode } from './types';
 import { UTILITY_COLORS } from './types';
 import type { NodeManager } from './useNodeManager';
 import { NODE_SNAP_RADIUS_PX } from './takeoffUtils';
+import { reportSaveError } from './takeoffPersistence';
 
 interface UseRunManagerOptions {
   jobId: number | null;
@@ -91,6 +92,10 @@ export function useRunManager({
   const [runs, setRuns] = useState<TakeoffRun[]>([]);
   const runsRef = useRef<TakeoffRun[]>([]);
   runsRef.current = runs;
+  // Local ids of runs deleted while their create-save was still in flight, so
+  // the save's completion deletes the now-persisted row instead of resurrecting
+  // it as a ghost on next reload.
+  const pendingDeletesRef = useRef<Set<number>>(new Set());
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -126,8 +131,25 @@ export function useRunManager({
     } else if (jobId) {
       const payload = { ...run, jobId, sortOrder: runsRef.current.indexOf(run) };
       window.api.saveTakeoffRun(payload).then((result: { id: number }) => {
-        setRuns((cur) => cur.map((r) => r.id === localId ? { ...r, id: result.id } : r));
-      });
+        const realId = result.id;
+        // Deleted mid-save: remove the row that just persisted rather than
+        // letting the swap bring it back.
+        if (pendingDeletesRef.current.has(localId)) {
+          pendingDeletesRef.current.delete(localId);
+          window.api.deleteTakeoffRun(realId).catch(reportSaveError('run deletion'));
+          setRuns((cur) => cur.filter((r) => r.id !== localId && r.id !== realId));
+          return;
+        }
+        setRuns((cur) => cur.map((r) => r.id === localId ? { ...r, id: realId } : r));
+        // Edits made while the save was in flight were skipped by the id>0
+        // guard; re-persist the current state under the real id so they aren't
+        // lost on reload.
+        const latest = runsRef.current.find((r) => r.id === localId);
+        if (latest) {
+          window.api.saveTakeoffRun({ ...latest, id: realId, jobId, sortOrder: runsRef.current.indexOf(latest) })
+            .catch(reportSaveError('run'));
+        }
+      }).catch(reportSaveError('run'));
     }
     setActiveRunId(null);
     setMousePos(null);
@@ -142,19 +164,20 @@ export function useRunManager({
 
   const handleConfigConfirm = useCallback((config: RunConfig) => {
     if (editingRunId !== null) {
-      setRuns((prev) => {
-        const updated = prev.map((r) => {
-          if (r.id !== editingRunId) return r;
-          return { ...r, ...config, color: UTILITY_COLORS[config.utilityType] };
-        });
-        if (editingRunId > 0 && jobId) {
-          const run = updated.find((r) => r.id === editingRunId);
-          if (run) {
-            window.api.saveTakeoffRun({ ...run, jobId, sortOrder: updated.indexOf(run) });
-          }
+      // Compute from the ref and persist OUTSIDE the state updater: React may
+      // run a setState updater twice (StrictMode / concurrent), which would
+      // double-fire the IPC write if the save lived inside it.
+      const updated = runsRef.current.map((r) =>
+        r.id === editingRunId ? { ...r, ...config, color: UTILITY_COLORS[config.utilityType] } : r
+      );
+      setRuns(updated);
+      if (editingRunId > 0 && jobId) {
+        const run = updated.find((r) => r.id === editingRunId);
+        if (run) {
+          window.api.saveTakeoffRun({ ...run, jobId, sortOrder: updated.indexOf(run) })
+            .catch(reportSaveError('run'));
         }
-        return updated;
-      });
+      }
       setShowConfigModal(false);
       setEditingRunId(null);
       return;
@@ -225,7 +248,8 @@ export function useRunManager({
       r.id === runId ? { ...r, points: updatedPoints } : r
     ));
     if (commit && runId > 0 && jobId) {
-      window.api.saveTakeoffRun({ ...run, points: updatedPoints, jobId, sortOrder: runsRef.current.indexOf(run) });
+      window.api.saveTakeoffRun({ ...run, points: updatedPoints, jobId, sortOrder: runsRef.current.indexOf(run) })
+        .catch(reportSaveError('run'));
     }
   }, [jobId, nodeManager]);
 
@@ -299,7 +323,13 @@ export function useRunManager({
 
   const confirmDelete = useCallback(() => {
     if (pendingDeleteId === null) return;
-    if (pendingDeleteId > 0) window.api.deleteTakeoffRun(pendingDeleteId);
+    if (pendingDeleteId > 0) {
+      window.api.deleteTakeoffRun(pendingDeleteId).catch(reportSaveError('run deletion'));
+    } else {
+      // Still mid-save (optimistic negative id): defer the delete to the
+      // create-save completion so the persisted row is removed, not orphaned.
+      pendingDeletesRef.current.add(pendingDeleteId);
+    }
     setRuns((prev) => prev.filter((r) => r.id !== pendingDeleteId));
     if (selectedRunId === pendingDeleteId) setSelectedRunId(null);
     setPendingDeleteId(null);
@@ -348,7 +378,8 @@ export function useRunManager({
     const updatedRun = { ...run, points: newPoints };
     setRuns((prev) => prev.map((r) => r.id === runId ? updatedRun : r));
     if (runId > 0 && jobId) {
-      window.api.saveTakeoffRun({ ...updatedRun, jobId, sortOrder: runsRef.current.indexOf(run) });
+      window.api.saveTakeoffRun({ ...updatedRun, jobId, sortOrder: runsRef.current.indexOf(run) })
+        .catch(reportSaveError('run'));
     }
   }, [handleDeleteRun, jobId]);
 
@@ -360,7 +391,8 @@ export function useRunManager({
     const updatedRun = { ...run, points: newPoints };
     setRuns((prev) => prev.map((r) => r.id === runId ? updatedRun : r));
     if (runId > 0 && jobId) {
-      window.api.saveTakeoffRun({ ...updatedRun, jobId, sortOrder: runsRef.current.indexOf(run) });
+      window.api.saveTakeoffRun({ ...updatedRun, jobId, sortOrder: runsRef.current.indexOf(run) })
+        .catch(reportSaveError('run'));
     }
   }, [jobId]);
 
@@ -391,7 +423,7 @@ export function useRunManager({
         window.api.updateTakeoffPoint({
           runId, sortOrder: vertexIndex,
           invertElev: data.invertElev, rimElev: data.rimElev, structureType: data.structureType,
-        });
+        }).catch(reportSaveError('vertex'));
       }
     }
   }, [nodeManager]);

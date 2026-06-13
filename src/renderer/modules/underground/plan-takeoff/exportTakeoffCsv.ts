@@ -5,10 +5,14 @@ import {
   ftToInches, loadPageScaleMap,
 } from './takeoffUtils';
 import { calculateTrench } from '../trenchCalc';
+import { neutralizeCsvFormula } from '../../../../shared/csvSafe';
 
-/** Escape a field value per RFC 4180: quote if it contains comma, quote, or newline. */
+/**
+ * Escape a field for CSV: neutralize spreadsheet formula injection, then quote
+ * per RFC 4180 (comma, quote, or newline).
+ */
 function esc(value: string | number): string {
-  const s = String(value);
+  const s = neutralizeCsvFormula(String(value));
   if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return '"' + s.replace(/"/g, '""') + '"';
   }

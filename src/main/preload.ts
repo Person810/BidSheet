@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 // Electron prefixes errors crossing IPC with
 // "Error invoking remote method 'channel': Error: ..." -- strip that
@@ -92,6 +92,9 @@ contextBridge.exposeInMainWorld('api', {
   // ---- CSV Import ----
   openCsvFile: () => invoke('db:csv:open'),
   parseCsvPath: (filePath: string) => invoke('db:csv:parse-path', filePath),
+  // Electron 32+ removed File.path; webUtils.getPathForFile is the supported
+  // way to resolve a drag-and-dropped file to its real filesystem path.
+  getDroppedFilePath: (file: File): string => webUtils.getPathForFile(file),
   importPriceSheet: (updates: any[], source: string) =>
     invoke('db:materials:import-prices', updates, source),
 

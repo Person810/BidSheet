@@ -20,6 +20,16 @@ describe('escapeField', () => {
     expect(escapeField('line1\nline2')).toBe('"line1\nline2"');
     expect(escapeField('line1\rline2')).toBe('"line1\rline2"');
   });
+
+  it('neutralizes spreadsheet formula injection without mangling numbers', () => {
+    // Leading =,+,-,@ in user text would evaluate as a formula in Excel.
+    expect(escapeField('=cmd|/c calc')).toBe("'=cmd|/c calc"); // prefixed; no comma so not quoted
+    expect(escapeField('@SUM(1)')).toBe("'@SUM(1)");
+    // Formula trigger AND a comma: prefixed, then RFC-quoted.
+    expect(escapeField('=HYPERLINK(x), evil')).toBe('"\'=HYPERLINK(x), evil"');
+    // A genuine negative amount must still import as a number.
+    expect(escapeField('-5.00')).toBe('-5.00');
+  });
 });
 
 const baseData = (): CSVExportData => ({

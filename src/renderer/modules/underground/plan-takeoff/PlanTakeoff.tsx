@@ -22,6 +22,7 @@ import { sendToProfiles } from './sendToProfiles';
 import { sendItemsToBid } from './sendItemsToBid';
 import { sendAreasToBid } from './sendAreasToBid';
 import { buildTakeoffCsv } from './exportTakeoffCsv';
+import { reportSaveError } from './takeoffPersistence';
 import { ContextMenu, getMenuItems } from './ContextMenu';
 import { EditVertexDialog } from './EditVertexDialog';
 import { RunProfileView } from './RunProfileView';
@@ -252,9 +253,19 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     window.api.readTakeoffPdf(jobSettings.pdf_path).then((result: any) => {
       if (result?.data) {
         setPdfData(new Uint8Array(result.data));
+      } else {
+        // The PDF was moved or deleted since it was attached. Don't strand the
+        // user on a blank "No plan loaded" view with their runs/items hidden —
+        // tell them what happened and how to fix it.
+        addToast(
+          `The saved plan PDF couldn't be found at ${jobSettings.pdf_path}. Re-attach it with "Open plan PDF" — your takeoff data is safe.`,
+          'warn',
+        );
       }
+    }).catch(() => {
+      addToast('Couldn\'t open the saved plan PDF. Re-attach it with "Open plan PDF" — your takeoff data is safe.', 'error');
     }).finally(() => setLoading(false));
-  }, [jobSettings, pdfPath]);
+  }, [jobSettings, pdfPath, addToast]);
 
   const handleLoadPlan = async () => {
     setLoading(true);
@@ -280,7 +291,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           scale_point2_y: jobSettings?.scale_point2_y ?? null,
           scale_distance_ft: jobSettings?.scale_distance_ft ?? null,
         };
-        window.api.saveTakeoffSettings(settings);
+        window.api.saveTakeoffSettings(settings).catch(reportSaveError('plan settings'));
         setJobSettings(settings);
       }
     } catch (err) {
@@ -299,9 +310,23 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     pageSizeRef.current = { width: w, height: h };
   }, []);
 
-  const prevPage = useCallback(() => setPageNum((p) => Math.max(1, p - 1)), []);
-  const nextPage = useCallback(() => setPageNum((p) => Math.min(totalPages, p + 1)), [totalPages]);
-  const goToPage = useCallback((page: number) => setPageNum(page), []);
+  // Changing pages mid-draw would append the new page's coordinates (in its own
+  // calibration) to a run/area anchored on the old page, silently mixing two
+  // sheets' coordinate spaces and corrupting lengths/areas. Block nav while any
+  // shape is being drawn — finish or Esc first.
+  const drawingLocksPage = rm.isDrawing || am.isDrawing || anm.isDrawing;
+  const prevPage = useCallback(() => {
+    if (rm.isDrawing || am.isDrawing || anm.isDrawing) return;
+    setPageNum((p) => Math.max(1, p - 1));
+  }, [rm.isDrawing, am.isDrawing, anm.isDrawing]);
+  const nextPage = useCallback(() => {
+    if (rm.isDrawing || am.isDrawing || anm.isDrawing) return;
+    setPageNum((p) => Math.min(totalPages, p + 1));
+  }, [totalPages, rm.isDrawing, am.isDrawing, anm.isDrawing]);
+  const goToPage = useCallback((page: number) => {
+    if (rm.isDrawing || am.isDrawing || anm.isDrawing) return;
+    setPageNum(page);
+  }, [rm.isDrawing, am.isDrawing, anm.isDrawing]);
   const zoomIn = useCallback(() => setScale((s) => Math.min(MAX_SCALE, s + 0.1)), []);
   const zoomOut = useCallback(() => setScale((s) => Math.max(MIN_SCALE, s - 0.1)), []);
   const handleFitToWidth = useCallback(() => {
@@ -510,23 +535,32 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     for (const id of multiSelected.items) if (id > 0) deletes.push(window.api.deleteTakeoffItem(id));
     for (const id of multiSelected.areas) if (id > 0) deletes.push(window.api.deleteTakeoffArea(id));
     for (const id of multiSelected.annotations) if (id > 0) deletes.push(window.api.deleteTakeoffAnnotation(id));
-    await Promise.all(deletes);
-    await reloadAll();
-    clearMultiSelection();
-    addToast(`Deleted ${multiSelectedCount} object${multiSelectedCount !== 1 ? 's' : ''}.`, 'success');
+    try {
+      await Promise.all(deletes);
+      await reloadAll();
+      clearMultiSelection();
+      addToast(`Deleted ${multiSelectedCount} object${multiSelectedCount !== 1 ? 's' : ''}.`, 'success');
+    } catch (err) {
+      reportSaveError('bulk delete')(err);
+      await reloadAll();
+    }
   }, [multiSelected, multiSelectedCount, history, reloadAll, clearMultiSelection, addToast]);
 
   const handleBulkSetUtility = useCallback(async (utilityType: UtilityType) => {
     if (!multiSelected || multiSelected.runs.size === 0) return;
     history.record();
-    for (const id of multiSelected.runs) {
-      const run = rm.runs.find((r) => r.id === id);
-      if (run && id > 0) {
-        await window.api.saveTakeoffRun({
-          ...run, utilityType, color: UTILITY_COLORS[utilityType],
-          jobId, sortOrder: rm.runs.indexOf(run),
-        });
+    try {
+      for (const id of multiSelected.runs) {
+        const run = rm.runs.find((r) => r.id === id);
+        if (run && id > 0) {
+          await window.api.saveTakeoffRun({
+            ...run, utilityType, color: UTILITY_COLORS[utilityType],
+            jobId, sortOrder: rm.runs.indexOf(run),
+          });
+        }
       }
+    } catch (err) {
+      reportSaveError('run')(err);
     }
     await reloadAll();
     clearMultiSelection();
@@ -755,10 +789,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
                 runId: targetId!, sortOrder: targetData.vertexIndex!,
                 invertElev: vtx.invertElev ?? null, rimElev: vtx.rimElev ?? null,
                 structureType: vtx.structureType ?? null, nodeId: node.id,
-              });
+              }).catch(reportSaveError('vertex'));
               // Start the new run from that node
               rm.startNewRunFromNode(node.id);
-            });
+            }).catch(reportSaveError('junction node'));
           }
         } else if (targetType === 'fitting' && targetId != null) {
           // For fittings: continue the existing run from its end. The run
@@ -941,9 +975,11 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         return;
       }
 
+      // Page nav is blocked mid-draw — see prevPage/nextPage.
+      const lockPage = rm.isDrawing || am.isDrawing || anm.isDrawing;
       switch (e.key) {
-        case 'ArrowLeft': setPageNum((p) => Math.max(1, p - 1)); break;
-        case 'ArrowRight': setPageNum((p) => Math.min(totalPages, p + 1)); break;
+        case 'ArrowLeft': if (!lockPage) setPageNum((p) => Math.max(1, p - 1)); break;
+        case 'ArrowRight': if (!lockPage) setPageNum((p) => Math.min(totalPages, p + 1)); break;
         case '=': case '+': setScale((s) => Math.min(MAX_SCALE, s + 0.1)); break;
         case '-': setScale((s) => Math.max(MIN_SCALE, s - 0.1)); break;
         case '0':

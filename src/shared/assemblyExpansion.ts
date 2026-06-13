@@ -18,7 +18,10 @@ export interface AssemblyLineItem {
   notes: string;
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
+// Hours are priced (hours × cost/hour), so they need more than one decimal:
+// e.g. 4 EA at 100 EA/hr is 0.04 hr, which round-to-1-decimal collapsed to 0,
+// silently zeroing the labor/equipment cost. 4 decimals keeps small quantities.
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 /**
  * Expand an assembly (materials + optional labor/equipment components) into
@@ -66,7 +69,7 @@ export function buildAssemblyLineItems(
       unit: assembly.unit,
       crewTemplateId: assembly.crew_template_id ?? null,
       productionRateId: assembly.production_rate_id ?? null,
-      laborHours: ratePerHour > 0 ? round1(qty / ratePerHour) : 0,
+      laborHours: ratePerHour > 0 ? round4(qty / ratePerHour) : 0,
       laborCostPerHour: costPerHour,
       notes,
     });
@@ -81,7 +84,7 @@ export function buildAssemblyLineItems(
       unit: assembly.unit,
       equipmentId: assembly.equipment_id,
       equipmentCostPerHour: assembly.equipment_hourly_rate || 0,
-      equipmentHours: round1(qty * (assembly.equipment_hours_per_unit || 0)),
+      equipmentHours: round4(qty * (assembly.equipment_hours_per_unit || 0)),
       notes,
     });
   }
