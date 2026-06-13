@@ -20,6 +20,9 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [enroll, setEnroll] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
+  // Server-reported; defaults false so the wizard never offers a Subscribe
+  // button that can't work (trials-only until paid plans are opened server-side).
+  const [billingEnabled, setBillingEnabled] = useState(false);
   const [awaitingPayment, setAwaitingPayment] = useState(false);
   const cancelled = useRef(false);
   useEffect(() => () => { cancelled.current = true; }, []);
@@ -47,7 +50,10 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   const handleVerify = () =>
     act(async () => {
       await window.api.cloudVerifyTotp(code, enroll?.factorId);
-      window.api.cloudMe().then((me) => setTrialEndsAt(me.account?.trial_ends_at ?? null)).catch(() => {});
+      window.api.cloudMe().then((me) => {
+        setTrialEndsAt(me.account?.trial_ends_at ?? null);
+        setBillingEnabled(!!me.billing_enabled);
+      }).catch(() => {});
       window.api.cloudSyncNow().catch(() => {});
       setStep('done');
     });
@@ -165,21 +171,30 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
               <strong>Your free trial is active</strong> — it runs until {fmtDate(trialEndsAt)}.
             </p>
             <p className="text-muted mb-16">
-              Turn sync on per job from the Jobs &amp; Bids list. Subscribe now (or any time
-              before the trial ends) to keep syncing and unlock the full 100 GB.
+              {billingEnabled
+                ? 'Turn sync on per job from the Jobs & Bids list. Subscribe now (or any time before the trial ends) to keep syncing and unlock the full 100 GB.'
+                : 'Turn sync on per job from the Jobs & Bids list. You have the full 100 GB during your trial — paid plans are coming soon.'}
             </p>
-            {awaitingPayment && (
+            {billingEnabled && awaitingPayment && (
               <p className="text-muted mb-16" style={{ fontSize: 12 }}>
                 Waiting for payment to complete in your browser… this updates automatically.
               </p>
             )}
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={onClose}>
-                Maybe Later
-              </button>
-              <button className="btn btn-primary" disabled={awaitingPayment} onClick={handleSubscribe}>
-                {awaitingPayment ? 'Waiting for payment…' : 'Subscribe — $20/month'}
-              </button>
+              {billingEnabled ? (
+                <>
+                  <button className="btn btn-secondary" onClick={onClose}>
+                    Maybe Later
+                  </button>
+                  <button className="btn btn-primary" disabled={awaitingPayment} onClick={handleSubscribe}>
+                    {awaitingPayment ? 'Waiting for payment…' : 'Subscribe — $20/month'}
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn-primary" onClick={onClose}>
+                  Get Started
+                </button>
+              )}
             </div>
           </div>
         )}
