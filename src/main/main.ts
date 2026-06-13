@@ -46,6 +46,9 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     title: 'BidSheet',
+    // Bundled at the app root via build.files ("assets/**/*"); __dirname is
+    // dist/main both in dev and inside the asar, so assets sits two levels up.
+    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

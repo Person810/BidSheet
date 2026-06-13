@@ -120,6 +120,7 @@ export function App() {
   const [setupComplete, setSetupComplete] = useState(false);
   const [activeModules, setActiveModules] = useState<TradeModule[]>([]);
   const [companyName, setCompanyName] = useState('');
+  const [companyLogo, setCompanyLogo] = useState('');
   const addToast = useToastStore((s) => s.addToast);
   const openWalkthrough = useWalkthroughStore((s) => s.open);
 
@@ -148,6 +149,9 @@ export function App() {
       if (s?.company_name) {
         setCompanyName(s.company_name);
       }
+      // Company logo overrides the default BidSheet mark once one is uploaded
+      // in Settings. Stored as a data URI, so it renders without a file fetch.
+      setCompanyLogo(s?.company_logo || '');
       setLoading(false);
     });
 
@@ -230,12 +234,12 @@ export function App() {
         <nav className="sidebar">
           <div className="sidebar-header">
             <div className="sidebar-brand-mark">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 20h20" />
-                <path d="M6 20V8l4 4 4-4 4 4V20" />
-              </svg>
+              <img
+                src={companyLogo || './icon.png'}
+                alt={companyLogo ? `${companyName || 'Company'} logo` : 'BidSheet'}
+              />
             </div>
-            <h1>BidSheet</h1>
+            <h1 title={companyName || 'BidSheet'}>{companyName || 'BidSheet'}</h1>
           </div>
           <ul className="nav-links">
             <li>
