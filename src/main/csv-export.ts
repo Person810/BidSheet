@@ -5,6 +5,8 @@
  * Each line item becomes one row; job-level fields repeat on every row.
  */
 
+import { neutralizeCsvFormula } from '../shared/csvSafe';
+
 interface ExportJob {
   name: string;
   job_number: string | null;
@@ -64,12 +66,16 @@ const COLUMNS = [
   'ServiceDate',
 ];
 
-/** Escape a field value per RFC 4180: quote if it contains comma, quote, or newline. */
+/**
+ * Escape a field for CSV: first neutralize spreadsheet formula injection, then
+ * quote per RFC 4180 (comma, quote, or newline).
+ */
 export function escapeField(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
-    return '"' + value.replace(/"/g, '""') + '"';
+  const safe = neutralizeCsvFormula(value);
+  if (safe.includes(',') || safe.includes('"') || safe.includes('\n') || safe.includes('\r')) {
+    return '"' + safe.replace(/"/g, '""') + '"';
   }
-  return value;
+  return safe;
 }
 
 /** Format a date string (YYYY-MM-DD or ISO) as MM/DD/YYYY for QuickBooks. */
@@ -148,32 +154,33 @@ export function generateEstimateCSV(data: CSVExportData): string {
     }
   }
 
-  // Markup rows (skip if zero)
-  if ((summary.escalation || 0) > 0) {
+  // Markup rows (skip only true zeros — negative overrides are real discounts
+  // and must still export, or the rows won't sum to the bid's grand total).
+  if ((summary.escalation || 0) !== 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
       `Material Escalation (${fmt(job.escalation_percent || 0)}%)`, 1, fmt(summary.escalation!), fmt(summary.escalation!),
     ));
   }
-  if (summary.overhead > 0) {
+  if (summary.overhead !== 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
       `Overhead${pctLabel(job.overhead_percent)}`, 1, fmt(summary.overhead), fmt(summary.overhead),
     ));
   }
-  if (summary.profit > 0) {
+  if (summary.profit !== 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
       `Profit${pctLabel(job.profit_percent)}`, 1, fmt(summary.profit), fmt(summary.profit),
     ));
   }
-  if (summary.bond > 0) {
+  if (summary.bond !== 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
       `Bond${pctLabel(job.bond_percent)}`, 1, fmt(summary.bond), fmt(summary.bond),
     ));
   }
-  if (summary.tax > 0) {
+  if (summary.tax !== 0) {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
       `Sales Tax (${fmt(job.tax_percent)}%)`, 1, fmt(summary.tax), fmt(summary.tax),

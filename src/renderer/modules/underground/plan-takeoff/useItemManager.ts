@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { TakeoffItem, PdfPoint } from './types';
+import { reportSaveError } from './takeoffPersistence';
 
 interface UseItemManagerOptions {
   jobId: number | null;
@@ -39,8 +40,12 @@ export function useItemManager({
   jobId, pageNum,
 }: UseItemManagerOptions): ItemManager {
   const [items, setItems] = useState<TakeoffItem[]>([]);
+  const itemsRef = useRef<TakeoffItem[]>([]);
+  itemsRef.current = items;
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  // Local ids of items deleted while their create-save was in flight.
+  const pendingDeletesRef = useRef<Set<number>>(new Set());
 
   // Load items from DB when job changes (also used by undo/redo restore)
   const reload = useCallback(async () => {
@@ -51,6 +56,24 @@ export function useItemManager({
   }, [jobId]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Resolve an optimistic create: delete the persisted row if it was removed
+  // mid-save (else it ghosts back on reload), otherwise swap the temp id for
+  // the real one and re-persist any edits the id>0 guard skipped meanwhile.
+  const resolveCreate = useCallback((localId: number, result: { id: number }) => {
+    const realId = result.id;
+    if (pendingDeletesRef.current.has(localId)) {
+      pendingDeletesRef.current.delete(localId);
+      window.api.deleteTakeoffItem(realId).catch(reportSaveError('item deletion'));
+      setItems((cur) => cur.filter((i) => i.id !== localId && i.id !== realId));
+      return;
+    }
+    setItems((cur) => cur.map((i) => i.id === localId ? { ...i, id: realId } : i));
+    const latest = itemsRef.current.find((i) => i.id === localId);
+    if (latest) {
+      window.api.saveTakeoffItem({ ...latest, id: realId }).catch(reportSaveError('item'));
+    }
+  }, []);
 
   const addItemAtPoint = useCallback((
     material: { id: number; name: string },
@@ -77,10 +100,10 @@ export function useItemManager({
     setItems((prev) => [...prev, newItem]);
 
     // Save immediately to DB
-    window.api.saveTakeoffItem(newItem).then((result: { id: number }) => {
-      setItems((cur) => cur.map((i) => i.id === localId ? { ...i, id: result.id } : i));
-    });
-  }, [jobId]);
+    window.api.saveTakeoffItem(newItem)
+      .then((result: { id: number }) => resolveCreate(localId, result))
+      .catch(reportSaveError('item'));
+  }, [jobId, resolveCreate]);
 
   const selectItem = useCallback((id: number | null) => {
     setSelectedItemId(id);
@@ -96,7 +119,10 @@ export function useItemManager({
     setItems((prev) => prev.filter((i) => i.id !== id));
     if (selectedItemId === id) setSelectedItemId(null);
     if (id > 0) {
-      window.api.deleteTakeoffItem(id);
+      window.api.deleteTakeoffItem(id).catch(reportSaveError('item deletion'));
+    } else {
+      // Still mid-save: defer the delete to the create-save completion.
+      pendingDeletesRef.current.add(id);
     }
     setPendingDeleteId(null);
   }, [pendingDeleteId, selectedItemId]);
@@ -115,7 +141,7 @@ export function useItemManager({
       if (item) {
         window.api.saveTakeoffItem({
           ...item, materialId: material.id, materialName: material.name, label: material.name,
-        });
+        }).catch(reportSaveError('item'));
       }
     }
   }, [items]);
@@ -126,7 +152,9 @@ export function useItemManager({
     ));
     if (commit && id > 0) {
       const item = items.find((i) => i.id === id);
-      if (item) window.api.saveTakeoffItem({ ...item, xPx: point.x, yPx: point.y });
+      if (item) {
+        window.api.saveTakeoffItem({ ...item, xPx: point.x, yPx: point.y }).catch(reportSaveError('item'));
+      }
     }
   }, [items]);
 
@@ -145,10 +173,10 @@ export function useItemManager({
     };
 
     setItems((prev) => [...prev, newItem]);
-    window.api.saveTakeoffItem(newItem).then((result: { id: number }) => {
-      setItems((cur) => cur.map((i) => i.id === localId ? { ...i, id: result.id } : i));
-    });
-  }, [items, jobId]);
+    window.api.saveTakeoffItem(newItem)
+      .then((result: { id: number }) => resolveCreate(localId, result))
+      .catch(reportSaveError('item'));
+  }, [items, jobId, resolveCreate]);
 
   const pageItems = useMemo(
     () => items.filter((i) => i.pdfPage === pageNum),

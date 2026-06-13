@@ -109,7 +109,20 @@ export function initAutoUpdater(mainWindow: BrowserWindow): void {
   });
 
   ipcMain.handle('updater:install', () => {
-    autoUpdater.quitAndInstall(false, true);
+    // quitAndInstall throws if no update is staged. Per this file's invariant,
+    // an updater problem must never surface as an app crash in the renderer —
+    // log it and report through the same 'update-status' channel as the rest.
+    try {
+      autoUpdater.quitAndInstall(false, true);
+      return true;
+    } catch (err: any) {
+      logger.error('updater', 'Install failed', err?.message);
+      sendToRenderer(mainWindow, 'update-status', {
+        status: 'error',
+        error: err?.message || 'Could not install the update.',
+      });
+      return false;
+    }
   });
 
   // Check for updates on launch (after a short delay so the window loads first)

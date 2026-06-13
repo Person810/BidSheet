@@ -24,6 +24,25 @@ function handle(channel: string, fn: (...args: any[]) => any): void {
 }
 
 /**
+ * Open a Worker→Paddle-supplied URL in the system browser, but only if it's a
+ * real https:// URL. Under the app's compromised-server threat model the
+ * checkout/portal link is untrusted input; without this a hostile response
+ * could hand shell.openExternal a file:// or custom-scheme URL.
+ */
+async function openExternalHttps(url: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('Billing service returned an invalid link.');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Billing service returned a non-https link; refusing to open it.');
+  }
+  await shell.openExternal(parsed.href);
+}
+
+/**
  * Registered instead of the real handlers when local-only mode is on.
  * Nothing cloud-related is constructed — no Supabase client, no Worker
  * requests, no sync timers — so the app's only network activity is the
@@ -96,12 +115,12 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   handle('cloud:billing-checkout', async () => {
     const url = await api.checkout();
     logger.info('cloud:billing-checkout', 'Opening hosted checkout in browser');
-    await shell.openExternal(url);
+    await openExternalHttps(url);
     return url;
   });
   handle('cloud:billing-portal', async () => {
     const url = await api.billingPortal();
-    await shell.openExternal(url);
+    await openExternalHttps(url);
     return url;
   });
 

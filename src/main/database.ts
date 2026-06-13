@@ -184,6 +184,17 @@ export function seedDatabase(
   seed();
 }
 
+// Ordered list of migrations; index 0 is v1. Each runs inside its own
+// transaction (below), so a multi-statement migration is all-or-nothing.
+const MIGRATIONS: Array<(db: Database.Database) => void> = [
+  migrateV1, migrateV2, migrateV3, migrateV4, migrateV5,
+  migrateV6, migrateV7, migrateV8, migrateV9, migrateV10,
+  migrateV11, migrateV12, migrateV13, migrateV14, migrateV15,
+  migrateV16, migrateV17, migrateV18, migrateV19, migrateV20,
+  migrateV21, migrateV22, migrateV23, migrateV24, migrateV25,
+  migrateV26, migrateV27, migrateV28, migrateV29,
+];
+
 function runMigrations(db: Database.Database): void {
   db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)');
 
@@ -193,92 +204,15 @@ function runMigrations(db: Database.Database): void {
 
   const version = currentVersion?.version ?? 0;
 
-  if (version < 1) {
-    migrateV1(db);
-  }
-  if (version < 2) {
-    migrateV2(db);
-  }
-  if (version < 3) {
-    migrateV3(db);
-  }
-  if (version < 4) {
-    migrateV4(db);
-  }
-  if (version < 5) {
-    migrateV5(db);
-  }
-  if (version < 6) {
-    migrateV6(db);
-  }
-  if (version < 7) {
-    migrateV7(db);
-  }
-  if (version < 8) {
-    migrateV8(db);
-  }
-  if (version < 9) {
-    migrateV9(db);
-  }
-  if (version < 10) {
-    migrateV10(db);
-  }
-  if (version < 11) {
-    migrateV11(db);
-  }
-  if (version < 12) {
-    migrateV12(db);
-  }
-  if (version < 13) {
-    migrateV13(db);
-  }
-  if (version < 14) {
-    migrateV14(db);
-  }
-  if (version < 15) {
-    migrateV15(db);
-  }
-  if (version < 16) {
-    migrateV16(db);
-  }
-  if (version < 17) {
-    migrateV17(db);
-  }
-  if (version < 18) {
-    migrateV18(db);
-  }
-  if (version < 19) {
-    migrateV19(db);
-  }
-  if (version < 20) {
-    migrateV20(db);
-  }
-  if (version < 21) {
-    migrateV21(db);
-  }
-  if (version < 22) {
-    migrateV22(db);
-  }
-  if (version < 23) {
-    migrateV23(db);
-  }
-  if (version < 24) {
-    migrateV24(db);
-  }
-  if (version < 25) {
-    migrateV25(db);
-  }
-  if (version < 26) {
-    migrateV26(db);
-  }
-  if (version < 27) {
-    migrateV27(db);
-  }
-  if (version < 28) {
-    migrateV28(db);
-  }
-  if (version < 29) {
-    migrateV29(db);
+  // Each migrateVn ends by inserting its schema_version row, but a bare
+  // db.exec autocommits per statement — a crash partway through left a
+  // half-applied schema with no version recorded, so the next launch re-ran
+  // the migration and died on "table already exists". Wrapping each migration
+  // in a transaction makes it atomic: it either fully applies (schema + version
+  // bump together) or rolls back to be retried cleanly next launch.
+  for (let v = version + 1; v <= MIGRATIONS.length; v++) {
+    const migrate = MIGRATIONS[v - 1];
+    db.transaction(() => migrate(db))();
   }
 }
 

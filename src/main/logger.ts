@@ -53,7 +53,15 @@ function ensureStream(): fs.WriteStream | null {
 
     const filePath = path.join(logDir, `bidsheet-${today}.log`);
     try {
-      logStream = fs.createWriteStream(filePath, { flags: 'a' });
+      const stream = fs.createWriteStream(filePath, { flags: 'a' });
+      // Stream failures (EACCES, ENOSPC, drive yanked) surface as async 'error'
+      // events, NOT as a throw from createWriteStream. Without a listener an
+      // unhandled 'error' takes down the whole main process — exactly when the
+      // disk is already in trouble. Swallow it and drop back to no logging.
+      stream.on('error', () => {
+        if (logStream === stream) logStream = null;
+      });
+      logStream = stream;
       currentDateStr = today;
     } catch (_) {
       logStream = null;
