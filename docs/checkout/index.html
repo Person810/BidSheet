@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BidSheet Cloud — Checkout</title>
+  <title>BidSheet Cloud · Checkout</title>
   <meta name="robots" content="noindex">
   <link rel="icon" href="/icon.png" type="image/png">
   <link rel="stylesheet" href="/assets/site.css">
@@ -58,7 +58,7 @@
     <h1>BidSheet <span>Cloud</span></h1>
     <p id="status" role="status">Loading secure checkout…</p>
     <p>Payment is handled by Paddle, our merchant of record. After paying, you can
-       close this tab — the BidSheet app picks up your subscription automatically.</p>
+       close this tab. The BidSheet app picks up your subscription automatically.</p>
   </main>
 
   <nav class="checkout-links" aria-label="Legal">
@@ -95,7 +95,7 @@
         token: PADDLE_CLIENT_TOKEN,
         eventCallback: function (ev) {
           if (ev.name === 'checkout.completed') {
-            status.textContent = 'Payment complete — you can close this tab and return to BidSheet.';
+            status.textContent = 'Payment complete. You can close this tab and return to BidSheet.';
           }
         }
       });
