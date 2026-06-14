@@ -195,6 +195,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV26, migrateV27, migrateV28, migrateV29, migrateV30,
   migrateV31,
   migrateV32,
+  migrateV33,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -310,6 +311,21 @@ function migrateV31(db: Database.Database): void {
     UPDATE bid_line_items SET price_state = 'past_price' WHERE material_unit_cost > 0;
 
     INSERT INTO schema_version (version) VALUES (31);
+  `);
+}
+
+function migrateV33(db: Database.Database): void {
+  // Per-member E2EE keys (multi-user orgs). Under the format-2 scheme the
+  // recovery key wraps this member's X25519 private key (member_priv_enc,
+  // safeStorage-wrapped like dek_enc); the account DEK is then reached by
+  // opening the DEK sealed to this member's public key. member_pub caches the
+  // raw public key (base64); e2ee_format caches which scheme the account is on
+  // (1 = legacy single-key, 2 = per-member) so the client knows how to unlock.
+  db.exec(`
+    ALTER TABLE cloud_auth ADD COLUMN member_priv_enc TEXT;
+    ALTER TABLE cloud_auth ADD COLUMN member_pub TEXT;
+    ALTER TABLE cloud_auth ADD COLUMN e2ee_format INTEGER;
+    INSERT INTO schema_version (version) VALUES (33);
   `);
 }
 

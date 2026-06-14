@@ -51,11 +51,50 @@ export interface CloudBackupMeta {
   created_at: string;
 }
 
-/** The account's wrapped DEK — opaque to the server (zero-knowledge). */
+/**
+ * The account's key material — opaque to the server (zero-knowledge). Format 1
+ * is the legacy single-key shape (recovery key directly unwraps wrapped_dek).
+ * Format 2 (per-member) additionally returns THIS caller's own material:
+ * my_wrapped_priv (their private key under their recovery key) and
+ * my_wrapped_dek (the DEK sealed to their pubkey — null until an owner approves
+ * them).
+ */
 export interface KeyMaterial {
   format: number;
   wrapped_dek: string;
   dek_fingerprint: string;
+  my_status?: 'pending' | 'active' | null;
+  my_wrapped_priv?: string | null;
+  my_wrapped_dek?: string | null;
+}
+
+/** Body for PUT /keys. Format 2 setup/upgrade adds the caller's member fields. */
+export interface KeyMaterialUpload {
+  format: number;
+  wrapped_dek: string;
+  dek_fingerprint: string;
+  pubkey?: string;
+  wrapped_priv?: string;
+  sealed_dek?: string;
+}
+
+export interface OrgMember {
+  user_id: string;
+  role: string;
+  email: string | null;
+  created_at: string;
+  /** null = no E2EE key registered; pending = joined, awaiting approval; active = has a DEK wrap. */
+  key_status: 'pending' | 'active' | null;
+  pubkey: string | null;
+  has_wrap: number;
+}
+
+export interface OrgInvite {
+  id: string;
+  role: string;
+  expires_at: string;
+  opened_count: number;
+  created_at: string;
 }
 
 export class CloudApiError extends Error {
@@ -101,7 +140,7 @@ export class CloudApiClient {
     return res;
   }
 
-  async me(): Promise<{ user_id: string; email: string; account: CloudAccount }> {
+  async me(): Promise<{ user_id: string; email: string; account: CloudAccount; role?: string }> {
     return (await this.request('/me')).json() as any;
   }
 
@@ -222,12 +261,68 @@ export class CloudApiClient {
     }
   }
 
-  async putKeyMaterial(material: KeyMaterial): Promise<void> {
+  async putKeyMaterial(material: KeyMaterialUpload): Promise<void> {
     await this.request('/keys', {
       method: 'PUT',
       body: JSON.stringify(material),
       contentType: 'application/json',
     });
+  }
+
+  /** Regenerate-recovery on format 2: replace only this member's wrapped private key. */
+  async rewrapPrivateKey(wrappedPriv: string): Promise<void> {
+    await this.request('/keys/rewrap', {
+      method: 'POST',
+      body: JSON.stringify({ wrapped_priv: wrappedPriv }),
+      contentType: 'application/json',
+    });
+  }
+
+  // ---- organizations / multi-user ----
+
+  async createInvite(role: 'member' | 'owner' = 'member'): Promise<{ id: string; token: string; role: string }> {
+    return (await this.request('/invites', {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+      contentType: 'application/json',
+    })).json() as any;
+  }
+
+  async listInvites(): Promise<OrgInvite[]> {
+    const data: any = await (await this.request('/invites')).json();
+    return data.invites ?? [];
+  }
+
+  async revokeInvite(id: string): Promise<void> {
+    await this.request(`/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async redeemInvite(body: {
+    token: string;
+    pubkey: string;
+    wrapped_priv: string;
+  }): Promise<{ account_id: string; role: string; status: string }> {
+    return (await this.request('/invites/redeem', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      contentType: 'application/json',
+    })).json() as any;
+  }
+
+  async listMembers(): Promise<{ members: OrgMember[]; me: { user_id: string; role: string } }> {
+    return (await this.request('/members')).json() as any;
+  }
+
+  async approveMember(userId: string, body: { wrapped_dek: string; dek_fingerprint: string }): Promise<void> {
+    await this.request(`/members/${encodeURIComponent(userId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      contentType: 'application/json',
+    });
+  }
+
+  async removeMember(userId: string): Promise<void> {
+    await this.request(`/members/${encodeURIComponent(userId)}`, { method: 'DELETE' });
   }
 
   async listJobFiles(cloudJobId: string): Promise<any[]> {
