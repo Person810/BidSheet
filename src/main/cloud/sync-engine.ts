@@ -33,6 +33,8 @@ import {
 } from './serializer';
 import { validateSnapshot } from './validate-snapshot';
 import { exportCatalog, importCatalog, catalogHash, CatalogSnapshot } from './catalog-sync';
+import { E2eeManager } from './e2ee';
+import { encryptForSync, decryptForSync, syncAad, syncContentMac } from './sync-crypto';
 
 /** Back-to-back window focuses don't re-sync; Sync Now always does. */
 const FOREGROUND_SYNC_THROTTLE_MS = 2 * 60 * 1000;
@@ -60,6 +62,8 @@ export interface SyncOverview {
   cloudOnly: CloudOnlyJob[];
   syncing: boolean;
   lastCheckAt: string | null;
+  /** True when this device has cloud key material to unlock before it can sync. */
+  e2eeLocked: boolean;
 }
 
 export interface RestoreResult {
@@ -74,13 +78,15 @@ export class SyncEngine {
   private lastCheckAt: string | null = null;
   private cloudOnly: CloudOnlyJob[] = [];
   private lastForegroundSync = 0;
+  private e2eeLocked = false;
   /** Runs after every successful full pass (encrypted backup rides here). */
   onSyncSuccess: (() => Promise<void>) | null = null;
 
   constructor(
     private db: Database.Database,
     private auth: CloudAuth,
-    private api: CloudApiClient
+    private api: CloudApiClient,
+    private e2ee: E2eeManager
   ) {}
 
   /**
@@ -117,6 +123,23 @@ export class SyncEngine {
     await this.pushJob(jobId);
   }
 
+  /**
+   * Force the next sync pass to re-upload every synced job, the catalog, and
+   * the backup — overwriting (at their existing R2 keys) any plaintext a
+   * pre-E2EE client left behind. Called right after E2EE is first enabled, so
+   * "turn on encryption" actually encrypts what's already in the cloud rather
+   * than only new edits. Clearing the *local* change-hashes (not the remote
+   * ones) makes every job look locally-changed → push, never a false conflict;
+   * nulling plan_hash forces the plan to re-upload as ciphertext too.
+   */
+  markAllForReencryption(): void {
+    this.db
+      .prepare('UPDATE cloud_sync_state SET last_hash_local = NULL, plan_hash = NULL WHERE enabled = 1')
+      .run();
+    this.db.prepare('UPDATE cloud_catalog_sync SET last_hash_local = NULL WHERE id = 1').run();
+    this.db.prepare('UPDATE cloud_auth SET backup_last_hash = NULL WHERE id = 1').run();
+  }
+
   /** Phase 3 just stops syncing; removing cloud copies is the Phase 6 ladder. */
   disableJob(jobId: number): void {
     this.db.prepare('UPDATE cloud_sync_state SET enabled = 0 WHERE job_id = ?').run(jobId);
@@ -125,6 +148,7 @@ export class SyncEngine {
 
   async pushJob(jobId: number): Promise<void> {
     const accountId = await this.requireAccountId();
+    const dek = this.e2ee.getDek(); // throws cleanly if encrypted sync is locked
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job?.cloud_id) throw new Error('Job has no cloud id — enable sync first.');
     const cloudId = job.cloud_id as string;
@@ -144,34 +168,54 @@ export class SyncEngine {
         const filename = path.basename(settings.pdf_path);
         snapshot.plan = { filename, sha256: sha, size_bytes: bytes.length };
         if (sha !== planHash) {
-          await this.api.putFile(`${accountId}/${cloudId}/plans/${filename}`, bytes, 'application/pdf');
+          // Same R2 key as the (pre-E2EE) plaintext plan, so the ciphertext
+          // overwrites it in place — no plaintext copy left behind. The
+          // plaintext sha is folded into the AAD so a stale plan ciphertext
+          // can't be substituted for the current one without also forging the
+          // snapshot's plan.sha256.
+          await this.api.putFile(
+            `${accountId}/${cloudId}/plans/${filename}`,
+            encryptForSync(bytes, dek, syncAad(accountId, cloudId, `plan:${sha}`)),
+            'application/octet-stream'
+          );
           planHash = sha;
         }
       }
 
+      // Stable content hash (excludes pushed_at/app_version, set just below).
       const hash = snapshotHash(snapshot);
+      // What the cloud advertises is an HMAC of that hash under the DEK, so the
+      // server can't confirm a guessed snapshot from its hash.
+      const remoteHash = syncContentMac(Buffer.from(hash, 'utf8'), dek);
       snapshot.pushed_at = new Date().toISOString();
       snapshot.app_version = app.getVersion();
 
       await this.api.putFile(
         `${accountId}/${cloudId}/markup/takeoff.json`,
-        JSON.stringify(buildMarkupDoc(snapshot)),
-        'application/json'
+        encryptForSync(
+          Buffer.from(JSON.stringify(buildMarkupDoc(snapshot))),
+          dek,
+          syncAad(accountId, cloudId, 'markup')
+        ),
+        'application/octet-stream'
       );
       await this.api.putFile(
         `${accountId}/${cloudId}/job/job.json`,
-        JSON.stringify(snapshot),
-        'application/json'
+        encryptForSync(Buffer.from(JSON.stringify(snapshot)), dek, syncAad(accountId, cloudId, 'job')),
+        'application/octet-stream'
       );
-      await this.api.putJob(cloudId, {
-        name: snapshot.job.name,
-        status: snapshot.job.status ?? null,
-        snapshot_hash: hash,
-      });
+      // Name (and status) are content → encrypted into one blob; the cloud
+      // stores only ciphertext + the HMAC commit marker.
+      const nameEnc = encryptForSync(
+        Buffer.from(JSON.stringify({ name: snapshot.job.name, status: snapshot.job.status ?? null })),
+        dek,
+        syncAad(accountId, cloudId, 'name')
+      ).toString('base64');
+      await this.api.putJob(cloudId, { name_enc: nameEnc, snapshot_hash: remoteHash });
 
       this.saveState(jobId, {
         last_hash_local: hash,
-        last_hash_remote: hash,
+        last_hash_remote: remoteHash,
         plan_hash: planHash,
         status: 'synced',
         error: null,
@@ -188,12 +232,16 @@ export class SyncEngine {
   /** Pull a cloud job down, creating or replacing its local copy. */
   async pullJob(cloudId: string): Promise<number> {
     const accountId = await this.requireAccountId();
-    // Validate immediately after download — the snapshot is untrusted input
-    // and plan.filename below touches the filesystem.
-    const snapshot = validateSnapshot(
-      await this.api.getFileJson<JobSnapshot>(`${accountId}/${cloudId}/job/job.json`)
-    );
-    const remoteHash = snapshotHash(snapshot);
+    const dek = this.e2ee.getDek();
+    // Decrypt, then validate — the decrypted snapshot is still untrusted input
+    // (a member device could push a malicious payload), and plan.filename below
+    // touches the filesystem. Decryption also authenticates the ciphertext's
+    // account/job binding via the AAD before we parse anything.
+    const jobBlob = await this.api.getFile(`${accountId}/${cloudId}/job/job.json`);
+    const jobPlain = decryptForSync(jobBlob, dek, syncAad(accountId, cloudId, 'job'));
+    const snapshot = validateSnapshot(JSON.parse(jobPlain.toString('utf8')));
+    // The HMAC the cloud advertises for this job (matches what the pusher sent).
+    const remoteHash = syncContentMac(Buffer.from(snapshotHash(snapshot), 'utf8'), dek);
 
     // Download the plan unless this machine already has the same bytes.
     let pdfPath: string | undefined;
@@ -210,7 +258,8 @@ export class SyncEngine {
         crypto.createHash('sha256').update(fs.readFileSync(existing.pdf_path)).digest('hex') ===
           snapshot.plan.sha256;
       if (!localMatches) {
-        const bytes = await this.api.getFile(`${accountId}/${cloudId}/plans/${snapshot.plan.filename}`);
+        const blob = await this.api.getFile(`${accountId}/${cloudId}/plans/${snapshot.plan.filename}`);
+        const bytes = decryptForSync(blob, dek, syncAad(accountId, cloudId, `plan:${snapshot.plan.sha256}`));
         const dir = path.join(app.getPath('userData'), 'cloud-plans', cloudId);
         fs.mkdirSync(dir, { recursive: true });
         // basename: validation already rejects separators in plan.filename,
@@ -257,7 +306,17 @@ export class SyncEngine {
     this.notifyRenderer();
     try {
       const accountId = await this.requireAccountId();
-      void accountId;
+      // E2EE gate: without an unlocked DEK we can neither read nor write cloud
+      // data. Surface the locked state (and list the still-encrypted cloud jobs)
+      // instead of erroring every job in turn.
+      if (!this.e2ee.hasLocalDek()) {
+        this.e2eeLocked = true;
+        await this.refreshCloudOnlyLocked();
+        this.lastCheckAt = new Date().toISOString();
+        return this.overview();
+      }
+      this.e2eeLocked = false;
+      const dek = this.e2ee.getDek();
       const cloud = await this.api.listSync();
       const remote = new Map(cloud.jobs.map((j) => [j.id, j]));
 
@@ -265,7 +324,7 @@ export class SyncEngine {
       // against rows that arrived in the same pass. A catalog failure is
       // logged, not fatal — job sync still runs.
       try {
-        await this.syncCatalog(cloud.catalog);
+        await this.syncCatalog(cloud.catalog, accountId, dek);
       } catch (err: any) {
         logger.warn('cloud-sync', 'Catalog sync failed', err.message);
       }
@@ -308,13 +367,16 @@ export class SyncEngine {
       // Whatever remains in the cloud has no local copy on this machine.
       this.cloudOnly = [...remote.values()]
         .filter((j) => !this.localJobForCloudId(j.id))
-        .map((j) => ({
-          cloudId: j.id,
-          name: j.name,
-          status: j.status,
-          updatedAt: j.updated_at,
-          bytesUsed: j.bytes_used,
-        }));
+        .map((j) => {
+          const meta = this.decryptJobMeta(accountId, j.id, j.name_enc, dek);
+          return {
+            cloudId: j.id,
+            name: meta.name,
+            status: meta.status,
+            updatedAt: j.updated_at,
+            bytesUsed: j.bytes_used,
+          };
+        });
       this.lastCheckAt = new Date().toISOString();
       if (this.onSyncSuccess) await this.onSyncSuccess();
       return this.overview();
@@ -354,17 +416,29 @@ export class SyncEngine {
    * the cloud (local additions/edits), it's pushed back. Two seats editing
    * different rows both survive; same-row collisions go to the last pusher.
    */
-  private async syncCatalog(remoteMeta: CloudCatalogMeta | null): Promise<void> {
+  private async syncCatalog(
+    remoteMeta: CloudCatalogMeta | null,
+    accountId: string,
+    dek: Buffer
+  ): Promise<void> {
     const state = this.db.prepare('SELECT * FROM cloud_catalog_sync WHERE id = 1').get() as any;
+    const aad = syncAad(accountId, 'account', 'catalog');
     let snapshot = exportCatalog(this.db);
+    // last_hash_local stays the bare content hash (local edit detection, never
+    // leaves the device); the cloud advertises an HMAC of it (remoteMac), so the
+    // server can't confirm catalog contents from the tag.
     let localHash = catalogHash(snapshot);
+    let localMac = syncContentMac(Buffer.from(localHash, 'utf8'), dek);
+    let remoteMac = remoteMeta?.hash ?? null;
     const localChanged = localHash !== state?.last_hash_local;
-    const remoteChanged = !!remoteMeta?.hash && remoteMeta.hash !== state?.last_hash_remote;
+    const remoteChanged = !!remoteMac && remoteMac !== state?.last_hash_remote;
     if (remoteMeta && !localChanged && !remoteChanged) return;
 
-    let remoteHash = remoteMeta?.hash ?? null;
-    if (remoteChanged && remoteHash !== localHash) {
-      const remoteCatalog = await this.api.getCatalogJson<CatalogSnapshot>();
+    if (remoteChanged && remoteMac !== localMac) {
+      const blob = await this.api.getCatalog();
+      const remoteCatalog = JSON.parse(
+        decryptForSync(blob, dek, aad).toString('utf8')
+      ) as CatalogSnapshot;
       const result = importCatalog(this.db, remoteCatalog);
       if (result.applied > 0) {
         logger.info('cloud-catalog', `Catalog updated from cloud (${result.applied} change(s))`);
@@ -377,13 +451,17 @@ export class SyncEngine {
       }
       snapshot = exportCatalog(this.db);
       localHash = catalogHash(snapshot);
+      localMac = syncContentMac(Buffer.from(localHash, 'utf8'), dek);
     }
 
-    if (!remoteMeta || localHash !== remoteHash) {
+    if (!remoteMeta || localMac !== remoteMac) {
       snapshot.pushed_at = new Date().toISOString();
       snapshot.app_version = app.getVersion();
-      await this.api.putCatalog(JSON.stringify(snapshot), localHash);
-      remoteHash = localHash;
+      await this.api.putCatalog(
+        encryptForSync(Buffer.from(JSON.stringify(snapshot)), dek, aad),
+        localMac
+      );
+      remoteMac = localMac;
       logger.info('cloud-catalog', 'Pushed catalog to cloud');
     }
 
@@ -392,7 +470,7 @@ export class SyncEngine {
         `UPDATE cloud_catalog_sync SET last_hash_local = ?, last_hash_remote = ?,
                 last_synced_at = datetime('now', 'localtime') WHERE id = 1`
       )
-      .run(localHash, remoteHash);
+      .run(localHash, remoteMac);
   }
 
   /** User picked a side for a conflicted job. */
@@ -420,10 +498,62 @@ export class SyncEngine {
       cloudOnly: this.cloudOnly,
       syncing: this.syncing,
       lastCheckAt: this.lastCheckAt,
+      e2eeLocked: this.e2eeLocked,
     };
   }
 
   // ---- helpers ----
+
+  /**
+   * Decrypt a cloud job's {name, status} blob. Falls back to a placeholder if
+   * it can't be read (locked, tampered, or a legacy plaintext name) so the
+   * restore picker still renders.
+   */
+  private decryptJobMeta(
+    accountId: string,
+    cloudId: string,
+    nameEnc: string | null,
+    dek: Buffer
+  ): { name: string; status: string | null } {
+    if (!nameEnc) return { name: '(no name)', status: null };
+    try {
+      const plain = decryptForSync(
+        Buffer.from(nameEnc, 'base64'),
+        dek,
+        syncAad(accountId, cloudId, 'name')
+      );
+      const parsed = JSON.parse(plain.toString('utf8'));
+      return {
+        name: typeof parsed.name === 'string' ? parsed.name : '(no name)',
+        status: typeof parsed.status === 'string' ? parsed.status : null,
+      };
+    } catch {
+      return { name: '(locked)', status: null };
+    }
+  }
+
+  /**
+   * Locked-device path: list cloud jobs without a local copy, names shown as
+   * "(locked)" since we can't decrypt them until the user enters the recovery
+   * key. Best-effort — a network failure just leaves the list empty.
+   */
+  private async refreshCloudOnlyLocked(): Promise<void> {
+    try {
+      const cloud = await this.api.listSync();
+      this.cloudOnly = cloud.jobs
+        .filter((j) => !this.localJobForCloudId(j.id))
+        .map((j) => ({
+          cloudId: j.id,
+          name: '(locked)',
+          status: null,
+          updatedAt: j.updated_at,
+          bytesUsed: j.bytes_used,
+        }));
+    } catch (err: any) {
+      logger.warn('cloud-sync', 'Could not list cloud jobs while locked', err.message);
+      this.cloudOnly = [];
+    }
+  }
 
   private withPlan(snapshot: JobSnapshot, plan: JobSnapshot['plan']): JobSnapshot {
     snapshot.plan = plan;
@@ -511,6 +641,10 @@ export class SyncEngine {
           'UPDATE cloud_catalog_sync SET last_hash_local = NULL, last_hash_remote = NULL WHERE id = 1'
         )
         .run();
+      // The cached DEK belongs to the old account — it cannot decrypt the new
+      // account's data and must not be used to encrypt under it. Forget it;
+      // the new account sets up or unlocks its own encrypted sync.
+      this.e2ee.lockLocal();
       this.notifyRenderer();
     }
     this.auth.setAccountId(accountId);

@@ -181,11 +181,14 @@ contextBridge.exposeInMainWorld('api', {
   cloudResolveConflict: (jobId: number, keep: 'local' | 'cloud') =>
     invoke('cloud:resolve-conflict', jobId, keep),
   cloudRestoreAll: () => invoke('cloud:restore-all'),
+  cloudE2eeState: () => invoke('cloud:e2ee-state'),
+  cloudE2eeSetup: () => invoke('cloud:e2ee-setup'),
+  cloudE2eeUnlock: (recoveryKey: string) => invoke('cloud:e2ee-unlock', recoveryKey),
+  cloudE2eeRegenerateRecovery: () => invoke('cloud:e2ee-regenerate-recovery'),
   cloudBackupStatus: () => invoke('cloud:backup-status'),
-  cloudBackupEnable: (passphrase: string) => invoke('cloud:backup-enable', passphrase),
   cloudBackupNow: () => invoke('cloud:backup-now'),
   cloudBackupDisable: () => invoke('cloud:backup-disable'),
-  cloudBackupRestore: (passphrase: string) => invoke('cloud:backup-restore', passphrase),
+  cloudBackupRestore: (recoveryKey: string) => invoke('cloud:backup-restore', recoveryKey),
   onCloudSyncStatus: (callback: (data: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('cloud-sync-status', handler);

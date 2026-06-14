@@ -22,35 +22,32 @@ import { app } from 'electron';
 import Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { getDbPath } from '../database';
-import { CloudAuth, encryptToken, decryptToken } from './supabase-auth';
+import { CloudAuth } from './supabase-auth';
 import { CloudApiClient, CloudBackupMeta } from './api-client';
-import {
-  generateSalt,
-  deriveBackupKey,
-  encryptBackup,
-  decryptBackupWithPassphrase,
-} from './backup-crypto';
+import { decryptBackupWithPassphrase } from './backup-crypto';
+import { E2eeManager } from './e2ee';
+import { encryptForSync, decryptForSync, syncAad, isEncryptedPayload } from './sync-crypto';
 
 export interface BackupStatus {
-  /** A backup key exists on this machine — backups run automatically. */
+  /** Encrypted sync is unlocked on this machine — backups run automatically. */
   configured: boolean;
   lastBackupAt: string | null;
 }
-
-const MIN_PASSPHRASE_LENGTH = 10;
 
 export class BackupEngine {
   constructor(
     private db: Database.Database,
     private auth: CloudAuth,
-    private api: CloudApiClient
+    private api: CloudApiClient,
+    private e2ee: E2eeManager
   ) {}
 
   status(): BackupStatus {
-    const row = this.row();
+    // Backups ride the same DEK as sync — "configured" means encrypted sync is
+    // unlocked on this device. No separate backup passphrase anymore.
     return {
-      configured: !!row?.backup_key_enc,
-      lastBackupAt: row?.backup_last_at ?? null,
+      configured: this.e2ee.hasLocalDek(),
+      lastBackupAt: this.row()?.backup_last_at ?? null,
     };
   }
 
@@ -58,49 +55,28 @@ export class BackupEngine {
     return this.api.getBackupMeta();
   }
 
-  /**
-   * Set (or replace) the backup passphrase, then push the first backup.
-   * Replacing the passphrase re-encrypts from scratch under the new key —
-   * the old blob is simply overwritten.
-   */
-  async enable(passphrase: string): Promise<void> {
-    if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
-      throw new Error(`Backup passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters.`);
-    }
-    const salt = generateSalt();
-    const key = await deriveBackupKey(passphrase, salt);
-    this.db
-      .prepare(
-        `UPDATE cloud_auth SET backup_salt = ?, backup_key_enc = ?, backup_last_hash = NULL,
-                backup_last_at = NULL WHERE id = 1`
-      )
-      .run(salt.toString('hex'), encryptToken(key.toString('hex')));
-    logger.info('cloud-backup', 'Encrypted backup configured');
-    await this.backupNow(true);
-  }
-
   /** Stop backing up from this machine and remove the cloud copy. */
   async disable(): Promise<void> {
     await this.api.deleteBackup().catch((err) => {
-      // Best effort — clearing the local key alone still stops backups.
+      // Best effort — clearing the local bookkeeping alone still stops backups.
       logger.warn('cloud-backup', 'Could not delete cloud backup copy', err.message);
     });
     this.db
       .prepare(
-        `UPDATE cloud_auth SET backup_salt = NULL, backup_key_enc = NULL,
-                backup_last_hash = NULL, backup_last_at = NULL WHERE id = 1`
+        `UPDATE cloud_auth SET backup_last_hash = NULL, backup_last_at = NULL WHERE id = 1`
       )
       .run();
     logger.info('cloud-backup', 'Encrypted backup disabled; cloud copy removed');
   }
 
   /**
-   * Encrypt and upload the database. Skips silently when the bytes haven't
-   * changed since the last upload (unless forced) — sync passes call this
-   * after every run.
+   * Encrypt and upload the database with the account DEK. Skips silently when
+   * the bytes haven't changed since the last upload (unless forced) — sync
+   * passes call this after every run.
    */
   async backupNow(force = false): Promise<{ uploaded: boolean }> {
-    const { key, salt } = this.requireKey();
+    const dek = this.e2ee.getDek(); // throws cleanly if encrypted sync is locked
+    const accountId = await this.accountId();
 
     this.db.pragma('wal_checkpoint(TRUNCATE)');
     const plaintext = fs.readFileSync(getDbPath());
@@ -112,7 +88,8 @@ export class BackupEngine {
     const schemaVersion =
       (this.db.prepare('SELECT MAX(version) AS version FROM schema_version').get() as any)
         ?.version ?? 0;
-    await this.api.putBackup(encryptBackup(plaintext, key, salt), app.getVersion(), schemaVersion);
+    const ciphertext = encryptForSync(plaintext, dek, syncAad(accountId, 'account', 'backup'));
+    await this.api.putBackup(ciphertext, app.getVersion(), schemaVersion);
     this.db
       .prepare(
         `UPDATE cloud_auth SET backup_last_hash = ?, backup_last_at = datetime('now', 'localtime')
@@ -140,9 +117,19 @@ export class BackupEngine {
    * ipc-handlers.ts: a wrong passphrase or invalid file fails before
    * anything local is touched, and a failed swap restores the safety copy.
    */
-  async restore(passphrase: string): Promise<void> {
+  async restore(recoveryKey: string): Promise<void> {
+    // On a fresh machine the DEK isn't cached yet — unlock it from the recovery
+    // key first, then decrypt the backup with it.
+    if (!this.e2ee.hasLocalDek()) await this.e2ee.unlock(recoveryKey);
+    const dek = this.e2ee.getDek();
+    const accountId = await this.accountId();
+
     const blob = await this.api.getBackup();
-    const plaintext = await decryptBackupWithPassphrase(blob, passphrase);
+    const plaintext = isEncryptedPayload(blob)
+      ? decryptForSync(blob, dek, syncAad(accountId, 'account', 'backup'))
+      : // Legacy/dev backups predate the DEK and were passphrase-encrypted
+        // (BSBK). Transitional only — cloud was never deployed with them.
+        await decryptBackupWithPassphrase(blob, recoveryKey);
 
     // The decrypted copy stays under userData (next to the live DB), never
     // the world-readable temp dir, and is removed before the relaunch.
@@ -189,6 +176,17 @@ export class BackupEngine {
     // safety copy on failure.
     const dbPath = getDbPath();
     const safetyPath = dbPath + '.pre-restore';
+    // The backup carries whatever session + DEK were live when it was made —
+    // stale by now (the access/refresh tokens have rotated). Capture this
+    // device's current, just-authenticated session and freshly-unlocked DEK so
+    // we can re-stamp them onto the restored DB; otherwise the relaunch inherits
+    // the backup's dead refresh token and silently signs the user out. This is
+    // device-local state, never document data.
+    const liveSession = this.db
+      .prepare(
+        'SELECT email, user_id, account_id, refresh_token_enc, dek_enc, dek_fingerprint FROM cloud_auth WHERE id = 1'
+      )
+      .get() as Record<string, string | null> | undefined;
     this.db.pragma('wal_checkpoint(TRUNCATE)');
     fs.copyFileSync(dbPath, safetyPath);
     this.db.close();
@@ -198,6 +196,7 @@ export class BackupEngine {
     try {
       fs.copyFileSync(tmpPath, dbPath);
       try { fs.unlinkSync(safetyPath); } catch (_) {}
+      this.carryOverSession(dbPath, liveSession);
       logger.info('cloud-backup', 'Database restored from cloud backup. Relaunching.');
     } catch (err: any) {
       logger.error('cloud-backup', 'Restore swap failed; restoring original DB', err.message);
@@ -212,23 +211,54 @@ export class BackupEngine {
 
   private row(): any {
     return this.db
-      .prepare(
-        'SELECT backup_salt, backup_key_enc, backup_last_at, backup_last_hash FROM cloud_auth WHERE id = 1'
-      )
+      .prepare('SELECT backup_last_at, backup_last_hash FROM cloud_auth WHERE id = 1')
       .get();
   }
 
-  private requireKey(): { key: Buffer; salt: Buffer } {
-    const row = this.row();
-    if (!row?.backup_key_enc || !row?.backup_salt) {
-      throw new Error('Encrypted backup is not set up on this computer yet.');
-    }
-    const keyHex = decryptToken(row.backup_key_enc);
-    if (!keyHex) {
-      throw new Error(
-        'Could not unlock the backup key from the OS keychain. Re-enter your backup passphrase in Settings → Cloud Sync.'
+  private async accountId(): Promise<string> {
+    const cached = this.auth.getAccountId();
+    if (cached) return cached;
+    const me = await this.api.me();
+    this.auth.setAccountId(me.account.id);
+    return me.account.id;
+  }
+
+  /**
+   * Re-stamp this device's live session + unlocked DEK onto the freshly
+   * restored DB so the relaunch stays signed in (aal2 survives a refresh) and
+   * encrypted-unlocked — no re-entering the recovery key. Best effort: the
+   * user's data is already safely swapped in, so a failure here at worst means
+   * signing in again, never lost data.
+   */
+  private carryOverSession(
+    dbPath: string,
+    session: Record<string, string | null> | undefined
+  ): void {
+    if (!session?.refresh_token_enc) return;
+    let restored: Database.Database | undefined;
+    try {
+      restored = new Database(dbPath);
+      const cols = new Set(
+        (restored.prepare('PRAGMA table_info(cloud_auth)').all() as any[]).map((c) => c.name)
       );
+      // A pre-v30 backup lacks dek_enc/dek_fingerprint; migrations add them on
+      // the next open, so only carry the columns the restored schema holds now.
+      const fields = [
+        'email',
+        'user_id',
+        'account_id',
+        'refresh_token_enc',
+        'dek_enc',
+        'dek_fingerprint',
+      ].filter((c) => cols.has(c));
+      restored.prepare('INSERT OR IGNORE INTO cloud_auth (id) VALUES (1)').run();
+      restored
+        .prepare(`UPDATE cloud_auth SET ${fields.map((c) => `${c} = ?`).join(', ')} WHERE id = 1`)
+        .run(...fields.map((c) => session[c] ?? null));
+    } catch (err: any) {
+      logger.warn('cloud-backup', 'Could not carry session onto restored DB', err.message);
+    } finally {
+      try { restored?.close(); } catch (_) {}
     }
-    return { key: Buffer.from(keyHex, 'hex'), salt: Buffer.from(row.backup_salt, 'hex') };
   }
 }

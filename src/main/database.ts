@@ -192,7 +192,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV11, migrateV12, migrateV13, migrateV14, migrateV15,
   migrateV16, migrateV17, migrateV18, migrateV19, migrateV20,
   migrateV21, migrateV22, migrateV23, migrateV24, migrateV25,
-  migrateV26, migrateV27, migrateV28, migrateV29,
+  migrateV26, migrateV27, migrateV28, migrateV29, migrateV30,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -229,6 +229,20 @@ function migrateV29(db: Database.Database): void {
     );
     INSERT INTO cloud_catalog_sync (id) VALUES (1);
     INSERT INTO schema_version (version) VALUES (29);
+  `);
+}
+
+function migrateV30(db: Database.Database): void {
+  // Cached end-to-end encryption key (zero-knowledge sync). dek_enc is the
+  // account's random Data Encryption Key wrapped with the OS keychain
+  // (safeStorage, same as the refresh token / backup key), so day-to-day sync
+  // never re-prompts for the recovery key. dek_fingerprint lets this device
+  // notice if the cloud's DEK ever changed out from under its cache. The
+  // recovery key itself is never stored anywhere.
+  db.exec(`
+    ALTER TABLE cloud_auth ADD COLUMN dek_enc TEXT;
+    ALTER TABLE cloud_auth ADD COLUMN dek_fingerprint TEXT;
+    INSERT INTO schema_version (version) VALUES (30);
   `);
 }
 

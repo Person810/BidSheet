@@ -12,7 +12,10 @@ import { CLOUD_API_URL } from './config';
 export interface CloudJob {
   id: string;
   account_id: string;
+  /** Non-content placeholder under E2EE; the real name is in name_enc. */
   name: string;
+  /** Encrypted {name, status} blob (base64) — decrypted client-side. */
+  name_enc: string | null;
   status: string | null;
   lifecycle_state: string;
   synced: number;
@@ -46,6 +49,13 @@ export interface CloudBackupMeta {
   app_version: string | null;
   schema_version: number | null;
   created_at: string;
+}
+
+/** The account's wrapped DEK — opaque to the server (zero-knowledge). */
+export interface KeyMaterial {
+  format: number;
+  wrapped_dek: string;
+  dek_fingerprint: string;
 }
 
 export class CloudApiError extends Error {
@@ -121,20 +131,26 @@ export class CloudApiClient {
   }
 
   // ---- catalog snapshot (Phase 3d) ----
+  // Body is BSE1 ciphertext (encrypted client-side); the Worker stores it
+  // opaquely. `hash` is the (HMAC) change-detection tag, opaque to the server.
 
-  async putCatalog(body: string, hash: string): Promise<void> {
+  async putCatalog(body: Buffer, hash: string): Promise<void> {
     await this.request(`/catalog?hash=${encodeURIComponent(hash)}`, {
       method: 'PUT',
       body,
-      contentType: 'application/json',
+      contentType: 'application/octet-stream',
     });
   }
 
-  async getCatalogJson<T>(): Promise<T> {
-    return (await this.request('/catalog')).json() as Promise<T>;
+  async getCatalog(): Promise<Buffer> {
+    const res = await this.request('/catalog');
+    return Buffer.from(await res.arrayBuffer());
   }
 
-  async putJob(cloudJobId: string, body: { name: string; status?: string | null; snapshot_hash: string }): Promise<void> {
+  async putJob(
+    cloudJobId: string,
+    body: { name_enc: string; status?: string | null; snapshot_hash: string }
+  ): Promise<void> {
     await this.request(`/jobs/${encodeURIComponent(cloudJobId)}`, {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -191,6 +207,27 @@ export class CloudApiClient {
 
   async deleteBackup(): Promise<void> {
     await this.request('/backup', { method: 'DELETE' });
+  }
+
+  // ---- end-to-end encryption key material ----
+  // The wrapped DEK the server stores but cannot open. GET returns null when
+  // E2EE has never been set up for the account (404).
+
+  async getKeyMaterial(): Promise<KeyMaterial | null> {
+    try {
+      return (await (await this.request('/keys')).json()) as KeyMaterial;
+    } catch (err) {
+      if (err instanceof CloudApiError && err.httpStatus === 404) return null;
+      throw err;
+    }
+  }
+
+  async putKeyMaterial(material: KeyMaterial): Promise<void> {
+    await this.request('/keys', {
+      method: 'PUT',
+      body: JSON.stringify(material),
+      contentType: 'application/json',
+    });
   }
 
   async listJobFiles(cloudJobId: string): Promise<any[]> {
