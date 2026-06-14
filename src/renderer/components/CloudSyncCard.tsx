@@ -352,45 +352,77 @@ export function CloudSyncCard() {
 }
 
 /**
- * Encrypted whole-database backup (Phase 3a). Three states:
- *   - not set up, no cloud backup → passphrase setup with loud
- *     "we cannot recover this" copy
- *   - cloud backup exists → "backup from <date> found" + passphrase restore
- *     (the dead-laptop flow), with setup still reachable
- *   - set up on this machine → last-backed-up time, Back Up Now, Turn Off
+ * Encrypted sync & backup (zero-knowledge). Everything synced — jobs, takeoffs,
+ * catalog, plans — and the whole-database backup is encrypted on this computer
+ * with a per-account key, unlocked by a single recovery key (NOT the login
+ * password). Driven by the E2EE state:
+ *   - not_setup → generate the recovery key (shown exactly once)
+ *   - locked    → unlock this computer with the recovery key (or restore a backup)
+ *   - unlocked  → last-backed-up time, Back Up Now, regenerate key, turn off
  */
 function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const addToast = useToastStore((s) => s.addToast);
+  const [e2eeState, setE2eeState] = useState<
+    'not_setup' | 'unlocked' | 'locked' | 'unavailable' | null
+  >(null);
   const [status, setStatus] = useState<{
     configured: boolean;
     lastBackupAt: string | null;
     remote: { size_bytes: number; created_at: string } | null;
   } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
-  const [pass, setPass] = useState('');
-  const [pass2, setPass2] = useState('');
-  const [restorePass, setRestorePass] = useState('');
-  const [showRestore, setShowRestore] = useState(false);
+  const [recoveryKey, setRecoveryKey] = useState<string | null>(null); // shown once
+  const [unlockKey, setUnlockKey] = useState('');
 
-  const load = () => window.api.cloudBackupStatus().then(setStatus).catch(() => {});
-  // Re-check after every sync pass — backups ride sync, so lastBackupAt
-  // moves when lastCheckAt does.
-  useEffect(() => { load(); }, [lastCheckAt]);
+  const load = async () => {
+    const [st, bk] = await Promise.all([
+      window.api.cloudE2eeState().catch(() => 'unavailable' as const),
+      window.api.cloudBackupStatus().catch(() => null),
+    ]);
+    setE2eeState(st);
+    setStatus(bk);
+  };
+  // Re-check after every sync pass — state and lastBackupAt move with it.
+  useEffect(() => {
+    load();
+  }, [lastCheckAt]);
 
-  if (!status) return null;
+  if (!e2eeState) return null;
 
-  const handleEnable = async () => {
+  const handleSetup = async () => {
     setBusy(true);
     try {
-      await window.api.cloudBackupEnable(pass);
-      setPass('');
-      setPass2('');
-      setShowSetup(false);
-      addToast('Encrypted backup is on. First backup uploaded.', 'success');
-      await load();
+      const res = await window.api.cloudE2eeSetup();
+      setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
     } catch (err: any) {
-      addToast(err?.message || 'Could not set up encrypted backup.', 'error');
+      addToast(err?.message || 'Could not turn on encrypted sync.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    setBusy(true);
+    try {
+      const res = await window.api.cloudE2eeRegenerateRecovery();
+      setRecoveryKey(res.recoveryKey);
+    } catch (err: any) {
+      addToast(err?.message || 'Could not regenerate the recovery key.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleUnlock = async () => {
+    setBusy(true);
+    try {
+      await window.api.cloudE2eeUnlock(unlockKey.trim());
+      setUnlockKey('');
+      addToast('Encrypted sync unlocked on this computer.', 'success');
+      await load();
+      window.api.cloudSyncNow().catch(() => {});
+    } catch (err: any) {
+      addToast(err?.message || 'That recovery key did not work.', 'error');
     } finally {
       setBusy(false);
     }
@@ -413,7 +445,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     setBusy(true);
     try {
       await window.api.cloudBackupDisable();
-      addToast('Encrypted backup turned off. The cloud copy was removed.', 'info');
+      addToast('Whole-database backup turned off. The cloud copy was removed.', 'info');
       await load();
     } catch (err: any) {
       addToast(err?.message || 'Could not turn off backup.', 'error');
@@ -422,124 +454,198 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     }
   };
 
-  // On success the app relaunches into the restored database — only errors
-  // ever come back from this call.
+  // Fresh-machine full restore: unlock with the recovery key, then replace the
+  // local DB and relaunch. On success the app relaunches, so only errors return.
   const handleRestore = async () => {
     setBusy(true);
     try {
-      await window.api.cloudBackupRestore(restorePass);
+      await window.api.cloudBackupRestore(unlockKey.trim());
     } catch (err: any) {
       addToast(err?.message || 'Restore failed. Nothing on this computer was changed.', 'error');
       setBusy(false);
     }
   };
 
+  const afterSavedRecoveryKey = async () => {
+    setRecoveryKey(null);
+    addToast('Encrypted sync is on.', 'success');
+    await load();
+    window.api.cloudSyncNow().catch(() => {});
+  };
 
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-      <h4 style={{ marginBottom: 4 }}>Encrypted Backup</h4>
+      <h4 style={{ marginBottom: 4 }}>Encrypted Sync &amp; Backup</h4>
       <p className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
-        Backs up your entire BidSheet database to the cloud, encrypted on this computer with a
-        passphrase only you know. We can store it, but we can never read it.
+        Everything you sync — jobs, takeoffs, catalog, plans — is encrypted on this computer before
+        it's uploaded, and so is your whole-database backup. Even we can't read it.
       </p>
 
-      {status.configured ? (
+      {recoveryKey && (
+        <RecoveryKeyModal recoveryKey={recoveryKey} onSaved={afterSavedRecoveryKey} />
+      )}
+
+      {e2eeState === 'unavailable' && (
+        <p className="text-muted" style={{ fontSize: 12 }}>
+          Couldn't reach the cloud to check encryption status. Try Sync Now.
+        </p>
+      )}
+
+      {e2eeState === 'not_setup' && (
+        <div style={{ maxWidth: 480 }}>
+          <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+            Turn this on once. You'll get a <strong>recovery key</strong> to save — it's the only way
+            to unlock your data on a new computer, and it is <strong>not</strong> your login password.
+          </p>
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleSetup}>
+            {busy ? 'Setting up…' : 'Turn On Encrypted Sync'}
+          </button>
+        </div>
+      )}
+
+      {e2eeState === 'locked' && (
+        <div style={{ maxWidth: 480 }}>
+          <p style={{ fontSize: 13, marginBottom: 8 }}>
+            Encrypted sync is set up for your account but <strong>locked on this computer</strong>.
+            Enter your <strong>recovery key</strong> (not your login password) to unlock it.
+          </p>
+          {status?.remote && (
+            <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+              An encrypted backup from {formatDateTime(status.remote.created_at)} is in your account.
+              Unlocking here can restore everything onto this computer.
+            </p>
+          )}
+          <div className="form-group">
+            <label>Recovery key</label>
+            <input
+              type="text"
+              className="form-control"
+              value={unlockKey}
+              autoFocus
+              placeholder="BSK1-XXXX-XXXX-…"
+              onChange={(e) => setUnlockKey(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-8">
+            <button
+              className="btn btn-sm btn-primary"
+              disabled={busy || !unlockKey.trim()}
+              onClick={handleUnlock}>
+              {busy ? 'Unlocking…' : 'Unlock This Computer'}
+            </button>
+            {status?.remote && (
+              <button
+                className="btn btn-sm btn-danger"
+                disabled={busy || !unlockKey.trim()}
+                onClick={handleRestore}>
+                {busy ? 'Restoring…' : 'Restore Everything From Backup'}
+              </button>
+            )}
+          </div>
+          {status?.remote && (
+            <p className="text-danger" style={{ fontSize: 12, marginTop: 8 }}>
+              Restore replaces everything currently in BidSheet on this computer with your cloud
+              backup. This cannot be undone.
+            </p>
+          )}
+        </div>
+      )}
+
+      {e2eeState === 'unlocked' && (
         <div>
           <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            {status.lastBackupAt
+            {status?.lastBackupAt
               ? `Last backed up ${new Date(status.lastBackupAt.replace(' ', 'T')).toLocaleString()}.`
               : 'No backup uploaded yet.'}{' '}
             Backups upload automatically after each sync when something changed.
           </p>
-          <div className="flex gap-8">
+          <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
             <button className="btn btn-sm btn-secondary" disabled={busy} onClick={handleBackupNow}>
               {busy ? 'Working…' : 'Back Up Now'}
             </button>
+            <button className="btn btn-sm btn-secondary" disabled={busy} onClick={handleRegenerate}>
+              Regenerate Recovery Key…
+            </button>
             <button className="btn btn-sm btn-secondary" disabled={busy} onClick={handleDisable}>
-              Turn Off &amp; Remove Cloud Copy
+              Turn Off Whole-Database Backup
             </button>
           </div>
         </div>
-      ) : (
-        <div style={{ maxWidth: 480 }}>
-          {status.remote && !showSetup && (
-            <div style={{ marginBottom: 12 }}>
-              <p style={{ fontSize: 13, marginBottom: 8 }}>
-                <strong>Encrypted backup from {formatDateTime(status.remote.created_at)} found</strong> in
-                your cloud account. Enter your backup passphrase to bring everything onto this
-                computer.
-              </p>
-              {!showRestore ? (
-                <button className="btn btn-sm btn-primary" onClick={() => setShowRestore(true)}>
-                  Restore This Backup…
-                </button>
-              ) : (
-                <div>
-                  <p className="text-danger" style={{ fontSize: 12, marginBottom: 8 }}>
-                    Restoring replaces everything currently in BidSheet on this computer with the
-                    backup. This cannot be undone.
-                  </p>
-                  <div className="form-group">
-                    <label>Backup passphrase</label>
-                    <input type="password" className="form-control" value={restorePass}
-                      onChange={(e) => setRestorePass(e.target.value)} autoFocus />
-                  </div>
-                  <div className="flex gap-8">
-                    <button className="btn btn-sm btn-danger" disabled={busy || !restorePass}
-                      onClick={handleRestore}>
-                      {busy ? 'Restoring…' : 'Replace Local Data & Restore'}
-                    </button>
-                    <button className="btn btn-sm btn-secondary" disabled={busy}
-                      onClick={() => { setShowRestore(false); setRestorePass(''); }}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {!showSetup ? (
-            <button className="btn btn-sm btn-secondary" onClick={() => setShowSetup(true)}>
-              {status.remote ? 'Set Up Backups From This Computer Instead…' : 'Set Up Encrypted Backup…'}
-            </button>
-          ) : (
-            <div>
-              <p className="text-warning" style={{ fontSize: 12, marginBottom: 8 }}>
-                Write this passphrase down and keep it somewhere safe. It never leaves this
-                computer — if you lose it, <strong>nobody can recover your backup, including
-                us</strong>.
-                {status.remote && ' Setting up here replaces the existing cloud backup.'}
-              </p>
-              <div className="form-group">
-                <label>Backup passphrase (10+ characters)</label>
-                <input type="password" className="form-control" value={pass}
-                  onChange={(e) => setPass(e.target.value)} autoFocus />
-              </div>
-              <div className="form-group">
-                <label>Repeat passphrase</label>
-                <input type="password" className="form-control" value={pass2}
-                  onChange={(e) => setPass2(e.target.value)} />
-              </div>
-              {pass2 && pass !== pass2 && (
-                <p className="text-danger" style={{ fontSize: 12, marginBottom: 8 }}>
-                  Passphrases don't match.
-                </p>
-              )}
-              <div className="flex gap-8">
-                <button className="btn btn-sm btn-primary"
-                  disabled={busy || pass.length < 10 || pass !== pass2}
-                  onClick={handleEnable}>
-                  {busy ? 'Encrypting & Uploading…' : 'Turn On Encrypted Backup'}
-                </button>
-                <button className="btn btn-sm btn-secondary" disabled={busy}
-                  onClick={() => { setShowSetup(false); setPass(''); setPass2(''); }}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Shows a freshly generated recovery key exactly once and forces the user to
+ * confirm they saved it before continuing. The key is never shown again — the
+ * server never has it, so there is no second chance.
+ */
+function RecoveryKeyModal({
+  recoveryKey,
+  onSaved,
+}: {
+  recoveryKey: string;
+  onSaved: () => void;
+}) {
+  const addToast = useToastStore((s) => s.addToast);
+  const [confirmed, setConfirmed] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(recoveryKey);
+      addToast('Recovery key copied.', 'success');
+    } catch {
+      addToast('Could not copy — select the key and copy it manually.', 'error');
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginBottom: 8 }}>Save your recovery key</h3>
+        <p className="text-danger" style={{ fontSize: 13, marginBottom: 8 }}>
+          This is the <strong>only</strong> way to unlock your encrypted data on another computer.
+          We can never recover it for you, and it is <strong>not</strong> your login password. Save
+          it in a password manager or print it now — you won't see it again.
+        </p>
+        <div
+          style={{
+            fontFamily: 'var(--mono, monospace)',
+            fontSize: 14,
+            lineHeight: 1.6,
+            padding: 12,
+            background: 'var(--navy, #122240)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            wordBreak: 'break-all',
+            userSelect: 'all',
+            margin: '12px 0',
+          }}>
+          {recoveryKey}
+        </div>
+        <div className="flex gap-8" style={{ marginBottom: 12 }}>
+          <button className="btn btn-sm btn-secondary" onClick={copy}>
+            Copy
+          </button>
+          <button className="btn btn-sm btn-secondary" onClick={() => window.print()}>
+            Print
+          </button>
+        </div>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+          />
+          I've saved my recovery key somewhere safe.
+        </label>
+        <div className="modal-actions">
+          <button className="btn btn-primary" disabled={!confirmed} onClick={onSaved}>
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

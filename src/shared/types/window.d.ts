@@ -209,6 +209,10 @@ declare global {
       cloudRestoreAll: () => Promise<
         { cloudId: string; name: string; ok: boolean; error: string | null }[]
       >;
+      cloudE2eeState: () => Promise<'not_setup' | 'unlocked' | 'locked' | 'unavailable'>;
+      cloudE2eeSetup: () => Promise<{ recoveryKey: string }>;
+      cloudE2eeUnlock: (recoveryKey: string) => Promise<void>;
+      cloudE2eeRegenerateRecovery: () => Promise<{ recoveryKey: string }>;
       cloudBackupStatus: () => Promise<{
         configured: boolean;
         lastBackupAt: string | null;
@@ -219,10 +223,9 @@ declare global {
           created_at: string;
         } | null;
       }>;
-      cloudBackupEnable: (passphrase: string) => Promise<void>;
       cloudBackupNow: () => Promise<{ uploaded: boolean }>;
       cloudBackupDisable: () => Promise<void>;
-      cloudBackupRestore: (passphrase: string) => Promise<void>;
+      cloudBackupRestore: (recoveryKey: string) => Promise<void>;
       onCloudSyncStatus: (callback: (data: any) => void) => () => void;
       onCloudCatalogUpdated: (callback: (data: { applied: number }) => void) => () => void;
     };

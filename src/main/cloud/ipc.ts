@@ -11,6 +11,7 @@ import { CloudAuth } from './supabase-auth';
 import { CloudApiClient } from './api-client';
 import { SyncEngine } from './sync-engine';
 import { BackupEngine } from './backup';
+import { E2eeManager } from './e2ee';
 
 function handle(channel: string, fn: (...args: any[]) => any): void {
   ipcMain.handle(channel, async (_event, ...args) => {
@@ -61,8 +62,9 @@ export function registerLocalOnlyCloudStub(): void {
 export function registerCloudHandlers(db: Database.Database): SyncEngine {
   const auth = new CloudAuth(db);
   const api = new CloudApiClient(auth);
-  const engine = new SyncEngine(db, auth, api);
-  const backup = new BackupEngine(db, auth, api);
+  const e2ee = new E2eeManager(db, auth, api);
+  const engine = new SyncEngine(db, auth, api, e2ee);
+  const backup = new BackupEngine(db, auth, api, e2ee);
 
   // Encrypted backup rides every successful sync pass — change-detected, so
   // an untouched database costs one local hash, not an upload.
@@ -135,7 +137,30 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   );
   handle('cloud:restore-all', () => engine.restoreAll());
 
-  // ---- encrypted backup (Phase 3a) ----
+  // ---- end-to-end encryption (zero-knowledge sync) ----
+  // One recovery key per account unlocks the DEK that encrypts all synced data
+  // and the backup. setup/regenerate return the recovery key to show exactly
+  // once; the renderer forces the user to confirm they saved it.
+  handle('cloud:e2ee-state', () => e2ee.state());
+  handle('cloud:e2ee-setup', async () => {
+    logger.info('cloud:e2ee-setup', 'Enabling encrypted sync (generating DEK + recovery key)');
+    const res = await e2ee.setup();
+    // Re-encrypt anything a pre-E2EE client already pushed: the next sync pass
+    // (kicked off after the user saves the recovery key) re-uploads every job,
+    // the catalog, and the backup as ciphertext, overwriting the plaintext.
+    engine.markAllForReencryption();
+    return res;
+  });
+  handle('cloud:e2ee-unlock', async (recoveryKey: string) => {
+    logger.info('cloud:e2ee-unlock', 'Unlocking encrypted sync on this device');
+    await e2ee.unlock(recoveryKey);
+  });
+  handle('cloud:e2ee-regenerate-recovery', async () => {
+    logger.info('cloud:e2ee-regenerate-recovery', 'Regenerating recovery key (re-wrapping DEK)');
+    return e2ee.regenerateRecoveryKey();
+  });
+
+  // ---- encrypted backup (rides the E2EE DEK) ----
   handle('cloud:backup-status', async () => {
     const local = backup.status();
     let remote = null;
@@ -144,12 +169,11 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     }
     return { ...local, remote };
   });
-  handle('cloud:backup-enable', (passphrase: string) => backup.enable(passphrase));
   handle('cloud:backup-now', () => backup.backupNow(true));
   handle('cloud:backup-disable', () => backup.disable());
-  handle('cloud:backup-restore', async (passphrase: string) => {
+  handle('cloud:backup-restore', async (recoveryKey: string) => {
     logger.info('cloud:backup-restore', 'Restoring database from encrypted cloud backup');
-    await backup.restore(passphrase);
+    await backup.restore(recoveryKey);
   });
 
   return engine;
