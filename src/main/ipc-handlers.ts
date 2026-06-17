@@ -6,6 +6,7 @@ import { registerBidHandlers } from './ipc/bids';
 import { registerQuoteHandlers } from './ipc/quotes';
 import { registerTakeoffHandlers } from './ipc/takeoff';
 import { registerExportHandlers } from './ipc/export';
+import { registerPriceImportHandlers } from './ipc/price-import';
 
 /**
  * Registers every `db:*` / `jobs:*` / `app:*` IPC handler with Electron.
@@ -19,4 +20,5 @@ export function registerIpcHandlers(db: Database.Database): void {
   registerQuoteHandlers(db);
   registerTakeoffHandlers(db);
   registerExportHandlers(db);
+  registerPriceImportHandlers(db);
 }

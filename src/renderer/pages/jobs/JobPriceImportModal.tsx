@@ -1,0 +1,494 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { formatCurrency } from './helpers';
+import {
+  buildAliasIndex, matchQuoteRow, unitsMismatch,
+  type AliasEntry, type MatchCandidate, type MatchStatus,
+} from '../../../shared/quoteMatching';
+import type {
+  CsvParseResult, PriceImportContext, PriceImportCommitRow, PriceImportCommitResult,
+} from '../../../shared/types/ipc';
+
+// ============================================================
+// Column auto-mapping (a quote, not a catalog — see §6 copy)
+// ============================================================
+
+const HEADER_ALIASES: Record<string, string[]> = {
+  description: ['description', 'item', 'material', 'product', 'name', 'item description', 'desc'],
+  price: ['unit price', 'price', 'net price', 'unit cost', 'cost', 'rate', 'ea price', 'net', 'amount', 'extended'],
+  unit: ['unit', 'uom', 'u/m', 'um', 'units'],
+  partNumber: ['part number', 'part #', 'part#', 'part_number', 'sku', 'item #', 'item#', 'catalog #', 'model', 'mfg #'],
+  supplier: ['supplier', 'vendor', 'manufacturer', 'mfg', 'distributor', 'source'],
+};
+
+function autoDetect(headers: string[]): Record<string, string> {
+  const map: Record<string, string> = { description: '', price: '', unit: '', partNumber: '', supplier: '' };
+  const lower = headers.map((h) => h.toLowerCase().trim());
+  const claimed = new Set<string>();
+  for (const field of Object.keys(HEADER_ALIASES)) {
+    for (const alias of HEADER_ALIASES[field]) {
+      const idx = lower.indexOf(alias);
+      if (idx !== -1 && !claimed.has(headers[idx])) {
+        map[field] = headers[idx];
+        claimed.add(headers[idx]);
+        break;
+      }
+    }
+  }
+  return map;
+}
+
+function parsePrice(raw: string | undefined): number | null {
+  if (raw == null) return null;
+  const cleaned = String(raw).replace(/[$,\s]/g, '');
+  if (!cleaned) return null;
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+// ============================================================
+// Reconciliation row model
+// ============================================================
+
+type Action = 'update' | 'create' | 'skip';
+
+interface ReconRow {
+  index: number;
+  supplier: string;
+  description: string;
+  unit: string | null;
+  price: number | null;
+  partNumber: string | null;
+  status: MatchStatus;
+  method: string | null;
+  action: Action;
+  targetLineId: number | null;
+  ranked: { lineId: number; score: number }[];
+}
+
+type Step = 'pick' | 'map' | 'reconcile' | 'done';
+
+const STATUS_META: Record<MatchStatus, { label: string; color: string }> = {
+  matched:   { label: 'Matched',   color: 'var(--success)' },
+  ambiguous: { label: 'Review',    color: 'var(--warning)' },
+  unmatched: { label: 'New',       color: 'var(--accent)' },
+};
+
+// ============================================================
+// Component
+// ============================================================
+
+export function JobPriceImportModal({ jobId, onDone, onClose }: {
+  jobId: number;
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<Step>('pick');
+  const [csv, setCsv] = useState<CsvParseResult | null>(null);
+  const [mapping, setMapping] = useState<Record<string, string>>(
+    { description: '', price: '', unit: '', partNumber: '', supplier: '' },
+  );
+  const [defaultSupplier, setDefaultSupplier] = useState('');
+  const [ctx, setCtx] = useState<PriceImportContext | null>(null);
+  const [rows, setRows] = useState<ReconRow[]>([]);
+  const [newSectionId, setNewSectionId] = useState<number | null>(null);
+  const [newCategoryId, setNewCategoryId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [committing, setCommitting] = useState(false);
+  const [result, setResult] = useState<PriceImportCommitResult | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  // Line lookup for rendering old prices / units against the chosen target.
+  const lineById = useMemo(() => {
+    const m = new Map<number, PriceImportContext['lines'][number]>();
+    for (const l of ctx?.lines ?? []) m.set(l.id, l);
+    return m;
+  }, [ctx]);
+
+  // ---- Step 1: file ----
+  const handleParsed = (parsed: CsvParseResult | null) => {
+    if (!parsed) return;
+    if (parsed.error) { setError(parsed.error); return; }
+    if (parsed.rows.length === 0) { setError('That file has no data rows.'); return; }
+    setError(null);
+    setCsv(parsed);
+    setMapping(autoDetect(parsed.headers));
+    setStep('map');
+  };
+
+  const pickFile = async () => {
+    setError(null);
+    try { handleParsed(await window.api.openCsvFile()); }
+    catch (err: any) { setError(err.message || 'Failed to open file.'); }
+  };
+
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragging(false); setError(null);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    let filePath = '';
+    try { filePath = window.api.getDroppedFilePath(file); } catch { filePath = ''; }
+    if (!filePath) { setError('Could not read the dropped file path.'); return; }
+    try { handleParsed(await window.api.parseCsvPath(filePath)); }
+    catch (err: any) { setError(err.message || 'Failed to read dropped file.'); }
+  };
+
+  const usedColumns = useMemo(() => new Set(Object.values(mapping).filter(Boolean)), [mapping]);
+  const headerOptions = (field: string) =>
+    (csv?.headers ?? []).filter((h) => !usedColumns.has(h) || mapping[field] === h);
+
+  // ---- Step 2 → 3: build reconciliation ----
+  const buildReconciliation = async () => {
+    if (!csv) return;
+    setError(null);
+    let context: PriceImportContext;
+    try {
+      context = await window.api.priceImportContext(jobId);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load the bid for matching.');
+      return;
+    }
+    setCtx(context);
+    setNewSectionId(context.sections[0]?.id ?? null);
+
+    const candidates: MatchCandidate[] = context.lines.map((l) => ({
+      lineId: l.id, description: l.description, unit: l.unit, materialId: l.material_id,
+      materialName: l.material_name, materialAliases: l.material_aliases,
+      materialPartNumber: l.material_part_number,
+    }));
+    const aliasEntries: AliasEntry[] = context.aliases.map((a) => ({
+      supplier: a.supplier, rawDescription: a.raw_description,
+      materialId: a.material_id, partNumber: a.part_number,
+    }));
+    const aliasIndex = buildAliasIndex(aliasEntries);
+
+    const recon: ReconRow[] = csv.rows.map((row, index) => {
+      const description = (row[mapping.description] || '').trim();
+      const price = parsePrice(mapping.price ? row[mapping.price] : undefined);
+      const unit = mapping.unit ? (row[mapping.unit] || '').trim() || null : null;
+      const partNumber = mapping.partNumber ? (row[mapping.partNumber] || '').trim() || null : null;
+      const supplier = (mapping.supplier ? (row[mapping.supplier] || '').trim() : '') || defaultSupplier.trim();
+
+      const m = matchQuoteRow({ description, unit, partNumber }, supplier, candidates, aliasIndex);
+      // Matched/ambiguous default to updating the suggested line; unmatched
+      // rows default to creating a new item (the first-class path, §1).
+      const action: Action = m.suggestedLineId != null ? 'update' : 'create';
+      return {
+        index, supplier, description, unit, price, partNumber,
+        status: m.status, method: m.method, action,
+        targetLineId: m.suggestedLineId, ranked: m.ranked,
+      };
+    });
+    setRows(recon);
+    setStep('reconcile');
+  };
+
+  // ---- Step 3 editing ----
+  const setRowTarget = (index: number, value: string) => {
+    setRows((prev) => prev.map((r) => {
+      if (r.index !== index) return r;
+      if (value === 'skip') return { ...r, action: 'skip', targetLineId: null };
+      if (value === 'create') return { ...r, action: 'create', targetLineId: null };
+      return { ...r, action: 'update', targetLineId: Number(value) };
+    }));
+  };
+
+  const stats = useMemo(() => ({
+    update: rows.filter((r) => r.action === 'update' && r.targetLineId).length,
+    create: rows.filter((r) => r.action === 'create').length,
+    skip: rows.filter((r) => r.action === 'skip').length,
+    mismatch: rows.filter((r) => r.action === 'update' && r.targetLineId != null
+      && unitsMismatch(r.unit, lineById.get(r.targetLineId)?.unit ?? null)).length,
+    invalid: rows.filter((r) => r.action !== 'skip' && (r.price == null || !r.description)).length,
+  }), [rows, lineById]);
+
+  const canApply = stats.update + stats.create > 0 && !committing;
+
+  const handleCommit = async () => {
+    if (!csv) return;
+    setCommitting(true);
+    setError(null);
+    const source = `Quote: ${csv.fileName}`;
+    const payload: PriceImportCommitRow[] = rows.map((r) => ({
+      supplier: r.supplier,
+      description: r.description,
+      unit: r.unit,
+      price: r.price ?? 0,
+      partNumber: r.partNumber,
+      // A row with no usable price/description can't update or create — store
+      // it as raw provenance only (skip).
+      action: (r.action !== 'skip' && (r.price == null || !r.description)) ? 'skip' : r.action,
+      targetLineId: r.action === 'update' ? r.targetLineId : null,
+      targetMaterialId: r.action === 'update' && r.targetLineId != null
+        ? (lineById.get(r.targetLineId)?.material_id ?? null) : null,
+      newCategoryId: r.action === 'create' ? newCategoryId : null,
+      newSectionId: r.action === 'create' ? newSectionId : null,
+    }));
+
+    try {
+      const res = await window.api.priceImportCommit(jobId, { source, rows: payload });
+      setResult(res);
+      setStep('done');
+    } catch (err: any) {
+      setError(err.message || 'Import failed.');
+    } finally {
+      setCommitting(false);
+    }
+  };
+
+  // ============================================================
+  // Render
+  // ============================================================
+
+  const wide = step === 'reconcile';
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}
+        style={{ width: wide ? 1000 : 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ marginBottom: 4 }}>
+          {step === 'pick' && 'Load this job’s quote'}
+          {step === 'map' && 'Map quote columns'}
+          {step === 'reconcile' && 'Review quote against the bid'}
+          {step === 'done' && 'Quote imported'}
+        </h3>
+        {step !== 'done' && (
+          <div className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>
+            {step === 'pick' && 'Drop a supplier’s price quote (CSV/TSV). Nothing is written until you confirm.'}
+            {step === 'map' && `${csv?.rows.length} rows from ${csv?.fileName}. Match the columns, then set the supplier.`}
+            {step === 'reconcile' && 'Each quote row is matched to a bid line. Confirm targets, then apply — old → new prices are shown, unit mismatches flagged.'}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid var(--danger)',
+            borderRadius: 6, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#fca5a5' }}>
+            {error}
+          </div>
+        )}
+
+        {/* ---- PICK ---- */}
+        {step === 'pick' && (
+          <div style={{ padding: '12px 0' }}>
+            <div style={{
+              border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 12, padding: '40px 24px', textAlign: 'center', cursor: 'pointer',
+              background: dragging ? 'rgba(59,130,246,0.08)' : 'transparent' }}
+              onClick={pickFile}
+              onDragOver={(e) => e.preventDefault()}
+              onDragEnter={(e) => { e.preventDefault(); dragCounter.current++; setDragging(true); }}
+              onDragLeave={() => { dragCounter.current--; if (dragCounter.current === 0) setDragging(false); }}
+              onDrop={(e) => { dragCounter.current = 0; onDrop(e); }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>{dragging ? '\u{1F4E5}' : '\u{1F4C4}'}</div>
+              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 6 }}>
+                {dragging ? 'Drop the quote here' : 'Drag a quote CSV here, or click to browse'}
+              </div>
+              <div className="text-muted" style={{ fontSize: 12 }}>
+                Ask the rep for an Excel quote, save as CSV. .csv / .tsv supported.
+              </div>
+            </div>
+            <div className="modal-actions" style={{ marginTop: 20 }}>
+              <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* ---- MAP ---- */}
+        {step === 'map' && csv && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <Field label="Description" required value={mapping.description} options={headerOptions('description')}
+                onChange={(v) => setMapping({ ...mapping, description: v })} />
+              <Field label="Unit price" required value={mapping.price} options={headerOptions('price')}
+                onChange={(v) => setMapping({ ...mapping, price: v })} />
+              <Field label="Unit" value={mapping.unit} options={headerOptions('unit')}
+                onChange={(v) => setMapping({ ...mapping, unit: v })} />
+              <Field label="Part #" value={mapping.partNumber} options={headerOptions('partNumber')}
+                onChange={(v) => setMapping({ ...mapping, partNumber: v })} />
+              <Field label="Supplier column" value={mapping.supplier} options={headerOptions('supplier')}
+                onChange={(v) => setMapping({ ...mapping, supplier: v })} />
+              <div className="form-group">
+                <label>Supplier {mapping.supplier ? <span className="text-muted" style={{ fontWeight: 400 }}>(fallback)</span> : <span style={{ color: 'var(--danger)' }}>*</span>}</label>
+                <input className="form-control" value={defaultSupplier}
+                  onChange={(e) => setDefaultSupplier(e.target.value)}
+                  placeholder='e.g. Core & Main' />
+              </div>
+            </div>
+            <div className="text-muted" style={{ fontSize: 11, marginTop: 8 }}>
+              The supplier scopes the learned matcher — next time this supplier’s rows auto-match.
+            </div>
+            <div className="modal-actions" style={{ marginTop: 24 }}>
+              <button className="btn btn-secondary" onClick={() => setStep('pick')}>Back</button>
+              <button className="btn btn-primary" onClick={buildReconciliation}
+                disabled={!mapping.description || !mapping.price || (!mapping.supplier && !defaultSupplier.trim())}>
+                Match against bid
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---- RECONCILE ---- */}
+        {step === 'reconcile' && ctx && (
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Pill color="var(--success)" text={`${stats.update} update`} />
+              <Pill color="var(--accent)" text={`${stats.create} create`} />
+              <Pill color="var(--text-muted)" text={`${stats.skip} skip`} />
+              {stats.mismatch > 0 && <Pill color="var(--warning)" text={`${stats.mismatch} unit mismatch`} />}
+              {stats.invalid > 0 && <Pill color="var(--danger)" text={`${stats.invalid} missing price`} />}
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                <span className="text-muted">New items →</span>
+                <select className="form-control" style={{ width: 150, fontSize: 12, padding: '2px 6px' }}
+                  value={newSectionId ?? ''} onChange={(e) => setNewSectionId(Number(e.target.value) || null)}>
+                  {ctx.sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {ctx.sections.length === 0 && <option value="">(no section — catalog only)</option>}
+                </select>
+              </span>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+              <table className="data-table" style={{ fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 70 }}>Match</th>
+                    <th>Quote row</th>
+                    <th style={{ width: 280 }}>Target</th>
+                    <th className="text-right" style={{ width: 90 }}>Old</th>
+                    <th className="text-right" style={{ width: 90 }}>New</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const target = r.targetLineId != null ? lineById.get(r.targetLineId) : null;
+                    const oldPrice = r.action === 'update' && target ? target.material_unit_cost : null;
+                    const mismatch = r.action === 'update' && target
+                      ? unitsMismatch(r.unit, target.unit) : false;
+                    const sm = STATUS_META[r.status];
+                    const diff = oldPrice != null && r.price != null ? r.price - oldPrice : null;
+                    return (
+                      <tr key={r.index} style={r.action === 'skip' ? { opacity: 0.5 } : undefined}>
+                        <td>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: sm.color }}>{sm.label}</span>
+                          {r.method && <div className="text-muted" style={{ fontSize: 10 }}>{r.method}</div>}
+                        </td>
+                        <td>
+                          <div style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.description || <span className="text-muted">(no description)</span>}
+                          </div>
+                          <div className="text-muted" style={{ fontSize: 10 }}>
+                            {r.supplier || 'no supplier'}{r.unit ? ` · ${r.unit}` : ''}
+                            {r.partNumber ? ` · ${r.partNumber}` : ''}
+                          </div>
+                        </td>
+                        <td>
+                          <select className="form-control" style={{ fontSize: 12, padding: '2px 6px', width: '100%' }}
+                            value={r.action === 'update' && r.targetLineId != null ? String(r.targetLineId) : r.action}
+                            onChange={(e) => setRowTarget(r.index, e.target.value)}>
+                            <option value="create">➕ Create new item</option>
+                            <option value="skip">Skip (keep as record only)</option>
+                            <optgroup label="Update bid line">
+                              {ctx.lines.map((l) => (
+                                <option key={l.id} value={String(l.id)}>
+                                  {l.description.slice(0, 48)} ({l.unit}) @ {formatCurrency(l.material_unit_cost)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                          {mismatch && (
+                            <div style={{ fontSize: 10, color: 'var(--warning)', marginTop: 2 }}>
+                              ⚠ unit mismatch: quote {r.unit} ≠ line {target?.unit} — not converted, confirm
+                            </div>
+                          )}
+                        </td>
+                        <td className="text-right">{oldPrice != null ? formatCurrency(oldPrice) : '—'}</td>
+                        <td className="text-right" style={{ fontWeight: 600 }}>
+                          {r.price != null ? formatCurrency(r.price)
+                            : <span style={{ color: 'var(--danger)' }}>—</span>}
+                          {diff != null && diff !== 0 && (
+                            <div style={{ fontSize: 10, fontWeight: 400,
+                              color: diff > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                              {diff > 0 ? '+' : ''}{formatCurrency(diff)}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+              <button className="btn btn-secondary" onClick={() => setStep('map')}>Back</button>
+              <div style={{ flex: 1 }} />
+              <div className="text-muted" style={{ fontSize: 12, marginRight: 8, alignSelf: 'center' }}>
+                {stats.update + stats.create} change{stats.update + stats.create !== 1 ? 's' : ''} will be written
+              </div>
+              <button className="btn btn-primary" onClick={handleCommit} disabled={!canApply}>
+                {committing ? 'Applying…' : 'Confirm & apply'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---- DONE ---- */}
+        {step === 'done' && result && (
+          <div style={{ padding: '16px 0' }}>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 36, marginBottom: 6 }}>&#10003;</div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>
+                {result.stateCounts.quoted + result.stateCounts.confirmed} of {result.stateCounts.total} items now on quoted prices
+                {result.stateCounts.seed > 0 ? ` · ${result.stateCounts.seed} still on seed` : ''}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+              <Stat n={result.updatedLines} label="Lines repriced" color="var(--success)" />
+              <Stat n={result.createdItems} label="Items created" color="var(--accent)" />
+              <Stat n={result.catalogUpdates} label="Catalog prices" color="var(--text-secondary)" />
+            </div>
+            <div className="text-muted" style={{ fontSize: 12, marginBottom: 20 }}>
+              {result.rawStored} quote row{result.rawStored !== 1 ? 's' : ''} stored as a permanent record. Every
+              catalog price change was logged to price history.
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={() => { onDone(); onClose(); }}>Done</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- small presentational helpers ----
+
+function Field({ label, required, value, options, onChange }: {
+  label: string; required?: boolean; value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  return (
+    <div className="form-group">
+      <label>{label} {required
+        ? <span style={{ color: 'var(--danger)' }}>*</span>
+        : <span className="text-muted" style={{ fontWeight: 400 }}>(optional)</span>}</label>
+      <select className="form-control" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{required ? '-- select column --' : '-- skip --'}</option>
+        {options.map((h) => <option key={h} value={h}>{h}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function Pill({ color, text }: { color: string; text: string }) {
+  return (
+    <span style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--bg-tertiary)', color }}>{text}</span>
+  );
+}
+
+function Stat({ n, label, color }: { n: number; label: string; color: string }) {
+  return (
+    <div style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+      <div style={{ fontSize: 24, fontWeight: 700, color }}>{n}</div>
+      <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}

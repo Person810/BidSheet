@@ -15,6 +15,9 @@ import type {
   MaterialWithCategoryRow,
   PageScaleListEntry,
   PageScaleRow,
+  PriceImportCommitPayload,
+  PriceImportCommitResult,
+  PriceImportContext,
   PriceImportResult,
   PriceImportUpdate,
   ProductionRateRow,
@@ -130,6 +133,8 @@ declare global {
       /** Resolve a drag-and-dropped File to its on-disk path (Electron webUtils). */
       getDroppedFilePath: (file: File) => string;
       importPriceSheet: (updates: PriceImportUpdate[], source: string) => Promise<PriceImportResult>;
+      priceImportContext: (jobId: number) => Promise<PriceImportContext>;
+      priceImportCommit: (jobId: number, payload: PriceImportCommitPayload) => Promise<PriceImportCommitResult>;
 
       // Quotes
       getQuotes: (jobId: number) => Promise<QuoteRow[]>;

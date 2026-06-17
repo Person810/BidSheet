@@ -193,6 +193,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV16, migrateV17, migrateV18, migrateV19, migrateV20,
   migrateV21, migrateV22, migrateV23, migrateV24, migrateV25,
   migrateV26, migrateV27, migrateV28, migrateV29, migrateV30,
+  migrateV31,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -243,6 +244,60 @@ function migrateV30(db: Database.Database): void {
     ALTER TABLE cloud_auth ADD COLUMN dek_enc TEXT;
     ALTER TABLE cloud_auth ADD COLUMN dek_fingerprint TEXT;
     INSERT INTO schema_version (version) VALUES (30);
+  `);
+}
+
+function migrateV31(db: Database.Database): void {
+  // Per-job price import (§1–4). Three pieces:
+  //
+  //  1. raw_quote_lines — every incoming quote row stored verbatim and
+  //     immutably. This is both provenance ("where did this number come
+  //     from") and the single ingestion point a future PDF parser feeds, so
+  //     PDF becomes just another way to populate this table.
+  //
+  //  2. quote_aliases — the learned matcher's memory: a (supplier, normalized
+  //     description) key that resolves to a catalog material. Every confirm in
+  //     the reconciliation screen writes one, so the same supplier's rows
+  //     auto-match on the next job and the matcher converges after a few bids.
+  //
+  //  3. price_state / price_source on bid_line_items — the signature
+  //     price-state system. 'seed' = unverified placeholder, 'past_price' = a
+  //     real but older number, 'quoted' = a quote came in for THIS job,
+  //     'confirmed' = locked in. Existing lines that already carry a real
+  //     material price are backfilled to 'past_price' so nothing that the user
+  //     hand-built reads as an untrusted seed; everything else stays 'seed'.
+  db.exec(`
+    CREATE TABLE raw_quote_lines (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
+      supplier    TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL,
+      unit        TEXT,
+      price       REAL NOT NULL DEFAULT 0,
+      part_number TEXT,
+      source      TEXT,
+      imported_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_raw_quote_lines_job ON raw_quote_lines(job_id);
+
+    CREATE TABLE quote_aliases (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier        TEXT NOT NULL DEFAULT '',
+      raw_description TEXT NOT NULL,
+      material_id     INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+      part_number     TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(supplier, raw_description)
+    );
+    CREATE INDEX idx_quote_aliases_material ON quote_aliases(material_id);
+
+    ALTER TABLE bid_line_items ADD COLUMN price_state TEXT NOT NULL DEFAULT 'seed';
+    ALTER TABLE bid_line_items ADD COLUMN price_source TEXT;
+
+    UPDATE bid_line_items SET price_state = 'past_price' WHERE material_unit_cost > 0;
+
+    INSERT INTO schema_version (version) VALUES (31);
   `);
 }
 

@@ -99,6 +99,10 @@ contextBridge.exposeInMainWorld('api', {
   importPriceSheet: (updates: any[], source: string) =>
     invoke('db:materials:import-prices', updates, source),
 
+  // ---- Per-job price import (reconciliation) ----
+  priceImportContext: (jobId: number) => invoke('db:price-import:context', jobId),
+  priceImportCommit: (jobId: number, payload: any) => invoke('db:price-import:commit', jobId, payload),
+
   // ---- Plan Takeoff ----
   openTakeoffPdf: () => invoke('db:takeoff:open-pdf'),
   readTakeoffPdf: (filePath: string) => invoke('db:takeoff:read-pdf', filePath),
