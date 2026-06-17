@@ -47,94 +47,91 @@ export function EditVertexDialog({ vertex, vertexIndex, runLabel, onSave, onClos
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 10000 }}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: 380 }}>
-        <div className="modal-header">
-          <h3 style={{ margin: 0 }}>Edit Vertex</h3>
-        </div>
-        <div className="modal-body">
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-            {runLabel} &middot; Vertex {vertexIndex + 1}
-          </p>
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+        <h3>Edit Vertex</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+          {runLabel} &middot; Vertex {vertexIndex + 1}
+        </p>
 
-          {node && (
-            <>
-              {connectedRunCount != null && connectedRunCount > 1 && (
-                <div style={{
-                  marginBottom: 12, padding: '6px 10px', borderRadius: 4,
-                  background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)',
-                  fontSize: 11, color: 'var(--accent)',
-                }}>
-                  Shared junction &mdash; connected to {connectedRunCount} run{connectedRunCount !== 1 ? 's' : ''}
-                </div>
-              )}
-              <div className="form-group">
-                <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
-                  Junction Label
-                </label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={nodeLabel}
-                  onChange={(e) => setNodeLabel(e.target.value)}
-                  placeholder="e.g. MH-1, CO-3"
-                />
+        {node && (
+          <>
+            {connectedRunCount != null && connectedRunCount > 1 && (
+              <div style={{
+                marginBottom: 12, padding: '6px 10px', borderRadius: 4,
+                background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)',
+                fontSize: 11, color: 'var(--accent)',
+              }}>
+                Shared junction &mdash; connected to {connectedRunCount} run{connectedRunCount !== 1 ? 's' : ''}
               </div>
-            </>
-          )}
-
-          <div className="form-group">
-            <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
-              Invert Elevation (ft)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              className="form-control"
-              value={invertElev}
-              onChange={(e) => setInvertElev(e.target.value === '' ? '' : e.target.value)}
-              placeholder="e.g. 842.35"
-              autoFocus
-            />
-          </div>
-
-          <div className="form-group">
-            <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
-              Rim / Grade Elevation (ft)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              className="form-control"
-              value={rimElev}
-              onChange={(e) => setRimElev(e.target.value === '' ? '' : e.target.value)}
-              placeholder="e.g. 850.00"
-            />
-          </div>
-
-          {depth != null && (
-            <div style={{
-              marginBottom: 16, padding: '8px 12px', borderRadius: 6,
-              background: 'var(--bg-primary)', fontSize: 12,
-            }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Depth: </span>
-              <span style={{ fontWeight: 600 }}>{depth} ft</span>
+            )}
+            <div className="form-group">
+              <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
+                Junction Label
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                value={nodeLabel}
+                onChange={(e) => setNodeLabel(e.target.value)}
+                placeholder="e.g. MH-1, CO-3"
+              />
             </div>
-          )}
+          </>
+        )}
 
-          <div className="form-group">
-            <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
-              Structure Type
-            </label>
-            <FuzzyAutocomplete
-              items={STRUCTURE_TYPES}
-              value={structureType}
-              onSelect={(item: AutocompleteItem | null) => setStructureType(item ? String(item.id) : null)}
-              placeholder="Select structure type..."
-            />
-          </div>
+        <div className="form-group">
+          <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
+            Invert Elevation (ft)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            className="form-control"
+            value={invertElev}
+            onChange={(e) => setInvertElev(e.target.value === '' ? '' : e.target.value)}
+            placeholder="e.g. 842.35"
+            autoFocus
+          />
         </div>
-        <div className="modal-footer">
+
+        <div className="form-group">
+          <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
+            Rim / Grade Elevation (ft)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            className="form-control"
+            value={rimElev}
+            onChange={(e) => setRimElev(e.target.value === '' ? '' : e.target.value)}
+            placeholder="e.g. 850.00"
+          />
+        </div>
+
+        {depth != null && (
+          <div style={{
+            marginBottom: 16, padding: '8px 12px', borderRadius: 6,
+            background: 'var(--bg-primary)', fontSize: 12,
+          }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Depth: </span>
+            <span style={{ fontWeight: 600 }}>{depth} ft</span>
+          </div>
+        )}
+
+        <div className="form-group">
+          <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
+            Structure Type
+          </label>
+          <FuzzyAutocomplete
+            items={STRUCTURE_TYPES}
+            value={structureType}
+            onSelect={(item: AutocompleteItem | null) => setStructureType(item ? String(item.id) : null)}
+            placeholder="Select structure type..."
+          />
+        </div>
+
+        <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={handleSave}>Save</button>
         </div>
