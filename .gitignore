@@ -5,3 +5,6 @@ release/
 *.db-wal
 *.db-shm
 .vite/
+.env
+.env.local
+.claude/settings.local.json
