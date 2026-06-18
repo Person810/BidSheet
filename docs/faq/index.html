@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ | BidSheet</title>
+  <meta name="description" content="Frequently asked questions about BidSheet: is it free, who it is for, supported operating systems, local data, CSV price import, and open source licensing.">
+  <link rel="canonical" href="https://bidsheet.co/faq/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="BidSheet">
+  <meta property="og:title" content="Frequently asked questions | BidSheet">
+  <meta property="og:description" content="Is BidSheet free? Which operating systems? Does my data stay local? Can I import my prices from CSV? Answers to the common questions.">
+  <meta property="og:url" content="https://bidsheet.co/faq/">
+  <meta property="og:image" content="https://bidsheet.co/icon.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Frequently asked questions | BidSheet">
+  <meta name="twitter:description" content="Is BidSheet free? Which operating systems? Does my data stay local? Can I import my prices from CSV?">
+  <meta name="twitter:image" content="https://bidsheet.co/icon.png">
+  <link rel="icon" href="/icon.png" type="image/png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is BidSheet free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. BidSheet is free and open source under the GPLv3 license, with no account, no trial clock, and no feature gates. Everything runs locally on your computer. Optional cloud sync is a paid add-on, but the estimating app itself is free forever."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is BidSheet, and who is it for?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "BidSheet is construction estimating and bidding software for underground utility subcontractors who price water, sewer, storm drain, and civil work. It covers plan takeoff, trench excavation and backfill volumes, crew and equipment costs, material pricing, and professional bid proposal PDFs."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which operating systems does BidSheet run on?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Windows and Linux today. macOS is planned, along with an iOS companion app."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does my data stay on my computer?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. BidSheet stores everything in a SQLite database file on your machine. No account or internet connection is required, and there is no telemetry. A local-only mode hides cloud sync entirely for shops that will never use it."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I import my existing prices?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. BidSheet imports supplier price sheets from CSV and fuzzy-matches them to your material catalog, so you can update pricing without retyping. Takeoff quantities also export to CSV."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is BidSheet open source?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, it is licensed under the GNU GPLv3 and the full source is on GitHub. You are free to read it, build it yourself, and contribute."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need an account or an internet connection?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. The app works fully offline with no sign-up. An account is only needed if you choose the optional paid cloud sync for online backup and multi-computer access."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is BidSheet a free alternative to HeavyBid or SharpeSoft?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "BidSheet is built for the small underground utility subcontractor who is pricing in a spreadsheet and does not want to pay for heavy proprietary estimating suites. It focuses on the core bidding workflow rather than matching every enterprise feature."
+        }
+      }
+    ]
+  }
+  </script>
+  <link rel="stylesheet" href="/assets/site.css">
+  <style>
+    .faq { max-width: 760px; }
+    .faq h2 { font-family: var(--serif); font-size: clamp(24px, 3vw, 32px); margin-bottom: 24px; }
+    .faq details {
+      border-top: 1px solid var(--border);
+      padding: 4px 0;
+    }
+    .faq details:last-child { border-bottom: 1px solid var(--border); }
+    .faq summary {
+      cursor: pointer;
+      padding: 16px 8px;
+      font-weight: 600;
+      font-size: 15.5px;
+      list-style-position: outside;
+    }
+    .faq summary:hover { color: var(--gold-light); }
+    .faq details > div { padding: 0 8px 18px; color: var(--text-muted); font-size: 14.5px; }
+    .faq details > div p { margin-bottom: 10px; }
+    .faq details > div p:last-child { margin-bottom: 0; }
+    .faq-more {
+      max-width: 760px;
+      margin-top: 36px;
+      color: var(--text-muted);
+      font-size: 14.5px;
+    }
+    .faq-more a { color: var(--gold); }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <nav class="site-nav" aria-label="Main">
+    <a href="/" class="nav-brand">
+      <img src="/icon.png" alt="">
+      <span>BidSheet</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features" class="nav-hide-sm">Features</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/contact/" class="nav-hide-sm">Contact</a>
+      <a href="/faq/" aria-current="page" class="nav-hide-sm">FAQ</a>
+      <a href="https://github.com/Person810/BidSheet" class="nav-github" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <main id="main" class="page">
+    <header class="page-header">
+      <p class="eyebrow">FAQ</p>
+      <h1>Frequently asked questions</h1>
+      <p>
+        The short version: BidSheet is free, open source, and runs on your own computer.
+        Below are the questions estimators ask most. For billing and cloud-sync questions,
+        see the <a href="/pricing/">pricing page</a>.
+      </p>
+    </header>
+
+    <section class="faq" aria-labelledby="faq-title">
+      <h2 id="faq-title">About the app</h2>
+
+      <details>
+        <summary>Is BidSheet free?</summary>
+        <div>
+          <p>Yes. BidSheet is free and open source under the GPLv3 license, with no account,
+          no trial clock, and no feature gates. Everything runs locally on your computer.
+          Optional cloud sync is a paid add-on, but the estimating app itself is free forever.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>What is BidSheet, and who is it for?</summary>
+        <div>
+          <p>BidSheet is construction estimating and bidding software for underground utility
+          subcontractors who price water, sewer, storm drain, and civil work. It covers plan
+          takeoff, trench excavation and backfill volumes, crew and equipment costs, material
+          pricing, and professional bid proposal PDFs.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Which operating systems does BidSheet run on?</summary>
+        <div>
+          <p>Windows and Linux today. macOS is planned, along with an iOS companion app.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Does my data stay on my computer?</summary>
+        <div>
+          <p>Yes. BidSheet stores everything in a SQLite database file on your machine. No account
+          or internet connection is required, and there is no telemetry. A local-only mode hides
+          cloud sync entirely for shops that will never use it.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Can I import my existing prices?</summary>
+        <div>
+          <p>Yes. BidSheet imports supplier price sheets from CSV and fuzzy-matches them to your
+          material catalog, so you can update pricing without retyping. Takeoff quantities also
+          export to CSV.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Is BidSheet open source?</summary>
+        <div>
+          <p>Yes, it is licensed under the GNU GPLv3 and the full source is on
+          <a href="https://github.com/Person810/BidSheet" rel="noopener">GitHub</a>. You are free
+          to read it, build it yourself, and contribute.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Do I need an account or an internet connection?</summary>
+        <div>
+          <p>No. The app works fully offline with no sign-up. An account is only needed if you
+          choose the optional paid cloud sync for online backup and multi-computer access.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Is BidSheet a free alternative to HeavyBid or SharpeSoft?</summary>
+        <div>
+          <p>BidSheet is built for the small underground utility subcontractor who is pricing in a
+          spreadsheet and does not want to pay for heavy proprietary estimating suites. It focuses
+          on the core bidding workflow rather than matching every enterprise feature.</p>
+        </div>
+      </details>
+    </section>
+
+    <p class="faq-more">
+      Still have a question? <a href="/contact/">Contact us</a>, try the free
+      <a href="/calculators/trench-volume/">trench volume calculator</a>, or
+      <a href="https://github.com/Person810/BidSheet/releases/latest" rel="noopener">download BidSheet</a>
+      and see for yourself.
+    </p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="/" class="nav-brand">
+          <img src="/icon.png" alt="">
+          <span>BidSheet</span>
+        </a>
+        <p>Free, open-source construction estimating software for underground utility subcontractors. Licensed under GPLv3.</p>
+      </div>
+      <div class="footer-cols">
+        <nav class="footer-col" aria-label="Product">
+          <h2>Product</h2>
+          <ul>
+            <li><a href="/#features">Features</a></li>
+            <li><a href="/pricing/">Pricing</a></li>
+            <li><a href="/calculators/trench-volume/">Trench calculator</a></li>
+            <li><a href="/faq/" aria-current="page">FAQ</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases/latest" rel="noopener">Download</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/releases" rel="noopener">All releases</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Project">
+          <h2>Project</h2>
+          <ul>
+            <li><a href="https://github.com/Person810/BidSheet" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/Person810/BidSheet/issues" rel="noopener">Report a bug</a></li>
+            <li><a href="https://www.gnu.org/licenses/gpl-3.0.html" rel="noopener">License (GPLv3)</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-col" aria-label="Legal">
+          <h2>Legal</h2>
+          <ul>
+            <li><a href="/legal/privacy/">Privacy policy</a></li>
+            <li><a href="/legal/terms/">Terms of service</a></li>
+            <li><a href="/legal/refunds/">Refund policy</a></li>
+            <li><a href="/contact/">Contact</a></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>BidSheet is free software: estimates and calculations must be independently verified before use in any bid. See the <a href="/legal/terms/">terms of service</a>.</p>
+    </div>
+  </footer>
+</body>
+</html>

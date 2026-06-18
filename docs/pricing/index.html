@@ -13,6 +13,70 @@
   <meta property="og:url" content="https://bidsheet.co/pricing/">
   <meta property="og:image" content="https://bidsheet.co/icon.png">
   <link rel="icon" href="/icon.png" type="image/png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is my data still on my computer if I subscribe?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, always. Cloud sync is a copy, not a move. The app reads and writes your local database first; sync uploads copies so your other computers and a future fresh install can pull them down. Cancel, go offline, or delete your account, and the local app and your local data keep working untouched."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can you read my backups?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Encrypted backups: no. The whole-database backup is encrypted on your computer with a key derived from a passphrase only you know, before it is uploaded. We store the sealed file and cannot open it, which also means we cannot recover it if you lose the passphrase, so write it down. Synced jobs and catalog data are encrypted in transit and at rest on our infrastructure, but are not yet sealed with your passphrase; full end-to-end encryption of synced data is on the roadmap."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does \"Beta\" mean here?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Cloud sync is newer than the estimating app and still earning trust. It is tested, live, and backed up, but expect rough edges, and expect us to be honest about them. The local app does not depend on it in any way."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What happens when I cancel?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Your subscription runs to the end of the period you paid for, then uploads stop. Your local data is unaffected and the app keeps working in full. Your synced data stays available for download for a wind-down period after lapse so you can pull everything to your machines, after which it may be deleted from our servers."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does the free trial work?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Creating a cloud account starts a 30-day trial with 10 GB of storage, with no payment details required. If you subscribe, storage grows to 100 GB. If you do not, uploads stop at day 30; your local data is untouched and anything synced remains downloadable during the wind-down period."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "I need more than 100 GB.",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "100 GB is roughly tens of thousands of compressed plan pages and photos, and most shops never get near it. If you do, contact us and we will sort out a larger tier."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I self-host the cloud?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The desktop app is GPLv3, and pointing it at your own infrastructure is possible if you are technical. It is unsupported, but we will not stand in your way. The hosted service exists for everyone who would rather pay $20 than run servers."
+        }
+      }
+    ]
+  }
+  </script>
   <link rel="stylesheet" href="/assets/site.css">
   <style>
     .plans {
@@ -97,6 +161,7 @@
       <a href="/#features" class="nav-hide-sm">Features</a>
       <a href="/pricing/" aria-current="page">Pricing</a>
       <a href="/contact/" class="nav-hide-sm">Contact</a>
+      <a href="/faq/" class="nav-hide-sm">FAQ</a>
       <a href="https://github.com/Person810/BidSheet" class="nav-github" rel="noopener">
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
@@ -248,6 +313,7 @@
             <li><a href="/#features">Features</a></li>
             <li><a href="/pricing/">Pricing</a></li>
             <li><a href="/calculators/trench-volume/">Trench calculator</a></li>
+            <li><a href="/faq/">FAQ</a></li>
             <li><a href="https://github.com/Person810/BidSheet/releases/latest" rel="noopener">Download</a></li>
             <li><a href="https://github.com/Person810/BidSheet/releases" rel="noopener">All releases</a></li>
           </ul>
