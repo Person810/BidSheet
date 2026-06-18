@@ -236,6 +236,8 @@ export interface BidLineItemRow {
   price_state: PriceState;
   /** Where the current price came from, e.g. "Core & Main, job #1142, Jun 2026". */
   price_source: string | null;
+  /** JSON array of derived fields the user has manually overridden (§5). */
+  manual_fields: string | null;
 }
 
 export type PriceState = 'seed' | 'past_price' | 'quoted' | 'confirmed';
@@ -261,6 +263,8 @@ export interface SaveBidLineItemPayload {
   notes?: string | null;
   itemNumber?: string | null;
   costCode?: string | null;
+  /** Derived fields the user has overridden; persisted to skip recompute (§5). */
+  manualFields?: string[];
 }
 
 /** Summary returned by db:jobs:summary / summary-batch (bidCalc + jobId). */
