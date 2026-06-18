@@ -7,8 +7,10 @@ import {
   equipmentToAutocomplete,
 } from '../../components/FuzzyAutocomplete';
 import { formatCurrency } from './helpers';
-import { calcCrewCostPerHour } from '../../../shared/crewCost';
+import { calcCrewCostPerHour, explainCrewCost } from '../../../shared/crewCost';
 import { effectiveMaterialUnitCost, isCubicYards } from '../../../shared/unitConversion';
+import { CalcPopover } from '../../components/CalcPopover';
+import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
 
 interface LineItemModalProps {
   lineForm: any;
@@ -163,6 +165,51 @@ export function LineItemModal({
   const formEquipTotal = lineForm.equipmentHours * lineForm.equipmentCostPerHour;
   const formTotal = formMatTotal + formLaborTotal + formEquipTotal + lineForm.subcontractorCost;
 
+  // ---- Breakdowns for the "show the math" popovers ----
+  const selectedCrew = lineForm.crewTemplateId
+    ? crews.find((c: any) => c.id === lineForm.crewTemplateId)
+    : null;
+  const selectedRate = lineForm.productionRateId
+    ? productionRates.find((r: any) => r.id === lineForm.productionRateId)
+    : null;
+  const u = lineForm.unit;
+
+  const matBreakdown = explainProduct(
+    'Material total = quantity × unit cost',
+    { label: 'Quantity', value: fmtQty(lineForm.quantity, u) },
+    { label: 'Unit cost', value: `${fmtMoney(lineForm.materialUnitCost)}/${u}` },
+    { label: 'Material total', value: fmtMoney(formMatTotal) },
+  );
+  const laborTotalBreakdown = explainProduct(
+    'Labor total = hours × crew cost/hr',
+    { label: 'Labor hours', value: `${fmtNum(lineForm.laborHours, 2)} hr` },
+    { label: 'Crew cost/hr', value: fmtMoney(lineForm.laborCostPerHour) },
+    { label: 'Labor total', value: fmtMoney(formLaborTotal) },
+  );
+  const equipTotalBreakdown = explainProduct(
+    'Equipment total = hours × cost/hr',
+    { label: 'Equipment hours', value: `${fmtNum(lineForm.equipmentHours, 2)} hr` },
+    { label: 'Cost/hr', value: fmtMoney(lineForm.equipmentCostPerHour) },
+    { label: 'Equipment total', value: fmtMoney(formEquipTotal) },
+  );
+  const laborHoursBreakdown = selectedRate ? explainQuotient(
+    'Labor hours = quantity ÷ production rate',
+    { label: 'Quantity', value: fmtQty(lineForm.quantity, u) },
+    { label: 'Production rate', value: `${fmtNum(selectedRate.rate_per_hour, 2)} ${selectedRate.unit || u}/hr` },
+    { label: 'Labor hours', value: `${fmtNum(lineForm.laborHours, 2)} hr` },
+    'Rounded to the nearest 0.1 hr. Edit to override.',
+  ) : null;
+  const lineTotalBreakdown = explainSum(
+    'Line total = material + labor + equipment + subcontractor',
+    [
+      { label: 'Material', value: fmtMoney(formMatTotal) },
+      { label: 'Labor', value: fmtMoney(formLaborTotal) },
+      { label: 'Equipment', value: fmtMoney(formEquipTotal) },
+      { label: 'Subcontractor', value: fmtMoney(lineForm.subcontractorCost) },
+    ],
+    { label: 'Line total', value: fmtMoney(formTotal) },
+  );
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 700, maxHeight: '90vh' }}>
@@ -226,7 +273,7 @@ export function LineItemModal({
                 step="0.01" min="0" />
             </div>
             <div className="form-group">
-              <label>Total</label>
+              <label>Total <CalcPopover breakdown={matBreakdown} ariaLabel="Show material total math" /></label>
               <div className="form-control computed-field">{formatCurrency(formMatTotal)}</div>
             </div>
           </div>
@@ -273,7 +320,9 @@ export function LineItemModal({
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label>Labor Hours</label>
+              <label>Labor Hours
+                {laborHoursBreakdown && <CalcPopover breakdown={laborHoursBreakdown} ariaLabel="Show labor hours math" />}
+              </label>
               <input type="number" className="form-control" value={lineForm.laborHours}
                 onChange={(e) => setLineForm({ ...lineForm, laborHours: parseFloat(e.target.value) || 0 })}
                 step="0.5" min="0" />
@@ -284,13 +333,15 @@ export function LineItemModal({
               )}
             </div>
             <div className="form-group">
-              <label>Crew Cost / Hour ($)</label>
+              <label>Crew Cost / Hour ($)
+                {selectedCrew && <CalcPopover breakdown={explainCrewCost(selectedCrew)} ariaLabel="Show crew cost math" />}
+              </label>
               <input type="number" className="form-control" value={lineForm.laborCostPerHour}
                 onChange={(e) => setLineForm({ ...lineForm, laborCostPerHour: parseFloat(e.target.value) || 0 })}
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
-              <label>Total</label>
+              <label>Total <CalcPopover breakdown={laborTotalBreakdown} ariaLabel="Show labor total math" /></label>
               <div className="form-control computed-field">{formatCurrency(formLaborTotal)}</div>
             </div>
           </div>
@@ -326,7 +377,7 @@ export function LineItemModal({
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
-              <label>Total</label>
+              <label>Total <CalcPopover breakdown={equipTotalBreakdown} ariaLabel="Show equipment total math" /></label>
               <div className="form-control computed-field">{formatCurrency(formEquipTotal)}</div>
             </div>
           </div>
@@ -353,6 +404,7 @@ export function LineItemModal({
         <div style={{ background: 'var(--bg-tertiary)', padding: 16, borderRadius: 8, marginTop: 8, textAlign: 'right' }}>
           <span className="text-muted" style={{ marginRight: 16 }}>Line Item Total:</span>
           <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{formatCurrency(formTotal)}</span>
+          <CalcPopover breakdown={lineTotalBreakdown} ariaLabel="Show line total math" />
           {lineForm.quantity > 0 && (
             <span className="text-muted" style={{ marginLeft: 16 }}>
               ({formatCurrency(formTotal / lineForm.quantity)} / {lineForm.unit})

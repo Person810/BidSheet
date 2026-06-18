@@ -6,6 +6,9 @@
  * and by the plan takeoff viewer later.
  */
 
+import type { CalcBreakdown } from '../../../shared/calcExplain';
+import { fmtNum } from '../../../shared/calcExplain';
+
 // ---- Input / Output types --------------------------------------------------
 
 export interface TrenchInput {
@@ -126,6 +129,68 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * "Show the math" for the trench takeoff (§5). Re-derives the substituted
+ * arithmetic for the volumes from the same inputs, so the numbers in the
+ * summary table are never a black box.
+ */
+export function explainTrench(input: TrenchInput, output: TrenchOutput): {
+  avgDepth: CalcBreakdown;
+  excavation: CalcBreakdown;
+  bedding: CalcBreakdown;
+  backfill: CalcBreakdown;
+} {
+  const ft = (n: number) => `${fmtNum(n, 2)} ft`;
+  const cy = (n: number) => `${fmtNum(n, 2)} CY`;
+  const totalWidth = input.trenchWidthFt + input.benchWidthFt * 2;
+  const excavationCF = totalWidth * output.avgDepthFt * input.runLengthLF;
+  const beddingCF = input.trenchWidthFt * input.beddingDepthFt * input.runLengthLF;
+  const pipeRadiusFt = (input.pipeSizeIn / 12) / 2;
+  const pipeCF = Math.PI * pipeRadiusFt ** 2 * output.pipeLF;
+
+  return {
+    avgDepth: {
+      formula: 'Avg depth = (start depth + end depth) ÷ 2',
+      lines: [
+        { label: 'Start depth', value: ft(input.startDepthFt), kind: 'term' },
+        { label: 'End depth', value: ft(output.endDepthFt), kind: 'term' },
+        { label: 'Avg depth', value: ft(output.avgDepthFt), kind: 'result' },
+      ],
+      note: `End depth = start + grade (${fmtNum(input.gradePct, 2)}% × ${fmtNum(input.runLengthLF, 0)} LF).`,
+    },
+    excavation: {
+      formula: 'Excavation = (width + 2 × bench) × avg depth × length ÷ 27',
+      lines: [
+        { label: 'Total width', value: `${ft(input.trenchWidthFt)} + 2 × ${ft(input.benchWidthFt)} = ${ft(totalWidth)}`, kind: 'term' },
+        { label: 'Avg depth', value: ft(output.avgDepthFt), kind: 'term' },
+        { label: 'Run length', value: `${fmtNum(input.runLengthLF, 2)} LF`, kind: 'term' },
+        { label: 'Volume', value: `${fmtNum(excavationCF, 1)} CF ÷ 27`, kind: 'term' },
+        { label: 'Excavation', value: cy(output.excavationCY), kind: 'result' },
+      ],
+    },
+    bedding: {
+      formula: 'Bedding = width × bedding depth × length ÷ 27',
+      lines: [
+        { label: 'Trench width', value: ft(input.trenchWidthFt), kind: 'term' },
+        { label: 'Bedding depth', value: ft(input.beddingDepthFt), kind: 'term' },
+        { label: 'Run length', value: `${fmtNum(input.runLengthLF, 2)} LF`, kind: 'term' },
+        { label: 'Volume', value: `${fmtNum(beddingCF, 1)} CF ÷ 27`, kind: 'term' },
+        { label: 'Bedding', value: cy(output.beddingCY), kind: 'result' },
+      ],
+    },
+    backfill: {
+      formula: 'Backfill = excavation − bedding − pipe',
+      lines: [
+        { label: 'Excavation', value: `${fmtNum(excavationCF, 1)} CF`, kind: 'term' },
+        { label: 'Bedding', value: `${fmtNum(beddingCF, 1)} CF`, kind: 'term' },
+        { label: 'Pipe displacement', value: `${fmtNum(pipeCF, 1)} CF`, kind: 'term' },
+        { label: 'Backfill', value: cy(output.backfillCY), kind: 'result' },
+      ],
+      note: 'Subtracts the full pipe cylinder (bedding-to-invert); conservative for bedding-to-springline specs.',
+    },
+  };
 }
 
 /**

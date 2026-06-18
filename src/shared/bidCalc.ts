@@ -9,6 +9,9 @@
  * and priced independently (each alternate gets its own marked-up total).
  */
 
+import type { CalcBreakdown } from './calcExplain';
+import { explainProduct, explainPercentOf, explainSum, fmtMoney, fmtNum } from './calcExplain';
+
 export interface BidTotals {
   material_total: number;
   labor_total: number;
@@ -54,6 +57,77 @@ export interface AlternateSummary extends BidTotals, BidSummary {
 export interface FullBidSummary extends BidTotals, BidSummary {
   /** Each alternate section priced independently with its own markups */
   alternates: AlternateSummary[];
+}
+
+/** Shape carrying the dollar amounts a breakdown needs (a FullBidSummary works). */
+interface SummaryAmounts {
+  material_total: number;
+  labor_total: number;
+  equipment_total: number;
+  subcontractor_total: number;
+  direct_cost_total: number;
+  escalation: number;
+  overhead: number;
+  profit: number;
+  bond: number;
+  tax: number;
+  grandTotal: number;
+}
+
+/** Direct cost = material + labor + equipment + subcontractor (across base sections). */
+export function explainDirectCost(s: SummaryAmounts): CalcBreakdown {
+  return explainSum(
+    'Direct cost = material + labor + equipment + subcontractor',
+    [
+      { label: 'Material', value: fmtMoney(s.material_total) },
+      { label: 'Labor', value: fmtMoney(s.labor_total) },
+      { label: 'Equipment', value: fmtMoney(s.equipment_total) },
+      { label: 'Subcontractor', value: fmtMoney(s.subcontractor_total) },
+    ],
+    { label: 'Direct cost', value: fmtMoney(s.direct_cost_total) },
+  );
+}
+
+export function explainEscalation(s: SummaryAmounts, escalationPct: number): CalcBreakdown {
+  return explainProduct(
+    'Material escalation = material total × escalation %',
+    { label: 'Material total', value: fmtMoney(s.material_total) },
+    { label: 'Escalation %', value: `${fmtNum(escalationPct, 3)}%` },
+    { label: 'Escalation', value: fmtMoney(s.escalation) },
+  );
+}
+
+/**
+ * Markup breakdown. Overhead/profit/bond apply to (direct cost + escalation);
+ * sales tax applies to (material + escalation). When sections override the job
+ * markups the displayed rate is blended (derived from base and result), with a
+ * note — so the popover never claims a single rate that isn't the truth.
+ */
+export function explainMarkup(
+  kind: 'overhead' | 'profit' | 'bond' | 'tax', s: SummaryAmounts, hasOverrides: boolean,
+): CalcBreakdown {
+  if (kind === 'tax') {
+    return explainPercentOf('Sales tax', 'Material + escalation', s.material_total + s.escalation, s.tax);
+  }
+  const label = kind === 'overhead' ? 'Overhead' : kind === 'profit' ? 'Profit' : 'Bond';
+  const note = hasOverrides ? 'Blended rate — some sections override the job markups.' : undefined;
+  return explainPercentOf(label, 'Direct cost + escalation', s.direct_cost_total + s.escalation, s[kind], note);
+}
+
+/** Bid total = direct cost + escalation + overhead + profit + bond + tax. */
+export function explainGrandTotal(s: SummaryAmounts): CalcBreakdown {
+  return explainSum(
+    'Bid total = direct cost + escalation + markups + tax',
+    [
+      { label: 'Direct cost', value: fmtMoney(s.direct_cost_total) },
+      { label: 'Escalation', value: fmtMoney(s.escalation) },
+      { label: 'Overhead', value: fmtMoney(s.overhead) },
+      { label: 'Profit', value: fmtMoney(s.profit) },
+      { label: 'Bond', value: fmtMoney(s.bond) },
+      { label: 'Sales tax', value: fmtMoney(s.tax) },
+    ],
+    { label: 'Bid total', value: fmtMoney(s.grandTotal) },
+  );
 }
 
 export function computeBidSummary(totals: BidTotals, job: BidJobParams): BidSummary {
