@@ -1,5 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type Database from 'better-sqlite3';
+
+// database.ts imports electron only for getDbPath(); these tests always pass
+// an explicit ':memory:' path. Mock it so the suite runs under CI's
+// `npm ci --ignore-scripts` install, where no Electron binary is present.
+vi.mock('electron', () => ({ app: { getPath: () => '/tmp' } }));
+
 import { initializeDatabase } from '../database';
 
 /**
