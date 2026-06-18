@@ -40,15 +40,12 @@ export const TRADE_ABBREVIATIONS: Record<string, string> = {
   co: 'cleanout',
   ftg: 'fitting',
   ftgs: 'fittings',
-  fitting: 'fitting',
-  reducer: 'reducer',
   hdpe: 'polyethylene',
-  pvc: 'pvc',
-  sdr: 'sdr',
+  // c900/c905 stay whole so they aren't split into "c 900" by the
+  // letter/digit tokenizer below.
   c900: 'c900',
   c905: 'c905',
   ips: 'iron pipe size',
-  dr: 'dr',
   rcp: 'reinforced concrete pipe',
   cmp: 'corrugated metal pipe',
   std: 'standard',

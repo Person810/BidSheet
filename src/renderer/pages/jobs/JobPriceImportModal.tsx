@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { formatCurrency } from './helpers';
+import {
+  autoDetectMapping, availableHeaders, parseCsvPrice, ColumnSelect, CsvDropZone,
+} from '../../components/csvImport';
 import {
   buildAliasIndex, matchQuoteRow, unitsMismatch,
   type AliasEntry, type MatchCandidate, type MatchStatus,
@@ -19,31 +22,6 @@ const HEADER_ALIASES: Record<string, string[]> = {
   partNumber: ['part number', 'part #', 'part#', 'part_number', 'sku', 'item #', 'item#', 'catalog #', 'model', 'mfg #'],
   supplier: ['supplier', 'vendor', 'manufacturer', 'mfg', 'distributor', 'source'],
 };
-
-function autoDetect(headers: string[]): Record<string, string> {
-  const map: Record<string, string> = { description: '', price: '', unit: '', partNumber: '', supplier: '' };
-  const lower = headers.map((h) => h.toLowerCase().trim());
-  const claimed = new Set<string>();
-  for (const field of Object.keys(HEADER_ALIASES)) {
-    for (const alias of HEADER_ALIASES[field]) {
-      const idx = lower.indexOf(alias);
-      if (idx !== -1 && !claimed.has(headers[idx])) {
-        map[field] = headers[idx];
-        claimed.add(headers[idx]);
-        break;
-      }
-    }
-  }
-  return map;
-}
-
-function parsePrice(raw: string | undefined): number | null {
-  if (raw == null) return null;
-  const cleaned = String(raw).replace(/[$,\s]/g, '');
-  if (!cleaned) return null;
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
 
 // ============================================================
 // Reconciliation row model
@@ -98,8 +76,6 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const [result, setResult] = useState<PriceImportCommitResult | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const dragCounter = useRef(0);
 
   // Line lookup for rendering old prices / units against the chosen target.
   const lineById = useMemo(() => {
@@ -109,37 +85,12 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
   }, [ctx]);
 
   // ---- Step 1: file ----
-  const handleParsed = (parsed: CsvParseResult | null) => {
-    if (!parsed) return;
-    if (parsed.error) { setError(parsed.error); return; }
-    if (parsed.rows.length === 0) { setError('That file has no data rows.'); return; }
+  const onFileParsed = (parsed: CsvParseResult) => {
     setError(null);
     setCsv(parsed);
-    setMapping(autoDetect(parsed.headers));
+    setMapping(autoDetectMapping(parsed.headers, HEADER_ALIASES));
     setStep('map');
   };
-
-  const pickFile = async () => {
-    setError(null);
-    try { handleParsed(await window.api.openCsvFile()); }
-    catch (err: any) { setError(err.message || 'Failed to open file.'); }
-  };
-
-  const onDrop = async (e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    setDragging(false); setError(null);
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-    let filePath = '';
-    try { filePath = window.api.getDroppedFilePath(file); } catch { filePath = ''; }
-    if (!filePath) { setError('Could not read the dropped file path.'); return; }
-    try { handleParsed(await window.api.parseCsvPath(filePath)); }
-    catch (err: any) { setError(err.message || 'Failed to read dropped file.'); }
-  };
-
-  const usedColumns = useMemo(() => new Set(Object.values(mapping).filter(Boolean)), [mapping]);
-  const headerOptions = (field: string) =>
-    (csv?.headers ?? []).filter((h) => !usedColumns.has(h) || mapping[field] === h);
 
   // ---- Step 2 → 3: build reconciliation ----
   const buildReconciliation = async () => {
@@ -168,7 +119,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
 
     const recon: ReconRow[] = csv.rows.map((row, index) => {
       const description = (row[mapping.description] || '').trim();
-      const price = parsePrice(mapping.price ? row[mapping.price] : undefined);
+      const price = parseCsvPrice(mapping.price ? row[mapping.price] : undefined);
       const unit = mapping.unit ? (row[mapping.unit] || '').trim() || null : null;
       const partNumber = mapping.partNumber ? (row[mapping.partNumber] || '').trim() || null : null;
       const supplier = (mapping.supplier ? (row[mapping.supplier] || '').trim() : '') || defaultSupplier.trim();
@@ -282,23 +233,10 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
         {/* ---- PICK ---- */}
         {step === 'pick' && (
           <div style={{ padding: '12px 0' }}>
-            <div style={{
-              border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 12, padding: '40px 24px', textAlign: 'center', cursor: 'pointer',
-              background: dragging ? 'rgba(59,130,246,0.08)' : 'transparent' }}
-              onClick={pickFile}
-              onDragOver={(e) => e.preventDefault()}
-              onDragEnter={(e) => { e.preventDefault(); dragCounter.current++; setDragging(true); }}
-              onDragLeave={() => { dragCounter.current--; if (dragCounter.current === 0) setDragging(false); }}
-              onDrop={(e) => { dragCounter.current = 0; onDrop(e); }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>{dragging ? '\u{1F4E5}' : '\u{1F4C4}'}</div>
-              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 6 }}>
-                {dragging ? 'Drop the quote here' : 'Drag a quote CSV here, or click to browse'}
-              </div>
-              <div className="text-muted" style={{ fontSize: 12 }}>
-                Ask the rep for an Excel quote, save as CSV. .csv / .tsv supported.
-              </div>
-            </div>
+            <CsvDropZone onParsed={onFileParsed} onError={setError}
+              hint={<div className="text-muted" style={{ fontSize: 12, marginTop: 12 }}>
+                Ask the rep for an Excel quote, save as CSV. Nothing is written until you confirm.
+              </div>} />
             <div className="modal-actions" style={{ marginTop: 20 }}>
               <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
             </div>
@@ -309,15 +247,15 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
         {step === 'map' && csv && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <Field label="Description" required value={mapping.description} options={headerOptions('description')}
+              <ColumnSelect label="Description" required value={mapping.description} options={availableHeaders(csv.headers, mapping, 'description')}
                 onChange={(v) => setMapping({ ...mapping, description: v })} />
-              <Field label="Unit price" required value={mapping.price} options={headerOptions('price')}
+              <ColumnSelect label="Unit price" required value={mapping.price} options={availableHeaders(csv.headers, mapping, 'price')}
                 onChange={(v) => setMapping({ ...mapping, price: v })} />
-              <Field label="Unit" value={mapping.unit} options={headerOptions('unit')}
+              <ColumnSelect label="Unit" value={mapping.unit} options={availableHeaders(csv.headers, mapping, 'unit')}
                 onChange={(v) => setMapping({ ...mapping, unit: v })} />
-              <Field label="Part #" value={mapping.partNumber} options={headerOptions('partNumber')}
+              <ColumnSelect label="Part #" value={mapping.partNumber} options={availableHeaders(csv.headers, mapping, 'partNumber')}
                 onChange={(v) => setMapping({ ...mapping, partNumber: v })} />
-              <Field label="Supplier column" value={mapping.supplier} options={headerOptions('supplier')}
+              <ColumnSelect label="Supplier column" value={mapping.supplier} options={availableHeaders(csv.headers, mapping, 'supplier')}
                 onChange={(v) => setMapping({ ...mapping, supplier: v })} />
               <div className="form-group">
                 <label>Supplier {mapping.supplier ? <span className="text-muted" style={{ fontWeight: 400 }}>(fallback)</span> : <span style={{ color: 'var(--danger)' }}>*</span>}</label>
@@ -510,22 +448,6 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
 }
 
 // ---- small presentational helpers ----
-
-function Field({ label, required, value, options, onChange }: {
-  label: string; required?: boolean; value: string; options: string[]; onChange: (v: string) => void;
-}) {
-  return (
-    <div className="form-group">
-      <label>{label} {required
-        ? <span style={{ color: 'var(--danger)' }}>*</span>
-        : <span className="text-muted" style={{ fontWeight: 400 }}>(optional)</span>}</label>
-      <select className="form-control" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{required ? '-- select column --' : '-- skip --'}</option>
-        {options.map((h) => <option key={h} value={h}>{h}</option>)}
-      </select>
-    </div>
-  );
-}
 
 function Pill({ color, text }: { color: string; text: string }) {
   return (
