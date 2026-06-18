@@ -31,7 +31,7 @@
         "name": "Can you read my backups?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Encrypted backups: no. The whole-database backup is encrypted on your computer with a key derived from a passphrase only you know, before it is uploaded. We store the sealed file and cannot open it, which also means we cannot recover it if you lose the passphrase, so write it down. Synced jobs and catalog data are encrypted in transit and at rest on our infrastructure, but are not yet sealed with your passphrase; full end-to-end encryption of synced data is on the roadmap."
+          "text": "No. Everything you sync — jobs, takeoffs, catalog, and plans — plus your whole-database backup is encrypted on your computer before it is uploaded. We store only sealed ciphertext and can never read it. The encryption is unlocked by a single recovery key, shown to you once, that is not your login password. Save it somewhere safe: it is the only way to unlock your data on a new computer, and because we never see it, we genuinely cannot recover your data for you if you lose it."
         }
       },
       {
@@ -204,7 +204,7 @@
         <p class="price-note">first 30 days free · no card required to try</p>
         <p>Online backup and multi-computer sync for your jobs and catalog, on top of the same local-first app.</p>
         <ul>
-          <li>Encrypted whole-database backup, sealed with a passphrase only you know</li>
+          <li>End-to-end encrypted: jobs, catalog, plans, and your backup are sealed on your computer, so we can never read them</li>
           <li>Sync jobs and catalog across all your computers</li>
           <li>Dead-laptop restore: sign in on a new machine, get everything back</li>
           <li>100 GB storage (10 GB during the trial)</li>
@@ -237,13 +237,13 @@
       <details>
         <summary>Can you read my backups?</summary>
         <div>
-          <p>Encrypted backups: no. The whole-database backup is encrypted on your computer with a
-          key derived from a passphrase only you know, before it's uploaded. We store the sealed
-          file; we cannot open it. That also means we genuinely cannot recover it if you lose the
-          passphrase, so write it down.</p>
-          <p>Synced jobs and catalog data are encrypted in transit and at rest on our
-          infrastructure, but are not yet sealed with your passphrase. Full end-to-end encryption
-          of synced data is on the roadmap.</p>
+          <p>No. Everything you sync — jobs, takeoffs, catalog, and plans — plus your
+          whole-database backup is encrypted on your computer before it's uploaded. We store
+          only sealed ciphertext and can never read it.</p>
+          <p>The encryption is unlocked by a single recovery key, shown to you once, that is not
+          your login password. Save it somewhere safe: it's the only way to unlock your data on a
+          new computer, and because we never see it, we genuinely can't recover your data for you
+          if you lose it.</p>
         </div>
       </details>
 
