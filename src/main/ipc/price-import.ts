@@ -41,6 +41,12 @@ interface CommitRow {
 interface CommitPayload {
   source: string;
   rows: CommitRow[];
+  /**
+   * Other (open, non-locked) jobs the confirmed prices should also be pushed
+   * into, matched by material. The current job is always applied; this is
+   * purely additive and never includes locked/closed bids.
+   */
+  applyToJobIds?: number[];
 }
 
 const IMPORTED_CATEGORY = 'Imported Items';
@@ -73,7 +79,19 @@ export function registerPriceImportHandlers(db: Database.Database): void {
       `SELECT id, name FROM material_categories ORDER BY name`,
     ).all();
 
-    return { lines, aliases, sections, categories };
+    // Other jobs a confirmed price can also be pushed into. A job is "locked"
+    // when it's won/lost AND bid_locked — those (and archived) are excluded so
+    // an import never disturbs a closed bid. The current job is applied
+    // implicitly and so is left out of this list.
+    const otherJobs = db.prepare(
+      `SELECT id, name, job_number, status FROM jobs
+       WHERE id != ? AND parent_job_id IS NULL
+         AND status != 'archived'
+         AND NOT (status IN ('won', 'lost') AND bid_locked = 1)
+       ORDER BY updated_at DESC`,
+    ).all(jobId);
+
+    return { lines, aliases, sections, categories, otherJobs };
   });
 
   safeHandle('db:price-import:commit', (_event, jobId: number, payload: CommitPayload) => {
@@ -82,6 +100,20 @@ export function registerPriceImportHandlers(db: Database.Database): void {
 
     const job = db.prepare('SELECT job_number FROM jobs WHERE id = ?').get(jobId) as any;
     const stamp = priceSource(job?.job_number ?? null);
+
+    // Re-validate the additional target jobs server-side: they must exist, not
+    // be the current job, and not be locked/closed — never trust the renderer
+    // to keep a closed bid out of the write set.
+    const isLocked = db.prepare(
+      `SELECT 1 FROM jobs WHERE id = ?
+         AND (status = 'archived' OR (status IN ('won', 'lost') AND bid_locked = 1))`,
+    );
+    const applyToJobIds = [...new Set(payload?.applyToJobIds ?? [])]
+      .filter((id) => id !== jobId && !isLocked.get(id));
+    const propagateLines = db.prepare(
+      `SELECT id, quantity, labor_total, equipment_total, subcontractor_cost
+       FROM bid_line_items WHERE job_id = ? AND material_id = ?`,
+    );
 
     const insertRaw = db.prepare(
       `INSERT INTO raw_quote_lines (job_id, supplier, description, unit, price, part_number, source)
@@ -114,9 +146,33 @@ export function registerPriceImportHandlers(db: Database.Database): void {
          updated_at = datetime('now', 'localtime')`,
     );
 
-    const result = { rawStored: 0, updatedLines: 0, createdItems: 0, catalogUpdates: 0, skipped: 0 };
+    const result = {
+      rawStored: 0, updatedLines: 0, createdItems: 0, catalogUpdates: 0, skipped: 0,
+      propagatedLines: 0, propagatedJobs: 0,
+    };
 
     const commit = db.transaction(() => {
+      // Push one material's confirmed price into the selected other jobs,
+      // matched by material_id. Each line keeps its own quantity (its frozen
+      // snapshot), so only the unit price + rollup move. A material is pushed
+      // once per import even if several quote rows map to it.
+      const propagatedMaterials = new Set<number>();
+      const touchedJobs = new Set<number>();
+      const propagateToOtherJobs = (materialId: number, price: number, sourceLabel: string) => {
+        if (applyToJobIds.length === 0 || propagatedMaterials.has(materialId)) return;
+        propagatedMaterials.add(materialId);
+        for (const otherJobId of applyToJobIds) {
+          for (const ln of propagateLines.all(otherJobId, materialId) as any[]) {
+            const matTotal = (ln.quantity || 0) * price;
+            const total = matTotal + (ln.labor_total || 0) + (ln.equipment_total || 0) + (ln.subcontractor_cost || 0);
+            const unit = ln.quantity > 0 ? total / ln.quantity : 0;
+            updateLine.run(price, matTotal, total, unit, sourceLabel, ln.id);
+            result.propagatedLines++;
+            touchedJobs.add(otherJobId);
+          }
+        }
+      };
+
       let importedCategoryId: number | null = null;
       const ensureImportedCategory = (): number => {
         if (importedCategoryId != null) return importedCategoryId;
@@ -168,6 +224,8 @@ export function registerPriceImportHandlers(db: Database.Database): void {
               }
               learn(row.supplier, row.description, matId, row.partNumber || null);
             }
+            // Push into the user-selected other jobs (matched by material).
+            propagateToOtherJobs(matId, row.price, `${row.supplier || 'Quote'}${stamp}`);
           }
           continue;
         }
@@ -204,6 +262,7 @@ export function registerPriceImportHandlers(db: Database.Database): void {
 
         result.skipped++;
       }
+      result.propagatedJobs = touchedJobs.size;
     });
 
     commit();
@@ -220,7 +279,8 @@ export function registerPriceImportHandlers(db: Database.Database): void {
 
     logger.info('price-import:commit',
       `Job ${jobId}: ${result.updatedLines} lines updated, ${result.createdItems} created, ` +
-      `${result.catalogUpdates} catalog prices, ${result.rawStored} raw rows stored`);
+      `${result.catalogUpdates} catalog prices, ${result.rawStored} raw rows stored, ` +
+      `${result.propagatedLines} lines across ${result.propagatedJobs} other jobs`);
 
     return { ...result, stateCounts };
   });

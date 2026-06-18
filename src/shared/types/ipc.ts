@@ -479,11 +479,20 @@ export interface PriceImportAliasRow {
   part_number: string | null;
 }
 
+export interface PriceImportJobRow {
+  id: number;
+  name: string;
+  job_number: string | null;
+  status: string;
+}
+
 export interface PriceImportContext {
   lines: PriceImportLineRow[];
   aliases: PriceImportAliasRow[];
   sections: { id: number; name: string }[];
   categories: { id: number; name: string }[];
+  /** Open, non-locked jobs the prices can also be pushed into (current job excluded). */
+  otherJobs: PriceImportJobRow[];
 }
 
 export interface PriceImportCommitRow {
@@ -502,6 +511,8 @@ export interface PriceImportCommitRow {
 export interface PriceImportCommitPayload {
   source: string;
   rows: PriceImportCommitRow[];
+  /** Other open/non-locked job ids to also push prices into (matched by material). */
+  applyToJobIds?: number[];
 }
 
 export interface PriceStateCounts {
@@ -518,6 +529,10 @@ export interface PriceImportCommitResult {
   createdItems: number;
   catalogUpdates: number;
   skipped: number;
+  /** Lines repriced in other selected jobs (matched by material). */
+  propagatedLines: number;
+  /** Distinct other jobs touched. */
+  propagatedJobs: number;
   stateCounts: PriceStateCounts;
 }
 

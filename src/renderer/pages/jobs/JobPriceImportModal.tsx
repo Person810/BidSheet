@@ -92,6 +92,9 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
   const [rows, setRows] = useState<ReconRow[]>([]);
   const [newSectionId, setNewSectionId] = useState<number | null>(null);
   const [newCategoryId, setNewCategoryId] = useState<number | null>(null);
+  // Other jobs (besides this one) the confirmed prices should also flow into.
+  const [applyJobIds, setApplyJobIds] = useState<Set<number>>(new Set());
+  const [showJobPicker, setShowJobPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const [result, setResult] = useState<PriceImportCommitResult | null>(null);
@@ -203,6 +206,13 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
     invalid: rows.filter((r) => r.action !== 'skip' && (r.price == null || !r.description)).length,
   }), [rows, lineById]);
 
+  const toggleJob = (id: number) => setApplyJobIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const selectAllJobs = () => setApplyJobIds(new Set((ctx?.otherJobs ?? []).map((j) => j.id)));
+
   const canApply = stats.update + stats.create > 0 && !committing;
 
   const handleCommit = async () => {
@@ -227,7 +237,9 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
     }));
 
     try {
-      const res = await window.api.priceImportCommit(jobId, { source, rows: payload });
+      const res = await window.api.priceImportCommit(jobId, {
+        source, rows: payload, applyToJobIds: Array.from(applyJobIds),
+      });
       setResult(res);
       setStep('done');
     } catch (err: any) {
@@ -346,6 +358,37 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
               </span>
             </div>
 
+            {/* Apply to other jobs (§ multi-job price update) */}
+            {ctx.otherJobs.length > 0 && (
+              <div style={{ marginBottom: 12, fontSize: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="text-muted">Apply prices to:</span>
+                  <strong>{applyJobIds.size > 0 ? `This job + ${applyJobIds.size} other` : 'This job only'}</strong>
+                  <button className="bid-grid-inline-action" onClick={() => setShowJobPicker((v) => !v)}>
+                    {showJobPicker ? 'done' : 'choose other jobs…'}
+                  </button>
+                </div>
+                {showJobPicker && (
+                  <div className="card" style={{ marginTop: 6, padding: 10, maxHeight: 168, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <button className="btn btn-sm btn-secondary" onClick={selectAllJobs}>Select all open jobs</button>
+                      <button className="btn btn-sm btn-secondary" onClick={() => setApplyJobIds(new Set())}>Clear</button>
+                    </div>
+                    {ctx.otherJobs.map((j) => (
+                      <label key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={applyJobIds.has(j.id)} onChange={() => toggleJob(j.id)} />
+                        <span>{j.name}{j.job_number ? ` (#${j.job_number})` : ''}</span>
+                        <span className="text-muted" style={{ fontSize: 11 }}>{j.status}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  Only matched catalog items propagate; each job keeps its own quantities. Locked/won bids are excluded.
+                </div>
+              </div>
+            )}
+
             <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
               <table className="data-table" style={{ fontSize: 12 }}>
                 <thead>
@@ -446,6 +489,12 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
               <Stat n={result.createdItems} label="Items created" color="var(--accent)" />
               <Stat n={result.catalogUpdates} label="Catalog prices" color="var(--text-secondary)" />
             </div>
+            {result.propagatedLines > 0 && (
+              <div style={{ fontSize: 13, textAlign: 'center', marginBottom: 16, color: 'var(--text-secondary)' }}>
+                Also repriced {result.propagatedLines} line{result.propagatedLines !== 1 ? 's' : ''} across{' '}
+                {result.propagatedJobs} other job{result.propagatedJobs !== 1 ? 's' : ''}.
+              </div>
+            )}
             <div className="text-muted" style={{ fontSize: 12, marginBottom: 20 }}>
               {result.rawStored} quote row{result.rawStored !== 1 ? 's' : ''} stored as a permanent record. Every
               catalog price change was logged to price history.
