@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { formatCurrency } from './helpers';
+import { PriceStateDot } from './priceState';
 
 interface BidGridProps {
   sections: any[];
@@ -292,6 +293,7 @@ export function BidGrid({
                 items.map((item: any) => (
                   <tr key={item.id} className="bid-grid-item-row">
                     <td className="bid-grid-item-desc">
+                      <PriceStateDot state={item.price_state} source={item.price_source} />
                       {item.item_number && (
                         <span className="text-muted" style={{ marginRight: 6, fontSize: 11 }}>
                           {item.item_number}

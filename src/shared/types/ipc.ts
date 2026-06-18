@@ -232,7 +232,13 @@ export interface BidLineItemRow {
   notes: string | null;
   item_number: string | null;
   cost_code: string | null;
+  /** Price-state system (§4): seed | past_price | quoted | confirmed. */
+  price_state: PriceState;
+  /** Where the current price came from, e.g. "Core & Main, job #1142, Jun 2026". */
+  price_source: string | null;
 }
+
+export type PriceState = 'seed' | 'past_price' | 'quoted' | 'confirmed';
 
 export interface SaveBidLineItemPayload {
   id?: number;
@@ -442,6 +448,92 @@ export interface PriceImportResult {
   updated: number;
   skipped: number;
   error?: string;
+}
+
+// ================================================================
+// Per-job price import (§1–4)
+// ================================================================
+
+/** A bid line, with linked-material context, for the reconciliation screen. */
+export interface PriceImportLineRow {
+  id: number;
+  section_id: number;
+  description: string;
+  unit: string | null;
+  quantity: number;
+  material_id: number | null;
+  material_unit_cost: number;
+  price_state: PriceState;
+  price_source: string | null;
+  material_name: string | null;
+  material_unit: string | null;
+  material_supplier: string | null;
+  material_part_number: string | null;
+  material_aliases: string | null;
+}
+
+export interface PriceImportAliasRow {
+  supplier: string;
+  raw_description: string;
+  material_id: number | null;
+  part_number: string | null;
+}
+
+export interface PriceImportJobRow {
+  id: number;
+  name: string;
+  job_number: string | null;
+  status: string;
+}
+
+export interface PriceImportContext {
+  lines: PriceImportLineRow[];
+  aliases: PriceImportAliasRow[];
+  sections: { id: number; name: string }[];
+  categories: { id: number; name: string }[];
+  /** Open, non-locked jobs the prices can also be pushed into (current job excluded). */
+  otherJobs: PriceImportJobRow[];
+}
+
+export interface PriceImportCommitRow {
+  supplier: string;
+  description: string;
+  unit: string | null;
+  price: number;
+  partNumber: string | null;
+  action: 'update' | 'create' | 'skip';
+  targetLineId?: number | null;
+  targetMaterialId?: number | null;
+  newCategoryId?: number | null;
+  newSectionId?: number | null;
+}
+
+export interface PriceImportCommitPayload {
+  source: string;
+  rows: PriceImportCommitRow[];
+  /** Other open/non-locked job ids to also push prices into (matched by material). */
+  applyToJobIds?: number[];
+}
+
+export interface PriceStateCounts {
+  seed: number;
+  past_price: number;
+  quoted: number;
+  confirmed: number;
+  total: number;
+}
+
+export interface PriceImportCommitResult {
+  rawStored: number;
+  updatedLines: number;
+  createdItems: number;
+  catalogUpdates: number;
+  skipped: number;
+  /** Lines repriced in other selected jobs (matched by material). */
+  propagatedLines: number;
+  /** Distinct other jobs touched. */
+  propagatedJobs: number;
+  stateCounts: PriceStateCounts;
 }
 
 export interface FileExportResult {

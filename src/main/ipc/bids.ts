@@ -161,8 +161,9 @@ export function registerBidHandlers(db: Database.Database): void {
         material_id, material_unit_cost, material_total,
         crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
         equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
-        subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code,
+        price_state, price_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     const replaceTx = db.transaction(() => {
@@ -193,7 +194,8 @@ export function registerBidHandlers(db: Database.Database): void {
             i.equipment_id ?? null, i.equipment_cost_per_hour ?? 0,
             i.equipment_hours ?? 0, i.equipment_total ?? 0,
             i.subcontractor_cost ?? 0, i.unit_cost ?? 0, i.total_cost ?? 0,
-            i.notes ?? null, i.item_number ?? null, i.cost_code ?? null
+            i.notes ?? null, i.item_number ?? null, i.cost_code ?? null,
+            i.price_state ?? 'seed', i.price_source ?? null
           );
         });
       }

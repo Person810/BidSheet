@@ -14,6 +14,8 @@ import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { QuotesTab } from './QuotesTab';
 import { CostCodeReportModal } from './CostCodeReportModal';
 import { BidItemImportModal } from './BidItemImportModal';
+import { JobPriceImportModal } from './JobPriceImportModal';
+import { PriceStateLegend } from './priceState';
 import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { useToastStore } from '../../stores/toast-store';
@@ -58,6 +60,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [profileCount, setProfileCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
   const [showBidItemImport, setShowBidItemImport] = useState(false);
+  const [showPriceImport, setShowPriceImport] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [showLineItemModal, setShowLineItemModal] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<number | null>(null);
@@ -302,7 +305,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // effect's deps to one value instead of an easy-to-forget list, so adding a
   // future modal only requires updating this one expression.
   const anyModalOpen = !!(showLineItemModal || editingSection || showEditJob || showAssemblyPicker
-    || showBidItemImport || showCompare || showCostCodeReport || confirmState);
+    || showBidItemImport || showPriceImport || showCompare || showCostCodeReport || confirmState);
 
   // Ctrl/Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo — estimate tab only, and
   // never while focus is in an editable field or a modal is open (so inline
@@ -836,6 +839,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         <button className="btn btn-sm btn-secondary" onClick={() => history.redo()}
           disabled={!history.canRedo} title="Redo (Ctrl+Shift+Z)">&#8635; Redo</button>
       </div>
+      <PriceStateLegend lineItems={lineItems} />
       <BidGrid
         sections={sections}
         lineItems={lineItems}
@@ -874,6 +878,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowBidItemImport(true))}
               title="Scaffold line items from an owner's bid schedule CSV">Import Bid Items…</button>
+            <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowPriceImport(true))}
+              title="Load a supplier's quote and reconcile it against this bid's prices">Import job prices…</button>
           </div>
         )}
       </div>
@@ -974,6 +980,15 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           sections={sections}
           onDone={() => { history.record(); loadJob(); }}
           onClose={() => setShowBidItemImport(false)}
+        />
+      )}
+
+      {/* Per-job price import (reconciliation) */}
+      {showPriceImport && (
+        <JobPriceImportModal
+          jobId={jobId}
+          onDone={() => { history.record(); loadJob(); }}
+          onClose={() => { setShowPriceImport(false); setLockBypassed(false); }}
         />
       )}
 

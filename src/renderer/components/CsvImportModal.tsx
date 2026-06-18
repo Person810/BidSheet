@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatCurrency } from '../pages/jobs/helpers';
+import {
+  autoDetectMapping, availableHeaders as availableHeadersFor, parseCsvPrice, ColumnSelect, CsvDropZone,
+} from './csvImport';
 
 // ============================================================
 // Types
@@ -48,32 +51,6 @@ const HEADER_ALIASES: Record<string, string[]> = {
   partNumber: ['part number', 'part #', 'part#', 'part_number', 'partnumber', 'sku', 'item #', 'item#', 'catalog #', 'catalog#', 'model', 'item number'],
 };
 
-function autoDetectMapping(headers: string[]): Record<string, string> {
-  const mapping: Record<string, string> = {
-    name: '',
-    unitCost: '',
-    supplier: '',
-    partNumber: '',
-  };
-
-  const lowerHeaders = headers.map((h) => h.toLowerCase().trim());
-  const claimed = new Set<string>();
-
-  // Map in priority order: name first, then unitCost, etc.
-  for (const field of ['name', 'unitCost', 'supplier', 'partNumber']) {
-    for (const alias of HEADER_ALIASES[field]) {
-      const idx = lowerHeaders.indexOf(alias);
-      if (idx !== -1 && !claimed.has(headers[idx])) {
-        mapping[field] = headers[idx];
-        claimed.add(headers[idx]);
-        break;
-      }
-    }
-  }
-
-  return mapping;
-}
-
 // ============================================================
 // Component
 // ============================================================
@@ -99,86 +76,17 @@ export function CsvImportModal({
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ updated: number; skipped: number; unmatched: number } | null>(null);
   const [showUnmatchedOnly, setShowUnmatchedOnly] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const dragCounter = React.useRef(0);
 
   // Load ALL materials on mount (ignores category filter from parent)
   useEffect(() => {
     window.api.getMaterials().then((mats: ExistingMaterial[]) => setAllMaterials(mats));
   }, []);
 
-  // Columns already claimed by another field (prevents double-mapping)
-  const usedColumns = useMemo(() => {
-    const used = new Set<string>();
-    for (const val of Object.values(mapping)) {
-      if (val) used.add(val);
-    }
-    return used;
-  }, [mapping]);
-
-  // Returns the CSV headers available for a given field's dropdown.
-  // Always includes the currently selected value + unassigned headers.
-  const availableHeaders = (field: string): string[] => {
-    if (!csv) return [];
-    return csv.headers.filter((h) => !usedColumns.has(h) || mapping[field] === h);
-  };
-
-  // Shared: handle parsed CSV result from either dialog or drag-and-drop
-  const handleParsedCsv = (parsed: any) => {
-    if (!parsed) return;
-    if (parsed.error) {
-      setError(parsed.error);
-      return;
-    }
-    if (parsed.rows.length === 0) {
-      setError('The CSV file is empty (no data rows found).');
-      return;
-    }
-    setCsv(parsed);
-    setMapping(autoDetectMapping(parsed.headers));
+  const onFileParsed = (parsed: { headers: string[] }) => {
+    setError(null);
+    setCsv(parsed as ParsedCsv);
+    setMapping(autoDetectMapping(parsed.headers, HEADER_ALIASES));
     setStep('map');
-  };
-
-  // ---- Step 1: Pick file (dialog) ----
-  const handlePickFile = async () => {
-    setError(null);
-    try {
-      const parsed = await window.api.openCsvFile();
-      handleParsedCsv(parsed);
-    } catch (err: any) {
-      setError(err.message || 'Failed to open file.');
-    }
-  };
-
-  // ---- Step 1: Pick file (drag and drop) ----
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragging(false);
-    setError(null);
-
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-
-    // Electron 32+ removed File.path; webUtils.getPathForFile (exposed in the
-    // preload) is the supported way to resolve a dropped file to its path.
-    let filePath = '';
-    try {
-      filePath = window.api.getDroppedFilePath(file);
-    } catch {
-      filePath = '';
-    }
-    if (!filePath) {
-      setError('Could not read file path.');
-      return;
-    }
-
-    try {
-      const parsed = await window.api.parseCsvPath(filePath);
-      handleParsedCsv(parsed);
-    } catch (err: any) {
-      setError(err.message || 'Failed to read dropped file.');
-    }
   };
 
   // ---- Step 2: Column mapping ----
@@ -199,8 +107,7 @@ export function CsvImportModal({
 
     const rows: PreviewRow[] = csv.rows.map((row, i) => {
       const csvName = (row[mapping.name] || '').trim();
-      const rawCost = (row[mapping.unitCost] || '').replace(/[$,\s]/g, '');
-      const csvUnitCost = rawCost ? parseFloat(rawCost) : null;
+      const csvUnitCost = parseCsvPrice(row[mapping.unitCost]);
       const csvSupplier = mapping.supplier ? (row[mapping.supplier] || '').trim() : '';
       const csvPartNumber = mapping.partNumber ? (row[mapping.partNumber] || '').trim() : '';
 
@@ -367,41 +274,18 @@ export function CsvImportModal({
         {/* ---- STEP: Pick file ---- */}
         {step === 'pick' && (
           <div style={{ padding: '20px 0' }}>
-            <div style={{
-              border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 12,
-              padding: '40px 24px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              transition: 'border-color 0.15s, background 0.15s',
-              background: dragging ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-            }}
-              onClick={handlePickFile}
-              onDragOver={(e) => { e.preventDefault(); }}
-              onDragEnter={(e) => { e.preventDefault(); dragCounter.current++; setDragging(true); }}
-              onDragLeave={() => { dragCounter.current--; if (dragCounter.current === 0) setDragging(false); }}
-              onDrop={(e) => { dragCounter.current = 0; handleDrop(e); }}
-              onMouseOver={(e) => { if (!dragging) e.currentTarget.style.borderColor = 'var(--accent)'; }}
-              onMouseOut={(e) => { if (!dragging) e.currentTarget.style.borderColor = 'var(--border)'; }}
-            >
-              <div style={{ fontSize: 32, marginBottom: 12 }}>{dragging ? '📥' : '📄'}</div>
-              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 6 }}>
-                {dragging ? 'Drop CSV file here' : 'Drag a CSV file here, or click to browse'}
-              </div>
-              <div className="text-muted" style={{ fontSize: 12 }}>
-                Supports .csv and .tsv files from any supplier
-              </div>
-            </div>
-
-            <div style={{ marginTop: 20, fontSize: 12, color: 'var(--text-muted)' }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>Expected format:</div>
-              <div style={{ fontFamily: 'monospace', background: 'var(--bg-tertiary)', borderRadius: 6, padding: '10px 14px', lineHeight: 1.8 }}>
-                Name, Unit Cost, Supplier, Part #<br/>
-                8" PVC SDR-35, 12.50, Ferguson, PVC0835<br/>
-                4" DI Gate Valve, 285.00, HD Supply, GV-4DI
-              </div>
-              <div style={{ marginTop: 8 }}>Column order does not matter. You will map columns in the next step.</div>
-            </div>
+            <CsvDropZone onParsed={onFileParsed} onError={setError}
+              hint={
+                <div style={{ marginTop: 20, fontSize: 12, color: 'var(--text-muted)' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Expected format:</div>
+                  <div style={{ fontFamily: 'monospace', background: 'var(--bg-tertiary)', borderRadius: 6, padding: '10px 14px', lineHeight: 1.8 }}>
+                    Name, Unit Cost, Supplier, Part #<br/>
+                    8" PVC SDR-35, 12.50, Ferguson, PVC0835<br/>
+                    4" DI Gate Valve, 285.00, HD Supply, GV-4DI
+                  </div>
+                  <div style={{ marginTop: 8 }}>Column order does not matter. You will map columns in the next step.</div>
+                </div>
+              } />
           </div>
         )}
 
@@ -409,69 +293,18 @@ export function CsvImportModal({
         {step === 'map' && csv && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {/* Name mapping - required */}
-              <div className="form-group">
-                <label>
-                  Material Name <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <select
-                  className="form-control"
-                  value={mapping.name}
-                  onChange={(e) => setMapping({ ...mapping, name: e.target.value })}
-                >
-                  <option value="">-- select column --</option>
-                  {availableHeaders('name').map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Unit cost mapping - required */}
-              <div className="form-group">
-                <label>
-                  Unit Cost <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <select
-                  className="form-control"
-                  value={mapping.unitCost}
-                  onChange={(e) => setMapping({ ...mapping, unitCost: e.target.value })}
-                >
-                  <option value="">-- select column --</option>
-                  {availableHeaders('unitCost').map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Supplier mapping - optional */}
-              <div className="form-group">
-                <label>Supplier <span className="text-muted" style={{ fontWeight: 400 }}>(optional)</span></label>
-                <select
-                  className="form-control"
-                  value={mapping.supplier}
-                  onChange={(e) => setMapping({ ...mapping, supplier: e.target.value })}
-                >
-                  <option value="">-- skip --</option>
-                  {availableHeaders('supplier').map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Part number mapping - optional */}
-              <div className="form-group">
-                <label>Part # <span className="text-muted" style={{ fontWeight: 400 }}>(optional)</span></label>
-                <select
-                  className="form-control"
-                  value={mapping.partNumber}
-                  onChange={(e) => setMapping({ ...mapping, partNumber: e.target.value })}
-                >
-                  <option value="">-- skip --</option>
-                  {availableHeaders('partNumber').map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </div>
+              <ColumnSelect label="Material Name" required value={mapping.name}
+                options={availableHeadersFor(csv.headers, mapping, 'name')}
+                onChange={(v) => setMapping({ ...mapping, name: v })} />
+              <ColumnSelect label="Unit Cost" required value={mapping.unitCost}
+                options={availableHeadersFor(csv.headers, mapping, 'unitCost')}
+                onChange={(v) => setMapping({ ...mapping, unitCost: v })} />
+              <ColumnSelect label="Supplier" value={mapping.supplier}
+                options={availableHeadersFor(csv.headers, mapping, 'supplier')}
+                onChange={(v) => setMapping({ ...mapping, supplier: v })} />
+              <ColumnSelect label="Part #" value={mapping.partNumber}
+                options={availableHeadersFor(csv.headers, mapping, 'partNumber')}
+                onChange={(v) => setMapping({ ...mapping, partNumber: v })} />
             </div>
 
             {/* Sample preview */}
@@ -739,9 +572,6 @@ export function CsvImportModal({
         {(step === 'pick' || step === 'map') && !error && (
           <div className="modal-actions" style={{ marginTop: step === 'pick' ? 0 : undefined }}>
             <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            {step === 'pick' && (
-              <button className="btn btn-primary" onClick={handlePickFile}>Choose File</button>
-            )}
           </div>
         )}
       </div>
