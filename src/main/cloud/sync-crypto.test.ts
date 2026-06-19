@@ -11,6 +11,13 @@ import {
   recoveryKeyToBytes,
   dekFingerprint,
   RecoveryKeyError,
+  generateMemberKeypair,
+  sealDek,
+  openDek,
+  wrapPrivateKey,
+  unwrapPrivateKey,
+  sealAad,
+  privKeyWrapAad,
 } from './sync-crypto';
 
 const dek = crypto.randomBytes(32);
@@ -146,5 +153,89 @@ describe('dek fingerprint', () => {
     expect(dekFingerprint(d)).toBe(dekFingerprint(d));
     expect(dekFingerprint(d)).not.toBe(dekFingerprint(crypto.randomBytes(32)));
     expect(dekFingerprint(d)).toHaveLength(16);
+  });
+});
+
+describe('member keypair + sealed DEK (multi-member E2EE)', () => {
+  const accountId = 'acct-1';
+
+  it('generates 32-byte X25519 keypairs that differ each time', () => {
+    const a = generateMemberKeypair();
+    const b = generateMemberKeypair();
+    expect(a.pubRaw.length).toBe(32);
+    expect(a.privRaw.length).toBe(32);
+    expect(a.pubRaw.equals(b.pubRaw)).toBe(false);
+    expect(a.privRaw.equals(b.privRaw)).toBe(false);
+  });
+
+  it('seals the DEK to a member pubkey and opens it with their privkey', () => {
+    const member = generateMemberKeypair();
+    const realDek = crypto.randomBytes(32);
+    const aad = sealAad(accountId, 'user-member');
+    const sealed = sealDek(realDek, member.pubRaw, aad);
+    // sealed = ephPub(32) ‖ BSE1 envelope; not plaintext
+    expect(sealed.length).toBeGreaterThan(32 + 17);
+    expect(openDek(sealed, member.privRaw, aad).equals(realDek)).toBe(true);
+  });
+
+  it('produces a fresh ephemeral key per seal (same input -> different blob)', () => {
+    const member = generateMemberKeypair();
+    const realDek = crypto.randomBytes(32);
+    const aad = sealAad(accountId, 'user-member');
+    expect(sealDek(realDek, member.pubRaw, aad).equals(sealDek(realDek, member.pubRaw, aad))).toBe(
+      false
+    );
+  });
+
+  it('cannot be opened with the wrong private key', () => {
+    const member = generateMemberKeypair();
+    const intruder = generateMemberKeypair();
+    const aad = sealAad(accountId, 'user-member');
+    const sealed = sealDek(crypto.randomBytes(32), member.pubRaw, aad);
+    expect(() => openDek(sealed, intruder.privRaw, aad)).toThrow(SyncDecryptError);
+  });
+
+  it('rejects a seal relabelled for a different recipient (AAD binds the userId)', () => {
+    const member = generateMemberKeypair();
+    const realDek = crypto.randomBytes(32);
+    const sealed = sealDek(realDek, member.pubRaw, sealAad(accountId, 'user-A'));
+    // right key, right account, but the recipient userId in the AAD differs
+    expect(() => openDek(sealed, member.privRaw, sealAad(accountId, 'user-B'))).toThrow(
+      SyncDecryptError
+    );
+  });
+
+  it('rejects a tampered ephemeral-pubkey prefix', () => {
+    const member = generateMemberKeypair();
+    const aad = sealAad(accountId, 'user-member');
+    const sealed = sealDek(crypto.randomBytes(32), member.pubRaw, aad);
+    sealed[3] ^= 0xff; // flip a byte inside the ephemeral pubkey
+    expect(() => openDek(sealed, member.privRaw, aad)).toThrow(SyncDecryptError);
+  });
+
+  it('wraps and unwraps a private key under a recovery key', () => {
+    const member = generateMemberKeypair();
+    const kek = recoveryKeyToBytes(generateRecoveryKey());
+    const aad = privKeyWrapAad('user-member');
+    const wrapped = wrapPrivateKey(member.privRaw, kek, aad);
+    expect(unwrapPrivateKey(wrapped, kek, aad).equals(member.privRaw)).toBe(true);
+    // wrong recovery key cannot unwrap
+    expect(() =>
+      unwrapPrivateKey(wrapped, recoveryKeyToBytes(generateRecoveryKey()), aad)
+    ).toThrow(SyncDecryptError);
+  });
+
+  it('end-to-end: recovery key -> private key -> sealed DEK -> DEK', () => {
+    // The full key hierarchy for one member, as e2ee.ts will drive it.
+    const realDek = crypto.randomBytes(32);
+    const member = generateMemberKeypair();
+    const rk = generateRecoveryKey();
+    const kek = recoveryKeyToBytes(rk);
+    // owner seals the DEK to the member; member wraps their own private key
+    const sealed = sealDek(realDek, member.pubRaw, sealAad(accountId, 'm'));
+    const wrappedPriv = wrapPrivateKey(member.privRaw, kek, privKeyWrapAad('m'));
+    // fresh device: recover privkey from recovery key, then open the DEK
+    const recoveredPriv = unwrapPrivateKey(wrappedPriv, kek, privKeyWrapAad('m'));
+    expect(openDek(sealed, recoveredPriv, sealAad(accountId, 'm')).equals(realDek)).toBe(true);
   });
 });

@@ -202,7 +202,7 @@ declare global {
       cloudEnrollTotp: () => Promise<{ factorId: string; qrCode: string; secret: string; uri: string }>;
       cloudVerifyTotp: (code: string, factorId?: string) => Promise<any>;
       cloudSignOut: () => Promise<void>;
-      cloudMe: () => Promise<{ user_id: string; email: string; account: any; billing_enabled?: boolean }>;
+      cloudMe: () => Promise<{ user_id: string; email: string; account: any; role?: string; billing_enabled?: boolean }>;
       cloudBillingCheckout: () => Promise<string>;
       cloudBillingPortal: () => Promise<string>;
       cloudSyncNow: () => Promise<any>;
@@ -214,10 +214,34 @@ declare global {
       cloudRestoreAll: () => Promise<
         { cloudId: string; name: string; ok: boolean; error: string | null }[]
       >;
-      cloudE2eeState: () => Promise<'not_setup' | 'unlocked' | 'locked' | 'unavailable'>;
+      cloudE2eeState: () => Promise<
+        'not_setup' | 'unlocked' | 'locked' | 'pending_approval' | 'unavailable'
+      >;
       cloudE2eeSetup: () => Promise<{ recoveryKey: string }>;
       cloudE2eeUnlock: (recoveryKey: string) => Promise<void>;
       cloudE2eeRegenerateRecovery: () => Promise<{ recoveryKey: string }>;
+      cloudOrgMembers: () => Promise<{
+        members: {
+          user_id: string;
+          role: string;
+          email: string | null;
+          created_at: string;
+          key_status: 'pending' | 'active' | null;
+          pubkey: string | null;
+          has_wrap: number;
+        }[];
+        me: { user_id: string; role: string };
+      }>;
+      cloudOrgCreateInvite: (
+        role?: 'member' | 'owner'
+      ) => Promise<{ id: string; token: string; role: string }>;
+      cloudOrgListInvites: () => Promise<
+        { id: string; role: string; expires_at: string; opened_count: number; created_at: string }[]
+      >;
+      cloudOrgRevokeInvite: (id: string) => Promise<void>;
+      cloudOrgRedeemInvite: (token: string) => Promise<{ recoveryKey: string }>;
+      cloudOrgApproveMember: (userId: string) => Promise<void>;
+      cloudOrgRemoveMember: (userId: string) => Promise<void>;
       cloudBackupStatus: () => Promise<{
         configured: boolean;
         lastBackupAt: string | null;

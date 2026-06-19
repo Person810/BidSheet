@@ -363,7 +363,7 @@ export function CloudSyncCard() {
 function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const addToast = useToastStore((s) => s.addToast);
   const [e2eeState, setE2eeState] = useState<
-    'not_setup' | 'unlocked' | 'locked' | 'unavailable' | null
+    'not_setup' | 'unlocked' | 'locked' | 'pending_approval' | 'unavailable' | null
   >(null);
   const [status, setStatus] = useState<{
     configured: boolean;
@@ -373,6 +373,8 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const [busy, setBusy] = useState(false);
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null); // shown once
   const [unlockKey, setUnlockKey] = useState('');
+  const [joinToken, setJoinToken] = useState('');
+  const [justJoined, setJustJoined] = useState(false);
 
   const load = async () => {
     const [st, bk] = await Promise.all([
@@ -428,6 +430,22 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     }
   };
 
+  // Join an existing team with an invite code. Generates this device's key +
+  // recovery key (shown once), then leaves the user pending an owner's approval.
+  const handleJoin = async () => {
+    setBusy(true);
+    try {
+      const res = await window.api.cloudOrgRedeemInvite(joinToken.trim());
+      setJoinToken('');
+      setJustJoined(true);
+      setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
+    } catch (err: any) {
+      addToast(err?.message || 'That invite code did not work.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleBackupNow = async () => {
     setBusy(true);
     try {
@@ -468,6 +486,12 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
 
   const afterSavedRecoveryKey = async () => {
     setRecoveryKey(null);
+    if (justJoined) {
+      setJustJoined(false);
+      addToast("You've joined the team — waiting for an owner to approve your access.", 'success');
+      await load();
+      return;
+    }
     addToast('Encrypted sync is on.', 'success');
     await load();
     window.api.cloudSyncNow().catch(() => {});
@@ -499,6 +523,45 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
           </p>
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleSetup}>
             {busy ? 'Setting up…' : 'Turn On Encrypted Sync'}
+          </button>
+
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+              <strong>Joining a teammate's account?</strong> Paste the invite code they sent you.
+              You'll get your own recovery key, then they approve your access.
+            </p>
+            <div className="form-group">
+              <label>Invite code</label>
+              <input
+                type="text"
+                className="form-control"
+                value={joinToken}
+                placeholder="Paste invite code"
+                onChange={(e) => setJoinToken(e.target.value)}
+              />
+            </div>
+            <button
+              className="btn btn-sm btn-secondary"
+              disabled={busy || !joinToken.trim()}
+              onClick={handleJoin}>
+              {busy ? 'Joining…' : 'Join Team'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {e2eeState === 'pending_approval' && (
+        <div style={{ maxWidth: 480 }}>
+          <p style={{ fontSize: 13, marginBottom: 8 }}>
+            You've joined the team. An owner needs to <strong>approve your access</strong> before you
+            can see the shared jobs and catalog — only they can hand your device the encryption key.
+          </p>
+          <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+            This unlocks automatically once they approve you. Keep the recovery key you just saved —
+            it's how you'd unlock a different computer.
+          </p>
+          <button className="btn btn-sm btn-secondary" disabled={busy} onClick={load}>
+            {busy ? 'Checking…' : 'Check for approval'}
           </button>
         </div>
       )}
@@ -570,8 +633,231 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
               Turn Off Whole-Database Backup
             </button>
           </div>
+          <TeamSection lastCheckAt={lastCheckAt} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Team management, shown once encrypted sync is unlocked. Owners can invite
+ * teammates (single-use codes shared out-of-band), approve those who've joined
+ * (which seals the shared key to their device), and remove members. Non-owners
+ * see a read-only roster. Membership is one shared account — pooled storage,
+ * one subscription.
+ */
+function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
+  const addToast = useToastStore((s) => s.addToast);
+  const [data, setData] = useState<{
+    members: {
+      user_id: string;
+      role: string;
+      email: string | null;
+      key_status: 'pending' | 'active' | null;
+      pubkey: string | null;
+    }[];
+    me: { user_id: string; role: string };
+  } | null>(null);
+  const [invites, setInvites] = useState<{ id: string; expires_at: string }[]>([]);
+  const [newInvite, setNewInvite] = useState<string | null>(null); // shown once
+  const [busy, setBusy] = useState(false);
+
+  const isOwner = data?.me.role === 'owner';
+
+  const load = async () => {
+    try {
+      const d = await window.api.cloudOrgMembers();
+      setData(d);
+      if (d.me.role === 'owner') {
+        setInvites(await window.api.cloudOrgListInvites().catch(() => []));
+      }
+    } catch {
+      setData(null);
+    }
+  };
+  useEffect(() => {
+    load();
+  }, [lastCheckAt]);
+
+  const run = async (fn: () => Promise<any>, errMsg: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+    } catch (err: any) {
+      addToast(err?.message || errMsg, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleInvite = () =>
+    run(async () => {
+      const { token } = await window.api.cloudOrgCreateInvite();
+      setNewInvite(token);
+    }, 'Could not create an invite.');
+
+  const handleApprove = (userId: string) =>
+    run(async () => {
+      await window.api.cloudOrgApproveMember(userId);
+      addToast('Teammate approved — they can now decrypt the shared data.', 'success');
+    }, 'Could not approve that member.');
+
+  const handleRemove = (userId: string, label: string) => {
+    if (!confirm(`Remove ${label} from this account? They'll lose access to synced data.`)) return;
+    return run(async () => {
+      await window.api.cloudOrgRemoveMember(userId);
+      addToast('Member removed.', 'info');
+    }, 'Could not remove that member.');
+  };
+
+  const handleRevoke = (id: string) =>
+    run(() => window.api.cloudOrgRevokeInvite(id), 'Could not revoke that invite.');
+
+  if (!data) return null;
+  const pending = data.members.filter((m) => m.key_status === 'pending');
+  const active = data.members.filter((m) => m.key_status !== 'pending');
+  const label = (m: { email: string | null; user_id: string }) =>
+    m.email || `${m.user_id.slice(0, 8)}…`;
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+      <h4 style={{ marginBottom: 4 }}>Team</h4>
+      <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        Everyone on the team shares this account — one subscription, pooled storage.
+        {isOwner
+          ? ' Invite teammates with a code, then approve them so their device gets the encryption key.'
+          : ' Your account owner manages who has access.'}
+      </p>
+
+      {newInvite && <InviteCodeModal token={newInvite} onClose={() => setNewInvite(null)} />}
+
+      {isOwner && (
+        <div style={{ marginBottom: 12 }}>
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleInvite}>
+            {busy ? 'Working…' : 'Invite a Teammate'}
+          </button>
+        </div>
+      )}
+
+      {isOwner && pending.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Waiting for approval</p>
+          {pending.map((m) => (
+            <div
+              key={m.user_id}
+              className="flex gap-8"
+              style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 13 }}>{label(m)}</span>
+              <button
+                className="btn btn-sm btn-primary"
+                disabled={busy}
+                onClick={() => handleApprove(m.user_id)}>
+                Approve
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginBottom: invites.length ? 12 : 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Members</p>
+        {active.map((m) => (
+          <div
+            key={m.user_id}
+            className="flex gap-8"
+            style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 13 }}>
+              {label(m)}
+              {m.role === 'owner' && <span className="text-muted"> · owner</span>}
+              {m.user_id === data.me.user_id && <span className="text-muted"> · you</span>}
+              {m.key_status === null && <span className="text-muted"> · no key yet</span>}
+            </span>
+            {isOwner && m.user_id !== data.me.user_id && (
+              <button
+                className="btn btn-sm btn-danger"
+                disabled={busy}
+                onClick={() => handleRemove(m.user_id, label(m))}>
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {isOwner && invites.length > 0 && (
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Pending invites</p>
+          {invites.map((inv) => (
+            <div
+              key={inv.id}
+              className="flex gap-8"
+              style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span className="text-muted" style={{ fontSize: 12 }}>
+                Expires {formatDateTime(inv.expires_at)}
+              </span>
+              <button
+                className="btn btn-sm btn-secondary"
+                disabled={busy}
+                onClick={() => handleRevoke(inv.id)}>
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Shows a freshly created invite code once, with copy. The raw code is only
+ *  returned at creation (the server stores a hash), so it can't be shown again. */
+function InviteCodeModal({ token, onClose }: { token: string; onClose: () => void }) {
+  const addToast = useToastStore((s) => s.addToast);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(token);
+      addToast('Invite code copied.', 'success');
+    } catch {
+      addToast('Could not copy — select the code and copy it manually.', 'error');
+    }
+  };
+  return (
+    <div className="modal-overlay">
+      <div className="modal" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginBottom: 8 }}>Invite code</h3>
+        <p className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+          Send this to your teammate however you like — text, in person, whatever. It works{' '}
+          <strong>once</strong> and expires in 48 hours. After they join, approve them here. You
+          won't see this code again.
+        </p>
+        <div
+          style={{
+            fontFamily: 'var(--mono, monospace)',
+            fontSize: 14,
+            lineHeight: 1.6,
+            padding: 12,
+            background: 'var(--navy, #122240)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            wordBreak: 'break-all',
+            userSelect: 'all',
+            margin: '12px 0',
+          }}>
+          {token}
+        </div>
+        <div className="flex gap-8" style={{ marginBottom: 12 }}>
+          <button className="btn btn-sm btn-secondary" onClick={copy}>
+            Copy
+          </button>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

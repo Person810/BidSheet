@@ -160,6 +160,34 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     return e2ee.regenerateRecoveryKey();
   });
 
+  // ---- organizations / multi-user ----
+  // Owner invites teammates with single-use codes; a newcomer redeems one to
+  // join (pending), then an unlocked owner approves them by sealing the DEK to
+  // their key. redeem/approve route through E2eeManager because they involve
+  // key material; the rest are thin pass-throughs to the Worker.
+  handle('cloud:org-members', () => api.listMembers());
+  handle('cloud:org-create-invite', (role?: 'member' | 'owner') => {
+    logger.info('cloud:org-create-invite', `Creating ${role ?? 'member'} invite`);
+    return api.createInvite(role);
+  });
+  handle('cloud:org-list-invites', () => api.listInvites());
+  handle('cloud:org-revoke-invite', (id: string) => api.revokeInvite(id));
+  handle('cloud:org-redeem-invite', async (token: string) => {
+    logger.info('cloud:org-redeem-invite', 'Redeeming invite and joining account');
+    const res = await e2ee.joinWithInvite(token);
+    // Joining moved us to the org account, bypassing the sync engine's
+    // account-switch detector (joinWithInvite pre-set the new account id). Wipe
+    // the stale per-job cloud ids + backup/catalog hashes from our old account
+    // so the next pass doesn't push our private jobs into the shared org.
+    engine.resetSyncStateForJoin();
+    return res;
+  });
+  handle('cloud:org-approve-member', async (userId: string) => {
+    logger.info('cloud:org-approve-member', `Approving member ${userId}`);
+    await e2ee.approveMember(userId);
+  });
+  handle('cloud:org-remove-member', (userId: string) => api.removeMember(userId));
+
   // ---- encrypted backup (rides the E2EE DEK) ----
   handle('cloud:backup-status', async () => {
     const local = backup.status();

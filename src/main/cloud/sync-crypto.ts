@@ -147,6 +147,134 @@ export function dekFingerprint(dek: Buffer): string {
     .slice(0, 16);
 }
 
+// ---- asymmetric key wrapping (multi-member E2EE) ----
+// To share the one account DEK with more than one person while staying
+// zero-knowledge, the DEK is *sealed* to each member's X25519 public key
+// (libsodium crypto_box_seal semantics). Only the holder of the matching
+// private key can open it; the server stores the sealed blobs and learns
+// nothing. The private key itself is wrapped under that member's recovery key
+// (wrapPrivateKey), so the recovery key now protects the private key, and the
+// DEK is reached transitively: recovery key -> private key -> sealed DEK -> DEK.
+//
+// Keys travel as raw 32-byte values (base64 at the wire/DB layer) so a future
+// iOS client using CryptoKit's Curve25519 rawRepresentation interops byte-for-
+// byte. Node's KeyObjects need DER, so we wrap/unwrap the fixed RFC 8410
+// prefixes for X25519 SPKI (public) and PKCS#8 (private).
+
+const X25519_SPKI_PREFIX = Buffer.from('302a300506032b656e032100', 'hex'); // 12 bytes + 32-byte key
+const X25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b656e04220420', 'hex'); // 16 bytes + 32-byte key
+const SEAL_INFO = Buffer.from('BSE1-seal\0');
+
+export interface MemberKeypair {
+  /** Raw 32-byte X25519 public key (shared with the account; base64 on the wire). */
+  pubRaw: Buffer;
+  /** Raw 32-byte X25519 private scalar (kept on the member's devices). */
+  privRaw: Buffer;
+}
+
+/** A fresh X25519 identity keypair for one member. */
+export function generateMemberKeypair(): MemberKeypair {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('x25519');
+  return { pubRaw: x25519PubToRaw(publicKey), privRaw: x25519PrivToRaw(privateKey) };
+}
+
+/**
+ * Seal the DEK to a member's public key. Returns `ephPub(32) ‖ BSE1(dek)`. A
+ * fresh ephemeral keypair per seal makes each blob independent; the wrapping key
+ * is HKDF over the ECDH shared secret, with both public keys bound into `info`
+ * (so a sealed blob cannot be relabelled for a different recipient/ephemeral).
+ */
+export function sealDek(dek: Buffer, recipientPubRaw: Buffer, aad: Buffer): Buffer {
+  const eph = crypto.generateKeyPairSync('x25519');
+  const ephPubRaw = x25519PubToRaw(eph.publicKey);
+  const shared = crypto.diffieHellman({
+    privateKey: eph.privateKey,
+    publicKey: rawToX25519Pub(recipientPubRaw),
+  });
+  const wrapKey = deriveSealKey(shared, ephPubRaw, recipientPubRaw);
+  return Buffer.concat([ephPubRaw, encryptForSync(dek, wrapKey, aad)]);
+}
+
+/**
+ * Open a DEK sealed to my public key, using my private key. Throws
+ * SyncDecryptError on a wrong key, tampered blob, or AAD mismatch.
+ */
+export function openDek(blob: Buffer, myPrivRaw: Buffer, aad: Buffer): Buffer {
+  if (blob.length < 32 + HEADER_LENGTH + TAG_LENGTH) {
+    throw new SyncDecryptError('Sealed key blob is too short.');
+  }
+  const ephPubRaw = blob.subarray(0, 32);
+  const wrapped = blob.subarray(32);
+  const myPriv = rawToX25519Priv(myPrivRaw);
+  const myPubRaw = x25519PubToRaw(crypto.createPublicKey(myPriv));
+  const shared = crypto.diffieHellman({ privateKey: myPriv, publicKey: rawToX25519Pub(ephPubRaw) });
+  const wrapKey = deriveSealKey(shared, ephPubRaw, myPubRaw);
+  return decryptForSync(wrapped, wrapKey, aad);
+}
+
+/** Wrap a member's raw private key under their recovery key (BSE1 envelope). */
+export function wrapPrivateKey(privRaw: Buffer, recoveryKeyBytes: Buffer, aad: Buffer): Buffer {
+  if (privRaw.length !== KEY_LENGTH) throw new Error('Bad private key length');
+  return encryptForSync(privRaw, recoveryKeyBytes, aad);
+}
+
+/** Recover a member's raw private key from its wrapped blob using the recovery key. */
+export function unwrapPrivateKey(blob: Buffer, recoveryKeyBytes: Buffer, aad: Buffer): Buffer {
+  const priv = decryptForSync(blob, recoveryKeyBytes, aad);
+  if (priv.length !== KEY_LENGTH) {
+    throw new SyncDecryptError('Unwrapped private key has the wrong length.');
+  }
+  return priv;
+}
+
+/** AAD binding a sealed DEK to the account and the recipient it was sealed for. */
+export function sealAad(accountId: string, recipientUserId: string): Buffer {
+  return syncAad(accountId, 'account', `dek-seal:${recipientUserId}`);
+}
+
+/**
+ * AAD binding a wrapped private key to its owning member. Keyed by userId only
+ * (not the account): a newcomer wraps their private key under their recovery
+ * key *before* redeeming an invite, so the account isn't known yet — but the
+ * userId (Supabase sub) is stable and globally unique.
+ */
+export function privKeyWrapAad(userId: string): Buffer {
+  return syncAad(userId, 'member', 'privkey-wrap');
+}
+
+function deriveSealKey(shared: Buffer, ephPubRaw: Buffer, recipientPubRaw: Buffer): Buffer {
+  const info = Buffer.concat([SEAL_INFO, ephPubRaw, recipientPubRaw]);
+  return Buffer.from(crypto.hkdfSync('sha256', shared, Buffer.alloc(0), info, KEY_LENGTH));
+}
+
+function x25519PubToRaw(key: crypto.KeyObject): Buffer {
+  const der = key.export({ format: 'der', type: 'spki' });
+  return Buffer.from(der.subarray(der.length - 32));
+}
+
+function x25519PrivToRaw(key: crypto.KeyObject): Buffer {
+  const der = key.export({ format: 'der', type: 'pkcs8' });
+  return Buffer.from(der.subarray(der.length - 32));
+}
+
+function rawToX25519Pub(pubRaw: Buffer): crypto.KeyObject {
+  if (pubRaw.length !== 32) throw new SyncDecryptError('X25519 public key must be 32 bytes.');
+  return crypto.createPublicKey({
+    key: Buffer.concat([X25519_SPKI_PREFIX, pubRaw]),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function rawToX25519Priv(privRaw: Buffer): crypto.KeyObject {
+  if (privRaw.length !== 32) throw new SyncDecryptError('X25519 private key must be 32 bytes.');
+  return crypto.createPrivateKey({
+    key: Buffer.concat([X25519_PKCS8_PREFIX, privRaw]),
+    format: 'der',
+    type: 'pkcs8',
+  });
+}
+
 function base32Encode(buf: Buffer): string {
   let bits = 0;
   let value = 0;

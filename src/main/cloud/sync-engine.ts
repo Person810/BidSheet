@@ -550,7 +550,12 @@ export class SyncEngine {
           bytesUsed: j.bytes_used,
         }));
     } catch (err: any) {
-      logger.warn('cloud-sync', 'Could not list cloud jobs while locked', err.message);
+      // A pending (un-approved) member is expected to be denied the job list —
+      // that's the server hiding the org corpus until an owner approves them, not
+      // a fault. Stay quiet; any other failure is worth a warning.
+      if (err?.code !== 'pending_approval') {
+        logger.warn('cloud-sync', 'Could not list cloud jobs while locked', err.message);
+      }
       this.cloudOnly = [];
     }
   }
@@ -628,19 +633,7 @@ export class SyncEngine {
         'cloud-sync',
         `Cloud account changed (${stored} -> ${accountId}) — resetting per-job sync state`
       );
-      this.db.prepare('DELETE FROM cloud_sync_state').run();
-      this.db.prepare('UPDATE jobs SET cloud_id = NULL WHERE cloud_id IS NOT NULL').run();
-      // Backup and catalog bookkeeping are account-scoped too: clear the
-      // change hashes so the next pass does a full backup + catalog sync
-      // against the new account.
-      this.db
-        .prepare('UPDATE cloud_auth SET backup_last_hash = NULL, backup_last_at = NULL WHERE id = 1')
-        .run();
-      this.db
-        .prepare(
-          'UPDATE cloud_catalog_sync SET last_hash_local = NULL, last_hash_remote = NULL WHERE id = 1'
-        )
-        .run();
+      this.resetSyncBookkeeping();
       // The cached DEK belongs to the old account — it cannot decrypt the new
       // account's data and must not be used to encrypt under it. Forget it;
       // the new account sets up or unlocks its own encrypted sync.
@@ -650,6 +643,41 @@ export class SyncEngine {
     this.auth.setAccountId(accountId);
     this.accountVerifiedForUser = userId;
     return accountId;
+  }
+
+  /**
+   * Wipe per-account local sync bookkeeping: the per-job cloud ids and the
+   * backup/catalog change hashes. They're meaningless against a different
+   * account; keeping them would half-attach the next push to the old account's
+   * records. Does NOT touch the cached DEK — callers decide whether to lock it.
+   */
+  private resetSyncBookkeeping(): void {
+    this.db.prepare('DELETE FROM cloud_sync_state').run();
+    this.db.prepare('UPDATE jobs SET cloud_id = NULL WHERE cloud_id IS NOT NULL').run();
+    this.db
+      .prepare('UPDATE cloud_auth SET backup_last_hash = NULL, backup_last_at = NULL WHERE id = 1')
+      .run();
+    this.db
+      .prepare(
+        'UPDATE cloud_catalog_sync SET last_hash_local = NULL, last_hash_remote = NULL WHERE id = 1'
+      )
+      .run();
+    // Force a fresh /me verification on the next pass.
+    this.accountVerifiedForUser = null;
+  }
+
+  /**
+   * Reset local sync state after joining an org via an invite. joinWithInvite
+   * pre-sets the new account id, which BYPASSES requireAccountId's account-switch
+   * detector — so the stale cloud ids/hashes from the joiner's old (solo) account
+   * would otherwise make the next pass push their private jobs into the shared
+   * org. The cached DEK/member key is handled by joinWithInvite itself (it clears
+   * the old DEK before caching the new member key), so this only wipes the
+   * per-job/backup/catalog bookkeeping.
+   */
+  resetSyncStateForJoin(): void {
+    this.resetSyncBookkeeping();
+    this.notifyRenderer();
   }
 
   private notifyRenderer(): void {
