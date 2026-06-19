@@ -292,6 +292,13 @@ export class E2eeManager {
       pubkey: pubRaw.toString('base64'),
       wrapped_priv: wrappedPriv.toString('base64'),
     });
+    // Redeem succeeded — we've left our old (solo) account for the org. Forget
+    // the old account's cached DEK + member key BEFORE caching the new one, or a
+    // stale DEK would make state() report 'unlocked' (line: hasLocalDek short-
+    // circuits the pending check) and the sync engine could encrypt org data
+    // under the wrong key. The per-job/backup/catalog bookkeeping wipe is the
+    // caller's job (SyncEngine.resetSyncStateForJoin owns that state).
+    this.lockLocal();
     // We now belong to the org account; record it and cache the private key.
     this.auth.setAccountId(result.account_id);
     this.cacheMemberKey(privRaw, pubRaw, 2);
