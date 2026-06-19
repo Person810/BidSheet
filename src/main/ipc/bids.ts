@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
+import { serializeManualFields } from '../../shared/manualFields';
 
 export function registerBidHandlers(db: Database.Database): void {
   // ================================================================
@@ -64,6 +65,7 @@ export function registerBidHandlers(db: Database.Database): void {
     const equipmentTotal = item.equipmentHours * item.equipmentCostPerHour;
     const totalCost = materialTotal + laborTotal + equipmentTotal + (item.subcontractorCost || 0);
     const unitCost = item.quantity > 0 ? totalCost / item.quantity : 0;
+    const manualFields = serializeManualFields(item.manualFields || []);
 
     if (item.id) {
       return db
@@ -74,7 +76,7 @@ export function registerBidHandlers(db: Database.Database): void {
             crew_template_id = ?, production_rate_id = ?, labor_hours = ?, labor_cost_per_hour = ?, labor_total = ?,
             equipment_id = ?, equipment_cost_per_hour = ?, equipment_hours = ?, equipment_total = ?,
             subcontractor_cost = ?, unit_cost = ?, total_cost = ?, notes = ?,
-            item_number = ?, cost_code = ?
+            item_number = ?, cost_code = ?, manual_fields = ?
           WHERE id = ?`
         )
         .run(
@@ -83,7 +85,7 @@ export function registerBidHandlers(db: Database.Database): void {
           item.crewTemplateId, item.productionRateId, item.laborHours, item.laborCostPerHour, laborTotal,
           item.equipmentId || null, item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
           item.subcontractorCost || 0, unitCost, totalCost, item.notes,
-          item.itemNumber || null, item.costCode || null,
+          item.itemNumber || null, item.costCode || null, manualFields,
           item.id
         );
     } else {
@@ -94,8 +96,8 @@ export function registerBidHandlers(db: Database.Database): void {
             material_id, material_unit_cost, material_total,
             crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
             equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
-            subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code, manual_fields
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           item.sectionId, item.jobId, item.description, item.quantity, item.unit, item.sortOrder,
@@ -103,7 +105,7 @@ export function registerBidHandlers(db: Database.Database): void {
           item.crewTemplateId, item.productionRateId, item.laborHours, item.laborCostPerHour, laborTotal,
           item.equipmentId || null, item.equipmentCostPerHour, item.equipmentHours, equipmentTotal,
           item.subcontractorCost || 0, unitCost, totalCost, item.notes,
-          item.itemNumber || null, item.costCode || null
+          item.itemNumber || null, item.costCode || null, manualFields
         );
     }
   });
@@ -162,8 +164,8 @@ export function registerBidHandlers(db: Database.Database): void {
         crew_template_id, production_rate_id, labor_hours, labor_cost_per_hour, labor_total,
         equipment_id, equipment_cost_per_hour, equipment_hours, equipment_total,
         subcontractor_cost, unit_cost, total_cost, notes, item_number, cost_code,
-        price_state, price_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        price_state, price_source, manual_fields
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     const replaceTx = db.transaction(() => {
@@ -195,7 +197,7 @@ export function registerBidHandlers(db: Database.Database): void {
             i.equipment_hours ?? 0, i.equipment_total ?? 0,
             i.subcontractor_cost ?? 0, i.unit_cost ?? 0, i.total_cost ?? 0,
             i.notes ?? null, i.item_number ?? null, i.cost_code ?? null,
-            i.price_state ?? 'seed', i.price_source ?? null
+            i.price_state ?? 'seed', i.price_source ?? null, i.manual_fields ?? null
           );
         });
       }

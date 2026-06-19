@@ -194,6 +194,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV21, migrateV22, migrateV23, migrateV24, migrateV25,
   migrateV26, migrateV27, migrateV28, migrateV29, migrateV30,
   migrateV31,
+  migrateV32,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -244,6 +245,17 @@ function migrateV30(db: Database.Database): void {
     ALTER TABLE cloud_auth ADD COLUMN dek_enc TEXT;
     ALTER TABLE cloud_auth ADD COLUMN dek_fingerprint TEXT;
     INSERT INTO schema_version (version) VALUES (30);
+  `);
+}
+
+function migrateV32(db: Database.Database): void {
+  // Sticky manual overrides (§5). A JSON array of the derived line fields the
+  // estimator has typed over (materialUnitCost / laborHours / laborCostPerHour
+  // / equipmentCostPerHour), so a later driver change won't silently recompute
+  // them and the override can be badged + reverted in the UI.
+  db.exec(`
+    ALTER TABLE bid_line_items ADD COLUMN manual_fields TEXT;
+    INSERT INTO schema_version (version) VALUES (32);
   `);
 }
 

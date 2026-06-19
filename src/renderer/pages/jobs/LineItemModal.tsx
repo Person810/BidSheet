@@ -11,6 +11,7 @@ import { calcCrewCostPerHour, explainCrewCost } from '../../../shared/crewCost';
 import { effectiveMaterialUnitCost, isCubicYards } from '../../../shared/unitConversion';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
+import { isManual, withManual, type OverridableField } from '../../../shared/manualFields';
 
 interface LineItemModalProps {
   lineForm: any;
@@ -40,7 +41,16 @@ export function LineItemModal({
   const rateItems = useMemo(() => productionRatesToAutocomplete(productionRates), [productionRates]);
   const equipmentItems = useMemo(() => equipmentToAutocomplete(equipment), [equipment]);
 
+  // Mark a derived field as a manual override + set its value in one go.
+  const overrideField = (field: OverridableField, value: number) => {
+    setLineForm((prev: any) => ({
+      ...prev, [field]: value, manualFields: withManual(prev.manualFields || [], field, true),
+    }));
+  };
+
   // ---- Material picker handler ----
+  // Picking a material is a fresh source for its price, so it clears any
+  // existing manual override on the unit cost.
   const onMaterialSelect = (item: any) => {
     if (item) {
       const mat = materials.find((m: any) => m.id === item.id);
@@ -55,6 +65,7 @@ export function LineItemModal({
             materialUnitCost: eff.converted ? eff.cost : mat.default_unit_cost,
             description: prev.description || mat.name,
             unit: eff.converted ? prev.unit : mat.unit,
+            manualFields: withManual(prev.manualFields || [], 'materialUnitCost', false),
           };
         });
       }
@@ -63,13 +74,12 @@ export function LineItemModal({
     }
   };
 
-  // ---- Unit change: re-price an untouched material cost ----
+  // ---- Unit change: re-price unless the cost is a manual override ----
   const onUnitChange = (newUnit: string) => {
     setLineForm((prev: any) => {
       const mat = prev.materialId ? materials.find((m: any) => m.id === prev.materialId) : null;
       let cost = prev.materialUnitCost;
-      // Only swap the price if the user hasn't customized it
-      if (mat && prev.materialUnitCost === effectiveMaterialUnitCost(mat, prev.unit).cost) {
+      if (mat && !isManual(prev.manualFields || [], 'materialUnitCost')) {
         cost = effectiveMaterialUnitCost(mat, newUnit).cost;
       }
       return { ...prev, unit: newUnit, materialUnitCost: cost };
@@ -102,6 +112,7 @@ export function LineItemModal({
           ...prev,
           crewTemplateId: crew.id,
           laborCostPerHour: costPerHour,
+          manualFields: withManual(prev.manualFields || [], 'laborCostPerHour', false),
         }));
       }
     } else {
@@ -125,6 +136,9 @@ export function LineItemModal({
           crewTemplateId: rate.crew_template_id,
           laborHours: Math.round(hours * 10) / 10,
           laborCostPerHour: costPerHour,
+          // Fresh source for both hours and crew cost — clear their overrides.
+          manualFields: withManual(
+            withManual(prev.manualFields || [], 'laborHours', false), 'laborCostPerHour', false),
         }));
       }
     } else {
@@ -132,15 +146,18 @@ export function LineItemModal({
     }
   };
 
-  // Recalculate labor hours when quantity changes and a production rate is selected
+  // Recalculate labor hours when quantity changes and a production rate is
+  // selected — unless the user has overridden hours, which now stays put.
   const onQuantityChange = (qty: number) => {
-    const rate = productionRates.find((r: any) => r.id === lineForm.productionRateId);
-    const hours = rate && rate.rate_per_hour > 0 ? qty / rate.rate_per_hour : lineForm.laborHours;
-    setLineForm((prev: any) => ({
-      ...prev,
-      quantity: qty,
-      laborHours: rate ? Math.round(hours * 10) / 10 : prev.laborHours,
-    }));
+    setLineForm((prev: any) => {
+      const rate = productionRates.find((r: any) => r.id === prev.productionRateId);
+      const recompute = rate && rate.rate_per_hour > 0 && !isManual(prev.manualFields || [], 'laborHours');
+      return {
+        ...prev,
+        quantity: qty,
+        laborHours: recompute ? Math.round((qty / rate.rate_per_hour) * 10) / 10 : prev.laborHours,
+      };
+    });
   };
 
   // ---- Equipment picker handler ----
@@ -153,6 +170,7 @@ export function LineItemModal({
           equipmentId: eq.id,
           equipmentCostPerHour: eq.hourly_rate,
           equipmentHours: prev.laborHours || prev.equipmentHours,
+          manualFields: withManual(prev.manualFields || [], 'equipmentCostPerHour', false),
         }));
       }
     } else {
@@ -172,7 +190,44 @@ export function LineItemModal({
   const selectedRate = lineForm.productionRateId
     ? productionRates.find((r: any) => r.id === lineForm.productionRateId)
     : null;
+  const selectedEquipment = lineForm.equipmentId
+    ? equipment.find((e: any) => e.id === lineForm.equipmentId)
+    : null;
   const u = lineForm.unit;
+
+  // ---- Sticky overrides (§5) ----
+  const manualFields: string[] = lineForm.manualFields || [];
+  // The auto-computed value each override would revert to, or null when there
+  // is no source to recompute from (so we don't offer a meaningless revert).
+  const computedValue = (field: OverridableField): number | null => {
+    switch (field) {
+      case 'materialUnitCost':
+        return selectedMaterial ? effectiveMaterialUnitCost(selectedMaterial, u).cost : null;
+      case 'laborHours':
+        return selectedRate && selectedRate.rate_per_hour > 0
+          ? Math.round((lineForm.quantity / selectedRate.rate_per_hour) * 10) / 10 : null;
+      case 'laborCostPerHour':
+        return selectedCrew ? calcCrewCostPerHour(selectedCrew) : null;
+      case 'equipmentCostPerHour':
+        return selectedEquipment ? selectedEquipment.hourly_rate : null;
+    }
+  };
+  const revert = (field: OverridableField) => {
+    const v = computedValue(field);
+    setLineForm((prev: any) => ({
+      ...prev,
+      ...(v != null ? { [field]: v } : {}),
+      manualFields: withManual(prev.manualFields || [], field, false),
+    }));
+  };
+  // Only surface the "overridden" tag when there's a source the field would
+  // otherwise compute from — a hand-typed value with no catalog source behind
+  // it isn't really an override of anything.
+  const overrideTag = (field: OverridableField) => (
+    isManual(manualFields, field) && computedValue(field) != null
+      ? <OverrideTag onRevert={() => revert(field)} />
+      : null
+  );
 
   const matBreakdown = explainProduct(
     'Material total = quantity × unit cost',
@@ -267,9 +322,9 @@ export function LineItemModal({
               />
             </div>
             <div className="form-group">
-              <label>Unit Cost ($)</label>
+              <label>Unit Cost ($) {overrideTag('materialUnitCost')}</label>
               <input type="number" className="form-control" value={lineForm.materialUnitCost}
-                onChange={(e) => setLineForm({ ...lineForm, materialUnitCost: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => overrideField('materialUnitCost', parseFloat(e.target.value) || 0)}
                 step="0.01" min="0" />
             </div>
             <div className="form-group">
@@ -322,11 +377,12 @@ export function LineItemModal({
             <div className="form-group">
               <label>Labor Hours
                 {laborHoursBreakdown && <CalcPopover breakdown={laborHoursBreakdown} ariaLabel="Show labor hours math" />}
+                {overrideTag('laborHours')}
               </label>
               <input type="number" className="form-control" value={lineForm.laborHours}
-                onChange={(e) => setLineForm({ ...lineForm, laborHours: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => overrideField('laborHours', parseFloat(e.target.value) || 0)}
                 step="0.5" min="0" />
-              {lineForm.productionRateId > 0 && (
+              {lineForm.productionRateId > 0 && !isManual(manualFields, 'laborHours') && (
                 <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
                   Auto-calculated from production rate
                 </div>
@@ -335,9 +391,10 @@ export function LineItemModal({
             <div className="form-group">
               <label>Crew Cost / Hour ($)
                 {selectedCrew && <CalcPopover breakdown={explainCrewCost(selectedCrew)} ariaLabel="Show crew cost math" />}
+                {overrideTag('laborCostPerHour')}
               </label>
               <input type="number" className="form-control" value={lineForm.laborCostPerHour}
-                onChange={(e) => setLineForm({ ...lineForm, laborCostPerHour: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => overrideField('laborCostPerHour', parseFloat(e.target.value) || 0)}
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
@@ -371,9 +428,9 @@ export function LineItemModal({
                 step="0.5" min="0" />
             </div>
             <div className="form-group">
-              <label>Cost / Hour ($)</label>
+              <label>Cost / Hour ($) {overrideTag('equipmentCostPerHour')}</label>
               <input type="number" className="form-control" value={lineForm.equipmentCostPerHour}
-                onChange={(e) => setLineForm({ ...lineForm, equipmentCostPerHour: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => overrideField('equipmentCostPerHour', parseFloat(e.target.value) || 0)}
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
@@ -420,5 +477,18 @@ export function LineItemModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Marks a field as a manual override, with a one-click revert to computed. */
+function OverrideTag({ onRevert }: { onRevert?: () => void }) {
+  return (
+    <span className="override-tag" title="Manually overridden — won't recompute">
+      overridden
+      {onRevert && (
+        <button type="button" className="override-revert"
+          onClick={(e) => { e.preventDefault(); onRevert(); }}>revert</button>
+      )}
+    </span>
   );
 }

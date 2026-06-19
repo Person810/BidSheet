@@ -596,6 +596,42 @@ body {
   line-height: 1.5;
 }
 
+/* Sticky manual override (§5): label tag + revert, and a grid marker. */
+.override-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--warning);
+  vertical-align: middle;
+}
+
+.override-revert {
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.override-revert:hover {
+  text-decoration: underline;
+}
+
+.manual-marker {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--warning);
+  cursor: default;
+}
+
 /* Price-state legend / payoff strip above the grid. */
 .price-state-legend {
   display: flex;

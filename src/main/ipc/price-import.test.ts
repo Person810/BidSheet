@@ -52,6 +52,16 @@ describe('migration v31 — price import schema', () => {
     expect(byName.get('price_state').dflt_value).toContain('seed');
   });
 
+  it('adds the manual_fields column (v32) and round-trips a JSON array', () => {
+    const cols = (db.prepare('PRAGMA table_info(bid_line_items)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('manual_fields');
+    const { lineId } = makeJobWithLine(db, 12.5);
+    db.prepare('UPDATE bid_line_items SET manual_fields = ? WHERE id = ?')
+      .run('["materialUnitCost"]', lineId);
+    const row = db.prepare('SELECT manual_fields FROM bid_line_items WHERE id = ?').get(lineId) as any;
+    expect(JSON.parse(row.manual_fields)).toEqual(['materialUnitCost']);
+  });
+
   it('a fresh line with no price defaults to seed', () => {
     const { lineId } = makeJobWithLine(db, 0);
     const state = (db.prepare('SELECT price_state FROM bid_line_items WHERE id = ?').get(lineId) as any).price_state;

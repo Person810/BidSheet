@@ -4,6 +4,7 @@ import { PriceStateDot } from './priceState';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainSum, explainQuotient, fmtMoney, fmtQty } from '../../../shared/calcExplain';
 import { explainDirectCost, explainEscalation, explainMarkup, explainGrandTotal } from '../../../shared/bidCalc';
+import { parseManualFields, MANUAL_FIELD_LABELS, type OverridableField } from '../../../shared/manualFields';
 
 interface BidGridProps {
   sections: any[];
@@ -306,6 +307,15 @@ export function BidGrid({
                         {item.description}
                       </span>
                       <span className="print-only">{item.description}</span>
+                      {(() => {
+                        const mf = parseManualFields(item.manual_fields);
+                        return mf.length > 0 ? (
+                          <span className="manual-marker no-print"
+                            title={`Manual override: ${mf.map((f) => MANUAL_FIELD_LABELS[f as OverridableField]).join(', ')}`}>
+                            ✎
+                          </span>
+                        ) : null;
+                      })()}
                       {item.cost_code && (
                         <span className="text-muted no-print" style={{ marginLeft: 6, fontSize: 10 }}
                           title="Cost code">

@@ -1,4 +1,5 @@
 import type { SaveBidLineItemPayload } from './types/ipc';
+import { parseManualFields } from './manualFields';
 
 /**
  * Build a bid line-item save payload, defaulting every cost field to zero/null.
@@ -60,6 +61,8 @@ export function lineItemRowToPayload(
     equipmentHours: row.equipment_hours,
     subcontractorCost: row.subcontractor_cost,
     notes: row.notes || null,
+    // Preserve sticky overrides across round-trips (inline edits, undo/redo).
+    manualFields: parseManualFields(row.manual_fields),
     ...overrides,
   };
 }

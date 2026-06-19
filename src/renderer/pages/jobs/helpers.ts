@@ -33,6 +33,7 @@ export function emptyLineForm() {
     equipmentCostPerHour: 0,
     subcontractorCost: 0,
     notes: '',
+    manualFields: [] as string[],
   };
 }
 

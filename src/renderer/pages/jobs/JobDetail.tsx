@@ -7,6 +7,7 @@ import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
 import { buildAssemblyLineItems } from '../../../shared/assemblyExpansion';
 import { buildLineItemPayload, lineItemRowToPayload } from '../../../shared/lineItemPayload';
+import { parseManualFields, withManual } from '../../../shared/manualFields';
 import { effectiveMaterialUnitCost } from '../../../shared/unitConversion';
 import { BidGrid } from './BidGrid';
 import { SectionSettingsModal } from './SectionSettingsModal';
@@ -396,6 +397,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         equipmentCostPerHour: item.equipment_cost_per_hour,
         subcontractorCost: item.subcontractor_cost,
         notes: item.notes || '',
+        manualFields: parseManualFields(item.manual_fields),
       });
       setShowLineItemModal(true);
     });
@@ -425,6 +427,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       equipmentHours: lineForm.equipmentHours,
       subcontractorCost: lineForm.subcontractorCost,
       notes: lineForm.notes || null,
+      manualFields: lineForm.manualFields || [],
     });
     setShowLineItemModal(false);
     loadJob();
@@ -436,10 +439,16 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const commitInlineEdit = async (item: any, changes: { quantity?: number; materialUnitCost?: number }) => {
     try {
       history.record();
+      // Typing over the material unit price in the grid is an override; mark it
+      // sticky so a later quantity/material change won't recompute it.
+      const manualFields = changes.materialUnitCost != null
+        ? withManual(parseManualFields(item.manual_fields), 'materialUnitCost', true)
+        : parseManualFields(item.manual_fields);
       await window.api.saveBidLineItem(lineItemRowToPayload(item, {
         jobId,
         quantity: changes.quantity ?? item.quantity,
         materialUnitCost: changes.materialUnitCost ?? item.material_unit_cost,
+        manualFields,
       }));
       await loadJob();
     } catch (err: any) {
