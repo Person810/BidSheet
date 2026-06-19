@@ -19,6 +19,7 @@ import { JobPriceImportModal } from './JobPriceImportModal';
 import { PriceStateLegend } from './priceState';
 import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
+import { PdfCustomizerModal } from './PdfCustomizerModal';
 import { useToastStore } from '../../stores/toast-store';
 import { useBidHistory, type BidSnapshot } from './useBidHistory';
 
@@ -57,6 +58,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  const [showPdfCustomizer, setShowPdfCustomizer] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [profileCount, setProfileCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
@@ -306,7 +308,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // effect's deps to one value instead of an easy-to-forget list, so adding a
   // future modal only requires updating this one expression.
   const anyModalOpen = !!(showLineItemModal || editingSection || showEditJob || showAssemblyPicker
-    || showBidItemImport || showPriceImport || showCompare || showCostCodeReport || confirmState);
+    || showBidItemImport || showPriceImport || showCompare || showCostCodeReport
+    || showPdfCustomizer || confirmState);
 
   // Ctrl/Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo — estimate tab only, and
   // never while focus is in an editable field or a modal is open (so inline
@@ -672,7 +675,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const handlePrint = async () => {
     setPrinting(true);
     try {
-      await window.api.printBid(jobId);
+      const res = await window.api.printBid(jobId);
+      if (res?.openedPdf) {
+        addToast('No printer is set up on this computer — opened the bid as a PDF so you can print it from your viewer.', 'warn');
+      }
     } catch (err: any) {
       addToast(err.message || 'Print failed', 'error');
     } finally {
@@ -769,6 +775,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
                 }}>
                   {[
                     { label: 'Proposal PDF', action: handleExportPdf },
+                    { label: 'Customize Proposal PDF…', action: () => setShowPdfCustomizer(true) },
                     { label: 'QuickBooks CSV', action: handleExportQB },
                     { label: 'Unit Price Schedule CSV', action: handleExportUnitPrices },
                     { label: 'Cost Code Report', action: () => setShowCostCodeReport(true) },
@@ -970,6 +977,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       {/* Compare Jobs Modal */}
       {showCompare && (
         <CompareJobsModal baseJobId={jobId} onClose={() => setShowCompare(false)} />
+      )}
+
+      {/* PDF Customizer Modal */}
+      {showPdfCustomizer && (
+        <PdfCustomizerModal jobId={jobId} onClose={() => setShowPdfCustomizer(false)} />
       )}
 
       {/* Cost Code Report Modal */}

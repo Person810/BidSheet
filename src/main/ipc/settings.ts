@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
+import { parsePdfTemplate, PdfTemplate } from '../../shared/types/pdf';
 
 export function registerSettingsHandlers(db: Database.Database): void {
   // ================================================================
@@ -207,6 +208,15 @@ export function registerSettingsHandlers(db: Database.Database): void {
         settings.autoLockOnClose ? 1 : 0,
         settings.localOnlyMode ? 1 : 0
       );
+  });
+
+  safeHandle('settings:get-pdf-template', () => {
+    const row = db.prepare('SELECT pdf_template_json FROM app_settings WHERE id = 1').get() as any;
+    return parsePdfTemplate(row?.pdf_template_json);
+  });
+
+  safeHandle('settings:save-pdf-template', (_event, template: PdfTemplate) => {
+    db.prepare('UPDATE app_settings SET pdf_template_json = ? WHERE id = 1').run(JSON.stringify(template));
   });
 
 }
