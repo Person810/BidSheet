@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { formatCurrency } from './helpers';
 import { PriceStateDot } from './priceState';
+import { CalcPopover } from '../../components/CalcPopover';
+import { explainSum, explainQuotient, fmtMoney, fmtQty } from '../../../shared/calcExplain';
+import { explainDirectCost, explainEscalation, explainMarkup, explainGrandTotal } from '../../../shared/bidCalc';
 
 interface BidGridProps {
   sections: any[];
@@ -342,9 +345,29 @@ export function BidGrid({
 
                     <td className="text-right">{formatCurrency(item.labor_total)}</td>
                     <td className="text-right">{formatCurrency(item.equipment_total)}</td>
-                    <td className="text-right" style={{ fontWeight: 600 }}>{formatCurrency(item.total_cost)}</td>
+                    <td className="text-right" style={{ fontWeight: 600 }}>
+                      {formatCurrency(item.total_cost)}
+                      <CalcPopover ariaLabel="Show line total math" breakdown={explainSum(
+                        'Line total = material + labor + equipment + subcontractor',
+                        [
+                          { label: 'Material', value: fmtMoney(item.material_total || 0) },
+                          { label: 'Labor', value: fmtMoney(item.labor_total || 0) },
+                          { label: 'Equipment', value: fmtMoney(item.equipment_total || 0) },
+                          { label: 'Subcontractor', value: fmtMoney(item.subcontractor_cost || 0) },
+                        ],
+                        { label: 'Line total', value: fmtMoney(item.total_cost || 0) },
+                      )} />
+                    </td>
                     <td className="text-right" style={{ color: 'var(--text-muted)' }}>
                       {item.quantity > 0 ? formatCurrency(item.unit_cost) : '--'}
+                      {item.quantity > 0 && (
+                        <CalcPopover ariaLabel="Show $/unit math" breakdown={explainQuotient(
+                          '$/Unit = line total ÷ quantity',
+                          { label: 'Line total', value: fmtMoney(item.total_cost || 0) },
+                          { label: 'Quantity', value: fmtQty(item.quantity, item.unit) },
+                          { label: '$/Unit', value: `${fmtMoney(item.unit_cost || 0)}/${item.unit}` },
+                        )} />
+                      )}
                     </td>
                     <td className="no-print">
                       <button
@@ -372,34 +395,49 @@ export function BidGrid({
             <td className="text-right">{formatCurrency(summary.material_total)}</td>
             <td className="text-right">{formatCurrency(summary.labor_total)}</td>
             <td className="text-right">{formatCurrency(summary.equipment_total)}</td>
-            <td className="text-right" style={{ fontWeight: 700 }}>{formatCurrency(summary.direct_cost_total)}</td>
+            <td className="text-right" style={{ fontWeight: 700 }}>
+              {formatCurrency(summary.direct_cost_total)}
+              <CalcPopover ariaLabel="Show direct cost math" breakdown={explainDirectCost(summary)} />
+            </td>
             <td colSpan={2}></td>
           </tr>
           {/* Material escalation (conditional) */}
           {summary.escalation > 0 && (
             <tr>
               <td colSpan={6} className="text-right">Material Escalation ({job.escalation_percent}%)</td>
-              <td className="text-right">{formatCurrency(summary.escalation)}</td>
+              <td className="text-right">
+                {formatCurrency(summary.escalation)}
+                <CalcPopover ariaLabel="Show escalation math" breakdown={explainEscalation(summary, job.escalation_percent)} />
+              </td>
               <td colSpan={2}></td>
             </tr>
           )}
           {/* Overhead */}
           <tr>
             <td colSpan={6} className="text-right">Overhead{hasMarkupOverrides ? '*' : ` (${job.overhead_percent}%)`}</td>
-            <td className="text-right">{formatCurrency(summary.overhead)}</td>
+            <td className="text-right">
+              {formatCurrency(summary.overhead)}
+              <CalcPopover ariaLabel="Show overhead math" breakdown={explainMarkup('overhead', summary, hasMarkupOverrides)} />
+            </td>
             <td colSpan={2}></td>
           </tr>
           {/* Profit */}
           <tr>
             <td colSpan={6} className="text-right">Profit{hasMarkupOverrides ? '*' : ` (${job.profit_percent}%)`}</td>
-            <td className="text-right">{formatCurrency(summary.profit)}</td>
+            <td className="text-right">
+              {formatCurrency(summary.profit)}
+              <CalcPopover ariaLabel="Show profit math" breakdown={explainMarkup('profit', summary, hasMarkupOverrides)} />
+            </td>
             <td colSpan={2}></td>
           </tr>
           {/* Bond (conditional) */}
           {summary.bond > 0 && (
             <tr>
               <td colSpan={6} className="text-right">Bond{hasMarkupOverrides ? '*' : ` (${job.bond_percent}%)`}</td>
-              <td className="text-right">{formatCurrency(summary.bond)}</td>
+              <td className="text-right">
+                {formatCurrency(summary.bond)}
+                <CalcPopover ariaLabel="Show bond math" breakdown={explainMarkup('bond', summary, hasMarkupOverrides)} />
+              </td>
               <td colSpan={2}></td>
             </tr>
           )}
@@ -407,7 +445,10 @@ export function BidGrid({
           {summary.tax > 0 && (
             <tr>
               <td colSpan={6} className="text-right">Sales Tax ({job.tax_percent}%)</td>
-              <td className="text-right">{formatCurrency(summary.tax)}</td>
+              <td className="text-right">
+                {formatCurrency(summary.tax)}
+                <CalcPopover ariaLabel="Show sales tax math" breakdown={explainMarkup('tax', summary, false)} />
+              </td>
               <td colSpan={2}></td>
             </tr>
           )}
@@ -418,6 +459,7 @@ export function BidGrid({
             </td>
             <td className="text-right" style={{ fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
               {formatCurrency(summary.grandTotal)}
+              <CalcPopover ariaLabel="Show bid total math" breakdown={explainGrandTotal(summary)} />
             </td>
             <td colSpan={2}></td>
           </tr>

@@ -500,6 +500,102 @@ body {
   flex-shrink: 0;
 }
 
+/* "Show the math" (§5): quiet ƒx trigger + portaled breakdown popover. */
+.calc-trigger {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 1px 3px;
+  margin-left: 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.calc-trigger:hover,
+.calc-trigger-open {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.calc-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.calc-trigger-x {
+  font-size: 8px;
+  vertical-align: sub;
+}
+
+.calc-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 300px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.calc-popover-formula {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.calc-popover-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.calc-popover-table td {
+  padding: 2px 0;
+  vertical-align: top;
+}
+
+.calc-line-label {
+  color: var(--text-secondary);
+  padding-right: 12px !important;
+}
+
+.calc-line-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+  white-space: nowrap;
+}
+
+.calc-line-result td {
+  border-top: 1px solid var(--border);
+  padding-top: 5px !important;
+  font-weight: 700;
+}
+
+.calc-line-result .calc-line-label {
+  color: var(--text-primary);
+}
+
+.calc-popover-note {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* Price-state legend / payoff strip above the grid. */
 .price-state-legend {
   display: flex;

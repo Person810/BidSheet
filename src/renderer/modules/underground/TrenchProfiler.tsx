@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import {
-  calculateTrench, validateInput, parsePipeSizeFromName,
+  calculateTrench, validateInput, parsePipeSizeFromName, explainTrench,
   type TrenchInput,
 } from './trenchCalc';
+import { CalcPopover } from '../../components/CalcPopover';
+import type { CalcBreakdown } from '../../../shared/calcExplain';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from './useTrenchMaterials';
 
@@ -31,6 +33,7 @@ export function TrenchProfiler() {
 
   const errors = useMemo(() => validateInput(input), [input]);
   const result = useMemo(() => (errors.length === 0 ? calculateTrench(input) : null), [input, errors]);
+  const math = useMemo(() => (result ? explainTrench(input, result) : null), [input, result]);
 
   const hasError = (field: string) => errors.some((e) => e.field === field);
 
@@ -191,11 +194,11 @@ export function TrenchProfiler() {
                 <Row label="Pipe" value={`${result.pipeLF} LF`}
                   sub={input.pipeMaterial || `${input.pipeSizeIn}"`} />
                 <Row label="Avg Trench Depth" value={`${result.avgDepthFt} ft`}
-                  sub={`${input.startDepthFt}' start > ${result.endDepthFt}' end`} />
-                <Row label="Excavation" value={`${result.excavationCY} CY`} />
+                  sub={`${input.startDepthFt}' start > ${result.endDepthFt}' end`} breakdown={math?.avgDepth} />
+                <Row label="Excavation" value={`${result.excavationCY} CY`} breakdown={math?.excavation} />
                 <Row label="Bedding" value={`${result.beddingCY} CY`}
-                  sub={selectedBedding ? selectedBedding.label : ''} />
-                <Row label="Backfill" value={`${result.backfillCY} CY`} sub={input.backfillType} />
+                  sub={selectedBedding ? selectedBedding.label : ''} breakdown={math?.bedding} />
+                <Row label="Backfill" value={`${result.backfillCY} CY`} sub={input.backfillType} breakdown={math?.backfill} />
                 <Row label="Tracer Wire" value={`${result.tracerWireLF} LF`} />
                 <Row label="Warning Tape" value={`${result.warningTapeLF} LF`} />
               </tbody>
@@ -212,11 +215,14 @@ export function TrenchProfiler() {
 }
 
 /* Small helper -- keeps the output table consistent */
-function Row({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Row({ label, value, sub, breakdown }: { label: string; value: string; sub?: string; breakdown?: CalcBreakdown }) {
   return (
     <tr>
       <td style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{label}</td>
-      <td className="text-right" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{value}</td>
+      <td className="text-right" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {value}
+        {breakdown && <CalcPopover breakdown={breakdown} ariaLabel={`Show ${label.toLowerCase()} math`} />}
+      </td>
       {sub !== undefined && (
         <td className="text-muted" style={{ fontSize: 12, paddingLeft: 8 }}>{sub}</td>
       )}
