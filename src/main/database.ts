@@ -196,6 +196,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV31,
   migrateV32,
   migrateV33,
+  migrateV34,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -326,6 +327,13 @@ function migrateV33(db: Database.Database): void {
     ALTER TABLE cloud_auth ADD COLUMN member_pub TEXT;
     ALTER TABLE cloud_auth ADD COLUMN e2ee_format INTEGER;
     INSERT INTO schema_version (version) VALUES (33);
+  `);
+}
+
+function migrateV34(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN pdf_template_json TEXT;
+    INSERT INTO schema_version (version) VALUES (34);
   `);
 }
 

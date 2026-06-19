@@ -50,6 +50,7 @@ import type {
   UpdateStatusEvent,
 } from './ipc';
 import type { CrewTemplate, LaborRole } from './labor';
+import type { PdfTemplate } from './pdf';
 
 export {};
 
@@ -148,6 +149,10 @@ declare global {
       saveCsv: (defaultName: string, title: string, csvContent: string) => Promise<FileExportResult>;
       exportBidPdf: (jobId: number) => Promise<{ success: boolean; filePath?: string; canceled?: boolean }>;
       printBid: (jobId: number) => Promise<{ success: boolean }>;
+      getPdfHtml: (jobId: number, template: PdfTemplate) => Promise<string>;
+      getPdfTemplate: () => Promise<PdfTemplate>;
+      savePdfTemplate: (template: PdfTemplate) => Promise<void>;
+      exportBidPdfWithTemplate: (jobId: number, template: PdfTemplate) => Promise<{ success: boolean; filePath?: string; canceled?: boolean }>;
 
       // Backup/Restore
       exportDatabase: () => Promise<FileExportResult>;
