@@ -1,4 +1,4 @@
-import { dialog, app, BrowserWindow } from 'electron';
+import { dialog, app, shell, BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import type Database from 'better-sqlite3';
@@ -268,31 +268,75 @@ export function registerExportHandlers(db: Database.Database): void {
   safeHandle('jobs:print-bid', async (_event, jobId: number) => {
     try {
       const data = gatherBidPdfData(jobId);
+      const { job } = data;
       const row = db.prepare('SELECT pdf_template_json FROM app_settings WHERE id = 1').get() as any;
       const tpl = parsePdfTemplate(row?.pdf_template_json);
       const html = buildBidPdfHtml(data, tpl);
 
+      // print() is NOT supported on offscreen webContents — only printToPDF is.
+      // (That's why PDF export, which uses offscreen + printToPDF, works while
+      // this path silently did nothing.) A normal hidden window renders fine and
+      // the system print dialog still attaches to it.
       const win = new BrowserWindow({
+        show: false,
+        width: 816,
+        height: 1056,
+      });
+
+      let printResult: { success: boolean; failureReason: string };
+      try {
+        await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        printResult = await new Promise<{ success: boolean; failureReason: string }>((resolve) => {
+          win.webContents.print({ printBackground: true }, (printed, reason) => {
+            resolve({ success: printed, failureReason: reason });
+          });
+        });
+      } finally {
+        win.destroy();
+      }
+
+      const { success, failureReason } = printResult;
+      if (success) return { success: true };
+
+      // Dismissing the print dialog is a normal user action, not a failure.
+      if (failureReason === 'Print job canceled') {
+        return { success: false, canceled: true };
+      }
+
+      // The OS print backend is unavailable — e.g. Linux with CUPS running but
+      // no configured print queue yields "Failed to enumerate printers", and no
+      // dialog ever appears. Rather than fail silently, fall back to the PDF
+      // pipeline (which works regardless) and open it in the system's default
+      // viewer so the user can print from there.
+      logger.warn('jobs:print-bid', 'Native print unavailable; opening PDF instead', failureReason);
+      const pdfWin = new BrowserWindow({
         show: false,
         width: 816,
         height: 1056,
         webPreferences: { offscreen: true },
       });
-
+      let pdfBuffer: Buffer;
       try {
-        await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+        await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
         await new Promise((resolve) => setTimeout(resolve, 300));
-
-        const success = await new Promise<boolean>((resolve) => {
-          win.webContents.print({ printBackground: true }, (printed) => {
-            resolve(printed);
-          });
+        pdfBuffer = await pdfWin.webContents.printToPDF({
+          printBackground: true,
+          pageSize: 'Letter',
+          margins: { top: 0.4, bottom: 0.6, left: 0, right: 0 },
         });
-
-        return { success };
       } finally {
-        win.destroy();
+        pdfWin.destroy();
       }
+
+      const safeName = (job.job_number || job.name || 'bid').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filePath = path.join(app.getPath('temp'), `${safeName}-bid.pdf`);
+      fs.writeFileSync(filePath, pdfBuffer);
+      const openErr = await shell.openPath(filePath);
+      if (openErr) throw new Error(openErr);
+      logger.info('jobs:print-bid', `Opened ${filePath} for printing`);
+      return { success: true, openedPdf: true, filePath };
     } catch (err: any) {
       logger.error('jobs:print-bid', 'Print failed', err.stack || err.message);
       throw new Error(err.message || 'Print failed.');

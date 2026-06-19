@@ -675,7 +675,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const handlePrint = async () => {
     setPrinting(true);
     try {
-      await window.api.printBid(jobId);
+      const res = await window.api.printBid(jobId);
+      if (res?.openedPdf) {
+        addToast('No printer is set up on this computer — opened the bid as a PDF so you can print it from your viewer.', 'warn');
+      }
     } catch (err: any) {
       addToast(err.message || 'Print failed', 'error');
     } finally {
