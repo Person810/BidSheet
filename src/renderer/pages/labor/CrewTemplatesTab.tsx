@@ -39,10 +39,9 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
   };
 
   const addMember = () => {
-    if (roles.length === 0) return;
     setForm({
       ...form,
-      members: [...form.members, { laborRoleId: roles[0].id, quantity: 1 }],
+      members: [...form.members, { laborRoleId: 0, quantity: 1 }],
     });
   };
 
@@ -233,7 +232,7 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
                 </button>
               )}
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim()}>
+              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim() || form.members.some(m => !m.laborRoleId)}>
                 {editing ? 'Save Changes' : 'Add Crew'}
               </button>
             </div>

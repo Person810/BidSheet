@@ -254,7 +254,7 @@ export function FuzzyAutocomplete({
           autoComplete="off"
           spellCheck={false}
         />
-        {value && inputValue && (
+        {!!value && !!inputValue && (
           <button
             className="fuzzy-clear-btn"
             onClick={clearSelection}
