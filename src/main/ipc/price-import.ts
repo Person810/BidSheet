@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { safeHandle } from './shared';
 import { normalizeDescription } from '../../shared/quoteMatching';
+import { rollupLineItemCost } from '../../shared/lineItemCost';
 
 /**
  * Per-job price import (§1–4). The renderer drives the reconciliation screen
@@ -164,9 +165,13 @@ export function registerPriceImportHandlers(db: Database.Database): void {
         for (const otherJobId of applyToJobIds) {
           for (const ln of propagateLines.all(otherJobId, materialId) as any[]) {
             const matTotal = (ln.quantity || 0) * price;
-            const total = matTotal + (ln.labor_total || 0) + (ln.equipment_total || 0) + (ln.subcontractor_cost || 0);
-            const unit = ln.quantity > 0 ? total / ln.quantity : 0;
-            updateLine.run(price, matTotal, total, unit, sourceLabel, ln.id);
+            const { totalCost, unitCost } = rollupLineItemCost({
+              materialTotal: matTotal,
+              laborTotal: ln.labor_total || 0,
+              equipmentTotal: ln.equipment_total || 0,
+              subcontractorCost: ln.subcontractor_cost || 0,
+            }, ln.quantity || 0);
+            updateLine.run(price, matTotal, totalCost, unitCost, sourceLabel, ln.id);
             result.propagatedLines++;
             touchedJobs.add(otherJobId);
           }
@@ -205,9 +210,12 @@ export function registerPriceImportHandlers(db: Database.Database): void {
           if (!line) { result.skipped++; continue; }
 
           const materialTotal = (line.quantity || 0) * row.price;
-          const totalCost = materialTotal + (line.labor_total || 0) + (line.equipment_total || 0)
-            + (line.subcontractor_cost || 0);
-          const unitCost = line.quantity > 0 ? totalCost / line.quantity : 0;
+          const { totalCost, unitCost } = rollupLineItemCost({
+            materialTotal,
+            laborTotal: line.labor_total || 0,
+            equipmentTotal: line.equipment_total || 0,
+            subcontractorCost: line.subcontractor_cost || 0,
+          }, line.quantity || 0);
           updateLine.run(row.price, materialTotal, totalCost, unitCost, `${row.supplier || 'Quote'}${stamp}`, line.id);
           result.updatedLines++;
 

@@ -6,6 +6,7 @@ import { getDbPath, isSetupComplete, seedDatabase } from '../database';
 import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
+import { computeLineItemCost } from '../../shared/lineItemCost';
 import { safeHandle, getSectionCostRows } from './shared';
 import { serializeManualFields } from '../../shared/manualFields';
 
@@ -60,11 +61,8 @@ export function registerBidHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:line-items:save', (_event, item: any) => {
-    const materialTotal = item.quantity * item.materialUnitCost;
-    const laborTotal = item.laborHours * item.laborCostPerHour;
-    const equipmentTotal = item.equipmentHours * item.equipmentCostPerHour;
-    const totalCost = materialTotal + laborTotal + equipmentTotal + (item.subcontractorCost || 0);
-    const unitCost = item.quantity > 0 ? totalCost / item.quantity : 0;
+    const { materialTotal, laborTotal, equipmentTotal, totalCost, unitCost } =
+      computeLineItemCost(item);
     const manualFields = serializeManualFields(item.manualFields || []);
 
     if (item.id) {
