@@ -3,6 +3,7 @@ import { FuzzyAutocomplete, materialsToAutocomplete, type AutocompleteItem } fro
 import type { AreaConfig, AreaType } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import { ftToInches } from './takeoffUtils';
+import { inchesToFeet } from '../../../../shared/constants/units';
 
 const AREA_OPTIONS = (Object.keys(AREA_TYPE_LABELS) as AreaType[]).map((value) => ({
   value,
@@ -12,7 +13,7 @@ const AREA_OPTIONS = (Object.keys(AREA_TYPE_LABELS) as AreaType[]).map((value) =
 const DEFAULT_CONFIG: AreaConfig = {
   label: '',
   areaType: 'asphalt',
-  depthFt: 4 / 12,
+  depthFt: inchesToFeet(4),
   materialId: null,
   assemblyId: null,
 };
@@ -115,7 +116,7 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
               value={depthIn}
               step="0.5"
               min="0"
-              onChange={(e) => set('depthFt', (parseFloat(e.target.value) || 0) / 12)}
+              onChange={(e) => set('depthFt', inchesToFeet(parseFloat(e.target.value) || 0))}
             />
           </div>
         </div>

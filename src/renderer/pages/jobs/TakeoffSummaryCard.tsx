@@ -4,6 +4,7 @@ import { UTILITY_COLORS, AREA_TYPE_LABELS } from '../../modules/underground/plan
 import {
   computeRunLengthLF, computePolygonAreaSF, loadPageScaleMap,
 } from '../../modules/underground/plan-takeoff/takeoffUtils';
+import { squareFeetToYards } from '../../../shared/constants/units';
 
 const UTILITY_LABELS: Record<UtilityType, string> = {
   sanitary: 'Sanitary',
@@ -61,7 +62,7 @@ export function TakeoffSummaryCard({ jobId, onOpenTakeoff }: {
           if (!scale) { uncalibrated.add(area.pdfPage); continue; }
           const label = AREA_TYPE_LABELS[area.areaType] ?? area.areaType;
           syByAreaType[label] = (syByAreaType[label] || 0)
-            + computePolygonAreaSF(area.points, scale) / 9;
+            + squareFeetToYards(computePolygonAreaSF(area.points, scale));
         }
 
         const itemCount = items.reduce((s, i) => s + i.quantity, 0);

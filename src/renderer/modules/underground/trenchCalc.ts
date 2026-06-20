@@ -8,6 +8,7 @@
 
 import type { CalcBreakdown } from '../../../shared/calcExplain';
 import { fmtNum } from '../../../shared/calcExplain';
+import { cubicFeetToYards, inchesToFeet } from '../../../shared/constants/units';
 
 // ---- Input / Output types --------------------------------------------------
 
@@ -63,7 +64,7 @@ export function validateInput(input: TrenchInput): ValidationError[] {
   if (input.beddingDepthFt < 0)
     errors.push({ field: 'beddingDepthFt', message: 'Bedding depth cannot be negative' });
 
-  const pipeDiameterFt = input.pipeSizeIn / 12;
+  const pipeDiameterFt = inchesToFeet(input.pipeSizeIn);
   if (pipeDiameterFt >= input.trenchWidthFt)
     errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than pipe' });
 
@@ -93,14 +94,14 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
 
   // Excavation volume (average-end-area)
   const excavationCF = totalWidthFt * avgDepthFt * runLengthLF;
-  const excavationCY = excavationCF / 27;
+  const excavationCY = cubicFeetToYards(excavationCF);
 
   // Bedding zone: full trench width x bedding depth x run length
   const beddingCF = trenchWidthFt * beddingDepthFt * runLengthLF;
-  const beddingCY = beddingCF / 27;
+  const beddingCY = cubicFeetToYards(beddingCF);
 
   // Pipe volume (cylinder) -- subtract from backfill
-  const pipeRadiusFt = (pipeSizeIn / 12) / 2;
+  const pipeRadiusFt = inchesToFeet(pipeSizeIn) / 2;
   const pipeCF = Math.PI * pipeRadiusFt ** 2 * pipeLF;
 
   // Backfill = excavation - bedding - pipe. Subtracting the full cylinder
@@ -108,7 +109,7 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   // invert). For bedding-to-springline specs this slightly understates
   // backfill -- conservative, and within takeoff tolerance.
   const backfillCF = Math.max(excavationCF - beddingCF - pipeCF, 0);
-  const backfillCY = backfillCF / 27;
+  const backfillCY = cubicFeetToYards(backfillCF);
 
   // Tracer wire is taped to the pipe, so it follows the pipe slope; warning
   // tape is buried near-surface and runs the horizontal length.
@@ -147,7 +148,7 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
   const totalWidth = input.trenchWidthFt + input.benchWidthFt * 2;
   const excavationCF = totalWidth * output.avgDepthFt * input.runLengthLF;
   const beddingCF = input.trenchWidthFt * input.beddingDepthFt * input.runLengthLF;
-  const pipeRadiusFt = (input.pipeSizeIn / 12) / 2;
+  const pipeRadiusFt = inchesToFeet(input.pipeSizeIn) / 2;
   const pipeCF = Math.PI * pipeRadiusFt ** 2 * output.pipeLF;
 
   return {

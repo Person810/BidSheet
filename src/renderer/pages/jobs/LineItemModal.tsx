@@ -10,6 +10,7 @@ import { formatCurrency } from './helpers';
 import { calcCrewCostPerHour, explainCrewCost } from '../../../shared/crewCost';
 import { effectiveMaterialUnitCost, isCubicYards } from '../../../shared/unitConversion';
 import { roundHours } from '../../../shared/round';
+import { computeLineItemCost } from '../../../shared/lineItemCost';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
 import { isManual, withManual, type OverridableField } from '../../../shared/manualFields';
@@ -179,10 +180,12 @@ export function LineItemModal({
     }
   };
 
-  const formMatTotal = lineForm.quantity * lineForm.materialUnitCost;
-  const formLaborTotal = lineForm.laborHours * lineForm.laborCostPerHour;
-  const formEquipTotal = lineForm.equipmentHours * lineForm.equipmentCostPerHour;
-  const formTotal = formMatTotal + formLaborTotal + formEquipTotal + lineForm.subcontractorCost;
+  const {
+    materialTotal: formMatTotal,
+    laborTotal: formLaborTotal,
+    equipmentTotal: formEquipTotal,
+    totalCost: formTotal,
+  } = computeLineItemCost(lineForm);
 
   // ---- Breakdowns for the "show the math" popovers ----
   const selectedCrew = lineForm.crewTemplateId

@@ -6,6 +6,7 @@ import {
 } from './takeoffUtils';
 import { calculateTrench } from '../trenchCalc';
 import { neutralizeCsvFormula } from '../../../../shared/csvSafe';
+import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
 
 /**
  * Escape a field for CSV: neutralize spreadsheet formula injection, then quote
@@ -119,16 +120,16 @@ export async function buildTakeoffCsv(
         continue;
       }
       const sf = computePolygonAreaSF(area.points, scale);
-      const cy = (sf * area.depthFt) / 27;
+      const cy = cubicFeetToYards(sf * area.depthFt);
       totals.sf += sf;
       totals.cy += cy;
       lines.push(row(
         area.pdfPage, label, surface, depthIn,
-        sf.toFixed(0), (sf / 9).toFixed(1), cy > 0 ? cy.toFixed(1) : '',
+        sf.toFixed(0), squareFeetToYards(sf).toFixed(1), cy > 0 ? cy.toFixed(1) : '',
         computePolygonPerimeterLF(area.points, scale).toFixed(1),
       ));
     }
-    lines.push(row('', 'TOTAL', '', '', totals.sf.toFixed(0), (totals.sf / 9).toFixed(1),
+    lines.push(row('', 'TOTAL', '', '', totals.sf.toFixed(0), squareFeetToYards(totals.sf).toFixed(1),
       totals.cy > 0 ? totals.cy.toFixed(1) : '', ''));
     lines.push('');
   }

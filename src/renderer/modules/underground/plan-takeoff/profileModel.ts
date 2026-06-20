@@ -1,4 +1,5 @@
 import type { TakeoffRun } from './types';
+import { inchesToFeet } from '../../../../shared/constants/units';
 
 /**
  * Profile (side-view) model for a pipe run.
@@ -109,7 +110,7 @@ export function buildRunProfile(run: TakeoffRun, scalePxPerFt: number): RunProfi
     structureType: p.structureType ?? null,
   }));
 
-  const pipeDiaFt = (run.pipeSizeIn || 0) / 12;
+  const pipeDiaFt = inchesToFeet(run.pipeSizeIn || 0);
   const beddingDepthFt = run.beddingDepthFt || 0;
   const minElev = Math.min(...out.map((st) => st.invert)) - beddingDepthFt;
   const maxElev = Math.max(...out.map((st) => st.ground), ...out.map((st) => st.invert + pipeDiaFt));

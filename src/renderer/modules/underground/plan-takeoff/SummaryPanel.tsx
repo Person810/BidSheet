@@ -6,6 +6,7 @@ import {
   computeRunLengthLF, getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT,
   computePolygonAreaSF, computePolygonPerimeterLF, ftToInches,
 } from './takeoffUtils';
+import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
 
 export type SummaryTab = 'runs' | 'items' | 'areas';
 
@@ -362,7 +363,7 @@ function AreasTabContent({ areas, allAreas, activeAreaId, selectedAreaId, scaleP
       })}
       {areas.length > 1 && (
         <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', marginTop: 6, paddingRight: 8 }}>
-          Page total: {Math.round(pageTotalSF).toLocaleString()} SF ({(pageTotalSF / 9).toFixed(1)} SY)
+          Page total: {Math.round(pageTotalSF).toLocaleString()} SF ({squareFeetToYards(pageTotalSF).toFixed(1)} SY)
         </div>
       )}
       {onSendAreasToBid && hasCompletedAreas && !activeAreaId && (
@@ -380,8 +381,8 @@ function AreaDetail({ area, scalePxPerFt, isActive, onEdit, onDelete }: {
   onEdit: () => void; onDelete: () => void;
 }) {
   const sf = area.points.length >= 3 ? computePolygonAreaSF(area.points, scalePxPerFt) : 0;
-  const sy = sf / 9;
-  const cy = (sf * area.depthFt) / 27;
+  const sy = squareFeetToYards(sf);
+  const cy = cubicFeetToYards(sf * area.depthFt);
   const perimeter = area.points.length >= 3 ? computePolygonPerimeterLF(area.points, scalePxPerFt) : 0;
   const depthIn = ftToInches(area.depthFt);
 

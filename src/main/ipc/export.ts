@@ -6,6 +6,7 @@ import { getDbPath, isSetupComplete, seedDatabase } from '../database';
 import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
+import { fmtMoney } from '../../shared/calcExplain';
 import { safeHandle, getSectionCostRows } from './shared';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
 
@@ -461,10 +462,6 @@ export function registerExportHandlers(db: Database.Database): void {
 // PDF HTML TEMPLATE BUILDER
 // ================================================================
 
-function fmtCurrency(val: number): string {
-  return val.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 function escHtml(str: string): string {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -528,20 +525,20 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
         sectionTotal += item.total_cost || 0;
         itemNumber++;
         const unitPriceCell = template.showUnitPrices
-          ? `<td class="right">${fmtCurrency(item.unit_cost)}</td>` : '';
+          ? `<td class="right">${fmtMoney(item.unit_cost)}</td>` : '';
         html += `<tr${rowClass}>
           <td class="center item-num">${itemNumber}</td>
           <td class="desc">${escHtml(item.description)}</td>
           <td class="center">${escHtml(item.unit)}</td>
           <td class="center">${escHtml(String(item.quantity))}</td>
           ${unitPriceCell}
-          <td class="right">${fmtCurrency(item.total_cost)}</td>
+          <td class="right">${fmtMoney(item.total_cost)}</td>
         </tr>\n`;
       });
       html += `<tr class="section-subtotal">
         <td colspan="${dataColspan}"></td>
         <td class="right subtotal-label">Subtotal</td>
-        <td class="right subtotal-val">${fmtCurrency(sectionTotal)}</td>
+        <td class="right subtotal-val">${fmtMoney(sectionTotal)}</td>
       </tr>\n`;
     }
     return { html, nextNumber: itemNumber };
@@ -552,21 +549,21 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
 
   // Summary rows
   let summaryRows = '';
-  summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtCurrency(totals.direct_cost_total)}</td></tr>`;
-  if (escalationPct > 0) summaryRows += `<tr><td class="sum-label">Material Escalation (${escalationPct}%)</td><td class="sum-val">${fmtCurrency(escalation)}</td></tr>`;
-  if (overheadPct > 0) summaryRows += `<tr><td class="sum-label">Overhead (${overheadPct}%)</td><td class="sum-val">${fmtCurrency(overhead)}</td></tr>`;
-  if (profitPct > 0) summaryRows += `<tr><td class="sum-label">Profit (${profitPct}%)</td><td class="sum-val">${fmtCurrency(profit)}</td></tr>`;
-  if (bondPct > 0) summaryRows += `<tr><td class="sum-label">Bond (${bondPct}%)</td><td class="sum-val">${fmtCurrency(bond)}</td></tr>`;
-  if (taxPct > 0) summaryRows += `<tr><td class="sum-label">Sales Tax (${taxPct}%)</td><td class="sum-val">${fmtCurrency(tax)}</td></tr>`;
+  summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtMoney(totals.direct_cost_total)}</td></tr>`;
+  if (escalationPct > 0) summaryRows += `<tr><td class="sum-label">Material Escalation (${escalationPct}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
+  if (overheadPct > 0) summaryRows += `<tr><td class="sum-label">Overhead (${overheadPct}%)</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
+  if (profitPct > 0) summaryRows += `<tr><td class="sum-label">Profit (${profitPct}%)</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
+  if (bondPct > 0) summaryRows += `<tr><td class="sum-label">Bond (${bondPct}%)</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;
+  if (taxPct > 0) summaryRows += `<tr><td class="sum-label">Sales Tax (${taxPct}%)</td><td class="sum-val">${fmtMoney(tax)}</td></tr>`;
   const totalLabel = altSections.length > 0 ? 'TOTAL BASE BID' : 'TOTAL BID AMOUNT';
-  summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtCurrency(grandTotal)}</td></tr>`;
+  summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtMoney(grandTotal)}</td></tr>`;
 
   // Cost breakdown section
   let costBreakdownRows = '';
-  if (totals.material_total > 0) costBreakdownRows += `<tr><td class="cb-label">Materials</td><td class="cb-val">${fmtCurrency(totals.material_total)}</td></tr>`;
-  if (totals.labor_total > 0) costBreakdownRows += `<tr><td class="cb-label">Labor</td><td class="cb-val">${fmtCurrency(totals.labor_total)}</td></tr>`;
-  if (totals.equipment_total > 0) costBreakdownRows += `<tr><td class="cb-label">Equipment</td><td class="cb-val">${fmtCurrency(totals.equipment_total)}</td></tr>`;
-  if (totals.subcontractor_total > 0) costBreakdownRows += `<tr><td class="cb-label">Subcontractors</td><td class="cb-val">${fmtCurrency(totals.subcontractor_total)}</td></tr>`;
+  if (totals.material_total > 0) costBreakdownRows += `<tr><td class="cb-label">Materials</td><td class="cb-val">${fmtMoney(totals.material_total)}</td></tr>`;
+  if (totals.labor_total > 0) costBreakdownRows += `<tr><td class="cb-label">Labor</td><td class="cb-val">${fmtMoney(totals.labor_total)}</td></tr>`;
+  if (totals.equipment_total > 0) costBreakdownRows += `<tr><td class="cb-label">Equipment</td><td class="cb-val">${fmtMoney(totals.equipment_total)}</td></tr>`;
+  if (totals.subcontractor_total > 0) costBreakdownRows += `<tr><td class="cb-label">Subcontractors</td><td class="cb-val">${fmtMoney(totals.subcontractor_total)}</td></tr>`;
 
   // Build post-table section blocks
   const altRows = buildSectionRows(altSections, baseRows.nextNumber).html;
@@ -575,7 +572,7 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
     return `<tr class="section-subtotal">
       <td colspan="${dataColspan}" class="desc" style="font-weight:bold;">ADD ALTERNATE: ${escHtml(s.name)}</td>
       <td class="right subtotal-label">Add to Base Bid</td>
-      <td class="right subtotal-val">${fmtCurrency(alt?.grandTotal || 0)}</td>
+      <td class="right subtotal-val">${fmtMoney(alt?.grandTotal || 0)}</td>
     </tr>`;
   }).join('\n');
 

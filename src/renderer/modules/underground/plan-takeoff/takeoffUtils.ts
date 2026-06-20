@@ -1,4 +1,5 @@
 import type { TakeoffRun, PdfPoint } from './types';
+import { INCHES_PER_FOOT } from '../../../../shared/constants/units';
 
 /** OSHA 1926 Subpart P general threshold for protective systems */
 export const SHORING_DEPTH_THRESHOLD_FT = 5;
@@ -21,7 +22,7 @@ export function computeRunLengthLF(points: PdfPoint[], scalePxPerFt: number): nu
 
 /** Convert a depth in feet to inches, rounded to 2 decimals for display/grouping. */
 export function ftToInches(ft: number): number {
-  return Math.round(ft * 12 * 100) / 100;
+  return Math.round(ft * INCHES_PER_FOOT * 100) / 100;
 }
 
 /** Load all page scale calibrations for a job as a page-number → px/ft map. */
