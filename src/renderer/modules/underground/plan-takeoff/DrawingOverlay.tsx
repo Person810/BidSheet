@@ -7,6 +7,7 @@ import {
   getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT,
   computePolygonAreaSF, polygonCentroid,
 } from './takeoffUtils';
+import { squareFeetToYards } from '../../../../shared/constants/units';
 
 interface DrawingOverlayProps {
   pageWidth: number;
@@ -377,7 +378,7 @@ const AreaPolygon = React.memo(function AreaPolygon({
   const areaSF = previewPts.length >= 3 ? computePolygonAreaSF(previewPts, scalePxPerFt) : 0;
   const centroid = previewPts.length >= 3 ? polygonCentroid(previewPts) : null;
   const sfLabel = `${Math.round(areaSF).toLocaleString()} SF`;
-  const syLabel = `${(areaSF / 9).toFixed(1)} SY`;
+  const syLabel = `${squareFeetToYards(areaSF).toFixed(1)} SY`;
   const labelWidth = Math.max(sfLabel.length, syLabel.length) * labelSize * 0.55;
 
   return (

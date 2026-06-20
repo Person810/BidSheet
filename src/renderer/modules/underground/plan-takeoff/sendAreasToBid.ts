@@ -1,6 +1,7 @@
 import type { TakeoffArea } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import { computePolygonAreaSF, ftToInches, loadPageScaleMap } from './takeoffUtils';
+import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
 import { buildAssemblyLineItems } from '../../../../shared/assemblyExpansion';
 import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
 
@@ -42,8 +43,8 @@ export async function sendAreasToBid(
     const key = `${area.areaType}|${ftToInches(area.depthFt)}|${area.materialId ?? ''}|${area.assemblyId ?? ''}`;
     const g = groups.get(key);
     if (g) {
-      g.totalSY += sf / 9;
-      g.totalCY += (sf * area.depthFt) / 27;
+      g.totalSY += squareFeetToYards(sf);
+      g.totalCY += cubicFeetToYards(sf * area.depthFt);
       if (area.label) g.labels.push(area.label);
     } else {
       groups.set(key, {
@@ -51,8 +52,8 @@ export async function sendAreasToBid(
         depthFt: area.depthFt,
         materialId: area.materialId,
         assemblyId: area.assemblyId,
-        totalSY: sf / 9,
-        totalCY: (sf * area.depthFt) / 27,
+        totalSY: squareFeetToYards(sf),
+        totalCY: cubicFeetToYards(sf * area.depthFt),
         labels: area.label ? [area.label] : [],
       });
     }
