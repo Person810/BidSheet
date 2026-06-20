@@ -9,6 +9,7 @@ import {
 import { formatCurrency } from './helpers';
 import { calcCrewCostPerHour, explainCrewCost } from '../../../shared/crewCost';
 import { effectiveMaterialUnitCost, isCubicYards } from '../../../shared/unitConversion';
+import { roundHours } from '../../../shared/round';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
 import { isManual, withManual, type OverridableField } from '../../../shared/manualFields';
@@ -134,7 +135,7 @@ export function LineItemModal({
           ...prev,
           productionRateId: rate.id,
           crewTemplateId: rate.crew_template_id,
-          laborHours: Math.round(hours * 10) / 10,
+          laborHours: roundHours(hours),
           laborCostPerHour: costPerHour,
           // Fresh source for both hours and crew cost — clear their overrides.
           manualFields: withManual(
@@ -155,7 +156,7 @@ export function LineItemModal({
       return {
         ...prev,
         quantity: qty,
-        laborHours: recompute ? Math.round((qty / rate.rate_per_hour) * 10) / 10 : prev.laborHours,
+        laborHours: recompute ? roundHours(qty / rate.rate_per_hour) : prev.laborHours,
       };
     });
   };
@@ -205,7 +206,7 @@ export function LineItemModal({
         return selectedMaterial ? effectiveMaterialUnitCost(selectedMaterial, u).cost : null;
       case 'laborHours':
         return selectedRate && selectedRate.rate_per_hour > 0
-          ? Math.round((lineForm.quantity / selectedRate.rate_per_hour) * 10) / 10 : null;
+          ? roundHours(lineForm.quantity / selectedRate.rate_per_hour) : null;
       case 'laborCostPerHour':
         return selectedCrew ? calcCrewCostPerHour(selectedCrew) : null;
       case 'equipmentCostPerHour':
