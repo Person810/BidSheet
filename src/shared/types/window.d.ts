@@ -222,9 +222,9 @@ declare global {
       cloudE2eeState: () => Promise<
         'not_setup' | 'unlocked' | 'locked' | 'pending_approval' | 'unavailable'
       >;
-      cloudE2eeSetup: () => Promise<{ recoveryKey: string }>;
+      cloudE2eeSetup: (shorter?: boolean) => Promise<{ recoveryKey: string }>;
       cloudE2eeUnlock: (recoveryKey: string) => Promise<void>;
-      cloudE2eeRegenerateRecovery: () => Promise<{ recoveryKey: string }>;
+      cloudE2eeRegenerateRecovery: (shorter?: boolean) => Promise<{ recoveryKey: string }>;
       cloudOrgMembers: () => Promise<{
         members: {
           user_id: string;
@@ -244,7 +244,7 @@ declare global {
         { id: string; role: string; expires_at: string; opened_count: number; created_at: string }[]
       >;
       cloudOrgRevokeInvite: (id: string) => Promise<void>;
-      cloudOrgRedeemInvite: (token: string) => Promise<{ recoveryKey: string }>;
+      cloudOrgRedeemInvite: (token: string, shorter?: boolean) => Promise<{ recoveryKey: string }>;
       cloudOrgApproveMember: (userId: string) => Promise<void>;
       cloudOrgRemoveMember: (userId: string) => Promise<void>;
       cloudBackupStatus: () => Promise<{

@@ -99,39 +99,159 @@ export function syncContentMac(plaintext: Buffer, dek: Buffer): string {
 }
 
 // ---- recovery key (the single E2EE unlock secret) ----
-// A 256-bit uniformly random key, shown once and saved by the user. Because it
-// is full-entropy it is used *directly* as the DEK-wrapping key — no scrypt
-// (a slow KDF only hardens low-entropy human passwords; 2^256 cannot be
-// brute-forced). Encoded as Crockford base32 (no I/L/O/U), grouped and prefixed
-// for legible transcription. Normalization maps the ambiguous I/L/O back so a
-// hand-typed key still decodes.
+// Two shapes share one display format ("BSK1-XXXX-…", Crockford base32, no
+// I/L/O/U; normalization maps the ambiguous I/L/O back so a hand-typed key still
+// decodes):
+//
+//   * Full key (default): 256 bits of entropy. Because it is full-entropy it is
+//     used *directly* as the DEK-wrapping key — no KDF (2^256 cannot be
+//     brute-forced). Wraps into a BSE1 envelope.
+//   * Short key (opt-in): 80 bits, far easier to write down. Low-enough entropy
+//     that the wrap MUST run through a slow, memory-hard KDF (scrypt) or it could
+//     be brute-forced offline against the server-stored wrapped DEK. Wraps into a
+//     self-describing BSKD envelope that carries the scrypt salt + params, so a
+//     fresh device can re-derive the key from the typed code alone.
+//
+// wrapWithRecoveryCode / unwrapWithRecoveryCode are the single choke points; the
+// rest of the app never has to know which shape an account uses — unwrap detects
+// it from the blob's magic. THE WIRE FORMATS BELOW ARE FROZEN: changing the
+// encoding, the scrypt params layout, or the AAD would make every already-stored
+// wrapped key undecryptable. sync-crypto.golden.test.ts pins them on purpose.
 
 const RECOVERY_KEY_BYTES = 32;
+const SHORT_RECOVERY_KEY_BYTES = 10; // 80 bits -> 16 Crockford chars
 const RECOVERY_KEY_PREFIX = 'BSK1';
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 export class RecoveryKeyError extends Error {}
 
-/** A fresh 256-bit recovery key, formatted "BSK1-XXXX-XXXX-…" for display. */
-export function generateRecoveryKey(): string {
-  const raw = base32Encode(crypto.randomBytes(RECOVERY_KEY_BYTES));
+/**
+ * A fresh recovery key, formatted "BSK1-XXXX-XXXX-…" for display. `short` gives
+ * an 80-bit key (16 chars) for easier transcription; it is only safe paired with
+ * the scrypt KDF (see wrapWithRecoveryCode). The default is the full 256-bit key.
+ */
+export function generateRecoveryKey(opts: { short?: boolean } = {}): string {
+  const bytes = opts.short ? SHORT_RECOVERY_KEY_BYTES : RECOVERY_KEY_BYTES;
+  const raw = base32Encode(crypto.randomBytes(bytes));
   const groups = raw.match(/.{1,4}/g) ?? [raw];
   return `${RECOVERY_KEY_PREFIX}-${groups.join('-')}`;
 }
 
-/** Decode a (possibly hand-typed) recovery key back to its 32 raw key bytes. */
-export function recoveryKeyToBytes(raw: string): Buffer {
-  const normalized = raw
+/**
+ * Canonicalize a (possibly hand-typed) recovery code: upper-case, drop the
+ * prefix/spaces/dashes, and map the ambiguous I/L/O back to 1/1/0. Returns the
+ * cleaned base32 string — used as-is for scrypt and decoded for the direct path,
+ * so both treat a hand-typed key identically.
+ */
+export function normalizeRecoveryCode(raw: string): string {
+  return raw
     .toUpperCase()
     .replace(new RegExp(`^${RECOVERY_KEY_PREFIX}-?`), '')
     .replace(/[\s-]/g, '')
     .replace(/[IL]/g, '1')
     .replace(/O/g, '0');
-  const decoded = base32Decode(normalized);
+}
+
+/** Decode a full (256-bit) recovery key to its 32 raw key bytes (direct path). */
+export function recoveryKeyToBytes(raw: string): Buffer {
+  const decoded = base32Decode(normalizeRecoveryCode(raw));
   if (decoded.length < RECOVERY_KEY_BYTES) {
     throw new RecoveryKeyError('Recovery key is incomplete.');
   }
   return decoded.subarray(0, RECOVERY_KEY_BYTES);
+}
+
+// ---- recovery-code wrapping (direct for full keys, scrypt for short keys) ----
+// BSKD blob layout (the short-key path):
+//
+//   magic "BSKD" (4) | format version (1) | scrypt log2(N) (1) | r (1) | p (1)
+//   | salt (16) | <BSE1 envelope of the payload under the scrypt-derived KEK>
+//
+// The salt + params are not inside the inner GCM, but tampering with them just
+// derives a wrong KEK and fails the inner auth tag — a denial, never a forgery.
+
+const KDF_MAGIC = Buffer.from('BSKD');
+const KDF_FORMAT_VERSION = 1;
+const KDF_SALT_LENGTH = 16;
+const KDF_HEADER_LENGTH = KDF_MAGIC.length + 1 + 3 + KDF_SALT_LENGTH; // magic|ver|logN,r,p|salt
+// OWASP interactive scrypt (N=2^17, r=8, p=1) — ~1s, memory-hard, run once per
+// setup/unlock/regenerate (never in a hot path). Mirrors backup-crypto.
+const SCRYPT_LOG_N = 17;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_MAXMEM = 256 * 1024 * 1024;
+
+/** Which key-derivation a recovery code uses: none (full key) or scrypt (short key). */
+export type RecoveryKdf = 'direct' | 'scrypt';
+
+/** True if a wrapped blob is the scrypt (BSKD) form rather than a direct BSE1 wrap. */
+export function isKdfWrapped(blob: Buffer): boolean {
+  return blob.length >= KDF_MAGIC.length && blob.subarray(0, KDF_MAGIC.length).equals(KDF_MAGIC);
+}
+
+function scryptKek(codeNormalized: string, salt: Buffer, logN: number, r: number, p: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(
+      codeNormalized,
+      salt,
+      KEY_LENGTH,
+      { N: 2 ** logN, r, p, maxmem: SCRYPT_MAXMEM },
+      (err, key) => (err ? reject(err) : resolve(key))
+    );
+  });
+}
+
+/**
+ * Wrap a secret (the DEK or a member private key) under a recovery code.
+ *   - 'direct': full 256-bit key used straight as the KEK -> BSE1 blob.
+ *   - 'scrypt': short key stretched with scrypt over a fresh salt -> BSKD blob.
+ * The AAD binds the wrap to its account/member exactly as the direct path does.
+ */
+export async function wrapWithRecoveryCode(
+  payload: Buffer,
+  code: string,
+  aad: Buffer,
+  kdf: RecoveryKdf
+): Promise<Buffer> {
+  if (kdf === 'direct') {
+    return encryptForSync(payload, recoveryKeyToBytes(code), aad);
+  }
+  const salt = crypto.randomBytes(KDF_SALT_LENGTH);
+  const kek = await scryptKek(normalizeRecoveryCode(code), salt, SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P);
+  const inner = encryptForSync(payload, kek, aad);
+  const header = Buffer.concat([
+    KDF_MAGIC,
+    Buffer.from([KDF_FORMAT_VERSION, SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P]),
+    salt,
+  ]);
+  return Buffer.concat([header, inner]);
+}
+
+/**
+ * Reverse wrapWithRecoveryCode, detecting the form from the blob's magic so a
+ * fresh device unlocks either shape with only the typed code. Throws
+ * SyncDecryptError on a wrong code, tampering, or AAD mismatch.
+ */
+export async function unwrapWithRecoveryCode(blob: Buffer, code: string, aad: Buffer): Promise<Buffer> {
+  if (!isKdfWrapped(blob)) {
+    return decryptForSync(blob, recoveryKeyToBytes(code), aad);
+  }
+  if (blob.length < KDF_HEADER_LENGTH) {
+    throw new SyncDecryptError('Recovery-wrapped key blob is too short.');
+  }
+  const version = blob[KDF_MAGIC.length];
+  if (version !== KDF_FORMAT_VERSION) {
+    throw new SyncDecryptError(
+      `This recovery key uses format v${version}, which this version of BidSheet doesn't understand. Update BidSheet and try again.`
+    );
+  }
+  const logN = blob[KDF_MAGIC.length + 1];
+  const r = blob[KDF_MAGIC.length + 2];
+  const p = blob[KDF_MAGIC.length + 3];
+  const salt = blob.subarray(KDF_MAGIC.length + 4, KDF_HEADER_LENGTH);
+  const inner = blob.subarray(KDF_HEADER_LENGTH);
+  const kek = await scryptKek(normalizeRecoveryCode(code), salt, logN, r, p);
+  return decryptForSync(inner, kek, aad);
 }
 
 /**
