@@ -1008,6 +1008,8 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (rm.isDrawing) { finishActiveRun(); return; }
         if (am.isDrawing) { finishActiveArea(); return; }
         if (anm.isDrawing) { anm.cancelAnnotation(); return; }
+        if (pendingElev) { setPendingElev(null); return; }
+        if (captureElev) { setCaptureElev(false); return; }
         if (selectMode) { exitSelectMode(); return; }
       }
 
@@ -1049,7 +1051,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [totalPages, handleFitToWidth, rm, am, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, pendingItemPlacement, contextMenu]);
+  }, [totalPages, handleFitToWidth, rm, am, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, pendingItemPlacement, contextMenu, captureElev, pendingElev]);
 
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
   const anyDrawing = rm.isDrawing || am.isDrawing;
@@ -1062,6 +1064,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,
     canAddArea, onAddArea: am.handleAddArea, isDrawingArea: am.isDrawing,
     canAnnotate, onStartAnnotation: handleStartAnnotation, isAnnotating: anm.isDrawing,
+    canCaptureElev: totalPages > 0,
+    captureElev,
+    onToggleCaptureElev: () => setCaptureElev((v) => !v),
+    surfacePointCount: sm.points.length,
+    showHeatmap,
+    onToggleHeatmap: () => setShowHeatmap((v) => !v),
+    canSendEarthwork: am.areas.some((a) => a.gradeMode != null),
+    onSendEarthworkToBid: handleSendEarthworkToBid,
     selectMode, onToggleSelectMode: () => (selectMode ? exitSelectMode() : setSelectMode(true)),
     canSelect,
     onRotatePage: handleRotatePage,
@@ -1089,6 +1099,9 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     statusHintActive = true;
   } else if (selectMode) {
     statusHint = 'Select — drag a rectangle around objects · Esc to exit';
+    statusHintActive = true;
+  } else if (captureElev) {
+    statusHint = 'Capturing existing grade — click the plan to drop a spot elevation · Esc to finish';
     statusHintActive = true;
   } else if (!pageScalePxPerFt) {
     statusHint = <span className="tk-status-warn">Page not calibrated — use the Scale tool to start measuring</span>;
@@ -1224,28 +1237,6 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
               showPoints
             />
           </DrawingOverlay>
-
-          {/* Earthwork controls: capture existing grade, toggle heatmap, send to bid */}
-          <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 5, display: 'flex', gap: 6,
-            background: 'var(--bg-secondary, #1b1f27)', border: '1px solid var(--border, #333)',
-            borderRadius: 6, padding: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 4px' }}>Earthwork</span>
-            <button
-              className={`btn btn-sm ${captureElev ? 'btn-primary' : 'btn-secondary'}`}
-              title="Click the plan to drop spot elevations for the existing surface"
-              onClick={() => setCaptureElev((v) => !v)}
-            >{captureElev ? 'Capturing grade…' : 'Spot elevation'}</button>
-            <button
-              className={`btn btn-sm ${showHeatmap ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setShowHeatmap((v) => !v)}
-            >Cut/Fill heatmap</button>
-            <button className="btn btn-sm btn-secondary" onClick={handleSendEarthworkToBid}>
-              Send earthwork → bid
-            </button>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 4px' }}>
-              {sm.points.length} pts
-            </span>
-          </div>
           {calibration.panelContent}
           {contextMenu && (
             <ContextMenu
