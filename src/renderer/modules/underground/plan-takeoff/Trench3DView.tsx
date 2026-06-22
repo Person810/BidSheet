@@ -4,6 +4,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import type { TakeoffRun } from './types';
 import type { GroundSampler } from './profileModel';
+import type { Tin } from '../surfaceModel';
 import {
   buildRunGeometry,
   prismCorners,
@@ -17,6 +18,8 @@ interface Trench3DViewProps {
   scalePxPerFt: number;
   /** Existing-ground sampler so the trench follows real terrain. */
   groundSampler?: GroundSampler;
+  /** Raw TIN for rendering the existing-grade terrain mesh. */
+  groundTin?: Tin;
   /** Plot height in CSS px (width fills the container) */
   height?: number;
 }
@@ -87,7 +90,55 @@ function Structure({ x, z, ground, invert }: { x: number; z: number; ground: num
   );
 }
 
-function Scene({ model, run }: { model: Trench3DModel; run: TakeoffRun }) {
+/** Existing-grade terrain surface built from the surveyed spot elevations. */
+function TerrainMesh({
+  tin, run, scalePxPerFt, offset,
+}: {
+  tin: Tin; run: TakeoffRun; scalePxPerFt: number;
+  offset: [number, number, number];
+}) {
+  const geometry = useMemo(() => {
+    let cx = 0, cy = 0;
+    for (const p of run.points) { cx += p.x; cy += p.y; }
+    cx /= run.points.length;
+    cy /= run.points.length;
+    const toX = (px: number) => (px - cx) / scalePxPerFt;
+    const toZ = (py: number) => (py - cy) / scalePxPerFt;
+
+    const positions: number[] = [];
+    const { points, triangles } = tin;
+    for (let t = 0; t < triangles.length; t += 3) {
+      const a = points[triangles[t]];
+      const b = points[triangles[t + 1]];
+      const c = points[triangles[t + 2]];
+      positions.push(toX(a.x), a.z, toZ(a.y));
+      positions.push(toX(b.x), b.z, toZ(b.y));
+      positions.push(toX(c.x), c.z, toZ(c.y));
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [tin, run, scalePxPerFt]);
+
+  return (
+    <mesh geometry={geometry} position={offset}>
+      <meshStandardMaterial
+        color="#5a8a4a"
+        transparent
+        opacity={0.55}
+        side={THREE.DoubleSide}
+        flatShading
+        roughness={0.9}
+        metalness={0}
+      />
+    </mesh>
+  );
+}
+
+function Scene({ model, run, groundTin, scalePxPerFt }: {
+  model: Trench3DModel; run: TakeoffRun; groundTin?: Tin; scalePxPerFt: number;
+}) {
   // Recenter the model on the world origin so orbit/zoom stays well-behaved.
   const offset: [number, number, number] = [-model.center.x, -model.center.y, -model.center.z];
   const floorY = model.center.y - model.radius; // a touch below the deepest point
@@ -97,6 +148,10 @@ function Scene({ model, run }: { model: Trench3DModel; run: TakeoffRun }) {
       <ambientLight intensity={0.6} />
       <directionalLight position={[model.radius, model.radius * 2, model.radius]} intensity={1.1} castShadow />
       <directionalLight position={[-model.radius, model.radius, -model.radius]} intensity={0.3} />
+
+      {groundTin && (
+        <TerrainMesh tin={groundTin} run={run} scalePxPerFt={scalePxPerFt} offset={offset} />
+      )}
 
       <group position={offset}>
         {model.segments.map((seg, i) => (
@@ -151,7 +206,7 @@ function Scene({ model, run }: { model: Trench3DModel; run: TakeoffRun }) {
  * Orbit/pan/zoom via the mouse. Elevations come from the same profile model
  * as the 2D side view, drawn here at true 1:1 scale.
  */
-export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 460 }: Trench3DViewProps) {
+export function Trench3DView({ run, scalePxPerFt, groundSampler, groundTin, height = 460 }: Trench3DViewProps) {
   const model = useMemo(() => buildRunGeometry(run, scalePxPerFt, groundSampler), [run, scalePxPerFt, groundSampler]);
 
   if (!model) {
@@ -168,7 +223,7 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 460 }:
           dpr={[1, 2]}
         >
           <color attach="background" args={['#0e1116']} />
-          <Scene model={model} run={run} />
+          <Scene model={model} run={run} groundTin={groundTin} scalePxPerFt={scalePxPerFt} />
         </Canvas>
       </div>
 
