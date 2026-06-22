@@ -1,4 +1,4 @@
-import { buildTin, interpolateZ, type Pt3 } from '../surfaceModel';
+import { buildTin, interpolateZ, type Pt3, type Tin } from '../surfaceModel';
 import type { GroundSampler } from './profileModel';
 import type { TakeoffSurface } from './types';
 
@@ -22,4 +22,22 @@ export function buildGroundSampler(
   const tin = buildTin(pts);
   if (tin.triangles.length === 0) return undefined;
   return (xPx, yPx) => interpolateZ(tin, xPx, yPx);
+}
+
+/**
+ * Return the raw TIN for a page so a 3D view can render the terrain mesh
+ * directly from the triangles rather than sampling through the closure.
+ * Points are in PDF-pixel XY with elevation in feet as Z.
+ */
+export function buildGroundTin(
+  surface: TakeoffSurface | null | undefined,
+  pdfPage: number,
+): Tin | undefined {
+  if (!surface) return undefined;
+  const pts: Pt3[] = surface.points
+    .filter((p) => p.pdfPage === pdfPage)
+    .map((p) => ({ x: p.x, y: p.y, z: p.z }));
+  if (pts.length < 3) return undefined;
+  const tin = buildTin(pts);
+  return tin.triangles.length === 0 ? undefined : tin;
 }

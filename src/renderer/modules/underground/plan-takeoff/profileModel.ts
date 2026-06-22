@@ -109,11 +109,11 @@ export function buildRunProfile(
     if (sampledGround[i] != null) sampledAnchors.push({ s: stations[i], v: sampledGround[i] as number });
   });
 
-  // With no surveyed inverts but a real surface, anchor the run to the terrain:
-  // ground follows the existing grade and the pipe falls at design grade from
-  // start depth below the upstream ground. Otherwise fall back to the flat
-  // depth datum. Surveyed inverts always win and stay in absolute elevation.
-  const terrainDriven = invertAnchors.length === 0 && hasSampledGround;
+  // With no surveyed inverts but a real surface (sampled TIN or rim elevations),
+  // anchor the run to the terrain: ground follows the existing grade and the pipe
+  // falls at design grade from start depth below the upstream ground. Otherwise
+  // fall back to the flat depth datum. Surveyed inverts always win.
+  const terrainDriven = invertAnchors.length === 0 && (hasSampledGround || rimAnchors.length > 0);
   const mode: RunProfile['mode'] = invertAnchors.length > 0 || terrainDriven ? 'elevation' : 'depth';
   const groundAssumed = rimAnchors.length === 0 && !hasSampledGround;
 
@@ -122,7 +122,9 @@ export function buildRunProfile(
     if (sampledAnchors.length > 0) return interpolate(sampledAnchors, s, 0);
     return null;
   };
-  const terrainStartGround = sampledAnchors.length > 0 ? sampledAnchors[0].v : 0;
+  // Rim anchors provide absolute ground elevation when no sampled surface exists.
+  const terrainStartGround = sampledAnchors.length > 0 ? sampledAnchors[0].v :
+    rimAnchors.length > 0 ? rimAnchors[0].v : 0;
 
   const invertAt = (s: number): number => {
     if (invertAnchors.length > 0) return interpolate(invertAnchors, s, gradePerFt);
