@@ -150,7 +150,7 @@ export class SyncEngine {
     const accountId = await this.requireAccountId();
     const dek = this.e2ee.getDek(); // throws cleanly if encrypted sync is locked
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
-    if (!job?.cloud_id) throw new Error('Job has no cloud id — enable sync first.');
+    if (!job?.cloud_id) throw new Error('Job has no cloud id. Enable sync first.');
     const cloudId = job.cloud_id as string;
 
     try {

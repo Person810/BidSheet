@@ -267,7 +267,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       await window.api.saveBidLineItem(buildLineItemPayload({
         sectionId: sectionResult.id,
         jobId,
-        description: `${q.scope} — ${q.vendor}`,
+        description: `${q.scope} (${q.vendor})`,
         quantity: 1,
         unit: 'LS',
         sortOrder: sortOrder++,
@@ -677,7 +677,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     try {
       const res = await window.api.printBid(jobId);
       if (res?.openedPdf) {
-        addToast('No printer is set up on this computer — opened the bid as a PDF so you can print it from your viewer.', 'warn');
+        addToast('No printer is set up on this computer, so the bid opened as a PDF. You can print it from your viewer.', 'warn');
       }
     } catch (err: any) {
       addToast(err.message || 'Print failed', 'error');

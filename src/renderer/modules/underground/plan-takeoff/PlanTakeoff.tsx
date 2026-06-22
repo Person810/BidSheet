@@ -258,12 +258,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         // user on a blank "No plan loaded" view with their runs/items hidden —
         // tell them what happened and how to fix it.
         addToast(
-          `The saved plan PDF couldn't be found at ${jobSettings.pdf_path}. Re-attach it with "Open plan PDF" — your takeoff data is safe.`,
+          `The saved plan PDF couldn't be found at ${jobSettings.pdf_path}. Re-attach it with "Open plan PDF". Your takeoff data is safe.`,
           'warn',
         );
       }
     }).catch(() => {
-      addToast('Couldn\'t open the saved plan PDF. Re-attach it with "Open plan PDF" — your takeoff data is safe.', 'error');
+      addToast('Couldn\'t open the saved plan PDF. Re-attach it with "Open plan PDF". Your takeoff data is safe.', 'error');
     }).finally(() => setLoading(false));
   }, [jobSettings, pdfPath, addToast]);
 
@@ -1027,21 +1027,21 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   let statusHint: React.ReactNode = 'Ready';
   let statusHintActive = false;
   if (calibrating) {
-    statusHint = 'Calibrating scale — click two points a known distance apart';
+    statusHint = 'Calibrating scale: click two points a known distance apart';
     statusHintActive = true;
   } else if (rm.isDrawing || am.isDrawing) {
-    statusHint = 'Drawing — click to place points · hold Shift for straight lines · right-click to undo · Esc to finish';
+    statusHint = 'Drawing: click to place points · hold Shift for straight lines · right-click to undo · Esc to finish';
     statusHintActive = true;
   } else if (anm.isDrawing) {
-    statusHint = 'Markup — click to place · Esc to cancel';
+    statusHint = 'Markup: click to place · Esc to cancel';
     statusHintActive = true;
   } else if (selectMode) {
-    statusHint = 'Select — drag a rectangle around objects · Esc to exit';
+    statusHint = 'Select: drag a rectangle around objects · Esc to exit';
     statusHintActive = true;
   } else if (!pageScalePxPerFt) {
-    statusHint = <span className="tk-status-warn">Page not calibrated — use the Scale tool to start measuring</span>;
+    statusHint = <span className="tk-status-warn">Page not calibrated. Use the Scale tool to start measuring.</span>;
   } else if (rm.pageRuns.length > 0 || am.pageAreas.length > 0 || im.pageItems.length > 0) {
-    statusHint = 'Ready — drag a vertex or symbol to adjust · right-click shapes for options';
+    statusHint = 'Ready: drag a vertex or symbol to adjust · right-click shapes for options';
   }
 
   if (!pdfData) return (
@@ -1401,7 +1401,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         return (
           <div className="modal-overlay" onClick={() => setProfileRunId(null)}>
             <div className="modal" style={{ maxWidth: 960, width: '92vw' }} onClick={(e) => e.stopPropagation()}>
-              <h3>Profile — {run.label || 'Untitled Run'}</h3>
+              <h3>Profile: {run.label || 'Untitled Run'}</h3>
               <RunProfileView run={run} scalePxPerFt={pageScalePxPerFt} />
               <div className="modal-actions">
                 <button className="btn btn-secondary" onClick={() => setProfileRunId(null)}>Close</button>

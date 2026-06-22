@@ -30,7 +30,7 @@ Everything runs locally on your machine.
 
 ## Pricing
 
-BidSheet is free. The app is GPLv3 open source and runs fully local — your
+BidSheet is free. The app is GPLv3 open source and runs fully local. Your
 catalog, bids, and plans live in a SQLite database on your machine, with no
 account and no internet connection required.
 
@@ -40,7 +40,7 @@ lives locally regardless of subscription status, and a local-only mode in
 Settings hides cloud sync entirely for shops that will never use it.
 
 Cloud backups are encrypted on your computer with a passphrase only you know
-before they upload — we store the backup, but we can never read it.
+before they upload. We store the backup, but we can never read it.
 
 ## Platforms
 

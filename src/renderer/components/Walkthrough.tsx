@@ -21,7 +21,7 @@ const STEPS: TourStep[] = [
     target: null,
     route: '/',
     title: 'Welcome to BidSheet',
-    body: 'Your catalog is loaded and you’re ready to estimate. Here’s a quick tour of how everything is organized — it takes about a minute. You can skip it anytime and replay it later from Settings.',
+    body: "Your catalog is loaded and you're ready to estimate. Here's a quick tour of how everything is organized. It takes about a minute, and you can skip it anytime and replay it later from Settings.",
   },
   {
     target: 'materials',
@@ -36,12 +36,12 @@ const STEPS: TourStep[] = [
   {
     target: 'equipment',
     title: 'Equipment',
-    body: 'Track hourly costs for owned and rented equipment — excavators, loaders, trench boxes. Equipment gets attached to crews and assemblies so it flows into your estimates automatically.',
+    body: 'Track hourly costs for owned and rented equipment: excavators, loaders, trench boxes. Equipment gets attached to crews and assemblies so it flows into your estimates automatically.',
   },
   {
     target: 'assemblies',
     title: 'Assemblies',
-    body: 'Bundle materials, labor, and equipment into reusable per-unit assemblies (like “8″ PVC water main per LF”). Drop an assembly on a bid line item and the whole cost buildup comes with it.',
+    body: 'Bundle materials, labor, and equipment into reusable per-unit assemblies (like "8″ PVC water main per LF"). Drop an assembly on a bid line item and the whole cost buildup comes with it.',
   },
   {
     target: 'jobs',
@@ -56,12 +56,12 @@ const STEPS: TourStep[] = [
   {
     target: 'settings',
     title: 'Settings',
-    body: 'Company info for your proposals, default markup percentages, and database backup & restore. Make a backup once your pricing is dialed in — everything lives locally on this machine.',
+    body: 'Company info for your proposals, default markup percentages, and database backup & restore. Make a backup once your pricing is dialed in. Everything lives locally on this machine.',
   },
   {
     target: null,
     route: '/jobs',
-    title: 'You’re all set',
+    title: "You're all set",
     body: 'A good first session: check your Materials prices, build a crew or two, then create your first job in Jobs & Bids. Press ? anytime to see keyboard shortcuts, and replay this tour from Settings.',
   },
 ];

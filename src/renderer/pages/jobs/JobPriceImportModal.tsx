@@ -210,16 +210,16 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
       <div className="modal" onClick={(e) => e.stopPropagation()}
         style={{ width: wide ? 1000 : 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
         <h3 style={{ marginBottom: 4 }}>
-          {step === 'pick' && 'Load this job’s quote'}
+          {step === 'pick' && "Load this job's quote"}
           {step === 'map' && 'Map quote columns'}
           {step === 'reconcile' && 'Review quote against the bid'}
           {step === 'done' && 'Quote imported'}
         </h3>
         {step !== 'done' && (
           <div className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>
-            {step === 'pick' && 'Drop a supplier’s price quote (CSV/TSV). Nothing is written until you confirm.'}
+            {step === 'pick' && "Drop a supplier's price quote (CSV/TSV). Nothing is written until you confirm."}
             {step === 'map' && `${csv?.rows.length} rows from ${csv?.fileName}. Match the columns, then set the supplier.`}
-            {step === 'reconcile' && 'Each quote row is matched to a bid line. Confirm targets, then apply — old → new prices are shown, unit mismatches flagged.'}
+            {step === 'reconcile' && 'Each quote row is matched to a bid line. Confirm the targets, then apply. Old and new prices are shown, and unit mismatches are flagged.'}
           </div>
         )}
 
@@ -265,7 +265,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
               </div>
             </div>
             <div className="text-muted" style={{ fontSize: 11, marginTop: 8 }}>
-              The supplier scopes the learned matcher — next time this supplier’s rows auto-match.
+              The supplier scopes the learned matcher, so next time this supplier's rows auto-match.
             </div>
             <div className="modal-actions" style={{ marginTop: 24 }}>
               <button className="btn btn-secondary" onClick={() => setStep('pick')}>Back</button>
@@ -291,7 +291,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
                 <select className="form-control" style={{ width: 150, fontSize: 12, padding: '2px 6px' }}
                   value={newSectionId ?? ''} onChange={(e) => setNewSectionId(Number(e.target.value) || null)}>
                   {ctx.sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  {ctx.sections.length === 0 && <option value="">(no section — catalog only)</option>}
+                  {ctx.sections.length === 0 && <option value="">(no section, catalog only)</option>}
                 </select>
               </span>
             </div>
@@ -377,7 +377,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
                           </select>
                           {mismatch && (
                             <div style={{ fontSize: 10, color: 'var(--warning)', marginTop: 2 }}>
-                              ⚠ unit mismatch: quote {r.unit} ≠ line {target?.unit} — not converted, confirm
+                              ⚠ unit mismatch: quote {r.unit} ≠ line {target?.unit}, not converted, confirm
                             </div>
                           )}
                         </td>

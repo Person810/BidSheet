@@ -65,7 +65,7 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
     try {
       const active = await openCheckoutAndAwaitActivation(() => cancelled.current);
       if (active) {
-        addToast('Subscription active — full 100 GB unlocked.', 'success');
+        addToast('Subscription active. Full 100 GB available.', 'success');
         await refresh();
         onClose();
       }
@@ -87,18 +87,18 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
         {step === 'pitch' && (
           <div>
             <p style={{ marginBottom: 12 }}>
-              Back up your jobs online and work from any computer — and soon, see plans and
+              Back up your jobs online and work from any computer, and soon see plans and
               take jobsite photos from your phone.
             </p>
             <ul style={{ margin: '0 0 12px 18px', lineHeight: 1.7 }}>
-              <li><strong>Free for 30 days</strong> — no card needed, 10 GB of storage</li>
-              <li><strong>$20/month</strong> after that — one price for your whole company</li>
+              <li><strong>Free for 30 days</strong>, no card needed, 10 GB of storage</li>
+              <li><strong>$20/month</strong> after that, one price for your whole company</li>
               <li>Unlimited computers and users, 100 GB of storage</li>
-              <li>Cancel anytime — your data stays downloadable</li>
+              <li>Cancel anytime. Your data stays downloadable.</li>
             </ul>
             <p className="text-muted" style={{ fontSize: 12 }}>
-              You'll need an authenticator app (Google Authenticator, Authy, 1Password…) —
-              your bids and plans only leave this computer behind two-factor login. BidSheet
+              You'll need an authenticator app (Google Authenticator, Authy, 1Password). Your
+              bids and plans only leave this computer behind two-factor login. BidSheet
               itself stays free and works fully offline without any of this.
             </p>
             <div className="modal-actions">
@@ -168,16 +168,16 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
         {step === 'done' && (
           <div>
             <p style={{ marginBottom: 8 }}>
-              <strong>Your free trial is active</strong> — it runs until {fmtDate(trialEndsAt)}.
+              <strong>Your free trial is active.</strong> It runs until {fmtDate(trialEndsAt)}.
             </p>
             <p className="text-muted mb-16">
               {billingEnabled
-                ? 'Turn sync on per job from the Jobs & Bids list. Subscribe now (or any time before the trial ends) to keep syncing and unlock the full 100 GB.'
-                : 'Turn sync on per job from the Jobs & Bids list. You have the full 100 GB during your trial — paid plans are coming soon.'}
+                ? 'Turn sync on per job from the Jobs & Bids list. Subscribe now (or any time before the trial ends) to keep syncing and get the full 100 GB.'
+                : 'Turn sync on per job from the Jobs & Bids list. You have the full 100 GB during your trial. Paid plans are coming soon.'}
             </p>
             {billingEnabled && awaitingPayment && (
               <p className="text-muted mb-16" style={{ fontSize: 12 }}>
-                Waiting for payment to complete in your browser… this updates automatically.
+                Waiting for payment to complete in your browser. This updates automatically.
               </p>
             )}
             <div className="modal-actions">
@@ -187,7 +187,7 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
                     Maybe Later
                   </button>
                   <button className="btn btn-primary" disabled={awaitingPayment} onClick={handleSubscribe}>
-                    {awaitingPayment ? 'Waiting for payment…' : 'Subscribe — $20/month'}
+                    {awaitingPayment ? 'Waiting for payment…' : 'Subscribe ($20/month)'}
                   </button>
                 </>
               ) : (

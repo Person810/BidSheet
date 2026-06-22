@@ -601,7 +601,7 @@ const RunLines = React.memo(function RunLines({
           <text x={0} y={-labelSize * 0.35} textAnchor="middle"
             fontSize={labelSize * 0.7} fill="#fff" fontWeight={700}
             style={{ userSelect: 'none' }}>!</text>
-          <title>Depth exceeds 5 ft — shoring may be required (OSHA 1926 Subpart P)</title>
+          <title>Depth exceeds 5 ft, so shoring may be required (OSHA 1926 Subpart P)</title>
         </g>
       )}
 

@@ -261,7 +261,7 @@ export function SettingsPage() {
             style={{ width: 16, height: 16, cursor: 'pointer' }}
           />
           <label htmlFor="localOnlyMode" style={{ margin: 0, cursor: 'pointer' }}>
-            Local-only mode — I'll never use cloud sync, hide it
+            Local-only mode. I'll never use cloud sync, so hide it.
           </label>
         </div>
         <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>

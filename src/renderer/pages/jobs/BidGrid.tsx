@@ -246,7 +246,7 @@ export function BidGrid({
                       marginLeft: 8, padding: '1px 6px', borderRadius: 3, fontSize: 10,
                       fontWeight: 700, background: 'rgba(232,160,32,0.18)', color: '#d97706',
                       verticalAlign: 'middle',
-                    }} title="Bid alternate — priced separately, excluded from base bid total">ALT</span>
+                    }} title="Bid alternate: priced separately, excluded from base bid total">ALT</span>
                   )}
                   {(section.overhead_percent_override != null
                     || section.profit_percent_override != null

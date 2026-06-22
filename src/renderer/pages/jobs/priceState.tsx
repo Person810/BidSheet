@@ -8,8 +8,8 @@ import type { PriceState } from '../../../shared/types/ipc';
  * small dot, not a loud badge.
  */
 export const PRICE_STATE_META: Record<PriceState, { label: string; color: string; desc: string }> = {
-  seed:       { label: 'Seed',       color: 'var(--warning)',    desc: 'Seed price — unverified placeholder' },
-  past_price: { label: 'Past price', color: 'var(--text-muted)', desc: 'Past price — real, but not quoted for this job' },
+  seed:       { label: 'Seed',       color: 'var(--warning)',    desc: 'Seed price, unverified placeholder' },
+  past_price: { label: 'Past price', color: 'var(--text-muted)', desc: 'Past price: real, but not quoted for this job' },
   quoted:     { label: 'Quoted',     color: 'var(--accent)',     desc: 'Quoted for this job' },
   confirmed:  { label: 'Confirmed',  color: 'var(--success)',    desc: 'Confirmed price' },
 };
