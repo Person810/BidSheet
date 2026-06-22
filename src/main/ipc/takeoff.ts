@@ -439,6 +439,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       assemblyId: a.assembly_id,
       color: a.color,
       pdfPage: a.pdf_page,
+      gradeMode: a.grade_mode ?? null,
+      gradeValueFt: a.grade_value_ft ?? null,
       points: (pointsStmt.all(a.id) as any[]).map((p) => ({ x: p.x_px, y: p.y_px })),
     }));
   });
@@ -450,22 +452,23 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         db.prepare(`
           UPDATE takeoff_areas SET
             label = ?, area_type = ?, depth_ft = ?, material_id = ?, assembly_id = ?,
-            color = ?, sort_order = ?, pdf_page = ?,
+            color = ?, sort_order = ?, pdf_page = ?, grade_mode = ?, grade_value_ft = ?,
             updated_at = datetime('now','localtime')
           WHERE id = ?
         `).run(
           area.label, area.areaType, area.depthFt, area.materialId ?? null, area.assemblyId ?? null,
-          area.color, area.sortOrder ?? 0, area.pdfPage, area.id
+          area.color, area.sortOrder ?? 0, area.pdfPage, area.gradeMode ?? null, area.gradeValueFt ?? null, area.id
         );
         areaId = area.id;
       } else {
         const result = db.prepare(`
           INSERT INTO takeoff_areas
-            (job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page, grade_mode, grade_value_ft)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           area.jobId, area.label, area.areaType, area.depthFt,
-          area.materialId ?? null, area.assemblyId ?? null, area.color, area.sortOrder ?? 0, area.pdfPage
+          area.materialId ?? null, area.assemblyId ?? null, area.color, area.sortOrder ?? 0, area.pdfPage,
+          area.gradeMode ?? null, area.gradeValueFt ?? null
         );
         areaId = Number(result.lastInsertRowid);
       }
@@ -486,6 +489,53 @@ export function registerTakeoffHandlers(db: Database.Database): void {
 
   safeHandle('db:takeoff-areas:delete', (_event, id: number) => {
     return db.prepare('DELETE FROM takeoff_areas WHERE id = ?').run(id);
+  });
+
+  // ---- Takeoff Surfaces (existing/proposed elevation point sets -> TIN) ----
+
+  safeHandle('db:takeoff-surfaces:list', (_event, jobId: number) => {
+    const surfaces = db.prepare(
+      'SELECT * FROM takeoff_surfaces WHERE job_id = ? ORDER BY id'
+    ).all(jobId) as any[];
+    const ptStmt = db.prepare(
+      'SELECT x, y, z_ft, pdf_page FROM takeoff_surface_points WHERE surface_id = ? ORDER BY sort_order'
+    );
+    return surfaces.map((s) => ({
+      id: s.id,
+      jobId: s.job_id,
+      kind: s.kind,
+      name: s.name,
+      points: (ptStmt.all(s.id) as any[]).map((p) => ({
+        x: p.x, y: p.y, z: p.z_ft, pdfPage: p.pdf_page,
+      })),
+    }));
+  });
+
+  safeHandle('db:takeoff-surfaces:save', (_event, surface: any) => {
+    const saveTx = db.transaction(() => {
+      let id = surface.id as number;
+      if (id && id > 0) {
+        db.prepare(
+          "UPDATE takeoff_surfaces SET kind = ?, name = ?, updated_at = datetime('now','localtime') WHERE id = ?"
+        ).run(surface.kind, surface.name, id);
+        db.prepare('DELETE FROM takeoff_surface_points WHERE surface_id = ?').run(id);
+      } else {
+        id = Number(db.prepare(
+          'INSERT INTO takeoff_surfaces (job_id, kind, name) VALUES (?, ?, ?)'
+        ).run(surface.jobId, surface.kind, surface.name).lastInsertRowid);
+      }
+      const ins = db.prepare(
+        'INSERT INTO takeoff_surface_points (surface_id, x, y, z_ft, pdf_page, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+      );
+      (surface.points || []).forEach((p: any, i: number) =>
+        ins.run(id, p.x, p.y, p.z, p.pdfPage ?? 1, i));
+      return { id };
+    });
+    return saveTx();
+  });
+
+  safeHandle('db:takeoff-surfaces:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM takeoff_surfaces WHERE id = ?').run(id);
   });
 
   // ---- Takeoff Annotations (text notes, arrows, revision clouds) ----
@@ -591,8 +641,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       }
 
       const insertArea = db.prepare(
-        `INSERT INTO takeoff_areas (id, job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO takeoff_areas (id, job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page, grade_mode, grade_value_ft)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const insertAreaPt = db.prepare(
         'INSERT INTO takeoff_area_points (area_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
@@ -600,7 +650,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       (state.areas || []).forEach((a: any, idx: number) => {
         if (a.id <= 0) return;
         insertArea.run(a.id, jobId, a.label, a.areaType, a.depthFt,
-          a.materialId ?? null, a.assemblyId ?? null, a.color, idx, a.pdfPage);
+          a.materialId ?? null, a.assemblyId ?? null, a.color, idx, a.pdfPage,
+          a.gradeMode ?? null, a.gradeValueFt ?? null);
         (a.points || []).forEach((pt: any, i: number) => {
           insertAreaPt.run(a.id, pt.x, pt.y, i);
         });

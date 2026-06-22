@@ -52,6 +52,9 @@ export interface JobSnapshot {
     areas: any[];
     area_points: any[];
     annotations: any[];
+    /** Existing/proposed elevation surfaces. Optional: absent in pre-v35 snapshots. */
+    surfaces?: any[];
+    surface_points?: any[];
   };
   plan: PlanRef | null;
 }
@@ -162,6 +165,12 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
          WHERE a.job_id = ? ORDER BY ap.id`
       ),
       annotations: all('SELECT * FROM takeoff_annotations WHERE job_id = ? ORDER BY id'),
+      surfaces: all('SELECT * FROM takeoff_surfaces WHERE job_id = ? ORDER BY id'),
+      surface_points: all(
+        `SELECT sp.* FROM takeoff_surface_points sp
+         JOIN takeoff_surfaces s ON s.id = sp.surface_id
+         WHERE s.job_id = ? ORDER BY sp.id`
+      ),
     },
     plan: null, // filled in by the sync engine when a plan PDF exists
   };
@@ -333,6 +342,7 @@ export function importJob(
         'DELETE FROM takeoff_runs WHERE job_id = ?',
         'DELETE FROM takeoff_nodes WHERE job_id = ?',
         'DELETE FROM takeoff_areas WHERE job_id = ?',
+        'DELETE FROM takeoff_surfaces WHERE job_id = ?',
         'DELETE FROM takeoff_annotations WHERE job_id = ?',
         'DELETE FROM takeoff_page_scales WHERE job_id = ?',
         'DELETE FROM takeoff_page_rotations WHERE job_id = ?',
@@ -404,6 +414,16 @@ export function importJob(
     }
 
     for (const ann of t.annotations) insertRow('takeoff_annotations', { ...ann, job_id: jobId });
+
+    const surfaceMap = new Map<number, number>();
+    for (const s of t.surfaces ?? []) {
+      surfaceMap.set(s.id, insertRow('takeoff_surfaces', { ...s, job_id: jobId }));
+    }
+    for (const sp of t.surface_points ?? []) {
+      const surfaceId = surfaceMap.get(sp.surface_id);
+      if (surfaceId === undefined) continue;
+      insertRow('takeoff_surface_points', { ...sp, surface_id: surfaceId });
+    }
 
     return { jobId, created: !existing, droppedCatalogRefs: dropped };
   });

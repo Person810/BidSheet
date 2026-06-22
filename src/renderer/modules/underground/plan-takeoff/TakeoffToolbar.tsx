@@ -44,6 +44,9 @@ const Icons = {
   annotate: ic(<><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></>),
   layers: ic(<><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></>),
   export: ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>),
+  elevation: ic(<><polygon points="12 4 20 18 4 18" /><circle cx="12" cy="14.5" r="1.4" fill="currentColor" /></>),
+  heatmap: ic(<><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>),
+  earthwork: ic(<><path d="M2 18l6-8 4 5 3-4 7 7" /><line x1="2" y1="21" x2="22" y2="21" /></>),
   text: ic(<><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></>, 14),
   arrow: ic(<><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></>, 14),
   cloud: ic(<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />, 14),
@@ -118,6 +121,15 @@ interface TakeoffToolbarProps {
   canAnnotate: boolean;
   onStartAnnotation: (kind: AnnotationKind) => void;
   isAnnotating: boolean;
+  // Earthwork
+  canCaptureElev: boolean;
+  captureElev: boolean;
+  onToggleCaptureElev: () => void;
+  surfacePointCount: number;
+  showHeatmap: boolean;
+  onToggleHeatmap: () => void;
+  canSendEarthwork: boolean;
+  onSendEarthworkToBid: () => void;
   // Multi-select
   selectMode: boolean;
   onToggleSelectMode: () => void;
@@ -148,6 +160,8 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
     canAddRun, onAddRun, isDrawing,
     canAddArea, onAddArea, isDrawingArea,
     canAnnotate, onStartAnnotation, isAnnotating,
+    canCaptureElev, captureElev, onToggleCaptureElev, surfacePointCount,
+    showHeatmap, onToggleHeatmap, canSendEarthwork, onSendEarthworkToBid,
     selectMode, onToggleSelectMode, canSelect,
     onRotatePage, canRotate,
     canUndo, canRedo, onUndo, onRedo,
@@ -270,6 +284,18 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
           </div>
         )}
       </div>
+
+      <Separator />
+      <ToolBtn icon={Icons.elevation} label="Elev" active={captureElev} disabled={!canCaptureElev}
+        title={!canCaptureElev
+          ? 'Open a plan to capture existing-grade spot elevations'
+          : `Capture existing-grade spot elevations — click the plan (${surfacePointCount} captured)`}
+        onClick={onToggleCaptureElev} />
+      <ToolBtn icon={Icons.heatmap} label="Cut/Fill" active={showHeatmap}
+        title="Toggle the cut/fill heatmap for finished-elevation earthwork" onClick={onToggleHeatmap} />
+      <ToolBtn icon={Icons.earthwork} label="Earthwork" disabled={!canSendEarthwork}
+        title={!canSendEarthwork ? 'No earthwork regions to send' : 'Send earthwork cut/fill volumes to the bid'}
+        onClick={onSendEarthworkToBid} />
 
       <div style={{ flex: 1, minWidth: 8 }} />
 

@@ -65,7 +65,19 @@ function interpolate(anchors: Anchor[], s: number, slopePerFt: number): number {
   return last.v;
 }
 
-export function buildRunProfile(run: TakeoffRun, scalePxPerFt: number): RunProfile | null {
+/**
+ * Optional existing-ground lookup, in PDF-pixel space (the same coordinates a
+ * run's vertices use). Returns the surveyed/interpolated ground elevation in
+ * feet at (xPx, yPx), or null when that spot is outside the surface data.
+ * Built by the caller from a TakeoffSurface TIN.
+ */
+export type GroundSampler = (xPx: number, yPx: number) => number | null;
+
+export function buildRunProfile(
+  run: TakeoffRun,
+  scalePxPerFt: number,
+  groundSampler?: GroundSampler,
+): RunProfile | null {
   if (run.points.length < 2 || scalePxPerFt <= 0) return null;
 
   // Stations from cumulative plan-view distance
@@ -88,17 +100,40 @@ export function buildRunProfile(run: TakeoffRun, scalePxPerFt: number): RunProfi
     if (p.rimElev != null) rimAnchors.push({ s: stations[i], v: p.rimElev });
   });
 
-  const mode: RunProfile['mode'] = invertAnchors.length > 0 ? 'elevation' : 'depth';
-  const groundAssumed = rimAnchors.length === 0;
+  // Sample the existing-ground surface at each vertex, when one is supplied.
+  const sampledGround = run.points.map((p) =>
+    groundSampler ? groundSampler(p.x, p.y) : null);
+  const hasSampledGround = sampledGround.some((z) => z != null);
+  const sampledAnchors: Anchor[] = [];
+  run.points.forEach((_p, i) => {
+    if (sampledGround[i] != null) sampledAnchors.push({ s: stations[i], v: sampledGround[i] as number });
+  });
+
+  // With no surveyed inverts but a real surface, anchor the run to the terrain:
+  // ground follows the existing grade and the pipe falls at design grade from
+  // start depth below the upstream ground. Otherwise fall back to the flat
+  // depth datum. Surveyed inverts always win and stay in absolute elevation.
+  const terrainDriven = invertAnchors.length === 0 && hasSampledGround;
+  const mode: RunProfile['mode'] = invertAnchors.length > 0 || terrainDriven ? 'elevation' : 'depth';
+  const groundAssumed = rimAnchors.length === 0 && !hasSampledGround;
+
+  const groundFromSurface = (s: number): number | null => {
+    if (rimAnchors.length > 0) return interpolate(rimAnchors, s, 0);
+    if (sampledAnchors.length > 0) return interpolate(sampledAnchors, s, 0);
+    return null;
+  };
+  const terrainStartGround = sampledAnchors.length > 0 ? sampledAnchors[0].v : 0;
 
   const invertAt = (s: number): number => {
-    if (mode === 'depth') return -(run.startDepthFt + s * gradePerFt);
-    return interpolate(invertAnchors, s, gradePerFt);
+    if (invertAnchors.length > 0) return interpolate(invertAnchors, s, gradePerFt);
+    if (terrainDriven) return terrainStartGround - run.startDepthFt - s * gradePerFt;
+    return -(run.startDepthFt + s * gradePerFt);
   };
   const groundAt = (s: number): number => {
+    const surf = groundFromSurface(s);
+    if (surf != null) return surf;
     if (mode === 'depth') return 0;
-    if (groundAssumed) return invertAt(0) + run.startDepthFt;
-    return interpolate(rimAnchors, s, 0); // ground doesn't follow pipe grade
+    return invertAt(0) + run.startDepthFt;
   };
 
   const out: ProfileStation[] = run.points.map((p, i) => ({

@@ -46,12 +46,16 @@ function buildFixture(db: Database.Database) {
     jobId,
     matId
   );
-  db.prepare('INSERT INTO takeoff_areas (job_id, material_id, assembly_id) VALUES (?, ?, ?)').run(
-    jobId,
-    matId,
-    asmId
+  db.prepare(
+    'INSERT INTO takeoff_areas (job_id, material_id, assembly_id, grade_mode, grade_value_ft) VALUES (?, ?, ?, ?, ?)'
+  ).run(jobId, matId, asmId, 'finished_elev', 98.5);
+  // Existing-grade surface with two spot elevations
+  const surfaceId = lastId(
+    db.prepare("INSERT INTO takeoff_surfaces (job_id, kind, name) VALUES (?, 'existing', 'Existing Grade')").run(jobId)
   );
-  return { jobId, matId, equipId, asmId };
+  db.prepare('INSERT INTO takeoff_surface_points (surface_id, x, y, z_ft, pdf_page, sort_order) VALUES (?, 1, 2, 100.5, 1, 0)').run(surfaceId);
+  db.prepare('INSERT INTO takeoff_surface_points (surface_id, x, y, z_ft, pdf_page, sort_order) VALUES (?, 3, 4, 101.25, 1, 1)').run(surfaceId);
+  return { jobId, matId, equipId, asmId, surfaceId };
 }
 
 describe('v28 uuid migration', () => {
@@ -88,6 +92,13 @@ describe('exportJob (format 2)', () => {
     expect(snap.takeoff.runs[0].pipe_material_uuid).toBe(matUuid);
     expect(snap.takeoff.items[0].material_uuid).toBe(matUuid);
     expect(snap.takeoff.areas[0].assembly_uuid).toBe(uuidOf(db, 'assemblies', asmId));
+    // Earthwork grade columns ride along on the area row
+    expect(snap.takeoff.areas[0].grade_mode).toBe('finished_elev');
+    expect(snap.takeoff.areas[0].grade_value_ft).toBe(98.5);
+    // Existing-grade surface + its spot elevations are captured
+    expect(snap.takeoff.surfaces).toHaveLength(1);
+    expect(snap.takeoff.surface_points).toHaveLength(2);
+    expect(snap.takeoff.surface_points[0].z_ft).toBe(100.5);
   });
 });
 
@@ -121,6 +132,22 @@ describe('importJob (format 2)', () => {
     expect(li.material_id).toBe(bMatId);
     const run = b.prepare('SELECT * FROM takeoff_runs WHERE job_id = ?').get(result.jobId) as any;
     expect(run.pipe_material_id).toBe(bMatId);
+  });
+
+  it('round-trips existing-grade surfaces and earthwork grade columns', () => {
+    const { b, snap } = exportAndImport();
+    const result = importJob(b, 'cloud-job-1', snap);
+
+    const surface = b.prepare('SELECT * FROM takeoff_surfaces WHERE job_id = ?').get(result.jobId) as any;
+    expect(surface.kind).toBe('existing');
+    const pts = b.prepare(
+      'SELECT z_ft FROM takeoff_surface_points WHERE surface_id = ? ORDER BY sort_order'
+    ).all(surface.id) as any[];
+    expect(pts.map((p) => p.z_ft)).toEqual([100.5, 101.25]);
+
+    const area = b.prepare('SELECT * FROM takeoff_areas WHERE job_id = ?').get(result.jobId) as any;
+    expect(area.grade_mode).toBe('finished_elev');
+    expect(area.grade_value_ft).toBe(98.5);
   });
 
   it('nulls and counts refs whose uuid is not in the local catalog', () => {
