@@ -2,29 +2,29 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, initCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
 import { CloudAccountSetupModal } from './CloudAccountSetupModal';
+import { CloudSignInModal } from './CloudSignInModal';
 import { formatBytes, formatDateTime } from '../utils/format';
 
 /**
- * Settings → Cloud Sync card. Walks the whole auth ladder: signed out →
- * password sign-in → one-time authenticator (TOTP) setup with QR code →
- * 6-digit code → connected. Once connected it shows the account, storage
- * used, and a Sync Now button. BidSheet itself never requires this — the
- * cloud is an optional backup/sync layer.
+ * Settings → Cloud Sync card. When signed out it offers Sign In and Create
+ * Account, both of which open a dedicated modal (CloudSignInModal /
+ * CloudAccountSetupModal) that walks the auth ladder — password sign-in →
+ * one-time authenticator (TOTP) setup with QR code → 6-digit code → connected.
+ * Once connected it shows the account, storage used, and a Sync Now button.
+ * BidSheet itself never requires this — the cloud is an optional backup/sync
+ * layer.
  */
 export function CloudSyncCard() {
   const addToast = useToastStore((s) => s.addToast);
   const { auth, sync, refresh } = useCloudStore();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [enroll, setEnroll] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
   const [account, setAccount] = useState<any | null>(null);
   // Server-reported: are paid plans actually open? Defaults false (trials-only)
   // so an old/undeployed server never shows a Subscribe button that can't work.
   const [billingEnabled, setBillingEnabled] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
   const [awaitingPayment, setAwaitingPayment] = useState(false);
   const unmounted = useRef(false);
   useEffect(() => () => { unmounted.current = true; }, []);
@@ -59,26 +59,7 @@ export function CloudSyncCard() {
     }
   };
 
-  const handleSignIn = () => act(() => window.api.cloudSignIn(email.trim(), password));
-  const handleEnroll = () =>
-    act(async () => {
-      const e = await window.api.cloudEnrollTotp();
-      setEnroll(e);
-    });
-  const handleVerify = () =>
-    act(async () => {
-      await window.api.cloudVerifyTotp(code, enroll?.factorId);
-      setEnroll(null);
-      setCode('');
-      addToast('Cloud sync connected.', 'success');
-      window.api.cloudSyncNow().catch(() => {});
-    });
-  const handleSignOut = () =>
-    act(async () => {
-      await window.api.cloudSignOut();
-      setEnroll(null);
-      setCode('');
-    });
+  const handleSignOut = () => act(() => window.api.cloudSignOut());
 
   const usedFrac =
     account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;
@@ -157,69 +138,28 @@ export function CloudSyncCard() {
         <p className="text-muted">Checking cloud status…</p>
       ) : !auth.signedIn ? (
         <div style={{ maxWidth: 420 }}>
-          <div className="form-group">
-            <label>Email</label>
-            <input type="email" className="form-control" value={email} autoComplete="username"
-              onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
-          </div>
-          <div className="form-group">
-            <label>Password</label>
-            <input type="password" className="form-control" value={password} autoComplete="current-password"
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="12+ characters, mixed case, number, symbol" />
-          </div>
           <div className="flex gap-8">
-            <button className="btn btn-primary" disabled={busy || !email.trim() || !password}
-              onClick={handleSignIn}>Sign In</button>
-          </div>
-          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-            <p className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
-              New to BidSheet Cloud? First 30 days free, then $20/month for your whole company.
-            </p>
+            <button className="btn btn-primary" disabled={busy} onClick={() => setShowSignIn(true)}>
+              Sign In
+            </button>
             <button className="btn btn-secondary" disabled={busy} onClick={() => setShowSetup(true)}>
               Create Account
             </button>
           </div>
+          <p className="text-muted" style={{ fontSize: 13, marginTop: 12 }}>
+            New to BidSheet Cloud? First 30 days free, then $20/month for your whole company.
+          </p>
         </div>
       ) : !ready ? (
         <div style={{ maxWidth: 480 }}>
           <p style={{ marginBottom: 12 }}>
-            Signed in as <strong>{auth.email}</strong>.
+            Signed in as <strong>{auth.email}</strong>, but your authenticator isn’t set up yet.
           </p>
-          {auth.needsEnroll && !enroll && (
-            <div>
-              <p className="text-muted mb-16">
-                One-time setup: link an authenticator app to finish protecting your account.
-              </p>
-              <button className="btn btn-primary" disabled={busy} onClick={handleEnroll}>
-                Set Up Authenticator
-              </button>
-            </div>
-          )}
-          {enroll && (
-            <div className="mb-16">
-              <p className="text-muted mb-16">
-                Scan this QR code with your authenticator app, then enter the 6-digit code below.
-              </p>
-              <img src={enroll.qrCode} alt="Authenticator QR code"
-                style={{ width: 180, height: 180, background: '#fff', padding: 8, borderRadius: 8 }} />
-              <p className="text-muted" style={{ fontSize: 12, marginTop: 8 }}>
-                Can’t scan? Enter this key manually: <code>{enroll.secret}</code>
-              </p>
-            </div>
-          )}
-          {(enroll || auth.needsTotp) && (
-            <div className="flex gap-8 items-center" style={{ marginTop: 8 }}>
-              <input type="text" className="form-control" value={code} inputMode="numeric"
-                onChange={(e) => setCode(e.target.value)} placeholder="6-digit code"
-                style={{ width: 140 }} autoFocus
-                onKeyDown={(e) => { if (e.key === 'Enter' && code.trim().length >= 6) handleVerify(); }} />
-              <button className="btn btn-primary" disabled={busy || code.trim().length < 6}
-                onClick={handleVerify}>Verify</button>
-            </div>
-          )}
-          <div style={{ marginTop: 16 }}>
-            <button className="btn btn-sm btn-secondary" disabled={busy} onClick={handleSignOut}>
+          <div className="flex gap-8">
+            <button className="btn btn-primary" disabled={busy} onClick={() => setShowSignIn(true)}>
+              Finish Signing In
+            </button>
+            <button className="btn btn-secondary" disabled={busy} onClick={handleSignOut}>
               Sign Out
             </button>
           </div>
@@ -343,6 +283,15 @@ export function CloudSyncCard() {
         <CloudAccountSetupModal
           onClose={() => {
             setShowSetup(false);
+            refresh().catch(() => {});
+          }}
+        />
+      )}
+
+      {showSignIn && (
+        <CloudSignInModal
+          onClose={() => {
+            setShowSignIn(false);
             refresh().catch(() => {});
           }}
         />

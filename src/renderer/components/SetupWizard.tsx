@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { CloudAccountSetupModal } from './CloudAccountSetupModal';
+import { CloudSignInModal } from './CloudSignInModal';
+import { useCloudStore, initCloudStore } from '../stores/cloud-store';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -19,6 +22,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [includePrices, setIncludePrices] = useState<boolean | null>(null);
   const [cloudChoice, setCloudChoice] = useState<'yes' | 'later' | 'never' | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showCloudSetup, setShowCloudSetup] = useState(false);
+  const [showCloudSignIn, setShowCloudSignIn] = useState(false);
+
+  // Cloud handlers are already registered on a fresh install (local-only mode
+  // only switches on once setup finishes with "Never"), so the account can be
+  // created or signed into right here in the wizard.
+  const cloudAuth = useCloudStore((s) => s.auth);
+  const cloudConnected = cloudAuth?.aal === 'aal2';
+  useEffect(() => {
+    initCloudStore();
+  }, []);
 
   const toggleTrade = (key: string) => {
     setSelectedTrades((prev) =>
@@ -178,7 +192,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               >
                 <div className="price-option-title">Yes</div>
                 <div className="price-option-desc">
-                  You can set it up anytime from Settings.
+                  Set up your account now, or anytime from Settings.
                 </div>
               </div>
               <div
@@ -202,6 +216,48 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 </div>
               </div>
             </div>
+
+            {cloudChoice === 'yes' && (
+              <div
+                style={{
+                  marginTop: 16,
+                  paddingTop: 16,
+                  borderTop: '1px solid var(--border)',
+                  maxWidth: 520,
+                }}
+              >
+                {cloudConnected ? (
+                  <p style={{ color: 'var(--success, #22c55e)' }}>
+                    ✓ Signed in as <strong>{cloudAuth?.email}</strong>. You're all set — finish
+                    up below.
+                  </p>
+                ) : (
+                  <>
+                    <p className="setup-desc" style={{ marginBottom: 12 }}>
+                      Create your cloud account now to start your free trial, or sign in if you
+                      already have one. You can also skip this and set it up later from Settings.
+                    </p>
+                    <div className="flex gap-8">
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        onClick={() => setShowCloudSetup(true)}
+                      >
+                        Create Account
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => setShowCloudSignIn(true)}
+                      >
+                        Sign In
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="setup-nav">
               <button className="btn btn-secondary" onClick={() => setStep(2)}>
                 Back
@@ -217,6 +273,20 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           </div>
         )}
       </div>
+
+      {/* The cloud modals use .modal-overlay (z-index 500), which sits below the
+          setup overlay (z-index 1000). Wrapping them in a stacking context above
+          the wizard lets them render on top. */}
+      {(showCloudSetup || showCloudSignIn) && (
+        <div style={{ position: 'relative', zIndex: 1001 }}>
+          {showCloudSetup && (
+            <CloudAccountSetupModal onClose={() => setShowCloudSetup(false)} />
+          )}
+          {showCloudSignIn && (
+            <CloudSignInModal onClose={() => setShowCloudSignIn(false)} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
