@@ -86,7 +86,7 @@ export function EditJobModal({ form, setForm, onSave, onClose }: EditJobModalPro
               onChange={(e) => setForm({ ...form, taxPercent: parseFloat(e.target.value) || 0 })} />
           </div>
           <div className="form-group">
-            <label title="Material price escalation for long-lead bids — raises material direct cost before markups">Escalation %</label>
+            <label title="Material price escalation for long-lead bids. Raises material direct cost before markups.">Escalation %</label>
             <input type="number" className="form-control" value={form.escalationPercent} step="0.5"
               onChange={(e) => setForm({ ...form, escalationPercent: parseFloat(e.target.value) || 0 })} />
           </div>

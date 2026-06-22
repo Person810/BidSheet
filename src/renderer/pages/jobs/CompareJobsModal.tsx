@@ -115,7 +115,7 @@ export function CompareJobsModal({ baseJobId, onClose }: {
             <option value="">-- Select a job (e.g. a duplicated scenario) --</option>
             {jobs.map((j) => (
               <option key={j.id} value={j.id}>
-                {j.name}{j.job_number ? ` (#${j.job_number})` : ''}{j.parent_job_id ? ` — CO #${j.change_order_number}` : ''}
+                {j.name}{j.job_number ? ` (#${j.job_number})` : ''}{j.parent_job_id ? ` (CO #${j.change_order_number})` : ''}
               </option>
             ))}
           </select>

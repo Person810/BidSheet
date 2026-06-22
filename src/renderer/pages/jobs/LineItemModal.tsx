@@ -487,7 +487,7 @@ export function LineItemModal({
 /** Marks a field as a manual override, with a one-click revert to computed. */
 function OverrideTag({ onRevert }: { onRevert?: () => void }) {
   return (
-    <span className="override-tag" title="Manually overridden — won't recompute">
+    <span className="override-tag" title="Manually overridden, won't recompute">
       overridden
       {onRevert && (
         <button type="button" className="override-revert"

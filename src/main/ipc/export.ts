@@ -239,7 +239,7 @@ export function registerExportHandlers(db: Database.Database): void {
           margins: { top: 0.4, bottom: 0.6, left: 0, right: 0 },
           displayHeaderFooter: true,
           headerTemplate: '<span></span>',
-          footerTemplate: `<div style="width:100%;font-size:7px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#999;padding:0 0.65in;display:flex;justify-content:space-between;"><span>${footerCompanyName} — ${footerBidRef}</span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>`,
+          footerTemplate: `<div style="width:100%;font-size:7px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#999;padding:0 0.65in;display:flex;justify-content:space-between;"><span>${footerCompanyName} | ${footerBidRef}</span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>`,
         });
       } finally {
         win.destroy();

@@ -249,9 +249,9 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       <Separator />
 
       <ToolBtn icon={Icons.select} label="Select" active={selectMode} disabled={!canSelect}
-        title="Select multiple objects — drag a rectangle (Esc to exit)" onClick={onToggleSelectMode} />
+        title="Select multiple objects by dragging a rectangle (Esc to exit)" onClick={onToggleSelectMode} />
       <ToolBtn icon={Icons.run} label="Run" active={isDrawing} disabled={!canAddRun}
-        title={!canAddRun && !isDrawing ? 'Calibrate scale first' : 'Measure a pipe run — click to place points, Esc to finish'}
+        title={!canAddRun && !isDrawing ? 'Calibrate scale first' : 'Measure a pipe run: click to place points, Esc to finish'}
         onClick={onAddRun} />
       <ToolBtn icon={Icons.area} label="Area" active={isDrawingArea} disabled={!canAddArea}
         title={!canAddArea && !isDrawingArea ? 'Calibrate scale first' : 'Measure a surface area (pavement patch, restoration)'}

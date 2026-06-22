@@ -57,7 +57,7 @@ function friendlyAuthMessage(status: number, data: any): string {
     return `Password rejected: ${msg}`;
   }
   if (code === 'mfa_verification_failed' || /invalid totp/i.test(msg)) {
-    return 'That code didn’t match. Check your authenticator app and try again.';
+    return "That code didn't match. Check your authenticator app and try again.";
   }
   if (code === 'over_request_rate_limit') return 'Too many attempts. Wait a minute and try again.';
   if (status === 0) return 'Could not reach the sign-in service. Check your internet connection.';

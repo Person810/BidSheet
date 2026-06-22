@@ -86,7 +86,7 @@ export async function sendAreasToBid(
     const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
     if (assembly) {
       const qtySY = Math.round(g.totalSY * 10) / 10;
-      const noteSuffix = g.labels.length ? ` — ${g.labels.join('; ')}` : ' — from plan takeoff';
+      const noteSuffix = g.labels.length ? ` (${g.labels.join('; ')})` : ' (from plan takeoff)';
       const payloads = buildAssemblyLineItems(assembly, qtySY, crews, noteSuffix);
       for (const payload of payloads) {
         await window.api.saveBidLineItem({
@@ -112,8 +112,8 @@ export async function sendAreasToBid(
       'From plan takeoff',
       g.totalCY > 0 ? `${g.totalCY.toFixed(1)} CY volume` : '',
       g.labels.join('; '),
-      mat && mat.unit !== 'SY' ? `Material "${mat.name}" priced per ${mat.unit} — set unit cost manually` : '',
-    ].filter(Boolean).join(' — ');
+      mat && mat.unit !== 'SY' ? `Material "${mat.name}" priced per ${mat.unit}, set unit cost manually` : '',
+    ].filter(Boolean).join('. ');
 
     await window.api.saveBidLineItem(buildLineItemPayload({
       sectionId,

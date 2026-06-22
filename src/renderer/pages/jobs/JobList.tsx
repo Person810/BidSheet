@@ -299,7 +299,7 @@ export function JobList({ onOpenJob }: JobListProps) {
             <h3>Sync Conflict</h3>
             <p className="text-muted" style={{ marginBottom: 16 }}>
               This job changed both on this computer and in the cloud since the last sync.
-              Pick which copy to keep — the other one is overwritten.
+              Pick which copy to keep. The other one is overwritten.
             </p>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConflictJobId(null)}>Cancel</button>

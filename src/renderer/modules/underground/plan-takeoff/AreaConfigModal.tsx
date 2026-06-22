@@ -141,7 +141,7 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
             className="form-control"
             value={config.label}
             onChange={(e) => set('label', e.target.value)}
-            placeholder='e.g. "Asphalt patch — Main St crossing"'
+            placeholder='e.g. "Asphalt patch, Main St crossing"'
           />
         </div>
 

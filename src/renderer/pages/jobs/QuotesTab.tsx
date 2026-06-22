@@ -189,7 +189,7 @@ export function QuotesTab({ jobId, onSendToBid }: {
                     ...compareSections,
                     [scope]: Number(e.target.value) || 0,
                   })}>
-                  <option value="">— pick a section —</option>
+                  <option value="">(pick a section)</option>
                   {sectionCosts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>

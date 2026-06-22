@@ -53,7 +53,7 @@ export function validateInput(input: TrenchInput): ValidationError[] {
   // always falls downstream. A rising run is the same trench measured from
   // the other end.
   if (input.gradePct < 0)
-    errors.push({ field: 'gradePct', message: 'Grade cannot be negative — measure from the upstream (shallow) end' });
+    errors.push({ field: 'gradePct', message: 'Grade cannot be negative. Measure from the upstream (shallow) end.' });
   if (input.runLengthLF <= 0)
     errors.push({ field: 'runLengthLF', message: 'Run length must be > 0' });
   if (input.trenchWidthFt <= 0)
