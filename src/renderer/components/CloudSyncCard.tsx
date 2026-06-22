@@ -324,6 +324,10 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const [unlockKey, setUnlockKey] = useState('');
   const [joinToken, setJoinToken] = useState('');
   const [justJoined, setJustJoined] = useState(false);
+  // Opt-in: a shorter (80-bit) recovery key, easier to write down. Still safe
+  // offline because the short key is stretched with scrypt before it wraps
+  // anything (see sync-crypto.ts). The full 256-bit key stays the default.
+  const [shortCode, setShortCode] = useState(false);
 
   const load = async () => {
     const [st, bk] = await Promise.all([
@@ -343,7 +347,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const handleSetup = async () => {
     setBusy(true);
     try {
-      const res = await window.api.cloudE2eeSetup();
+      const res = await window.api.cloudE2eeSetup(shortCode);
       setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
     } catch (err: any) {
       addToast(err?.message || 'Could not turn on encrypted sync.', 'error');
@@ -470,6 +474,19 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
             Turn this on once. You'll get a <strong>recovery key</strong> to save — it's the only way
             to unlock your data on a new computer, and it is <strong>not</strong> your login password.
           </p>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, marginBottom: 10 }}>
+            <input
+              type="checkbox"
+              checked={shortCode}
+              onChange={(e) => setShortCode(e.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              Use a <strong>shorter recovery key</strong> (16 characters instead of ~52) — easier to
+              write down, and still safe to store offline. Recommended only if you'll be typing it by
+              hand rather than saving it in a password manager.
+            </span>
+          </label>
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleSetup}>
             {busy ? 'Setting up…' : 'Turn On Encrypted Sync'}
           </button>
