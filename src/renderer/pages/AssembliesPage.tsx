@@ -251,7 +251,7 @@ export function AssembliesPage() {
         <div>
           <h2>Assemblies</h2>
           <p className="text-muted" style={{ marginTop: 2 }}>
-            Reusable material bundles — drop into a bid as one line item
+            Reusable material bundles you can drop into a bid as one line item
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>

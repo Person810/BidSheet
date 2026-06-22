@@ -16,7 +16,7 @@ export function reportSaveError(context: string): (err: unknown) => void {
   return (err) => {
     console.error(`[takeoff] failed to persist ${context}`, err);
     useToastStore.getState().addToast(
-      `Couldn't save ${context} — your last change may not stick after reload. Check the log and try again.`,
+      `Couldn't save ${context}. Your last change may not stick after reload. Check the log and try again.`,
       'error',
     );
   };

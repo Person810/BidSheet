@@ -102,7 +102,7 @@ export function BidItemImportModal({ jobId, sections, onDone, onClose }: BidItem
       <label className="form-label">{label}{required ? ' *' : ''}</label>
       <select className="form-control" value={mapping[field]}
         onChange={(e) => setMapping({ ...mapping, [field]: e.target.value })}>
-        <option value="">— not in file —</option>
+        <option value="">(not in file)</option>
         {csv!.headers.map((h) => <option key={h} value={h}>{h}</option>)}
       </select>
     </div>
@@ -113,7 +113,7 @@ export function BidItemImportModal({ jobId, sections, onDone, onClose }: BidItem
       <div className="modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
         <h3>Import Bid Items</h3>
         <p className="text-muted" style={{ fontSize: 12, marginBottom: 14 }}>
-          Load the owner's bid schedule (CSV) to scaffold line items — item numbers,
+          Load the owner's bid schedule (CSV) to scaffold line items. Item numbers,
           descriptions, quantities, and units come in unpriced.
         </p>
 
@@ -123,7 +123,7 @@ export function BidItemImportModal({ jobId, sections, onDone, onClose }: BidItem
           <>
             <p style={{ fontSize: 12, marginBottom: 10 }}>
               <strong>{csv.fileName}</strong>
-              <span className="text-muted"> — {csv.rows.length} rows</span>
+              <span className="text-muted"> ({csv.rows.length} rows)</span>
               <button className="bid-grid-inline-action" style={{ marginLeft: 10 }} onClick={pickFile}>change file</button>
             </p>
 

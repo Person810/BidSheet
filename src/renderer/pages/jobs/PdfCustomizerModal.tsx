@@ -340,7 +340,7 @@ export function PdfCustomizerModal({ jobId, onClose }: Props) {
               )}
             </div>
             <div style={{ fontSize: 10, color: '#bbb', marginTop: 10 }}>
-              First page only — full document exported to PDF
+              First page only. The full document is exported to PDF.
             </div>
           </div>
         </div>

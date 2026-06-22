@@ -79,7 +79,7 @@ export function CloudSyncCard() {
     try {
       const active = await openCheckoutAndAwaitActivation(() => unmounted.current);
       if (active) {
-        addToast('Subscription active — full 100 GB unlocked.', 'success');
+        addToast('Subscription active. Full 100 GB available.', 'success');
         window.api.cloudMe().then((me) => setAccount(me.account)).catch(() => {});
       }
     } catch (err: any) {
@@ -106,7 +106,7 @@ export function CloudSyncCard() {
         addToast(`Could not restore "${f.name}": ${f.error}`, 'error');
       }
       if (results.length === 0) {
-        addToast('Nothing to restore — every cloud job is already on this computer.', 'info');
+        addToast('Nothing to restore. Every cloud job is already on this computer.', 'info');
       }
       await refresh();
     } catch (err: any) {
@@ -129,8 +129,8 @@ export function CloudSyncCard() {
       </h3>
       <p className="text-muted mb-16">
         Optional online backup and multi-computer sync for your jobs. BidSheet works fully
-        offline without it. An authenticator app (Google Authenticator, Authy, 1Password…)
-        is required — your bids and plans only leave this computer behind two-factor login.
+        offline without it. An authenticator app (Google Authenticator, Authy, 1Password)
+        is required, so your bids and plans only leave this computer behind two-factor login.
         Whether or not you subscribe, your data always lives locally on this computer.
       </p>
 
@@ -153,7 +153,7 @@ export function CloudSyncCard() {
       ) : !ready ? (
         <div style={{ maxWidth: 480 }}>
           <p style={{ marginBottom: 12 }}>
-            Signed in as <strong>{auth.email}</strong>, but your authenticator isn’t set up yet.
+            Signed in as <strong>{auth.email}</strong>, but your authenticator isn't set up yet.
           </p>
           <div className="flex gap-8">
             <button className="btn btn-primary" disabled={busy} onClick={() => setShowSignIn(true)}>
@@ -170,9 +170,9 @@ export function CloudSyncCard() {
             Connected as <strong>{auth.email}</strong>
             {account && (
               <span className="text-muted" style={{ marginLeft: 8, fontSize: 13 }}>
-                — {formatBytes(account.storage_bytes_used || 0)}
+                ({formatBytes(account.storage_bytes_used || 0)}
                 {account.storage_cap_bytes > 0 && ` of ${formatBytes(account.storage_cap_bytes)}`} cloud
-                storage used
+                storage used)
               </span>
             )}
           </p>
@@ -192,7 +192,7 @@ export function CloudSyncCard() {
               {usedFrac >= 0.9 && (
                 <p className={usedFrac >= 1 ? 'text-danger' : 'text-warning'} style={{ fontSize: 12, marginTop: 4 }}>
                   {usedFrac >= 1
-                    ? 'Cloud storage is full — uploads are paused. Turn off sync for old jobs to free space; they stay on this computer.'
+                    ? 'Cloud storage is full. Uploads are paused. Turn off sync for old jobs to free space; they stay on this computer.'
                     : 'Cloud storage is almost full. Turn off sync for old jobs to free space; they stay on this computer.'}
                 </p>
               )}
@@ -210,7 +210,7 @@ export function CloudSyncCard() {
               ) : subStatus === 'past_due' ? (
                 <>
                   <span className="text-warning" style={{ fontSize: 12 }}>
-                    Payment problem — syncing is paused until your card is updated.
+                    Payment problem. Syncing is paused until your card is updated.
                   </span>
                   <button className="btn btn-sm btn-primary" disabled={busy} onClick={handlePortal}>
                     Update Card
@@ -221,14 +221,14 @@ export function CloudSyncCard() {
                   <span className={trialExpired || subStatus === 'canceled' ? 'text-danger' : 'text-muted'}
                     style={{ fontSize: 12 }}>
                     {subStatus === 'canceled'
-                      ? 'Subscription ended — syncing is paused. Your cloud data is still there to download.'
+                      ? 'Subscription ended. Syncing is paused. Your cloud data is still there to download.'
                       : trialExpired
-                        ? 'Free trial ended — syncing is paused. Your cloud data is still there to download.'
-                        : `Free trial — ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left.`}
+                        ? 'Free trial ended. Syncing is paused. Your cloud data is still there to download.'
+                        : `Free trial: ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left.`}
                   </span>
                   {billingEnabled ? (
                     <button className="btn btn-sm btn-primary" disabled={awaitingPayment} onClick={handleSubscribe}>
-                      {awaitingPayment ? 'Waiting for payment…' : 'Subscribe — $20/mo'}
+                      {awaitingPayment ? 'Waiting for payment…' : 'Subscribe ($20/mo)'}
                     </button>
                   ) : (
                     <span className="text-muted" style={{ fontSize: 12, fontStyle: 'italic' }}>
@@ -242,7 +242,7 @@ export function CloudSyncCard() {
           {sync?.lastCheckAt && (
             <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
               Last checked {new Date(sync.lastCheckAt).toLocaleTimeString()}
-              {' — '}
+              {', '}
               {sync.jobs.filter((j) => j.enabled).length} job(s) syncing
               {sync.cloudOnly.length > 0 && `, ${sync.cloudOnly.length} in cloud only`}
             </p>
@@ -441,7 +441,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     setRecoveryKey(null);
     if (justJoined) {
       setJustJoined(false);
-      addToast("You've joined the team — waiting for an owner to approve your access.", 'success');
+      addToast("You've joined the team. Waiting for an owner to approve your access.", 'success');
       await load();
       return;
     }
@@ -454,7 +454,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
       <h4 style={{ marginBottom: 4 }}>Encrypted Sync &amp; Backup</h4>
       <p className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
-        Everything you sync — jobs, takeoffs, catalog, plans — is encrypted on this computer before
+        Everything you sync (jobs, takeoffs, catalog, plans) is encrypted on this computer before
         it's uploaded, and so is your whole-database backup. Even we can't read it.
       </p>
 
@@ -471,7 +471,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       {e2eeState === 'not_setup' && (
         <div style={{ maxWidth: 480 }}>
           <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            Turn this on once. You'll get a <strong>recovery key</strong> to save — it's the only way
+            Turn this on once. You'll get a <strong>recovery key</strong> to save. It's the only way
             to unlock your data on a new computer, and it is <strong>not</strong> your login password.
           </p>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, marginBottom: 10 }}>
@@ -482,7 +482,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
               style={{ marginTop: 2 }}
             />
             <span>
-              Use a <strong>shorter recovery key</strong> (16 characters instead of ~52) — easier to
+              Use a <strong>shorter recovery key</strong> (16 characters instead of ~52). Easier to
               write down, and still safe to store offline. Recommended only if you'll be typing it by
               hand rather than saving it in a password manager.
             </span>
@@ -520,11 +520,11 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
         <div style={{ maxWidth: 480 }}>
           <p style={{ fontSize: 13, marginBottom: 8 }}>
             You've joined the team. An owner needs to <strong>approve your access</strong> before you
-            can see the shared jobs and catalog — only they can hand your device the encryption key.
+            can see the shared jobs and catalog. Only they can hand your device the encryption key.
           </p>
           <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            This unlocks automatically once they approve you. Keep the recovery key you just saved —
-            it's how you'd unlock a different computer.
+            This unlocks automatically once they approve you. Keep the recovery key you just saved.
+            It's how you'd unlock a different computer.
           </p>
           <button className="btn btn-sm btn-secondary" disabled={busy} onClick={load}>
             {busy ? 'Checking…' : 'Check for approval'}
@@ -667,7 +667,7 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const handleApprove = (userId: string) =>
     run(async () => {
       await window.api.cloudOrgApproveMember(userId);
-      addToast('Teammate approved — they can now decrypt the shared data.', 'success');
+      addToast('Teammate approved. They can now decrypt the shared data.', 'success');
     }, 'Could not approve that member.');
 
   const handleRemove = (userId: string, label: string) => {
@@ -691,7 +691,7 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
       <h4 style={{ marginBottom: 4 }}>Team</h4>
       <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-        Everyone on the team shares this account — one subscription, pooled storage.
+        Everyone on the team shares this account, with one subscription and pooled storage.
         {isOwner
           ? ' Invite teammates with a code, then approve them so their device gets the encryption key.'
           : ' Your account owner manages who has access.'}
@@ -786,7 +786,7 @@ function InviteCodeModal({ token, onClose }: { token: string; onClose: () => voi
       await navigator.clipboard.writeText(token);
       addToast('Invite code copied.', 'success');
     } catch {
-      addToast('Could not copy — select the code and copy it manually.', 'error');
+      addToast('Could not copy. Select the code and copy it manually.', 'error');
     }
   };
   return (
@@ -794,7 +794,7 @@ function InviteCodeModal({ token, onClose }: { token: string; onClose: () => voi
       <div className="modal" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginBottom: 8 }}>Invite code</h3>
         <p className="text-muted" style={{ fontSize: 13, marginBottom: 8 }}>
-          Send this to your teammate however you like — text, in person, whatever. It works{' '}
+          Send this to your teammate however you like, by text or in person. It works{' '}
           <strong>once</strong> and expires in 48 hours. After they join, approve them here. You
           won't see this code again.
         </p>
@@ -848,7 +848,7 @@ function RecoveryKeyModal({
       await navigator.clipboard.writeText(recoveryKey);
       addToast('Recovery key copied.', 'success');
     } catch {
-      addToast('Could not copy — select the key and copy it manually.', 'error');
+      addToast('Could not copy. Select the key and copy it manually.', 'error');
     }
   };
 
@@ -859,7 +859,7 @@ function RecoveryKeyModal({
         <p className="text-danger" style={{ fontSize: 13, marginBottom: 8 }}>
           This is the <strong>only</strong> way to unlock your encrypted data on another computer.
           We can never recover it for you, and it is <strong>not</strong> your login password. Save
-          it in a password manager or print it now — you won't see it again.
+          it in a password manager or print it now. You won't see it again.
         </p>
         <div
           style={{

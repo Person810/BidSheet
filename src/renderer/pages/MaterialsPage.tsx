@@ -529,7 +529,7 @@ export function MaterialsPage() {
                 placeholder="e.g. elbow, quarter bend, 90 degree (comma separated)"
               />
               <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
-                Comma-separated alternative names — helps find this item when typing different terms
+                Comma-separated alternative names. These help find this item when typing different terms.
               </div>
             </div>
             <div className="modal-actions">

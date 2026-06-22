@@ -181,7 +181,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="setup-step">
             <h2>Cloud Sync (Beta)</h2>
             <p className="setup-desc">
-              BidSheet is fully local — your bids live on this computer, no account needed.
+              BidSheet is fully local. Your bids live on this computer, no account needed.
               Optional cloud sync ($20/mo after a free trial) adds online backup and
               multi-computer sync. Think you'll ever use it?
             </p>
@@ -208,7 +208,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 className={`price-option ${cloudChoice === 'never' ? 'selected' : ''}`}
                 onClick={() => setCloudChoice('never')}
               >
-                <div className="price-option-title">Never — keep everything local</div>
+                <div className="price-option-title">Never (keep everything local)</div>
                 <div className="price-option-desc">
                   Hides cloud sync and never loads any cloud code. The app makes no
                   network connections except checking GitHub for updates. Reversible
@@ -228,7 +228,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               >
                 {cloudConnected ? (
                   <p style={{ color: 'var(--success, #22c55e)' }}>
-                    ✓ Signed in as <strong>{cloudAuth?.email}</strong>. You're all set — finish
+                    ✓ Signed in as <strong>{cloudAuth?.email}</strong>. You're all set. Finish
                     up below.
                   </p>
                 ) : (
