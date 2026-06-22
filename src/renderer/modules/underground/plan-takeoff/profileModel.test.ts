@@ -49,6 +49,37 @@ describe('buildRunProfile — depth mode (no surveyed elevations)', () => {
   });
 });
 
+describe('buildRunProfile — terrain-driven (existing surface, no surveyed inverts)', () => {
+  it('grounds on the sampled surface and falls at grade from start depth', () => {
+    // Ground sits at elev 100 along the whole run.
+    const p = buildRunProfile(baseRun(), 10, () => 100)!;
+    expect(p.mode).toBe('elevation');
+    expect(p.groundAssumed).toBe(false);
+    expect(p.stations[0].ground).toBeCloseTo(100);
+    expect(p.stations[1].ground).toBeCloseTo(100);
+    // invert starts start-depth (4 ft) below ground, falls 2 ft over 100 ft
+    expect(p.stations[0].invert).toBeCloseTo(96);
+    expect(p.stations[1].invert).toBeCloseTo(94);
+  });
+
+  it('ground follows a sloping surface while the pipe holds design grade', () => {
+    // Surface drops from 100 at the start vertex to 90 at the end vertex.
+    const sampler = (x: number) => 100 - (x / 1000) * 10;
+    const p = buildRunProfile(baseRun(), 10, sampler)!;
+    expect(p.stations[0].ground).toBeCloseTo(100);
+    expect(p.stations[1].ground).toBeCloseTo(90);
+    // pipe still falls only at the 2% design grade, independent of terrain
+    expect(p.stations[0].invert - p.stations[1].invert).toBeCloseTo(2);
+  });
+
+  it('falls back to flat depth mode when the sampler has no data', () => {
+    const p = buildRunProfile(baseRun(), 10, () => null)!;
+    expect(p.mode).toBe('depth');
+    expect(p.stations[0].ground).toBe(0);
+    expect(p.stations[0].invert).toBeCloseTo(-4);
+  });
+});
+
 describe('buildRunProfile — elevation mode (surveyed inverts)', () => {
   const surveyed = baseRun({
     points: [

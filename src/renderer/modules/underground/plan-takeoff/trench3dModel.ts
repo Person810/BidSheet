@@ -1,5 +1,5 @@
 import type { TakeoffRun } from './types';
-import { buildRunProfile } from './profileModel';
+import { buildRunProfile, type GroundSampler } from './profileModel';
 
 /**
  * 3D model for a pipe run -- the spatial counterpart to profileModel.ts.
@@ -52,8 +52,12 @@ export interface Trench3DModel {
   groundAssumed: boolean;
 }
 
-export function buildRunGeometry(run: TakeoffRun, scalePxPerFt: number): Trench3DModel | null {
-  const profile = buildRunProfile(run, scalePxPerFt);
+export function buildRunGeometry(
+  run: TakeoffRun,
+  scalePxPerFt: number,
+  groundSampler?: GroundSampler,
+): Trench3DModel | null {
+  const profile = buildRunProfile(run, scalePxPerFt, groundSampler);
   if (!profile || run.points.length < 2) return null;
 
   // Center the horizontal layout on the polyline centroid so the model sits

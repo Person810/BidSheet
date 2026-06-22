@@ -21,6 +21,10 @@ import { useToastStore } from '../../../stores/toast-store';
 import { sendToProfiles } from './sendToProfiles';
 import { sendItemsToBid } from './sendItemsToBid';
 import { sendAreasToBid } from './sendAreasToBid';
+import { sendEarthworkToBid } from './sendEarthworkToBid';
+import { useSurfaceManager } from './useSurfaceManager';
+import { buildGroundSampler } from './surfaceSampler';
+import SurfaceOverlay from './SurfaceOverlay';
 import { buildTakeoffCsv } from './exportTakeoffCsv';
 import { reportSaveError } from './takeoffPersistence';
 import { ContextMenu, getMenuItems } from './ContextMenu';
@@ -134,6 +138,19 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   // Annotation manager hook
   const anm = useAnnotationManager({ jobId, pageNum });
+
+  // Surface (existing-grade spot elevations) hook + earthwork view state
+  const sm = useSurfaceManager({ jobId });
+  const [captureElev, setCaptureElev] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [pendingElev, setPendingElev] = useState<{ point: PdfPoint; pdfPage: number } | null>(null);
+  const [elevInput, setElevInput] = useState('');
+
+  // Spot elevations + earthwork areas on the current page, for the overlay.
+  const pageSurfacePoints = useMemo(
+    () => sm.points.filter((p) => p.pdfPage === pageNum),
+    [sm.points, pageNum],
+  );
 
   // -- Annotation text modal --
   const [editingAnnotationId, setEditingAnnotationId] = useState<number | null>(null);
@@ -621,12 +638,41 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const handleViewerClick = useCallback((e: React.MouseEvent) => {
     if (rm.isDrawing || am.isDrawing) return;
+    // Spot-elevation capture: a click drops a point and prompts for its elevation.
+    if (captureElev) {
+      const p = screenPointToPdf(e.clientX, e.clientY);
+      if (p) { setPendingElev({ point: p, pdfPage: pageNum }); setElevInput(''); }
+      return;
+    }
     const target = e.target as HTMLElement;
     if (['line', 'circle', 'rect', 'polygon'].includes(target.tagName)) return;
     rm.handleRunSelect(null);
     im.selectItem(null);
     am.handleAreaSelect(null);
-  }, [rm, im, am]);
+  }, [rm, im, am, captureElev, screenPointToPdf, pageNum]);
+
+  const confirmSpotElevation = useCallback(() => {
+    if (!pendingElev) return;
+    const z = parseFloat(elevInput);
+    if (!Number.isFinite(z)) { addToast('Enter a valid elevation', 'error'); return; }
+    sm.addSpotElevation(pendingElev.point, z, pendingElev.pdfPage);
+    setPendingElev(null);
+    setElevInput('');
+  }, [pendingElev, elevInput, sm, addToast]);
+
+  const handleSendEarthworkToBid = useCallback(async () => {
+    try {
+      const count = await sendEarthworkToBid(am.areas, sm.surface ? [sm.surface] : [], jobId);
+      if (count === 0) {
+        addToast('No earthwork regions on calibrated pages to send.', 'error');
+      } else {
+        addToast(`Created ${count} line items in "Earthwork" section.`, 'success');
+      }
+    } catch (err) {
+      console.error('Send earthwork to bid failed:', err);
+      addToast('Failed to send earthwork to bid', 'error');
+    }
+  }, [am.areas, sm.surface, jobId, addToast]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -1109,14 +1155,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           onMouseDown={handleMarqueeMouseDown} onMouseMove={handleMarqueeMouseMove}
           onMouseUp={handleMarqueeMouseUp}
           style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative', overflow: 'hidden',
-            cursor: selectMode ? 'crosshair' : undefined }}>
+            cursor: (selectMode || captureElev) ? 'crosshair' : undefined }}>
           <PdfViewer
             pdfData={pdfData}
             pageNumber={pageNum}
             scale={scale}
             rotation={pageRotation}
             resetPanKey={resetPanKey}
-            panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing && !selectMode) || spaceHeld}
+            panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing && !selectMode && !captureElev) || spaceHeld}
             onViewportChange={setViewport}
             onDocLoaded={handleDocLoaded}
             onPageSizeKnown={handlePageSizeKnown}
@@ -1170,7 +1216,36 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             onItemDrag={handleItemDrag}
           >
             {calibration.svgContent}
+            <SurfaceOverlay
+              points={pageSurfacePoints}
+              areas={visibleAreas}
+              scalePxPerFt={pageScalePxPerFt}
+              showHeatmap={showHeatmap}
+              showPoints
+            />
           </DrawingOverlay>
+
+          {/* Earthwork controls: capture existing grade, toggle heatmap, send to bid */}
+          <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 5, display: 'flex', gap: 6,
+            background: 'var(--bg-secondary, #1b1f27)', border: '1px solid var(--border, #333)',
+            borderRadius: 6, padding: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 4px' }}>Earthwork</span>
+            <button
+              className={`btn btn-sm ${captureElev ? 'btn-primary' : 'btn-secondary'}`}
+              title="Click the plan to drop spot elevations for the existing surface"
+              onClick={() => setCaptureElev((v) => !v)}
+            >{captureElev ? 'Capturing grade…' : 'Spot elevation'}</button>
+            <button
+              className={`btn btn-sm ${showHeatmap ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setShowHeatmap((v) => !v)}
+            >Cut/Fill heatmap</button>
+            <button className="btn btn-sm btn-secondary" onClick={handleSendEarthworkToBid}>
+              Send earthwork → bid
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 4px' }}>
+              {sm.points.length} pts
+            </span>
+          </div>
           {calibration.panelContent}
           {contextMenu && (
             <ContextMenu
@@ -1401,9 +1476,35 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         );
       })()}
 
+      {pendingElev && (
+        <div className="modal-overlay" onClick={() => setPendingElev(null)}>
+          <div className="modal" style={{ maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Spot Elevation</h3>
+            <div className="form-group">
+              <label className="form-label">Existing ground elevation (ft)</label>
+              <input
+                className="form-control"
+                type="number"
+                autoFocus
+                value={elevInput}
+                step="0.1"
+                onChange={(e) => setElevInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') confirmSpotElevation(); }}
+                placeholder="e.g. 100.5"
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setPendingElev(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={confirmSpotElevation}>Add Point</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {profileRunId != null && pageScalePxPerFt && (() => {
         const run = rm.runs.find((r) => r.id === profileRunId);
         if (!run) return null;
+        const groundSampler = buildGroundSampler(sm.surface, run.pdfPage);
         return (
           <div className="modal-overlay" onClick={() => setProfileRunId(null)}>
             <div className="modal" style={{ maxWidth: 960, width: '92vw' }} onClick={(e) => e.stopPropagation()}>
@@ -1425,10 +1526,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
               {profileMode === '3d'
                 ? (
                   <React.Suspense fallback={<p className="text-muted" style={{ padding: 24 }}>Loading 3D view…</p>}>
-                    <Trench3DView run={run} scalePxPerFt={pageScalePxPerFt} />
+                    <Trench3DView run={run} scalePxPerFt={pageScalePxPerFt} groundSampler={groundSampler} />
                   </React.Suspense>
                 )
-                : <RunProfileView run={run} scalePxPerFt={pageScalePxPerFt} />}
+                : <RunProfileView run={run} scalePxPerFt={pageScalePxPerFt} groundSampler={groundSampler} />}
               <div className="modal-actions">
                 <button className="btn btn-secondary" onClick={() => setProfileRunId(null)}>Close</button>
               </div>

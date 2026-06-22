@@ -561,6 +561,11 @@ export type UtilityType = 'sanitary' | 'storm' | 'water' | 'fiber' | 'other';
 export type AreaType = 'asphalt' | 'concrete' | 'gravel' | 'topsoil' | 'other';
 export type AnnotationKind = 'text' | 'arrow' | 'cloud';
 
+/** Earthwork grade intent for an area. null = ordinary surface-restoration area. */
+export type GradeMode = 'cut_depth' | 'fill_depth' | 'finished_elev';
+/** An elevation surface attached to a job. */
+export type SurfaceKind = 'existing' | 'proposed';
+
 export interface TakeoffJobSettingsRow {
   id: number;
   job_id: number;
@@ -679,12 +684,35 @@ export interface TakeoffAreaDTO {
   assemblyId: number | null;
   color: string;
   pdfPage: number;
+  /** When set, this area is an earthwork region rather than surface restoration. */
+  gradeMode?: GradeMode | null;
+  /** Depth (cut/fill modes) or finished elevation (finished_elev), in feet. */
+  gradeValueFt?: number | null;
   points: { x: number; y: number }[];
 }
 
 export interface SaveTakeoffAreaPayload extends Omit<TakeoffAreaDTO, 'id'> {
   id?: number;
   sortOrder?: number;
+}
+
+export interface TakeoffSurfacePointDTO {
+  x: number;       // PDF-native px (at scale=1)
+  y: number;
+  z: number;       // elevation, feet
+  pdfPage: number;
+}
+
+export interface TakeoffSurfaceDTO {
+  id: number;
+  jobId: number;
+  kind: SurfaceKind;
+  name: string;
+  points: TakeoffSurfacePointDTO[];
+}
+
+export interface SaveTakeoffSurfacePayload extends Omit<TakeoffSurfaceDTO, 'id'> {
+  id?: number;
 }
 
 export interface TakeoffAnnotationDTO {

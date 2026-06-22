@@ -1,10 +1,12 @@
 import React, { useMemo } from 'react';
 import type { TakeoffRun } from './types';
-import { buildRunProfile, niceTickStep, segmentGrades } from './profileModel';
+import { buildRunProfile, niceTickStep, segmentGrades, type GroundSampler } from './profileModel';
 
 interface RunProfileViewProps {
   run: TakeoffRun;
   scalePxPerFt: number;
+  /** Existing-ground sampler so the profile follows real terrain. */
+  groundSampler?: GroundSampler;
   /** Plot size in CSS px */
   width?: number;
   height?: number;
@@ -18,8 +20,8 @@ const M = { top: 34, right: 26, bottom: 34, left: 58 };
  * grade labels. Vertical scale is exaggerated to fit, like a CAD profile
  * sheet, with the exaggeration factor shown.
  */
-export function RunProfileView({ run, scalePxPerFt, width = 880, height = 420 }: RunProfileViewProps) {
-  const profile = useMemo(() => buildRunProfile(run, scalePxPerFt), [run, scalePxPerFt]);
+export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, height = 420 }: RunProfileViewProps) {
+  const profile = useMemo(() => buildRunProfile(run, scalePxPerFt, groundSampler), [run, scalePxPerFt, groundSampler]);
 
   if (!profile) {
     return <p className="text-muted">This run has no measurable length yet.</p>;

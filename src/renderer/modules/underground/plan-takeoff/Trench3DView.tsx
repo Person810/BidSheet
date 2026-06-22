@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import type { TakeoffRun } from './types';
+import type { GroundSampler } from './profileModel';
 import {
   buildRunGeometry,
   prismCorners,
@@ -14,6 +15,8 @@ import {
 interface Trench3DViewProps {
   run: TakeoffRun;
   scalePxPerFt: number;
+  /** Existing-ground sampler so the trench follows real terrain. */
+  groundSampler?: GroundSampler;
   /** Plot height in CSS px (width fills the container) */
   height?: number;
 }
@@ -148,8 +151,8 @@ function Scene({ model, run }: { model: Trench3DModel; run: TakeoffRun }) {
  * Orbit/pan/zoom via the mouse. Elevations come from the same profile model
  * as the 2D side view, drawn here at true 1:1 scale.
  */
-export function Trench3DView({ run, scalePxPerFt, height = 460 }: Trench3DViewProps) {
-  const model = useMemo(() => buildRunGeometry(run, scalePxPerFt), [run, scalePxPerFt]);
+export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 460 }: Trench3DViewProps) {
+  const model = useMemo(() => buildRunGeometry(run, scalePxPerFt, groundSampler), [run, scalePxPerFt, groundSampler]);
 
   if (!model) {
     return <p className="text-muted">This run has no measurable length yet.</p>;

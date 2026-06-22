@@ -1,8 +1,8 @@
 // Wire-format unions are defined once in the IPC contract so the renderer
 // state and what crosses the bridge can't drift apart.
-import type { AnnotationKind, AreaType, UtilityType } from '../../../../shared/types/ipc';
+import type { AnnotationKind, AreaType, GradeMode, SurfaceKind, UtilityType } from '../../../../shared/types/ipc';
 
-export type { AnnotationKind, AreaType, UtilityType };
+export type { AnnotationKind, AreaType, GradeMode, SurfaceKind, UtilityType };
 
 export interface TakeoffJobSettings {
   id?: number;
@@ -147,6 +147,10 @@ export interface TakeoffArea {
   assemblyId: number | null;
   color: string;
   pdfPage: number;
+  /** When set, this area is an earthwork region (cut/fill) rather than surface restoration. */
+  gradeMode?: GradeMode | null;
+  /** Depth (cut/fill modes) or finished elevation (finished_elev), in feet. */
+  gradeValueFt?: number | null;
   points: PdfPoint[];
 }
 
@@ -157,6 +161,30 @@ export interface AreaConfig {
   depthFt: number;
   materialId: number | null;
   assemblyId: number | null;
+  gradeMode?: GradeMode | null;
+  gradeValueFt?: number | null;
+}
+
+/** A single surveyed elevation point on a job surface (PDF px + elevation ft). */
+export interface SurfacePoint {
+  x: number;       // PDF-native px (at scale=1)
+  y: number;
+  z: number;       // elevation, feet
+  pdfPage: number;
+}
+
+/**
+ * An elevation surface for a job — a set of spot elevations that build into a
+ * TIN for cut/fill and for grounding pipe runs against real terrain.
+ *
+ * ID convention: same as TakeoffRun (negative = local-only, positive = DB).
+ */
+export interface TakeoffSurface {
+  id: number;
+  jobId: number;
+  kind: SurfaceKind;
+  name: string;
+  points: SurfacePoint[];
 }
 
 

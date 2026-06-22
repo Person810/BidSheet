@@ -197,6 +197,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV32,
   migrateV33,
   migrateV34,
+  migrateV35,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -334,6 +335,54 @@ function migrateV34(db: Database.Database): void {
   db.exec(`
     ALTER TABLE app_settings ADD COLUMN pdf_template_json TEXT;
     INSERT INTO schema_version (version) VALUES (34);
+  `);
+}
+
+// V35: Earthwork takeoff. Existing/proposed elevation surfaces (spot
+// elevations -> a TIN for cut/fill against the terrain), plus two columns on
+// takeoff_areas so an area polygon can double as a proposed-grade region.
+// grade_mode NULL keeps the area as ordinary surface restoration (unchanged).
+//
+// takeoff_surfaces gets its own uuid column + autofill trigger to match the
+// sibling takeoff tables, but is deliberately kept out of UUID_TABLES: that
+// constant drives the historical v28 backfill loop, which would fail trying to
+// ALTER a table that doesn't exist yet on a fresh, sequential migration.
+function migrateV35(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_surfaces (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      kind        TEXT NOT NULL DEFAULT 'existing',   -- 'existing' | 'proposed'
+      name        TEXT NOT NULL DEFAULT '',
+      uuid        TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX idx_takeoff_surfaces_job ON takeoff_surfaces(job_id);
+    UPDATE takeoff_surfaces SET uuid = ${SQL_RANDOM_UUID} WHERE uuid IS NULL;
+    CREATE UNIQUE INDEX idx_takeoff_surfaces_uuid ON takeoff_surfaces(uuid);
+    CREATE TRIGGER trg_takeoff_surfaces_uuid AFTER INSERT ON takeoff_surfaces WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE takeoff_surfaces SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    CREATE TABLE takeoff_surface_points (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      surface_id  INTEGER NOT NULL REFERENCES takeoff_surfaces(id) ON DELETE CASCADE,
+      x           REAL NOT NULL,    -- PDF-native px (at scale=1)
+      y           REAL NOT NULL,
+      z_ft        REAL NOT NULL,    -- elevation, feet
+      pdf_page    INTEGER NOT NULL DEFAULT 1,
+      sort_order  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_takeoff_surface_points_surface
+      ON takeoff_surface_points(surface_id);
+
+    -- Proposed-grade regions: a takeoff_area with grade_mode set is earthwork.
+    ALTER TABLE takeoff_areas ADD COLUMN grade_mode TEXT;       -- 'cut_depth'|'fill_depth'|'finished_elev'
+    ALTER TABLE takeoff_areas ADD COLUMN grade_value_ft REAL;   -- depth, or finished elevation
+
+    INSERT INTO schema_version (version) VALUES (35);
   `);
 }
 

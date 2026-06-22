@@ -37,6 +37,8 @@ import type {
   SaveTakeoffAreaPayload,
   SaveTakeoffRunPayload,
   SaveTakeoffSettingsPayload,
+  SaveTakeoffSurfacePayload,
+  TakeoffSurfaceDTO,
   SaveTrenchProfilePayload,
   SqlRunResult,
   TakeoffAnnotationDTO,
@@ -178,6 +180,9 @@ declare global {
       listTakeoffAreas: (jobId: number) => Promise<TakeoffAreaDTO[]>;
       saveTakeoffArea: (area: SaveTakeoffAreaPayload) => Promise<{ id: number }>;
       deleteTakeoffArea: (id: number) => Promise<SqlRunResult>;
+      listTakeoffSurfaces: (jobId: number) => Promise<TakeoffSurfaceDTO[]>;
+      saveTakeoffSurface: (s: SaveTakeoffSurfacePayload) => Promise<{ id: number }>;
+      deleteTakeoffSurface: (id: number) => Promise<SqlRunResult>;
       exportTakeoffCsv: (jobId: number, csvContent: string) => Promise<FileExportResult>;
       replaceTakeoffState: (jobId: number, state: TakeoffStateSnapshot) => Promise<{ success: boolean }>;
       listTakeoffAnnotations: (jobId: number) => Promise<TakeoffAnnotationDTO[]>;
