@@ -28,6 +28,11 @@ import { EditVertexDialog } from './EditVertexDialog';
 import { RunProfileView } from './RunProfileView';
 import type { TakeoffJobSettings, PdfPoint, ContextMenuState } from './types';
 
+// three.js / R3F is heavy and only needed when the 3D toggle is used, so it's
+// code-split out of the main takeoff bundle and loaded on first 3D view.
+const Trench3DView = React.lazy(() =>
+  import('./Trench3DView').then((m) => ({ default: m.Trench3DView })));
+
 interface PlanTakeoffProps {
   jobId: number;
   onBack: () => void;
@@ -61,6 +66,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [editingVertex, setEditingVertex] = useState<{ runId: number; vertexIndex: number } | null>(null);
   const [profileRunId, setProfileRunId] = useState<number | null>(null);
+  const [profileMode, setProfileMode] = useState<'2d' | '3d'>('2d');
 
   // -- Item placement via context menu --
   const [pendingItemPlacement, setPendingItemPlacement] = useState<{ runId: number | null; point: PdfPoint; pipeSizeIn?: number } | null>(null);
@@ -1401,8 +1407,28 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         return (
           <div className="modal-overlay" onClick={() => setProfileRunId(null)}>
             <div className="modal" style={{ maxWidth: 960, width: '92vw' }} onClick={(e) => e.stopPropagation()}>
-              <h3>Profile — {run.label || 'Untitled Run'}</h3>
-              <RunProfileView run={run} scalePxPerFt={pageScalePxPerFt} />
+              <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+                <h3 style={{ margin: 0 }}>
+                  {profileMode === '3d' ? '3D View' : 'Profile'} — {run.label || 'Untitled Run'}
+                </h3>
+                <div className="flex gap-8" role="group" aria-label="Profile view mode">
+                  <button
+                    className={`btn btn-sm ${profileMode === '2d' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setProfileMode('2d')}
+                  >2D Profile</button>
+                  <button
+                    className={`btn btn-sm ${profileMode === '3d' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setProfileMode('3d')}
+                  >3D View</button>
+                </div>
+              </div>
+              {profileMode === '3d'
+                ? (
+                  <React.Suspense fallback={<p className="text-muted" style={{ padding: 24 }}>Loading 3D view…</p>}>
+                    <Trench3DView run={run} scalePxPerFt={pageScalePxPerFt} />
+                  </React.Suspense>
+                )
+                : <RunProfileView run={run} scalePxPerFt={pageScalePxPerFt} />}
               <div className="modal-actions">
                 <button className="btn btn-secondary" onClick={() => setProfileRunId(null)}>Close</button>
               </div>
