@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import crypto from 'crypto';
 import { app } from 'electron';
-import { TRADE_SEED_DATA, TradeType } from '../shared/constants/seed-data';
+import { TRADE_SEED_DATA, TradeType, SeedAssembly } from '../shared/constants/seed-data';
 
 /**
  * Tables that get a stable `uuid` column in migration v28. Catalog rows sync
@@ -171,6 +171,44 @@ export function seedDatabase(
         name, equip.category, equip.hourlyRate, equip.mobilization, equip.isOwned ? 1 : 0,
         equip.notes, seedUuid('equipment', name)
       );
+    }
+
+    // Starter assemblies. These are material-only bundles (labor/equipment are
+    // left for the estimator to attach via crew/production rates), seeded with
+    // deterministic uuids so they re-seed idempotently and carry stable
+    // identity across installs for cloud sync. Items resolve to this machine's
+    // material ids through each material's own seed uuid.
+    const assemblyMap = new Map<string, SeedAssembly>();
+    for (const tradeKey of trades) {
+      for (const asm of TRADE_SEED_DATA[tradeKey]?.assemblies ?? []) {
+        if (!assemblyMap.has(asm.name)) assemblyMap.set(asm.name, asm);
+      }
+    }
+    if (assemblyMap.size > 0) {
+      const insertAssembly = db.prepare(
+        'INSERT OR IGNORE INTO assemblies (name, description, unit, notes, uuid) VALUES (?, ?, ?, ?, ?)'
+      );
+      const insertAssemblyItem = db.prepare(
+        'INSERT OR IGNORE INTO assembly_items (assembly_id, material_id, quantity, uuid) VALUES (?, ?, ?, ?)'
+      );
+      const materialIdByUuid = new Map(
+        (db.prepare('SELECT id, uuid FROM materials').all() as { id: number; uuid: string }[])
+          .map((r) => [r.uuid, r.id])
+      );
+      for (const asm of assemblyMap.values()) {
+        const asmUuid = seedUuid('assemblies', asm.name);
+        insertAssembly.run(asm.name, asm.description, asm.unit, asm.notes ?? null, asmUuid);
+        const asmId = (db.prepare('SELECT id FROM assemblies WHERE uuid = ?').get(asmUuid) as any)?.id;
+        if (!asmId) continue;
+        for (const item of asm.items) {
+          const matId = materialIdByUuid.get(seedUuid('materials', `${item.category}/${item.name}`));
+          if (!matId) continue; // material from an unselected trade — skip
+          insertAssemblyItem.run(
+            asmId, matId, item.quantity,
+            seedUuid('assembly_items', `${asm.name}/${item.category}/${item.name}`)
+          );
+        }
+      }
     }
 
     // Get current schema version to suppress backup reminder on fresh installs

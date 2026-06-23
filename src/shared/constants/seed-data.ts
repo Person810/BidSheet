@@ -20,6 +20,27 @@ export interface TradeSeedData {
   materials: SeedMaterial[];
   laborRoles: { name: string; rate: number; burden: number; notes: string }[];
   equipment: { name: string; category: string; hourlyRate: number; mobilization: number; isOwned: boolean; notes: string }[];
+  /** Optional starter assemblies; each item references a seed material by its
+   * own category + name (the same key seed materials are keyed on). */
+  assemblies?: SeedAssembly[];
+}
+
+export interface SeedAssemblyItem {
+  /** Category of the referenced seed material, e.g. 'Ready-Mix Concrete'. */
+  category: string;
+  /** Name of the referenced seed material, e.g. '3500 PSI Mix'. */
+  name: string;
+  /** Material quantity consumed per one unit of the assembly. */
+  quantity: number;
+}
+
+export interface SeedAssembly {
+  name: string;
+  description: string;
+  /** Unit the assembly is measured/sold in (EA, SY, LF, CY, ...). */
+  unit: string;
+  notes?: string;
+  items: SeedAssemblyItem[];
 }
 
 export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
@@ -417,6 +438,35 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { name: 'Fusion Machine (HDPE)', category: 'Specialty', hourlyRate: 25.00, mobilization: 100.00, isOwned: true, notes: 'McElroy butt fusion machine' },
       { name: 'Concrete Saw (walk-behind)', category: 'Saw', hourlyRate: 15.00, mobilization: 0, isOwned: true, notes: 'Flat saw for pavement cuts' },
     ],
+    assemblies: [
+      {
+        name: '48" Sanitary Manhole, 6\' Deep (per EA)',
+        description: 'Precast 48" base, eccentric cone, grade rings, steps, boots, and traffic-rated frame & cover',
+        unit: 'EA',
+        notes: 'Add excavation/backfill and setting crew separately; deepen with riser sections as needed.',
+        items: [
+          { category: 'Manholes', name: '48" Precast MH Base (6\' depth)', quantity: 1 },
+          { category: 'Manholes', name: 'Eccentric Cone (48")', quantity: 1 },
+          { category: 'Manholes', name: 'Grade Ring (flat)', quantity: 2 },
+          { category: 'Manholes', name: 'MH Frame & Cover (standard)', quantity: 1 },
+          { category: 'Manholes', name: 'MH Steps (polypropylene)', quantity: 4 },
+          { category: 'Manholes', name: 'Boot Seal (flexible connector)', quantity: 2 },
+          { category: 'Manholes', name: 'Butyl Sealant (per roll)', quantity: 2 },
+        ],
+      },
+      {
+        name: 'Manhole Frame, Cover & Grade Ring Set (per EA)',
+        description: 'Ring-and-cover set with grade rings and butyl for setting or adjusting a manhole to grade',
+        unit: 'EA',
+        notes: 'Adjustment/build-up set — pairs with paving or concrete collar work.',
+        items: [
+          { category: 'Manholes', name: 'MH Frame & Cover (standard)', quantity: 1 },
+          { category: 'Manholes', name: 'Grade Ring (flat)', quantity: 2 },
+          { category: 'Manholes', name: 'Grade Ring (eccentric)', quantity: 1 },
+          { category: 'Manholes', name: 'Butyl Sealant (per roll)', quantity: 1 },
+        ],
+      },
+    ],
   },
 
   // ================================================================
@@ -642,6 +692,18 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { name: 'Lowboy Trailer', category: 'Transport', hourlyRate: 65.00, mobilization: 0, isOwned: true, notes: 'Equipment transport' },
       { name: 'Concrete Saw', category: 'Saw', hourlyRate: 15.00, mobilization: 0, isOwned: true, notes: 'Walk-behind flat saw' },
       { name: 'Water Truck', category: 'Truck', hourlyRate: 55.00, mobilization: 150.00, isOwned: true, notes: 'Dust control and compaction' },
+    ],
+    assemblies: [
+      {
+        name: 'Curb Inlet Catch Basin with Grate (per EA)',
+        description: 'Precast curb inlet structure with traffic-rated (H-20) grate and frame',
+        unit: 'EA',
+        notes: 'Add excavation/backfill and setting crew separately.',
+        items: [
+          { category: 'Structures', name: 'Curb Inlet (precast, standard)', quantity: 1 },
+          { category: 'Structures', name: 'Grate & Frame (heavy duty, H-20)', quantity: 1 },
+        ],
+      },
     ],
   },
 
@@ -1076,6 +1138,73 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { name: 'Walk-Behind Concrete Saw', category: 'Sawing', hourlyRate: 22.00, mobilization: 100.00, isOwned: true, notes: 'Wet saw for full-depth cuts' },
       { name: 'Skid Steer', category: 'Loader', hourlyRate: 45.00, mobilization: 250.00, isOwned: true, notes: 'Grading, hauling, subbase' },
       { name: 'Plate Compactor', category: 'Compactor', hourlyRate: 8.00, mobilization: 0, isOwned: true, notes: 'Subbase compaction' },
+    ],
+    // Quantities are per one unit of the assembly (e.g. per SY of slab) and
+    // already fold in a typical waste allowance, since assembly expansion
+    // multiplies them straight through without a separate waste markup.
+    assemblies: [
+      {
+        name: '4" Slab on Grade (per SY)',
+        description: 'Unreinforced 4" slab with mesh, vapor barrier, and cure — per square yard',
+        unit: 'SY',
+        notes: 'Add a crew/production rate for placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '3500 PSI Mix', quantity: 0.12 },
+          { category: 'Reinforcement', name: '6x6 W2.9xW2.9 Welded Wire Mesh', quantity: 10 },
+          { category: 'Vapor Barrier & Underlayment', name: 'Vapor Barrier (10 mil, per SF)', quantity: 10 },
+          { category: 'Curing & Finishing', name: 'Curing Compound (5 gal)', quantity: 0.008 },
+        ],
+      },
+      {
+        name: '6" Reinforced Slab on Grade (per SY)',
+        description: 'Heavy-duty 6" slab, #4 rebar grid at 18" o.c., 15 mil vapor barrier — per square yard',
+        unit: 'SY',
+        notes: 'Add a crew/production rate for placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Mix', quantity: 0.18 },
+          { category: 'Reinforcement', name: '#4 Rebar (Grade 60)', quantity: 16 },
+          { category: 'Reinforcement', name: 'Rebar Chair (plastic, 3")', quantity: 3 },
+          { category: 'Vapor Barrier & Underlayment', name: 'Vapor Barrier (15 mil, per SF)', quantity: 10 },
+          { category: 'Curing & Finishing', name: 'Curing Compound (5 gal)', quantity: 0.008 },
+        ],
+      },
+      {
+        name: '4" Sidewalk (per SY)',
+        description: 'Fiber-reinforced sidewalk on stone base with edge forms and joints — per square yard',
+        unit: 'SY',
+        notes: 'Add a crew/production rate for forming, placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Fiber-Reinforced Mix', quantity: 0.12 },
+          { category: 'Subbase & Aggregate', name: 'Crushed Stone Base (#57, per TON)', quantity: 0.16 },
+          { category: 'Formwork', name: '2x4 Form Lumber', quantity: 1 },
+          { category: 'Joints & Sealants', name: 'Expansion Joint Filler (1/2" x 4")', quantity: 0.4 },
+          { category: 'Curing & Finishing', name: 'Curing Compound (5 gal)', quantity: 0.008 },
+        ],
+      },
+      {
+        name: 'Curb & Gutter (per LF)',
+        description: 'Standard 24" curb & gutter on stone base, 2 continuous #4 bars — per linear foot',
+        unit: 'LF',
+        notes: 'Add a crew/production rate for forming, placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Mix', quantity: 0.06 },
+          { category: 'Reinforcement', name: '#4 Rebar (Grade 60)', quantity: 2 },
+          { category: 'Formwork', name: '2x6 Form Lumber', quantity: 2 },
+          { category: 'Subbase & Aggregate', name: 'Crushed Stone Base (#57, per TON)', quantity: 0.05 },
+        ],
+      },
+      {
+        name: 'Continuous Footing 24"x12" (per LF)',
+        description: 'Cast-in-place wall footing, 4 continuous #5 bars and side forms — per linear foot',
+        unit: 'LF',
+        notes: 'Add a crew/production rate for forming & placing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Mix', quantity: 0.08 },
+          { category: 'Reinforcement', name: '#5 Rebar (Grade 60)', quantity: 4 },
+          { category: 'Formwork', name: '2x8 Form Lumber', quantity: 2 },
+          { category: 'Reinforcement', name: 'Rebar Chair (plastic, 3")', quantity: 1 },
+        ],
+      },
     ],
   },
 };
