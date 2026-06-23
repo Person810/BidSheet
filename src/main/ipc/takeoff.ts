@@ -505,7 +505,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       heightFt: w.height_ft,
       thicknessIn: w.thickness_in,
       faces: w.faces,
-      rebarSpacingIn: w.rebar_spacing_in,
+      memberSpacingIn: w.member_spacing_in,
       materialId: w.material_id,
       assemblyId: w.assembly_id,
       color: w.color,
@@ -520,22 +520,22 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       if (wall.id && wall.id > 0) {
         db.prepare(`
           UPDATE takeoff_walls SET
-            label = ?, height_ft = ?, thickness_in = ?, faces = ?, rebar_spacing_in = ?,
+            label = ?, height_ft = ?, thickness_in = ?, faces = ?, member_spacing_in = ?,
             material_id = ?, assembly_id = ?, color = ?, sort_order = ?, pdf_page = ?,
             updated_at = datetime('now','localtime')
           WHERE id = ?
         `).run(
-          wall.label, wall.heightFt, wall.thicknessIn, wall.faces, wall.rebarSpacingIn ?? 0,
+          wall.label, wall.heightFt, wall.thicknessIn, wall.faces, wall.memberSpacingIn ?? 0,
           wall.materialId ?? null, wall.assemblyId ?? null, wall.color, wall.sortOrder ?? 0, wall.pdfPage, wall.id
         );
         wallId = wall.id;
       } else {
         const result = db.prepare(`
           INSERT INTO takeoff_walls
-            (job_id, label, height_ft, thickness_in, faces, rebar_spacing_in, material_id, assembly_id, color, sort_order, pdf_page)
+            (job_id, label, height_ft, thickness_in, faces, member_spacing_in, material_id, assembly_id, color, sort_order, pdf_page)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          wall.jobId, wall.label, wall.heightFt, wall.thicknessIn, wall.faces, wall.rebarSpacingIn ?? 0,
+          wall.jobId, wall.label, wall.heightFt, wall.thicknessIn, wall.faces, wall.memberSpacingIn ?? 0,
           wall.materialId ?? null, wall.assemblyId ?? null, wall.color, wall.sortOrder ?? 0, wall.pdfPage
         );
         wallId = Number(result.lastInsertRowid);
@@ -725,7 +725,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       });
 
       const insertWall = db.prepare(
-        `INSERT INTO takeoff_walls (id, job_id, label, height_ft, thickness_in, faces, rebar_spacing_in, material_id, assembly_id, color, sort_order, pdf_page)
+        `INSERT INTO takeoff_walls (id, job_id, label, height_ft, thickness_in, faces, member_spacing_in, material_id, assembly_id, color, sort_order, pdf_page)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const insertWallPt = db.prepare(
@@ -734,7 +734,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       (state.walls || []).forEach((w: any, idx: number) => {
         if (w.id <= 0) return;
         insertWall.run(w.id, jobId, w.label, w.heightFt, w.thicknessIn, w.faces,
-          w.rebarSpacingIn ?? 0, w.materialId ?? null, w.assemblyId ?? null, w.color, idx, w.pdfPage);
+          w.memberSpacingIn ?? 0, w.materialId ?? null, w.assemblyId ?? null, w.color, idx, w.pdfPage);
         (w.points || []).forEach((pt: any, i: number) => {
           insertWallPt.run(w.id, pt.x, pt.y, i);
         });

@@ -509,7 +509,7 @@ function WallDetail({ wall, scalePxPerFt, isActive, onEdit, onDelete }: {
   const lengthLF = computeRunLengthLF(wall.points, scalePxPerFt);
   const q = computeWallQuantities({
     lengthLF, heightFt: wall.heightFt, thicknessIn: wall.thicknessIn,
-    faces: wall.faces, rebarSpacingIn: wall.rebarSpacingIn,
+    faces: wall.faces, memberSpacingIn: wall.memberSpacingIn,
   });
 
   return (
@@ -528,9 +528,11 @@ function WallDetail({ wall, scalePxPerFt, isActive, onEdit, onDelete }: {
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <tbody>
           <QtyRow label="Length" value={`${fmt(lengthLF)} LF`} />
-          <QtyRow label="Concrete" value={`${q.concreteCY.toFixed(2)} CY`} />
-          <QtyRow label="Formwork" value={`${Math.round(q.formSFCA).toLocaleString()} SFCA`} />
-          {q.rebarLF > 0 && <QtyRow label="Rebar" value={`${Math.round(q.rebarLF).toLocaleString()} LF`} />}
+          <QtyRow label="Surface area" value={`${Math.round(q.surfaceSF).toLocaleString()} SF`} />
+          <QtyRow label="Volume" value={`${q.volumeCY.toFixed(2)} CY`} />
+          {q.memberCount > 0 && (
+            <QtyRow label="Members" value={`${q.memberCount} @ ${fmt(q.memberLF)} LF`} />
+          )}
         </tbody>
       </table>
       {!isActive && (

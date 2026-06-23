@@ -1,6 +1,7 @@
 import type { TakeoffWall } from './types';
 import { computeRunLengthLF, ftToInches, loadPageScaleMap } from './takeoffUtils';
 import { computeWallQuantities } from './wallTakeoff';
+import { squareFeetToYards } from '../../../../shared/constants/units';
 import { buildAssemblyLineItems } from '../../../../shared/assemblyExpansion';
 import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
 
@@ -8,21 +9,35 @@ interface WallGroup {
   heightFt: number;
   thicknessIn: number;
   faces: number;
-  rebarSpacingIn: number;
+  memberSpacingIn: number;
   materialId: number | null;
   assemblyId: number | null;
   totalLF: number;
-  concreteCY: number;
-  formSFCA: number;
-  rebarLF: number;
+  surfaceSF: number;
+  volumeCY: number;
+  memberLF: number;
   labels: string[];
+}
+
+/** Pick the quantity that matches a catalog/assembly unit. Defaults to LF. */
+function measureForUnit(unit: string | null | undefined, g: WallGroup): number {
+  switch ((unit || '').trim().toUpperCase()) {
+    case 'SF': return g.surfaceSF;
+    case 'SY': return squareFeetToYards(g.surfaceSF);
+    case 'CY':
+    case 'CYD': return g.volumeCY;
+    case 'LF':
+    default: return g.totalLF;
+  }
 }
 
 /**
  * Groups measured wall runs by their config and creates bid line items in a
- * "Concrete Walls" section. Each group either expands a linked assembly (per
- * LF of wall) or emits concrete (CY) + formwork (SFCA) + rebar (LF) lines.
- * Walls on uncalibrated pages are skipped. Returns the line-item count.
+ * "Walls" section. Trade-agnostic: a linked assembly expands by the measure
+ * matching its unit, a linked material bills in its own unit, and an unlinked
+ * wall produces a length line (with surface area + volume noted) plus a
+ * vertical-members line when a member spacing is set. Walls on uncalibrated
+ * pages are skipped. Returns the line-item count.
  */
 export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promise<number> {
   const valid = walls.filter((w) => w.points.length >= 2);
@@ -41,29 +56,29 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
       heightFt: wall.heightFt,
       thicknessIn: wall.thicknessIn,
       faces: wall.faces,
-      rebarSpacingIn: wall.rebarSpacingIn,
+      memberSpacingIn: wall.memberSpacingIn,
     });
 
-    const key = `${ftToInches(wall.heightFt)}|${wall.thicknessIn}|${wall.faces}|${wall.rebarSpacingIn}|${wall.materialId ?? ''}|${wall.assemblyId ?? ''}`;
+    const key = `${ftToInches(wall.heightFt)}|${wall.thicknessIn}|${wall.faces}|${wall.memberSpacingIn}|${wall.materialId ?? ''}|${wall.assemblyId ?? ''}`;
     const g = groups.get(key);
     if (g) {
       g.totalLF += q.lengthLF;
-      g.concreteCY += q.concreteCY;
-      g.formSFCA += q.formSFCA;
-      g.rebarLF += q.rebarLF;
+      g.surfaceSF += q.surfaceSF;
+      g.volumeCY += q.volumeCY;
+      g.memberLF += q.memberLF;
       if (wall.label) g.labels.push(wall.label);
     } else {
       groups.set(key, {
         heightFt: wall.heightFt,
         thicknessIn: wall.thicknessIn,
         faces: wall.faces,
-        rebarSpacingIn: wall.rebarSpacingIn,
+        memberSpacingIn: wall.memberSpacingIn,
         materialId: wall.materialId,
         assemblyId: wall.assemblyId,
         totalLF: q.lengthLF,
-        concreteCY: q.concreteCY,
-        formSFCA: q.formSFCA,
-        rebarLF: q.rebarLF,
+        surfaceSF: q.surfaceSF,
+        volumeCY: q.volumeCY,
+        memberLF: q.memberLF,
         labels: wall.label ? [wall.label] : [],
       });
     }
@@ -80,7 +95,7 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
   const sections: any[] = await window.api.getBidSections(jobId);
   const sectionResult = await window.api.saveBidSection({
     jobId,
-    name: 'Concrete Walls',
+    name: 'Walls',
     sortOrder: sections.length,
   });
   const sectionId = sectionResult.id;
@@ -93,11 +108,13 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
     const dims = `${g.heightFt}' H x ${g.thicknessIn}" thk`;
     const labelSuffix = g.labels.length ? ` (${g.labels.join('; ')})` : ' (from plan takeoff)';
 
-    // Assembly-linked walls expand per LF of wall — the contractor's wall
-    // assembly encodes their own forming method and height.
+    // Assembly-linked walls expand by the measure matching the assembly's
+    // unit — LF of wall, SF of surface, or CY of volume — so the contractor's
+    // own wall assembly (concrete, framed, masonry) drives the breakdown.
     const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
     if (assembly) {
-      const payloads = buildAssemblyLineItems(assembly, round1(g.totalLF), crews, labelSuffix);
+      const qty = round1(measureForUnit(assembly.unit, g));
+      const payloads = buildAssemblyLineItems(assembly, qty, crews, labelSuffix);
       for (const payload of payloads) {
         await window.api.saveBidLineItem({ sectionId, jobId, sortOrder: sortOrder++, ...payload });
       }
@@ -105,49 +122,55 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
       continue;
     }
 
+    const noteParts = [
+      'From plan takeoff',
+      `${round1(g.totalLF)} LF wall, ${dims}`,
+      g.surfaceSF > 0 ? `${Math.round(g.surfaceSF)} SF surface (${g.faces} face${g.faces !== 1 ? 's' : ''})` : '',
+      g.volumeCY > 0 ? `${g.volumeCY.toFixed(2)} CY volume` : '',
+      g.memberLF > 0 ? `${round1(g.memberLF)} LF vertical members` : '',
+      g.labels.join('; '),
+    ].filter(Boolean);
+
+    // Material-linked walls bill in the material's own unit.
     const mat = g.materialId ? materials.find((m: any) => m.id === g.materialId) : null;
-    const noteBase = `From plan takeoff. ${round1(g.totalLF)} LF wall, ${dims}`;
-
-    // Concrete volume line — apply catalog pricing only when the material is
-    // priced per CY (anything else needs a manual unit the estimator controls).
-    const concreteUnitCost = mat && mat.unit === 'CY' ? mat.default_unit_cost : 0;
-    await window.api.saveBidLineItem(buildLineItemPayload({
-      sectionId,
-      jobId,
-      description: `Concrete Wall (${dims})`,
-      quantity: round1(g.concreteCY),
-      unit: 'CY',
-      sortOrder: sortOrder++,
-      materialId: g.materialId,
-      materialUnitCost: concreteUnitCost,
-      notes: [noteBase, g.labels.join('; '),
-        mat && mat.unit !== 'CY' ? `Material "${mat.name}" priced per ${mat.unit}, set unit cost manually` : '',
-      ].filter(Boolean).join('. '),
-    }));
-    createdCount += 1;
-
-    // Formwork contact area line
-    await window.api.saveBidLineItem(buildLineItemPayload({
-      sectionId,
-      jobId,
-      description: `Wall Formwork (${g.faces} face${g.faces !== 1 ? 's' : ''})`,
-      quantity: round1(g.formSFCA),
-      unit: 'SF',
-      sortOrder: sortOrder++,
-      notes: `${noteBase}. Square feet of contact area (SFCA)`,
-    }));
-    createdCount += 1;
-
-    // Rebar grid line (only when reinforced)
-    if (g.rebarLF > 0) {
+    if (mat) {
+      const qty = round1(measureForUnit(mat.unit, g));
       await window.api.saveBidLineItem(buildLineItemPayload({
         sectionId,
         jobId,
-        description: `Wall Rebar (${g.rebarSpacingIn}" o.c. each way)`,
-        quantity: round1(g.rebarLF),
+        description: `Wall — ${mat.name} (${dims})`,
+        quantity: qty,
+        unit: mat.unit,
+        sortOrder: sortOrder++,
+        materialId: g.materialId,
+        materialUnitCost: mat.default_unit_cost ?? 0,
+        notes: noteParts.join('. '),
+      }));
+      createdCount += 1;
+    } else {
+      // No link: a generic length line carrying the other measures in notes.
+      await window.api.saveBidLineItem(buildLineItemPayload({
+        sectionId,
+        jobId,
+        description: `Wall (${dims})`,
+        quantity: round1(g.totalLF),
         unit: 'LF',
         sortOrder: sortOrder++,
-        notes: `${noteBase}. Grid over one wall face`,
+        notes: noteParts.join('. '),
+      }));
+      createdCount += 1;
+    }
+
+    // Vertical members (studs / bars / posts) as their own linear line.
+    if (g.memberLF > 0) {
+      await window.api.saveBidLineItem(buildLineItemPayload({
+        sectionId,
+        jobId,
+        description: `Wall vertical members (${g.memberSpacingIn}" o.c.)`,
+        quantity: round1(g.memberLF),
+        unit: 'LF',
+        sortOrder: sortOrder++,
+        notes: `From plan takeoff. ${dims}`,
       }));
       createdCount += 1;
     }

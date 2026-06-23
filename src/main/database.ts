@@ -237,6 +237,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV34,
   migrateV35,
   migrateV36,
+  migrateV37,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -467,6 +468,15 @@ function migrateV36(db: Database.Database): void {
     CREATE INDEX idx_takeoff_wall_points_wall ON takeoff_wall_points(wall_id);
 
     INSERT INTO schema_version (version) VALUES (36);
+  `);
+}
+
+// V37: generalize the wall tool beyond concrete — the per-face "rebar grid"
+// becomes a trade-agnostic vertical-member spacing (studs / bars / posts).
+function migrateV37(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE takeoff_walls RENAME COLUMN rebar_spacing_in TO member_spacing_in;
+    INSERT INTO schema_version (version) VALUES (37);
   `);
 }
 

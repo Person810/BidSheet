@@ -7,7 +7,7 @@ const DEFAULT_CONFIG: WallConfig = {
   heightFt: 8,
   thicknessIn: 8,
   faces: 2,
-  rebarSpacingIn: 0,
+  memberSpacingIn: 0,
   materialId: null,
   assemblyId: null,
 };
@@ -104,7 +104,7 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
 
         <div className="form-row">
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Formed faces</label>
+            <label className="form-label">Faces (finished / formed)</label>
             <select
               className="form-control"
               value={config.faces}
@@ -115,16 +115,17 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
             </select>
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Rebar spacing (in, 0 = none)</label>
+            <label className="form-label">Member spacing (in, 0 = none)</label>
             <input
-              type="number" className="form-control" value={config.rebarSpacingIn} min="0" step="1"
-              onChange={(e) => set('rebarSpacingIn', parseFloat(e.target.value) || 0)}
+              type="number" className="form-control" value={config.memberSpacingIn} min="0" step="1"
+              onChange={(e) => set('memberSpacingIn', parseFloat(e.target.value) || 0)}
             />
           </div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: -4, marginBottom: 12 }}>
-          Trace the wall along its length; Send to Bid uses length × height for concrete (CY)
-          and formwork (SFCA), plus a rebar grid when spacing is set.
+          Trace the wall along its length. Send to Bid uses length, height, and thickness for
+          surface area and volume; member spacing counts vertical members (studs, bars, posts).
+          Attach a material or assembly to set what's billed.
         </div>
 
         <div className="form-group">
@@ -133,24 +134,25 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
             items={assemblies}
             value={assemblyId}
             onSelect={(item) => setAssemblyId(item ? item.id : null)}
-            placeholder="Search assemblies (e.g. foundation wall per LF)"
+            placeholder="Search assemblies (e.g. wall per LF / SF / CY)"
           />
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Send to Bid expands the assembly (materials + labor + equipment) per LF of wall.
+            Send to Bid expands the assembly (materials + labor + equipment) by the measure
+            matching its unit — LF of wall, SF of surface, or CY of volume.
           </div>
         </div>
 
         {assemblyId == null && (
           <div className="form-group">
-            <label className="form-label">Concrete material (optional)</label>
+            <label className="form-label">Material (optional)</label>
             <FuzzyAutocomplete
               items={materials}
               value={materialId}
               onSelect={(item) => setMaterialId(item ? item.id : null)}
-              placeholder="Search material (e.g. 4000 PSI mix)"
+              placeholder="Search material (e.g. concrete mix, CMU, stud)"
             />
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              Link a CY-priced mix so the concrete line carries pricing.
+              The wall line bills in the material's unit — LF (length), SF/SY (surface), or CY (volume).
             </div>
           </div>
         )}

@@ -167,8 +167,10 @@ export interface AreaConfig {
 
 /**
  * A measured wall run — an open polyline traced on the plan with a height,
- * thickness, and formed-face count, so it expands to concrete volume, formwork
- * contact area (SFCA), and an optional rebar grid.
+ * thickness, and formed/finished-face count, so it expands to surface area,
+ * volume, and (optionally) a count of vertical members. Trade-agnostic: works
+ * for concrete, framing, masonry, etc. — the linked material/assembly defines
+ * what gets billed.
  *
  * ID convention: same as TakeoffRun (negative = local-only, positive = DB).
  */
@@ -178,8 +180,8 @@ export interface TakeoffWall {
   label: string;
   heightFt: number;
   thicknessIn: number;
-  faces: number;          // 1 or 2 formed faces
-  rebarSpacingIn: number; // 0 = none
+  faces: number;          // 1 or 2 finished/formed faces
+  memberSpacingIn: number; // vertical members (studs/bars/posts) o.c.; 0 = none
   materialId: number | null;
   assemblyId: number | null;
   color: string;
@@ -193,7 +195,7 @@ export interface WallConfig {
   heightFt: number;
   thicknessIn: number;
   faces: number;
-  rebarSpacingIn: number;
+  memberSpacingIn: number;
   materialId: number | null;
   assemblyId: number | null;
 }

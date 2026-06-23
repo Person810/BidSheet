@@ -1,21 +1,22 @@
 /**
- * Wall-run takeoff math. Pure functions — no React, no IPC.
+ * Wall-run takeoff math. Pure functions — no React, no IPC, no trade coupling.
  *
  * A wall is traced as an open polyline; its length comes from the page scale.
- * The plan view can't supply height or thickness, so those ride on the wall's
- * config. From length × height × thickness we get concrete volume, formwork
- * contact area (SFCA = face area × faces formed), and an optional rebar grid
- * laid over one wall face.
+ * The plan view can't supply height or thickness, so those — plus the number
+ * of finished/formed faces and an optional vertical-member spacing — ride on
+ * the wall's config. Outputs are deliberately generic so the tool serves any
+ * wall trade: cast-in-place concrete, stud framing, masonry, etc. "Members"
+ * are the vertical pieces spaced along the run (studs, bars, posts, furring).
  */
 import { cubicFeetToYards, inchesToFeet } from '../../../../shared/constants/units';
-import { rebarGridLF } from '../../concrete/concreteCalc';
 
 export interface WallQuantities {
-  lengthLF: number;
-  faceSF: number;     // one-face area, length × height
-  concreteCY: number; // length × height × thickness
-  formSFCA: number;   // faceSF × faces formed
-  rebarLF: number;    // grid over one face (0 when spacing is 0)
+  lengthLF: number;    // measured run length
+  faceSF: number;      // one face, length × height
+  surfaceSF: number;   // faceSF × faces (forms / sheathing / finish / cladding)
+  volumeCY: number;    // length × height × thickness (solid walls)
+  memberCount: number; // vertical members at spacing (0 = none)
+  memberLF: number;    // memberCount × height
 }
 
 export function computeWallQuantities(args: {
@@ -23,16 +24,25 @@ export function computeWallQuantities(args: {
   heightFt: number;
   thicknessIn: number;
   faces: number;
-  rebarSpacingIn: number;
+  memberSpacingIn: number;
 }): WallQuantities {
-  const { lengthLF, heightFt, thicknessIn, faces, rebarSpacingIn } = args;
+  const { lengthLF, heightFt, thicknessIn, faces, memberSpacingIn } = args;
   const faceSF = lengthLF * heightFt;
-  const concreteCF = faceSF * inchesToFeet(thicknessIn);
+  const volumeCF = faceSF * inchesToFeet(thicknessIn);
+
+  // Vertical members spaced along the run, each one full wall height. Count is
+  // the number of spacing intervals plus the closing member.
+  const spacingFt = inchesToFeet(memberSpacingIn);
+  const memberCount = memberSpacingIn > 0 && lengthLF > 0
+    ? Math.floor(lengthLF / spacingFt) + 1
+    : 0;
+
   return {
     lengthLF,
     faceSF,
-    concreteCY: cubicFeetToYards(concreteCF),
-    formSFCA: faceSF * faces,
-    rebarLF: rebarSpacingIn > 0 ? rebarGridLF(faceSF, rebarSpacingIn) : 0,
+    surfaceSF: faceSF * faces,
+    volumeCY: cubicFeetToYards(volumeCF),
+    memberCount,
+    memberLF: memberCount * heightFt,
   };
 }
