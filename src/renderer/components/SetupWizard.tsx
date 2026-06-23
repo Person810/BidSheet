@@ -13,6 +13,7 @@ const TRADES = [
   { key: 'gas', label: 'Gas', desc: 'Natural gas main and service installation' },
   { key: 'electrical', label: 'Electrical / Conduit', desc: 'Underground conduit, duct bank, pull boxes' },
   { key: 'telecom', label: 'Telecommunications / Fiber', desc: 'Fiber optic, copper, telecom underground plant' },
+  { key: 'concrete', label: 'Concrete', desc: 'Slabs, flatwork, footings, walls, formwork, and finishing' },
 ];
 
 export function SetupWizard({ onComplete }: SetupWizardProps) {
