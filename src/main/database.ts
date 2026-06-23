@@ -78,138 +78,7 @@ export function seedDatabase(
   localOnlyMode = false
 ): void {
   const seed = db.transaction(() => {
-    const categoryMap = new Map<string, string>();
-    const allMaterials: { category: string; name: string; unit: string; price: number; description?: string; aliases?: string }[] = [];
-    const laborMap = new Map<string, { rate: number; burden: number; notes: string }>();
-    const equipmentMap = new Map<string, { category: string; hourlyRate: number; mobilization: number; isOwned: boolean; notes: string }>();
-
-    for (const tradeKey of trades) {
-      const trade = TRADE_SEED_DATA[tradeKey];
-      if (!trade) continue;
-
-      for (const cat of trade.categories) {
-        if (!categoryMap.has(cat.name)) {
-          categoryMap.set(cat.name, cat.description);
-        }
-      }
-
-      for (const mat of trade.materials) {
-        if (!allMaterials.some((m) => m.name === mat.name && m.category === mat.category)) {
-          allMaterials.push({
-            category: mat.category,
-            name: mat.name,
-            unit: mat.unit,
-            price: includeBallparkPrices ? mat.ballparkPrice : 0,
-            description: mat.description,
-            aliases: mat.aliases,
-          });
-        }
-      }
-
-      for (const role of trade.laborRoles) {
-        if (!laborMap.has(role.name)) {
-          laborMap.set(role.name, { rate: role.rate, burden: role.burden, notes: role.notes });
-        }
-      }
-
-      for (const equip of trade.equipment) {
-        if (!equipmentMap.has(equip.name)) {
-          equipmentMap.set(equip.name, {
-            category: equip.category,
-            hourlyRate: equip.hourlyRate,
-            mobilization: equip.mobilization,
-            isOwned: equip.isOwned,
-            notes: equip.notes,
-          });
-        }
-      }
-    }
-
-    // Seed rows carry deterministic UUIDs (seedUuid) so the same sample
-    // item has the same identity on every install — cross-install catalog
-    // references in synced jobs resolve out of the box.
-    const insertCat = db.prepare(
-      'INSERT OR IGNORE INTO material_categories (name, description, is_seed, uuid) VALUES (?, ?, 1, ?)'
-    );
-    for (const [name, desc] of categoryMap) {
-      insertCat.run(name, desc, seedUuid('material_categories', name));
-    }
-
-    const catRows = db.prepare('SELECT id, name FROM material_categories').all() as { id: number; name: string }[];
-    const catIdByName = new Map(catRows.map((r) => [r.name, r.id]));
-
-    // OR IGNORE: the deterministic uuid makes re-seeding a no-op instead of
-    // a duplicate row (or, post-v28, a unique-constraint crash).
-    const insertMat = db.prepare(
-      'INSERT OR IGNORE INTO materials (category_id, name, description, unit, default_unit_cost, aliases, is_seed, uuid) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
-    );
-    for (const mat of allMaterials) {
-      const catId = catIdByName.get(mat.category);
-      if (catId) {
-        insertMat.run(
-          catId, mat.name, mat.description || null, mat.unit, mat.price, mat.aliases || null,
-          seedUuid('materials', `${mat.category}/${mat.name}`)
-        );
-      }
-    }
-
-    // Seeded TON aggregates get ballpark densities for CY conversion
-    applyDefaultDensities(db);
-
-    const insertRole = db.prepare(
-      'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, is_seed, uuid) VALUES (?, ?, ?, ?, 1, ?)'
-    );
-    for (const [name, role] of laborMap) {
-      insertRole.run(name, role.rate, role.burden, role.notes, seedUuid('labor_roles', name));
-    }
-
-    const insertEquip = db.prepare(
-      'INSERT OR IGNORE INTO equipment (name, category, hourly_rate, mobilization_cost, is_owned, notes, is_seed, uuid) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
-    );
-    for (const [name, equip] of equipmentMap) {
-      insertEquip.run(
-        name, equip.category, equip.hourlyRate, equip.mobilization, equip.isOwned ? 1 : 0,
-        equip.notes, seedUuid('equipment', name)
-      );
-    }
-
-    // Starter assemblies. These are material-only bundles (labor/equipment are
-    // left for the estimator to attach via crew/production rates), seeded with
-    // deterministic uuids so they re-seed idempotently and carry stable
-    // identity across installs for cloud sync. Items resolve to this machine's
-    // material ids through each material's own seed uuid.
-    const assemblyMap = new Map<string, SeedAssembly>();
-    for (const tradeKey of trades) {
-      for (const asm of TRADE_SEED_DATA[tradeKey]?.assemblies ?? []) {
-        if (!assemblyMap.has(asm.name)) assemblyMap.set(asm.name, asm);
-      }
-    }
-    if (assemblyMap.size > 0) {
-      const insertAssembly = db.prepare(
-        'INSERT OR IGNORE INTO assemblies (name, description, unit, notes, uuid) VALUES (?, ?, ?, ?, ?)'
-      );
-      const insertAssemblyItem = db.prepare(
-        'INSERT OR IGNORE INTO assembly_items (assembly_id, material_id, quantity, uuid) VALUES (?, ?, ?, ?)'
-      );
-      const materialIdByUuid = new Map(
-        (db.prepare('SELECT id, uuid FROM materials').all() as { id: number; uuid: string }[])
-          .map((r) => [r.uuid, r.id])
-      );
-      for (const asm of assemblyMap.values()) {
-        const asmUuid = seedUuid('assemblies', asm.name);
-        insertAssembly.run(asm.name, asm.description, asm.unit, asm.notes ?? null, asmUuid);
-        const asmId = (db.prepare('SELECT id FROM assemblies WHERE uuid = ?').get(asmUuid) as any)?.id;
-        if (!asmId) continue;
-        for (const item of asm.items) {
-          const matId = materialIdByUuid.get(seedUuid('materials', `${item.category}/${item.name}`));
-          if (!matId) continue; // material from an unselected trade — skip
-          insertAssemblyItem.run(
-            asmId, matId, item.quantity,
-            seedUuid('assembly_items', `${asm.name}/${item.category}/${item.name}`)
-          );
-        }
-      }
-    }
+    seedTradeCatalog(db, trades, includeBallparkPrices);
 
     // Get current schema version to suppress backup reminder on fresh installs
     const schemaVersion = (db.prepare('SELECT MAX(version) as v FROM schema_version').get() as any)?.v ?? 0;
@@ -220,6 +89,180 @@ export function seedDatabase(
   });
 
   seed();
+}
+
+/**
+ * Seed the catalog (categories, materials, labor, equipment, assemblies) for
+ * the given trades. PURELY ADDITIVE: every write is `INSERT OR IGNORE` keyed
+ * on a deterministic seed uuid, so rows the user has already edited (prices,
+ * densities, etc.) are never updated or deleted — re-seeding a trade is a
+ * no-op for anything that already exists. Caller must wrap this in a
+ * transaction (seedDatabase and addTradeCatalog both do).
+ */
+export function seedTradeCatalog(
+  db: Database.Database,
+  trades: TradeType[],
+  includeBallparkPrices: boolean
+): void {
+  const categoryMap = new Map<string, string>();
+  const allMaterials: { category: string; name: string; unit: string; price: number; description?: string; aliases?: string }[] = [];
+  const laborMap = new Map<string, { rate: number; burden: number; notes: string }>();
+  const equipmentMap = new Map<string, { category: string; hourlyRate: number; mobilization: number; isOwned: boolean; notes: string }>();
+
+  for (const tradeKey of trades) {
+    const trade = TRADE_SEED_DATA[tradeKey];
+    if (!trade) continue;
+
+    for (const cat of trade.categories) {
+      if (!categoryMap.has(cat.name)) {
+        categoryMap.set(cat.name, cat.description);
+      }
+    }
+
+    for (const mat of trade.materials) {
+      if (!allMaterials.some((m) => m.name === mat.name && m.category === mat.category)) {
+        allMaterials.push({
+          category: mat.category,
+          name: mat.name,
+          unit: mat.unit,
+          price: includeBallparkPrices ? mat.ballparkPrice : 0,
+          description: mat.description,
+          aliases: mat.aliases,
+        });
+      }
+    }
+
+    for (const role of trade.laborRoles) {
+      if (!laborMap.has(role.name)) {
+        laborMap.set(role.name, { rate: role.rate, burden: role.burden, notes: role.notes });
+      }
+    }
+
+    for (const equip of trade.equipment) {
+      if (!equipmentMap.has(equip.name)) {
+        equipmentMap.set(equip.name, {
+          category: equip.category,
+          hourlyRate: equip.hourlyRate,
+          mobilization: equip.mobilization,
+          isOwned: equip.isOwned,
+          notes: equip.notes,
+        });
+      }
+    }
+  }
+
+  // Seed rows carry deterministic UUIDs (seedUuid) so the same sample
+  // item has the same identity on every install — cross-install catalog
+  // references in synced jobs resolve out of the box.
+  const insertCat = db.prepare(
+    'INSERT OR IGNORE INTO material_categories (name, description, is_seed, uuid) VALUES (?, ?, 1, ?)'
+  );
+  for (const [name, desc] of categoryMap) {
+    insertCat.run(name, desc, seedUuid('material_categories', name));
+  }
+
+  const catRows = db.prepare('SELECT id, name FROM material_categories').all() as { id: number; name: string }[];
+  const catIdByName = new Map(catRows.map((r) => [r.name, r.id]));
+
+  // OR IGNORE: the deterministic uuid makes re-seeding a no-op instead of
+  // a duplicate row (or, post-v28, a unique-constraint crash).
+  const insertMat = db.prepare(
+    'INSERT OR IGNORE INTO materials (category_id, name, description, unit, default_unit_cost, aliases, is_seed, uuid) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
+  );
+  for (const mat of allMaterials) {
+    const catId = catIdByName.get(mat.category);
+    if (catId) {
+      insertMat.run(
+        catId, mat.name, mat.description || null, mat.unit, mat.price, mat.aliases || null,
+        seedUuid('materials', `${mat.category}/${mat.name}`)
+      );
+    }
+  }
+
+  // Seeded TON aggregates get ballpark densities for CY conversion
+  applyDefaultDensities(db);
+
+  const insertRole = db.prepare(
+    'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, is_seed, uuid) VALUES (?, ?, ?, ?, 1, ?)'
+  );
+  for (const [name, role] of laborMap) {
+    insertRole.run(name, role.rate, role.burden, role.notes, seedUuid('labor_roles', name));
+  }
+
+  const insertEquip = db.prepare(
+    'INSERT OR IGNORE INTO equipment (name, category, hourly_rate, mobilization_cost, is_owned, notes, is_seed, uuid) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
+  );
+  for (const [name, equip] of equipmentMap) {
+    insertEquip.run(
+      name, equip.category, equip.hourlyRate, equip.mobilization, equip.isOwned ? 1 : 0,
+      equip.notes, seedUuid('equipment', name)
+    );
+  }
+
+  // Starter assemblies. These are material-only bundles (labor/equipment are
+  // left for the estimator to attach via crew/production rates), seeded with
+  // deterministic uuids so they re-seed idempotently and carry stable
+  // identity across installs for cloud sync. Items resolve to this machine's
+  // material ids through each material's own seed uuid.
+  const assemblyMap = new Map<string, SeedAssembly>();
+  for (const tradeKey of trades) {
+    for (const asm of TRADE_SEED_DATA[tradeKey]?.assemblies ?? []) {
+      if (!assemblyMap.has(asm.name)) assemblyMap.set(asm.name, asm);
+    }
+  }
+  if (assemblyMap.size > 0) {
+    const insertAssembly = db.prepare(
+      'INSERT OR IGNORE INTO assemblies (name, description, unit, notes, uuid) VALUES (?, ?, ?, ?, ?)'
+    );
+    const insertAssemblyItem = db.prepare(
+      'INSERT OR IGNORE INTO assembly_items (assembly_id, material_id, quantity, uuid) VALUES (?, ?, ?, ?)'
+    );
+    const materialIdByUuid = new Map(
+      (db.prepare('SELECT id, uuid FROM materials').all() as { id: number; uuid: string }[])
+        .map((r) => [r.uuid, r.id])
+    );
+    for (const asm of assemblyMap.values()) {
+      const asmUuid = seedUuid('assemblies', asm.name);
+      insertAssembly.run(asm.name, asm.description, asm.unit, asm.notes ?? null, asmUuid);
+      const asmId = (db.prepare('SELECT id FROM assemblies WHERE uuid = ?').get(asmUuid) as any)?.id;
+      if (!asmId) continue;
+      for (const item of asm.items) {
+        const matId = materialIdByUuid.get(seedUuid('materials', `${item.category}/${item.name}`));
+        if (!matId) continue; // material from an unselected trade — skip
+        insertAssemblyItem.run(
+          asmId, matId, item.quantity,
+          seedUuid('assembly_items', `${asm.name}/${item.category}/${item.name}`)
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Add a trade to an already-set-up database: seed its catalog (additively —
+ * see seedTradeCatalog) and append the trade to app_settings.trade_types so
+ * its gated module/tools become visible. Never deletes or overwrites existing
+ * rows. Returns the updated comma-separated trade_types; a no-op returning the
+ * current value when the trade is already active.
+ */
+export function addTradeCatalog(
+  db: Database.Database,
+  trade: TradeType,
+  includeBallparkPrices: boolean
+): string {
+  const run = db.transaction(() => {
+    const row = db.prepare('SELECT trade_types FROM app_settings WHERE id = 1').get() as
+      { trade_types: string | null } | undefined;
+    const current = (row?.trade_types ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (current.includes(trade)) return current.join(','); // already active — no-op
+
+    seedTradeCatalog(db, [trade], includeBallparkPrices);
+
+    const next = [...current, trade];
+    db.prepare('UPDATE app_settings SET trade_types = ? WHERE id = 1').run(next.join(','));
+    return next.join(',');
+  });
+  return run();
 }
 
 // Ordered list of migrations; index 0 is v1. Each runs inside its own
