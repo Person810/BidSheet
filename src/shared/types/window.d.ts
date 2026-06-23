@@ -35,6 +35,8 @@ import type {
   SaveQuotePayload,
   SaveSettingsPayload,
   SaveTakeoffAreaPayload,
+  SaveTakeoffWallPayload,
+  TakeoffWallDTO,
   SaveTakeoffRunPayload,
   SaveTakeoffSettingsPayload,
   SaveTakeoffSurfacePayload,
@@ -180,6 +182,9 @@ declare global {
       listTakeoffAreas: (jobId: number) => Promise<TakeoffAreaDTO[]>;
       saveTakeoffArea: (area: SaveTakeoffAreaPayload) => Promise<{ id: number }>;
       deleteTakeoffArea: (id: number) => Promise<SqlRunResult>;
+      listTakeoffWalls: (jobId: number) => Promise<TakeoffWallDTO[]>;
+      saveTakeoffWall: (wall: SaveTakeoffWallPayload) => Promise<{ id: number }>;
+      deleteTakeoffWall: (id: number) => Promise<SqlRunResult>;
       listTakeoffSurfaces: (jobId: number) => Promise<TakeoffSurfaceDTO[]>;
       saveTakeoffSurface: (s: SaveTakeoffSurfacePayload) => Promise<{ id: number }>;
       deleteTakeoffSurface: (id: number) => Promise<SqlRunResult>;

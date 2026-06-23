@@ -236,6 +236,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV33,
   migrateV34,
   migrateV35,
+  migrateV36,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -421,6 +422,51 @@ function migrateV35(db: Database.Database): void {
     ALTER TABLE takeoff_areas ADD COLUMN grade_value_ft REAL;   -- depth, or finished elevation
 
     INSERT INTO schema_version (version) VALUES (35);
+  `);
+}
+
+// V36: Wall-run takeoff — open polylines measured by length, expanded to
+// concrete volume + formwork contact area (SFCA) + optional rebar grid. A
+// parallel entity to takeoff_areas (which stay closed polygons); created
+// after v28 so it carries its own uuid handling rather than going through
+// UUID_TABLES.
+function migrateV36(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_walls (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      label           TEXT NOT NULL DEFAULT '',
+      height_ft       REAL NOT NULL DEFAULT 8,
+      thickness_in    REAL NOT NULL DEFAULT 8,
+      faces           INTEGER NOT NULL DEFAULT 2,
+      rebar_spacing_in REAL NOT NULL DEFAULT 0,
+      material_id     INTEGER REFERENCES materials(id),
+      assembly_id     INTEGER REFERENCES assemblies(id),
+      color           TEXT NOT NULL DEFAULT '#6D4C41',
+      sort_order      INTEGER NOT NULL DEFAULT 0,
+      pdf_page        INTEGER NOT NULL DEFAULT 1,
+      uuid            TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX idx_takeoff_walls_job ON takeoff_walls(job_id);
+    UPDATE takeoff_walls SET uuid = ${SQL_RANDOM_UUID} WHERE uuid IS NULL;
+    CREATE UNIQUE INDEX idx_takeoff_walls_uuid ON takeoff_walls(uuid);
+    CREATE TRIGGER trg_takeoff_walls_uuid AFTER INSERT ON takeoff_walls WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE takeoff_walls SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    CREATE TABLE takeoff_wall_points (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      wall_id     INTEGER NOT NULL REFERENCES takeoff_walls(id) ON DELETE CASCADE,
+      x_px        REAL NOT NULL,
+      y_px        REAL NOT NULL,
+      sort_order  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_takeoff_wall_points_wall ON takeoff_wall_points(wall_id);
+
+    INSERT INTO schema_version (version) VALUES (36);
   `);
 }
 

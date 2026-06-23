@@ -696,6 +696,35 @@ export interface SaveTakeoffAreaPayload extends Omit<TakeoffAreaDTO, 'id'> {
   sortOrder?: number;
 }
 
+/**
+ * A measured wall run: an open polyline traced on the plan, given a height,
+ * thickness, and number of formed faces so it expands to concrete volume,
+ * formwork contact area (SFCA), and (optionally) a reinforcing grid.
+ */
+export interface TakeoffWallDTO {
+  id: number;
+  jobId: number;
+  label: string;
+  /** Wall height, feet (the dimension the plan view can't supply). */
+  heightFt: number;
+  /** Wall thickness, inches. */
+  thicknessIn: number;
+  /** Number of formed faces (1 = one side, 2 = both). */
+  faces: number;
+  /** Rebar grid spacing each way over the wall face, inches (0 = none). */
+  rebarSpacingIn: number;
+  materialId: number | null;
+  /** When set, Send to Bid expands this assembly per measured unit. */
+  assemblyId: number | null;
+  color: string;
+  pdfPage: number;
+  points: { x: number; y: number }[];
+}
+export interface SaveTakeoffWallPayload extends Omit<TakeoffWallDTO, 'id'> {
+  id?: number;
+  sortOrder?: number;
+}
+
 export interface TakeoffSurfacePointDTO {
   x: number;       // PDF-native px (at scale=1)
   y: number;
@@ -734,6 +763,7 @@ export interface TakeoffStateSnapshot {
   nodes: TakeoffNodeDTO[];
   items: TakeoffItemDTO[];
   areas: TakeoffAreaDTO[];
+  walls: TakeoffWallDTO[];
   annotations: TakeoffAnnotationDTO[];
 }
 

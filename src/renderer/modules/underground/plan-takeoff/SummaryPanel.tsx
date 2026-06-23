@@ -1,14 +1,15 @@
 import React, { useMemo } from 'react';
 import { calculateTrench, type TrenchInput } from '../trenchCalc';
-import type { TakeoffRun, TakeoffItem, TakeoffArea } from './types';
+import type { TakeoffRun, TakeoffItem, TakeoffArea, TakeoffWall } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import {
   computeRunLengthLF, getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT,
   computePolygonAreaSF, computePolygonPerimeterLF, ftToInches,
 } from './takeoffUtils';
+import { computeWallQuantities } from './wallTakeoff';
 import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
 
-export type SummaryTab = 'runs' | 'items' | 'areas';
+export type SummaryTab = 'runs' | 'items' | 'areas' | 'walls';
 
 interface SummaryPanelProps {
   runs: TakeoffRun[];
@@ -34,6 +35,14 @@ interface SummaryPanelProps {
   onEditArea: (id: number) => void;
   onDeleteArea: (id: number) => void;
   onSendAreasToBid?: () => void;
+  walls: TakeoffWall[];
+  allWalls: TakeoffWall[];
+  activeWallId: number | null;
+  selectedWallId: number | null;
+  onSelectWall: (id: number | null) => void;
+  onEditWall: (id: number) => void;
+  onDeleteWall: (id: number) => void;
+  onSendWallsToBid?: () => void;
   activeTab: SummaryTab;
   onTabChange: (tab: SummaryTab) => void;
 }
@@ -54,6 +63,8 @@ export function SummaryPanel(props: SummaryPanelProps) {
     items, selectedItemId, onSelectItem, onDeleteItem, onSendItemsToBid,
     areas, allAreas, activeAreaId, selectedAreaId,
     onSelectArea, onEditArea, onDeleteArea, onSendAreasToBid,
+    walls, allWalls, activeWallId, selectedWallId,
+    onSelectWall, onEditWall, onDeleteWall, onSendWallsToBid,
     activeTab, onTabChange,
   } = props;
 
@@ -82,6 +93,10 @@ export function SummaryPanel(props: SummaryPanelProps) {
           onClick={() => onTabChange('areas')}>
           Areas ({areas.length})
         </button>
+        <button className={`tk-panel-tab${activeTab === 'walls' ? ' tk-panel-tab-active' : ''}`}
+          onClick={() => onTabChange('walls')}>
+          Walls ({walls.length})
+        </button>
       </div>
 
       {/* Tab content */}
@@ -99,12 +114,19 @@ export function SummaryPanel(props: SummaryPanelProps) {
           onSendItemsToBid={onSendItemsToBid}
           activeRunId={activeRunId}
         />
-      ) : (
+      ) : activeTab === 'areas' ? (
         <AreasTabContent
           areas={areas} allAreas={allAreas} activeAreaId={activeAreaId}
           selectedAreaId={selectedAreaId} scalePxPerFt={scalePxPerFt}
           onSelectArea={onSelectArea} onEditArea={onEditArea}
           onDeleteArea={onDeleteArea} onSendAreasToBid={onSendAreasToBid}
+        />
+      ) : (
+        <WallsTabContent
+          walls={walls} allWalls={allWalls} activeWallId={activeWallId}
+          selectedWallId={selectedWallId} scalePxPerFt={scalePxPerFt}
+          onSelectWall={onSelectWall} onEditWall={onEditWall}
+          onDeleteWall={onDeleteWall} onSendWallsToBid={onSendWallsToBid}
         />
       )}
     </div>
@@ -412,6 +434,109 @@ function AreaDetail({ area, scalePxPerFt, isActive, onEdit, onDelete }: {
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onEdit}>Edit Config</button>
           <button className="btn btn-danger btn-sm" style={{ flex: 1 }} onClick={onDelete}>Delete Area</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ==== WALLS TAB ==== */
+
+function WallsTabContent({ walls, allWalls, activeWallId, selectedWallId, scalePxPerFt,
+  onSelectWall, onEditWall, onDeleteWall, onSendWallsToBid,
+}: {
+  walls: TakeoffWall[]; allWalls: TakeoffWall[]; activeWallId: number | null;
+  selectedWallId: number | null; scalePxPerFt: number;
+  onSelectWall: (id: number | null) => void; onEditWall: (id: number) => void;
+  onDeleteWall: (id: number) => void; onSendWallsToBid?: () => void;
+}) {
+  const focusedWall = walls.find((w) => w.id === (activeWallId ?? selectedWallId));
+
+  if (focusedWall) {
+    return (
+      <WallDetail
+        wall={focusedWall} scalePxPerFt={scalePxPerFt}
+        isActive={focusedWall.id === activeWallId}
+        onEdit={() => onEditWall(focusedWall.id)}
+        onDelete={() => onDeleteWall(focusedWall.id)}
+      />
+    );
+  }
+
+  const hasCompletedWalls = allWalls.some((w) => w.points.length >= 2);
+  return (
+    <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+      {walls.length === 0 && (
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 24 }}>
+          No walls on this page.
+        </p>
+      )}
+      {walls.map((wall) => {
+        const globalIdx = allWalls.indexOf(wall);
+        const lf = computeRunLengthLF(wall.points, scalePxPerFt);
+        return (
+          <div key={wall.id} onClick={() => onSelectWall(wall.id)} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+            borderRadius: 4, cursor: 'pointer', marginBottom: 2,
+          }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: wall.color, flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {wall.label || `Wall ${globalIdx + 1}`}
+            </span>
+            <span className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+              {fmt(lf)}'
+            </span>
+          </div>
+        );
+      })}
+      {onSendWallsToBid && hasCompletedWalls && !activeWallId && (
+        <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 12 }}
+          onClick={onSendWallsToBid}>
+          Send Walls to Bid
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WallDetail({ wall, scalePxPerFt, isActive, onEdit, onDelete }: {
+  wall: TakeoffWall; scalePxPerFt: number; isActive: boolean;
+  onEdit: () => void; onDelete: () => void;
+}) {
+  const lengthLF = computeRunLengthLF(wall.points, scalePxPerFt);
+  const q = computeWallQuantities({
+    lengthLF, heightFt: wall.heightFt, thicknessIn: wall.thicknessIn,
+    faces: wall.faces, rebarSpacingIn: wall.rebarSpacingIn,
+  });
+
+  return (
+    <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span style={{ width: 10, height: 10, borderRadius: 2, background: wall.color, flexShrink: 0 }} />
+        <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {wall.label || 'Untitled Wall'}
+        </span>
+        {isActive && <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>DRAWING</span>}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
+        {wall.heightFt}&apos; H &middot; {wall.thicknessIn}&quot; thk &middot;{' '}
+        {wall.faces} face{wall.faces !== 1 ? 's' : ''}
+      </div>
+      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+        <tbody>
+          <QtyRow label="Length" value={`${fmt(lengthLF)} LF`} />
+          <QtyRow label="Concrete" value={`${q.concreteCY.toFixed(2)} CY`} />
+          <QtyRow label="Formwork" value={`${Math.round(q.formSFCA).toLocaleString()} SFCA`} />
+          {q.rebarLF > 0 && <QtyRow label="Rebar" value={`${Math.round(q.rebarLF).toLocaleString()} LF`} />}
+        </tbody>
+      </table>
+      {!isActive && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onEdit}>Edit Config</button>
+          <button className="btn btn-danger btn-sm" style={{ flex: 1 }} onClick={onDelete}>Delete Wall</button>
         </div>
       )}
     </div>
