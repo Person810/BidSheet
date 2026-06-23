@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { TakeoffRun, TakeoffItem, TakeoffNode, TakeoffArea, TakeoffAnnotation } from './types';
+import type { TakeoffRun, TakeoffItem, TakeoffNode, TakeoffArea, TakeoffWall, TakeoffAnnotation } from './types';
 import { reportSaveError } from './takeoffPersistence';
 import { useSnapshotHistory, type SnapshotHistory } from '../../../hooks/useSnapshotHistory';
 
@@ -8,6 +8,7 @@ interface TakeoffSnapshot {
   items: TakeoffItem[];
   nodes: TakeoffNode[];
   areas: TakeoffArea[];
+  walls: TakeoffWall[];
   annotations: TakeoffAnnotation[];
 }
 
@@ -32,6 +33,7 @@ function normalizeTakeoff(state: TakeoffSnapshot): TakeoffSnapshot {
     items: state.items.filter((i) => i.id > 0),
     nodes: state.nodes.filter((n) => n.id > 0),
     areas: state.areas.filter((a) => a.id > 0),
+    walls: state.walls.filter((w) => w.id > 0),
     annotations: state.annotations.filter((a) => a.id > 0),
   };
 }

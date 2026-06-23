@@ -52,6 +52,9 @@ export interface JobSnapshot {
     areas: any[];
     area_points: any[];
     annotations: any[];
+    /** Wall runs + their vertices. Optional: absent in pre-v36 snapshots. */
+    walls?: any[];
+    wall_points?: any[];
     /** Existing/proposed elevation surfaces. Optional: absent in pre-v35 snapshots. */
     surfaces?: any[];
     surface_points?: any[];
@@ -79,6 +82,7 @@ const CATALOG_FKS: Record<string, Record<string, string>> = {
   },
   takeoff_items: { material_id: 'materials' },
   takeoff_areas: { material_id: 'materials', assembly_id: 'assemblies' },
+  takeoff_walls: { material_id: 'materials', assembly_id: 'assemblies' },
 };
 
 export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
@@ -163,6 +167,12 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
         `SELECT ap.* FROM takeoff_area_points ap
          JOIN takeoff_areas a ON a.id = ap.area_id
          WHERE a.job_id = ? ORDER BY ap.id`
+      ),
+      walls: withUuidRefs('takeoff_walls', all('SELECT * FROM takeoff_walls WHERE job_id = ? ORDER BY id')),
+      wall_points: all(
+        `SELECT wp.* FROM takeoff_wall_points wp
+         JOIN takeoff_walls w ON w.id = wp.wall_id
+         WHERE w.job_id = ? ORDER BY wp.id`
       ),
       annotations: all('SELECT * FROM takeoff_annotations WHERE job_id = ? ORDER BY id'),
       surfaces: all('SELECT * FROM takeoff_surfaces WHERE job_id = ? ORDER BY id'),
@@ -342,6 +352,7 @@ export function importJob(
         'DELETE FROM takeoff_runs WHERE job_id = ?',
         'DELETE FROM takeoff_nodes WHERE job_id = ?',
         'DELETE FROM takeoff_areas WHERE job_id = ?',
+        'DELETE FROM takeoff_walls WHERE job_id = ?',
         'DELETE FROM takeoff_surfaces WHERE job_id = ?',
         'DELETE FROM takeoff_annotations WHERE job_id = ?',
         'DELETE FROM takeoff_page_scales WHERE job_id = ?',
@@ -411,6 +422,14 @@ export function importJob(
       const areaId = areaMap.get(ap.area_id);
       if (areaId === undefined) continue;
       insertRow('takeoff_area_points', { ...ap, area_id: areaId });
+    }
+
+    const wallMap = new Map<number, number>();
+    for (const w of t.walls ?? []) wallMap.set(w.id, insertRow('takeoff_walls', { ...w, job_id: jobId }));
+    for (const wp of t.wall_points ?? []) {
+      const wallId = wallMap.get(wp.wall_id);
+      if (wallId === undefined) continue;
+      insertRow('takeoff_wall_points', { ...wp, wall_id: wallId });
     }
 
     for (const ann of t.annotations) insertRow('takeoff_annotations', { ...ann, job_id: jobId });

@@ -89,6 +89,7 @@ export function SettingsPage() {
     gas: 'Gas',
     electrical: 'Electrical / Conduit',
     telecom: 'Telecommunications / Fiber',
+    concrete: 'Concrete',
   };
 
   if (loading) return <p className="text-muted">Loading settings...</p>;

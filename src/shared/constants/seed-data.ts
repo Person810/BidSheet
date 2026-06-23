@@ -2,7 +2,7 @@
 // Trade-specific seed data for first-launch setup
 // ============================================================
 
-export type TradeType = 'water_sewer' | 'storm_drain' | 'gas' | 'electrical' | 'telecom';
+export type TradeType = 'water_sewer' | 'storm_drain' | 'gas' | 'electrical' | 'telecom' | 'concrete';
 
 export interface SeedMaterial {
   category: string;
@@ -20,6 +20,27 @@ export interface TradeSeedData {
   materials: SeedMaterial[];
   laborRoles: { name: string; rate: number; burden: number; notes: string }[];
   equipment: { name: string; category: string; hourlyRate: number; mobilization: number; isOwned: boolean; notes: string }[];
+  /** Optional starter assemblies; each item references a seed material by its
+   * own category + name (the same key seed materials are keyed on). */
+  assemblies?: SeedAssembly[];
+}
+
+export interface SeedAssemblyItem {
+  /** Category of the referenced seed material, e.g. 'Ready-Mix Concrete'. */
+  category: string;
+  /** Name of the referenced seed material, e.g. '3500 PSI Mix'. */
+  name: string;
+  /** Material quantity consumed per one unit of the assembly. */
+  quantity: number;
+}
+
+export interface SeedAssembly {
+  name: string;
+  description: string;
+  /** Unit the assembly is measured/sold in (EA, SY, LF, CY, ...). */
+  unit: string;
+  notes?: string;
+  items: SeedAssemblyItem[];
 }
 
 export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
@@ -417,6 +438,35 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { name: 'Fusion Machine (HDPE)', category: 'Specialty', hourlyRate: 25.00, mobilization: 100.00, isOwned: true, notes: 'McElroy butt fusion machine' },
       { name: 'Concrete Saw (walk-behind)', category: 'Saw', hourlyRate: 15.00, mobilization: 0, isOwned: true, notes: 'Flat saw for pavement cuts' },
     ],
+    assemblies: [
+      {
+        name: '48" Sanitary Manhole, 6\' Deep (per EA)',
+        description: 'Precast 48" base, eccentric cone, grade rings, steps, boots, and traffic-rated frame & cover',
+        unit: 'EA',
+        notes: 'Add excavation/backfill and setting crew separately; deepen with riser sections as needed.',
+        items: [
+          { category: 'Manholes', name: '48" Precast MH Base (6\' depth)', quantity: 1 },
+          { category: 'Manholes', name: 'Eccentric Cone (48")', quantity: 1 },
+          { category: 'Manholes', name: 'Grade Ring (flat)', quantity: 2 },
+          { category: 'Manholes', name: 'MH Frame & Cover (standard)', quantity: 1 },
+          { category: 'Manholes', name: 'MH Steps (polypropylene)', quantity: 4 },
+          { category: 'Manholes', name: 'Boot Seal (flexible connector)', quantity: 2 },
+          { category: 'Manholes', name: 'Butyl Sealant (per roll)', quantity: 2 },
+        ],
+      },
+      {
+        name: 'Manhole Frame, Cover & Grade Ring Set (per EA)',
+        description: 'Ring-and-cover set with grade rings and butyl for setting or adjusting a manhole to grade',
+        unit: 'EA',
+        notes: 'Adjustment/build-up set — pairs with paving or concrete collar work.',
+        items: [
+          { category: 'Manholes', name: 'MH Frame & Cover (standard)', quantity: 1 },
+          { category: 'Manholes', name: 'Grade Ring (flat)', quantity: 2 },
+          { category: 'Manholes', name: 'Grade Ring (eccentric)', quantity: 1 },
+          { category: 'Manholes', name: 'Butyl Sealant (per roll)', quantity: 1 },
+        ],
+      },
+    ],
   },
 
   // ================================================================
@@ -642,6 +692,18 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { name: 'Lowboy Trailer', category: 'Transport', hourlyRate: 65.00, mobilization: 0, isOwned: true, notes: 'Equipment transport' },
       { name: 'Concrete Saw', category: 'Saw', hourlyRate: 15.00, mobilization: 0, isOwned: true, notes: 'Walk-behind flat saw' },
       { name: 'Water Truck', category: 'Truck', hourlyRate: 55.00, mobilization: 150.00, isOwned: true, notes: 'Dust control and compaction' },
+    ],
+    assemblies: [
+      {
+        name: 'Curb Inlet Catch Basin with Grate (per EA)',
+        description: 'Precast curb inlet structure with traffic-rated (H-20) grate and frame',
+        unit: 'EA',
+        notes: 'Add excavation/backfill and setting crew separately.',
+        items: [
+          { category: 'Structures', name: 'Curb Inlet (precast, standard)', quantity: 1 },
+          { category: 'Structures', name: 'Grate & Frame (heavy duty, H-20)', quantity: 1 },
+        ],
+      },
     ],
   },
 
@@ -960,6 +1022,189 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { name: 'Compactor - Trench', category: 'Compactor', hourlyRate: 8.00, mobilization: 0, isOwned: true, notes: 'Plate compactor' },
       { name: 'Dump Truck - Single Axle', category: 'Truck', hourlyRate: 40.00, mobilization: 100.00, isOwned: true, notes: 'Single axle dump' },
       { name: 'Vac Truck (potholing)', category: 'Specialty', hourlyRate: 175.00, mobilization: 500.00, isOwned: false, notes: 'Air/hydro excavation for potholing utilities' },
+    ],
+  },
+
+  // ================================================================
+  // CONCRETE (FLATWORK & FORMWORK)
+  // ================================================================
+  concrete: {
+    label: 'Concrete',
+    description: 'Cast-in-place concrete: slabs, flatwork, footings, walls, formwork, and finishing',
+    categories: [
+      { name: 'Ready-Mix Concrete', description: 'Delivered ready-mix by strength/mix design, priced per CY' },
+      { name: 'Reinforcement', description: 'Rebar, welded wire mesh, dowels, chairs, tie wire' },
+      { name: 'Formwork', description: 'Form lumber, plywood, panels, stakes, ties, and release agents' },
+      { name: 'Joints & Sealants', description: 'Expansion joint, control joint, backer rod, sealant, saw cutting' },
+      { name: 'Embeds & Anchors', description: 'Anchor bolts, embed plates, sleeves, weld plates' },
+      { name: 'Curing & Finishing', description: 'Curing compound, blankets, sealers, hardeners, bonding agents' },
+      { name: 'Vapor Barrier & Underlayment', description: 'Vapor retarder, sand cushion, fabric' },
+      { name: 'Subbase & Aggregate', description: 'Crushed stone base, sand, geotextile' },
+      { name: 'Misc', description: 'Bagged concrete, grout, patching, form release, chamfer' },
+    ],
+    materials: [
+      // ── Ready-Mix Concrete (per CY) ──
+      { category: 'Ready-Mix Concrete', name: '3000 PSI Mix', unit: 'CY', ballparkPrice: 145.00, aliases: 'ready mix, redi mix, concrete, 3000, 3000psi, mud, crete' },
+      { category: 'Ready-Mix Concrete', name: '3500 PSI Mix', unit: 'CY', ballparkPrice: 150.00, aliases: 'ready mix, redi mix, concrete, 3500, 3500psi' },
+      { category: 'Ready-Mix Concrete', name: '4000 PSI Mix', unit: 'CY', ballparkPrice: 158.00, aliases: 'ready mix, redi mix, concrete, 4000, 4000psi, structural' },
+      { category: 'Ready-Mix Concrete', name: '4500 PSI Mix', unit: 'CY', ballparkPrice: 168.00, aliases: 'ready mix, redi mix, concrete, 4500, 4500psi, high strength' },
+      { category: 'Ready-Mix Concrete', name: '4000 PSI Fiber-Reinforced Mix', unit: 'CY', ballparkPrice: 172.00, aliases: 'fiber, fibermesh, fiber crete, micro fiber, no mesh' },
+      { category: 'Ready-Mix Concrete', name: 'High-Early (Type III) Mix', unit: 'CY', ballparkPrice: 178.00, aliases: 'high early, fast set, type 3, accelerated, 1 day' },
+      { category: 'Ready-Mix Concrete', name: 'Pump Mix (small aggregate)', unit: 'CY', ballparkPrice: 165.00, aliases: 'pump mix, pea gravel mix, pumpable, 3/8 rock' },
+      { category: 'Ready-Mix Concrete', name: 'Flowable Fill (CLSM)', unit: 'CY', ballparkPrice: 95.00, aliases: 'flowable, CLSM, controlled low strength, slurry, lean fill' },
+      { category: 'Ready-Mix Concrete', name: 'Short Load Fee (per CY under min)', unit: 'CY', ballparkPrice: 35.00, aliases: 'short load, small load, minimum load, partial load fee' },
+
+      // ── Reinforcement ──
+      { category: 'Reinforcement', name: '#3 Rebar (Grade 60)', unit: 'LF', ballparkPrice: 0.45, aliases: 'rebar, #3, number 3, 3/8 bar, reinforcing steel, deformed bar' },
+      { category: 'Reinforcement', name: '#4 Rebar (Grade 60)', unit: 'LF', ballparkPrice: 0.65, aliases: 'rebar, #4, number 4, 1/2 bar, reinforcing steel, deformed bar' },
+      { category: 'Reinforcement', name: '#5 Rebar (Grade 60)', unit: 'LF', ballparkPrice: 1.00, aliases: 'rebar, #5, number 5, 5/8 bar, reinforcing steel' },
+      { category: 'Reinforcement', name: '#6 Rebar (Grade 60)', unit: 'LF', ballparkPrice: 1.45, aliases: 'rebar, #6, number 6, 3/4 bar, reinforcing steel' },
+      { category: 'Reinforcement', name: '#8 Rebar (Grade 60)', unit: 'LF', ballparkPrice: 2.55, aliases: 'rebar, #8, number 8, 1 inch bar, reinforcing steel' },
+      { category: 'Reinforcement', name: '6x6 W2.9xW2.9 Welded Wire Mesh', unit: 'SF', ballparkPrice: 0.28, aliases: 'WWF, WWM, wire mesh, welded wire, 6x6, remesh, mesh, 10 gauge' },
+      { category: 'Reinforcement', name: 'Welded Wire Mesh (sheet 5x10)', unit: 'EA', ballparkPrice: 18.00, aliases: 'mesh sheet, WWF sheet, flat sheet mesh, 5x10' },
+      { category: 'Reinforcement', name: '#4 Smooth Dowel (18")', unit: 'EA', ballparkPrice: 1.20, aliases: 'dowel, smooth dowel, slip dowel, load transfer, joint dowel' },
+      { category: 'Reinforcement', name: 'Rebar Chair (plastic, 3")', unit: 'EA', ballparkPrice: 0.18, aliases: 'chair, bar chair, dobie, spacer, rebar support, bolster' },
+      { category: 'Reinforcement', name: 'Tie Wire (16 ga, roll)', unit: 'EA', ballparkPrice: 12.00, aliases: 'tie wire, rebar wire, bag tie, black wire, annealed wire' },
+      { category: 'Reinforcement', name: 'Epoxy Dowel Adhesive (tube)', unit: 'EA', ballparkPrice: 14.00, aliases: 'epoxy, dowel adhesive, anchoring epoxy, Hilti, Simpson SET' },
+
+      // ── Formwork ──
+      { category: 'Formwork', name: '2x4 Form Lumber', unit: 'LF', ballparkPrice: 0.85, aliases: 'form board, 2x4, lumber, edge form, side form' },
+      { category: 'Formwork', name: '2x6 Form Lumber', unit: 'LF', ballparkPrice: 1.25, aliases: 'form board, 2x6, lumber, edge form, side form' },
+      { category: 'Formwork', name: '2x8 Form Lumber', unit: 'LF', ballparkPrice: 1.70, aliases: 'form board, 2x8, lumber, edge form, side form' },
+      { category: 'Formwork', name: '3/4" Form Plywood (per SF)', unit: 'SF', ballparkPrice: 1.10, aliases: 'plyform, form ply, plywood, sheathing, wall form, B-B ply' },
+      { category: 'Formwork', name: 'Form Panel (rental, per SFCA/mo)', unit: 'SF', ballparkPrice: 0.85, aliases: 'symons, steel ply, form rental, gang form, wall panel, contact area' },
+      { category: 'Formwork', name: 'Form Stake (steel, 18")', unit: 'EA', ballparkPrice: 1.10, aliases: 'stake, form stake, pin, steel stake, hub' },
+      { category: 'Formwork', name: 'Snap Tie (8")', unit: 'EA', ballparkPrice: 0.55, aliases: 'snap tie, form tie, wall tie, she bolt, ty' },
+      { category: 'Formwork', name: 'Form Release Agent (5 gal)', unit: 'EA', ballparkPrice: 65.00, aliases: 'form oil, release agent, form release, bond breaker oil, magic kote' },
+      { category: 'Formwork', name: 'Expansion Joint Keyway (per LF)', unit: 'LF', ballparkPrice: 1.40, aliases: 'keyway, key joint, screed key, joint form, kold key' },
+
+      // ── Joints & Sealants ──
+      { category: 'Joints & Sealants', name: 'Expansion Joint Filler (1/2" x 4")', unit: 'LF', ballparkPrice: 0.85, aliases: 'expansion joint, fiber joint, asphalt joint, EJ, isolation joint' },
+      { category: 'Joints & Sealants', name: 'Expansion Joint Filler (1/2" x 6")', unit: 'LF', ballparkPrice: 1.15, aliases: 'expansion joint, fiber joint, EJ, isolation joint' },
+      { category: 'Joints & Sealants', name: 'Backer Rod (1/2")', unit: 'LF', ballparkPrice: 0.18, aliases: 'backer rod, foam rod, joint backer, closed cell rod' },
+      { category: 'Joints & Sealants', name: 'Joint Sealant (self-leveling, gal)', unit: 'GAL', ballparkPrice: 48.00, aliases: 'joint sealant, self leveling, SL1, urethane sealant, caulk' },
+      { category: 'Joints & Sealants', name: 'Saw Cut Control Joint (per LF)', unit: 'LF', ballparkPrice: 1.25, aliases: 'saw cut, control joint, contraction joint, green cut, soff cut' },
+      { category: 'Joints & Sealants', name: 'Dowel Basket Assembly (12 ft)', unit: 'EA', ballparkPrice: 95.00, aliases: 'dowel basket, basket assembly, load transfer basket, contraction dowel' },
+
+      // ── Embeds & Anchors ──
+      { category: 'Embeds & Anchors', name: 'Anchor Bolt 1/2" x 8" (J-bolt)', unit: 'EA', ballparkPrice: 1.85, aliases: 'anchor bolt, J bolt, foundation bolt, AB, hooked anchor' },
+      { category: 'Embeds & Anchors', name: 'Anchor Bolt 3/4" x 12" (L-bolt)', unit: 'EA', ballparkPrice: 4.50, aliases: 'anchor bolt, L bolt, foundation bolt, AB, column anchor' },
+      { category: 'Embeds & Anchors', name: 'Embed Plate (6x6x3/8)', unit: 'EA', ballparkPrice: 22.00, aliases: 'embed, embed plate, weld plate, steel embed, bearing plate' },
+      { category: 'Embeds & Anchors', name: 'PVC Sleeve (4")', unit: 'EA', ballparkPrice: 6.50, aliases: 'sleeve, blockout, penetration sleeve, pipe sleeve' },
+      { category: 'Embeds & Anchors', name: 'Wedge Anchor 1/2" x 4-3/4"', unit: 'EA', ballparkPrice: 1.65, aliases: 'wedge anchor, expansion anchor, drop in, post install anchor' },
+
+      // ── Curing & Finishing ──
+      { category: 'Curing & Finishing', name: 'Curing Compound (5 gal)', unit: 'EA', ballparkPrice: 55.00, aliases: 'cure, curing compound, white cure, wax cure, kure' },
+      { category: 'Curing & Finishing', name: 'Curing Blanket (insulated)', unit: 'SF', ballparkPrice: 0.55, aliases: 'cure blanket, concrete blanket, insulated blanket, frost blanket' },
+      { category: 'Curing & Finishing', name: 'Concrete Sealer / Densifier (5 gal)', unit: 'EA', ballparkPrice: 95.00, aliases: 'sealer, densifier, lithium silicate, hardener seal, cure and seal' },
+      { category: 'Curing & Finishing', name: 'Dry-Shake Color Hardener (per SF)', unit: 'SF', ballparkPrice: 0.65, aliases: 'color hardener, dry shake, broadcast color, surface hardener' },
+      { category: 'Curing & Finishing', name: 'Bonding Agent (gal)', unit: 'GAL', ballparkPrice: 38.00, aliases: 'bonding agent, bond coat, weld crete, acrylic bond' },
+
+      // ── Vapor Barrier & Underlayment ──
+      { category: 'Vapor Barrier & Underlayment', name: 'Vapor Barrier (10 mil, per SF)', unit: 'SF', ballparkPrice: 0.14, aliases: 'vapor barrier, vapor retarder, poly, visqueen, stego, under slab' },
+      { category: 'Vapor Barrier & Underlayment', name: 'Vapor Barrier (15 mil, per SF)', unit: 'SF', ballparkPrice: 0.22, aliases: 'vapor barrier, vapor retarder, heavy poly, stego wrap, class A' },
+      { category: 'Vapor Barrier & Underlayment', name: 'Vapor Barrier Seam Tape (roll)', unit: 'EA', ballparkPrice: 28.00, aliases: 'seam tape, vapor tape, stego tape, lap tape' },
+      { category: 'Vapor Barrier & Underlayment', name: 'Sand Cushion (per TON)', unit: 'TON', ballparkPrice: 22.00, aliases: 'sand, cushion sand, blinding sand, leveling sand' },
+
+      // ── Subbase & Aggregate ──
+      { category: 'Subbase & Aggregate', name: 'Crushed Stone Base (#57, per TON)', unit: 'TON', ballparkPrice: 24.00, aliases: 'crushed stone, #57, gravel base, sub base, aggregate base, drainage stone' },
+      { category: 'Subbase & Aggregate', name: 'Crushed Aggregate Base (CABC, per TON)', unit: 'TON', ballparkPrice: 20.00, aliases: 'CABC, crusher run, road base, GAB, dense graded, compactable base' },
+      { category: 'Subbase & Aggregate', name: 'Geotextile Fabric (per SY)', unit: 'SY', ballparkPrice: 1.10, aliases: 'fabric, geotextile, separation fabric, woven fabric, Mirafi, stabilization fabric' },
+
+      // ── Misc ──
+      { category: 'Misc', name: 'Bagged Concrete (60 lb)', unit: 'EA', ballparkPrice: 5.75, aliases: 'bag mix, sakrete, quikrete, 60 lb bag, premix, post hole' },
+      { category: 'Misc', name: 'Non-Shrink Grout (50 lb bag)', unit: 'EA', ballparkPrice: 28.00, aliases: 'grout, non shrink, NS grout, base plate grout, precision grout' },
+      { category: 'Misc', name: 'Concrete Patch / Repair Mortar (bag)', unit: 'EA', ballparkPrice: 32.00, aliases: 'patch, repair mortar, vinyl patch, sika top, spall repair' },
+      { category: 'Misc', name: 'Chamfer Strip (3/4", per LF)', unit: 'LF', ballparkPrice: 0.55, aliases: 'chamfer, edge strip, corner strip, bevel, PVC chamfer' },
+    ],
+    laborRoles: [
+      { name: 'Foreman', rate: 42.00, burden: 1.40, notes: 'Concrete crew foreman' },
+      { name: 'Concrete Finisher', rate: 36.00, burden: 1.40, notes: 'Cement mason / finisher' },
+      { name: 'Form Carpenter', rate: 34.00, burden: 1.40, notes: 'Forms and layout carpenter' },
+      { name: 'Pump Operator', rate: 38.00, burden: 1.40, notes: 'Concrete pump operator' },
+      { name: 'Laborer', rate: 22.00, burden: 1.35, notes: 'General laborer' },
+      { name: 'Teamster', rate: 28.00, burden: 1.35, notes: 'CDL truck driver' },
+    ],
+    equipment: [
+      { name: 'Concrete Pump - Trailer', category: 'Pump', hourlyRate: 95.00, mobilization: 350.00, isOwned: false, notes: 'Line/trailer pump for slabs and footings' },
+      { name: 'Concrete Pump - Boom (32m)', category: 'Pump', hourlyRate: 195.00, mobilization: 600.00, isOwned: false, notes: 'Boom pump for reach placements' },
+      { name: 'Ride-On Power Trowel', category: 'Finishing', hourlyRate: 35.00, mobilization: 150.00, isOwned: true, notes: 'For large slab finishing' },
+      { name: 'Walk-Behind Power Trowel', category: 'Finishing', hourlyRate: 15.00, mobilization: 75.00, isOwned: true, notes: 'Edges and smaller pours' },
+      { name: 'Power Screed (wet screed)', category: 'Finishing', hourlyRate: 12.00, mobilization: 50.00, isOwned: true, notes: 'Vibratory screed' },
+      { name: 'Laser Screed', category: 'Finishing', hourlyRate: 145.00, mobilization: 750.00, isOwned: false, notes: 'For large floor placements' },
+      { name: 'Concrete Vibrator', category: 'Placing', hourlyRate: 6.00, mobilization: 0, isOwned: true, notes: 'Stinger / pencil vibrator' },
+      { name: 'Power Buggy (Georgia buggy)', category: 'Placing', hourlyRate: 18.00, mobilization: 75.00, isOwned: true, notes: 'Motorized concrete buggy' },
+      { name: 'Early-Entry Concrete Saw', category: 'Sawing', hourlyRate: 14.00, mobilization: 50.00, isOwned: true, notes: 'Soff-cut / green sawing control joints' },
+      { name: 'Walk-Behind Concrete Saw', category: 'Sawing', hourlyRate: 22.00, mobilization: 100.00, isOwned: true, notes: 'Wet saw for full-depth cuts' },
+      { name: 'Skid Steer', category: 'Loader', hourlyRate: 45.00, mobilization: 250.00, isOwned: true, notes: 'Grading, hauling, subbase' },
+      { name: 'Plate Compactor', category: 'Compactor', hourlyRate: 8.00, mobilization: 0, isOwned: true, notes: 'Subbase compaction' },
+    ],
+    // Quantities are per one unit of the assembly (e.g. per SY of slab) and
+    // already fold in a typical waste allowance, since assembly expansion
+    // multiplies them straight through without a separate waste markup.
+    assemblies: [
+      {
+        name: '4" Slab on Grade (per SY)',
+        description: 'Unreinforced 4" slab with mesh, vapor barrier, and cure — per square yard',
+        unit: 'SY',
+        notes: 'Add a crew/production rate for placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '3500 PSI Mix', quantity: 0.12 },
+          { category: 'Reinforcement', name: '6x6 W2.9xW2.9 Welded Wire Mesh', quantity: 10 },
+          { category: 'Vapor Barrier & Underlayment', name: 'Vapor Barrier (10 mil, per SF)', quantity: 10 },
+          { category: 'Curing & Finishing', name: 'Curing Compound (5 gal)', quantity: 0.008 },
+        ],
+      },
+      {
+        name: '6" Reinforced Slab on Grade (per SY)',
+        description: 'Heavy-duty 6" slab, #4 rebar grid at 18" o.c., 15 mil vapor barrier — per square yard',
+        unit: 'SY',
+        notes: 'Add a crew/production rate for placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Mix', quantity: 0.18 },
+          { category: 'Reinforcement', name: '#4 Rebar (Grade 60)', quantity: 16 },
+          { category: 'Reinforcement', name: 'Rebar Chair (plastic, 3")', quantity: 3 },
+          { category: 'Vapor Barrier & Underlayment', name: 'Vapor Barrier (15 mil, per SF)', quantity: 10 },
+          { category: 'Curing & Finishing', name: 'Curing Compound (5 gal)', quantity: 0.008 },
+        ],
+      },
+      {
+        name: '4" Sidewalk (per SY)',
+        description: 'Fiber-reinforced sidewalk on stone base with edge forms and joints — per square yard',
+        unit: 'SY',
+        notes: 'Add a crew/production rate for forming, placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Fiber-Reinforced Mix', quantity: 0.12 },
+          { category: 'Subbase & Aggregate', name: 'Crushed Stone Base (#57, per TON)', quantity: 0.16 },
+          { category: 'Formwork', name: '2x4 Form Lumber', quantity: 1 },
+          { category: 'Joints & Sealants', name: 'Expansion Joint Filler (1/2" x 4")', quantity: 0.4 },
+          { category: 'Curing & Finishing', name: 'Curing Compound (5 gal)', quantity: 0.008 },
+        ],
+      },
+      {
+        name: 'Curb & Gutter (per LF)',
+        description: 'Standard 24" curb & gutter on stone base, 2 continuous #4 bars — per linear foot',
+        unit: 'LF',
+        notes: 'Add a crew/production rate for forming, placing & finishing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Mix', quantity: 0.06 },
+          { category: 'Reinforcement', name: '#4 Rebar (Grade 60)', quantity: 2 },
+          { category: 'Formwork', name: '2x6 Form Lumber', quantity: 2 },
+          { category: 'Subbase & Aggregate', name: 'Crushed Stone Base (#57, per TON)', quantity: 0.05 },
+        ],
+      },
+      {
+        name: 'Continuous Footing 24"x12" (per LF)',
+        description: 'Cast-in-place wall footing, 4 continuous #5 bars and side forms — per linear foot',
+        unit: 'LF',
+        notes: 'Add a crew/production rate for forming & placing labor.',
+        items: [
+          { category: 'Ready-Mix Concrete', name: '4000 PSI Mix', quantity: 0.08 },
+          { category: 'Reinforcement', name: '#5 Rebar (Grade 60)', quantity: 4 },
+          { category: 'Formwork', name: '2x8 Form Lumber', quantity: 2 },
+          { category: 'Reinforcement', name: 'Rebar Chair (plastic, 3")', quantity: 1 },
+        ],
+      },
     ],
   },
 };

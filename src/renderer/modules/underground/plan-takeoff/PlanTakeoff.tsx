@@ -5,11 +5,13 @@ import { useScaleCalibration, formatScale } from './ScaleCalibration';
 import type { ScaleResult } from './ScaleCalibration';
 import { TrenchConfigModal } from './TrenchConfigModal';
 import { AreaConfigModal } from './AreaConfigModal';
+import { WallConfigModal } from './WallConfigModal';
 import { SummaryPanel, type SummaryTab } from './SummaryPanel';
 import { useRunManager } from './useRunManager';
 import { useItemManager } from './useItemManager';
 import { useNodeManager } from './useNodeManager';
 import { useAreaManager } from './useAreaManager';
+import { useWallManager } from './useWallManager';
 import { useAnnotationManager } from './useAnnotationManager';
 import { useTakeoffHistory } from './useTakeoffHistory';
 import { rectContains, normalizeRect, orthoConstrainPoint, type MarqueeRect } from './takeoffUtils';
@@ -21,10 +23,12 @@ import { useToastStore } from '../../../stores/toast-store';
 import { sendToProfiles } from './sendToProfiles';
 import { sendItemsToBid } from './sendItemsToBid';
 import { sendAreasToBid } from './sendAreasToBid';
+import { sendWallsToBid } from './sendWallsToBid';
 import { sendEarthworkToBid } from './sendEarthworkToBid';
 import { useSurfaceManager } from './useSurfaceManager';
 import { buildGroundSampler, buildGroundTin } from './surfaceSampler';
 import SurfaceOverlay from './SurfaceOverlay';
+import WallOverlay from './WallOverlay';
 import { buildTakeoffCsv } from './exportTakeoffCsv';
 import { reportSaveError } from './takeoffPersistence';
 import { ContextMenu, getMenuItems } from './ContextMenu';
@@ -136,6 +140,9 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // Area manager hook
   const am = useAreaManager({ jobId, pageNum });
 
+  // Wall manager hook
+  const wm = useWallManager({ jobId, pageNum });
+
   // Annotation manager hook
   const anm = useAnnotationManager({ jobId, pageNum });
 
@@ -179,18 +186,19 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // -- Undo/redo history --
   // State is read through a ref so record() always sees the latest values
   // without re-creating callbacks on every render.
-  const takeoffStateRef = useRef({ runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas, annotations: anm.annotations });
-  takeoffStateRef.current = { runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas, annotations: anm.annotations };
+  const takeoffStateRef = useRef({ runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas, walls: wm.walls, annotations: anm.annotations });
+  takeoffStateRef.current = { runs: rm.runs, items: im.items, nodes: nm.nodes, areas: am.areas, walls: wm.walls, annotations: anm.annotations };
   const getTakeoffState = useCallback(() => takeoffStateRef.current, []);
   const reloadAll = useCallback(async () => {
-    await Promise.all([rm.reload(), im.reload(), nm.reload(), am.reload(), anm.reload()]);
-  }, [rm.reload, im.reload, nm.reload, am.reload, anm.reload]);
+    await Promise.all([rm.reload(), im.reload(), nm.reload(), am.reload(), wm.reload(), anm.reload()]);
+  }, [rm.reload, im.reload, nm.reload, am.reload, wm.reload, anm.reload]);
   const history = useTakeoffHistory({ jobId, getState: getTakeoffState, reloadAll });
 
   // Send to Trench Profiles / Send Items to Bid / Send Areas to Bid
   const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [showSendItemsConfirm, setShowSendItemsConfirm] = useState(false);
   const [showSendAreasConfirm, setShowSendAreasConfirm] = useState(false);
+  const [showSendWallsConfirm, setShowSendWallsConfirm] = useState(false);
   const addToast = useToastStore((s) => s.addToast);
 
   const handleSendToProfiles = useCallback(async () => {
@@ -229,6 +237,21 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       addToast('Failed to send areas to bid', 'error');
     }
   }, [jobId, am.areas, addToast]);
+
+  const handleSendWallsToBid = useCallback(async () => {
+    setShowSendWallsConfirm(false);
+    try {
+      const count = await sendWallsToBid(wm.walls, jobId);
+      if (count === 0) {
+        addToast('No walls on calibrated pages to send.', 'error');
+      } else {
+        addToast(`Created ${count} line items in "Concrete Walls" section.`, 'success');
+      }
+    } catch (err) {
+      console.error('Send walls to bid failed:', err);
+      addToast('Failed to send walls to bid', 'error');
+    }
+  }, [jobId, wm.walls, addToast]);
 
   const handleExportCsv = useCallback(async () => {
     try {
@@ -380,6 +403,11 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     return area?.points[area.points.length - 1];
   }, [am.areas, am.activeAreaId]);
 
+  const activeWallLastPoint = useCallback((): PdfPoint | undefined => {
+    const wall = wm.walls.find((w) => w.id === wm.activeWallId);
+    return wall?.points[wall.points.length - 1];
+  }, [wm.walls, wm.activeWallId]);
+
   // Route overlay clicks/moves to whichever tool is active.
   // Calibration and run interactions (move-vertex, run drawing) are handled
   // inside rm.handlePointClick; area drawing is checked first since the run
@@ -395,12 +423,16 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       am.handlePointClick(orthoConstrain(point, activeAreaLastPoint()));
       return;
     }
+    if (!calibrating && wm.isDrawing) {
+      wm.handlePointClick(orthoConstrain(point, activeWallLastPoint()));
+      return;
+    }
     // Confirming a vertex move mutates the run (and possibly a shared node)
     if (!calibrating && rm.interactionMode === 'moveVertex' && rm.movingVertex) {
       history.record();
     }
     rm.handlePointClick(orthoConstrain(point, activeRunLastPoint()));
-  }, [calibrating, anm, am, rm, history, orthoConstrain, activeRunLastPoint, activeAreaLastPoint]);
+  }, [calibrating, anm, am, wm, rm, history, orthoConstrain, activeRunLastPoint, activeAreaLastPoint, activeWallLastPoint]);
 
   // Finish the active run/area, recording history for newly created shapes.
   // Snapshots exclude negative (unsaved) IDs, so a capture taken just before
@@ -421,23 +453,33 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     am.finishActiveArea();
   }, [am, history]);
 
+  const finishActiveWall = useCallback(() => {
+    const activeWall = wm.walls.find((w) => w.id === wm.activeWallId);
+    if (activeWall && activeWall.points.length >= 2) {
+      history.record();
+    }
+    wm.finishActiveWall();
+  }, [wm, history]);
+
   const handleOverlayMouseMove = useCallback((point: PdfPoint) => {
     rm.handleMouseMove(orthoConstrain(point, activeRunLastPoint()));
     am.handleMouseMove(orthoConstrain(point, activeAreaLastPoint()));
+    wm.handleMouseMove(orthoConstrain(point, activeWallLastPoint()));
     anm.handleMouseMove(point);
-  }, [rm, am, anm, orthoConstrain, activeRunLastPoint, activeAreaLastPoint]);
+  }, [rm, am, wm, anm, orthoConstrain, activeRunLastPoint, activeAreaLastPoint, activeWallLastPoint]);
 
   // -- Don't lose in-progress drawings --
 
   // An active run/area lives only in React state until finished. Finish
   // (which saves shapes with enough points) instead of silently discarding
   // when the user leaves the takeoff or closes the app.
-  const finishersRef = useRef({ finishActiveRun, finishActiveArea });
-  finishersRef.current = { finishActiveRun, finishActiveArea };
+  const finishersRef = useRef({ finishActiveRun, finishActiveArea, finishActiveWall });
+  finishersRef.current = { finishActiveRun, finishActiveArea, finishActiveWall };
 
   const handleBack = useCallback(() => {
     finishersRef.current.finishActiveRun();
     finishersRef.current.finishActiveArea();
+    finishersRef.current.finishActiveWall();
     onBack();
   }, [onBack]);
 
@@ -447,6 +489,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     const handler = () => {
       finishersRef.current.finishActiveRun();
       finishersRef.current.finishActiveArea();
+      finishersRef.current.finishActiveWall();
     };
     window.addEventListener('beforeunload', handler);
     return () => {
@@ -635,6 +678,15 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       im.selectItem(null);
     }
   }, [rm, im, am]);
+
+  const handleWallSelect = useCallback((wallId: number | null) => {
+    wm.handleWallSelect(wallId);
+    if (wallId != null) {
+      rm.handleRunSelect(null);
+      im.selectItem(null);
+      am.handleAreaSelect(null);
+    }
+  }, [rm, im, am, wm]);
 
   const handleViewerClick = useCallback((e: React.MouseEvent) => {
     if (rm.isDrawing || am.isDrawing) return;
@@ -942,18 +994,19 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     setSummaryTab('items');
   }, [pendingItemPlacement, im, pageNum, history]);
 
-  // Overlay mode: calibration > drawing (run, area, or annotation)
+  // Overlay mode: calibration > drawing (run, area, wall, or annotation)
   const overlayMode = calibrating ? calibration.overlayMode
-    : (am.isDrawing || anm.isDrawing) ? 'draw' : rm.overlayMode;
+    : (am.isDrawing || wm.isDrawing || anm.isDrawing) ? 'draw' : rm.overlayMode;
 
   const zoomPercent = Math.round(scale * 100);
-  const noOtherTool = !anm.isDrawing && !selectMode;
+  const noOtherTool = !anm.isDrawing && !selectMode && !wm.isDrawing;
   const canAddRun = rm.canAddRun && !am.isDrawing && noOtherTool && !!pageScalePxPerFt;
   const canAddArea = !calibrating && !rm.isDrawing && !am.isDrawing && noOtherTool && !!pageScalePxPerFt;
-  const canAnnotate = !calibrating && !rm.isDrawing && !am.isDrawing && !selectMode;
-  const canSelect = !calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing;
+  const canAddWall = !calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing && !selectMode && !!pageScalePxPerFt;
+  const canAnnotate = !calibrating && !rm.isDrawing && !am.isDrawing && !wm.isDrawing && !selectMode;
+  const canSelect = !calibrating && !rm.isDrawing && !am.isDrawing && !wm.isDrawing && !anm.isDrawing;
   const showPanel = rm.runs.length > 0 || rm.isDrawing || im.items.length > 0
-    || am.areas.length > 0 || am.isDrawing;
+    || am.areas.length > 0 || am.isDrawing || wm.walls.length > 0 || wm.isDrawing;
   const hasTakeoffData = rm.runs.some((r) => r.points.length >= 2) || im.items.length > 0
     || am.areas.some((a) => a.points.length >= 3);
 
@@ -975,6 +1028,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     () => (hiddenLayers.has('annotations') ? [] : anm.pageAnnotations),
     [anm.pageAnnotations, hiddenLayers],
   );
+  const visibleWalls = useMemo(
+    () => wm.pageWalls.filter((w) => w.id === wm.activeWallId || !hiddenLayers.has('walls')),
+    [wm.pageWalls, wm.activeWallId, hiddenLayers],
+  );
 
   useEffect(() => {
     if (rm.isDrawing) setSummaryTab('runs');
@@ -983,6 +1040,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   useEffect(() => {
     if (am.isDrawing) setSummaryTab('areas');
   }, [am.isDrawing]);
+
+  useEffect(() => {
+    if (wm.isDrawing) setSummaryTab('walls');
+  }, [wm.isDrawing]);
 
   // Close context menu when page changes
   useEffect(() => { setContextMenu(null); }, [pageNum, scale]);
@@ -1007,6 +1068,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (pendingItemPlacement) { setPendingItemPlacement(null); return; }
         if (rm.isDrawing) { finishActiveRun(); return; }
         if (am.isDrawing) { finishActiveArea(); return; }
+        if (wm.isDrawing) { finishActiveWall(); return; }
         if (anm.isDrawing) { anm.cancelAnnotation(); return; }
         if (pendingElev) { setPendingElev(null); return; }
         if (captureElev) { setCaptureElev(false); return; }
@@ -1019,18 +1081,19 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         e.preventDefault();
         if (rm.isDrawing) { if (!e.shiftKey) rm.undoLastPoint(); return; }
         if (am.isDrawing) { if (!e.shiftKey) am.undoLastPoint(); return; }
+        if (wm.isDrawing) { if (!e.shiftKey) wm.undoLastPoint(); return; }
         if (e.shiftKey) history.redo();
         else history.undo();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
         e.preventDefault();
-        if (!rm.isDrawing && !am.isDrawing) history.redo();
+        if (!rm.isDrawing && !am.isDrawing && !wm.isDrawing) history.redo();
         return;
       }
 
       // Page nav is blocked mid-draw — see prevPage/nextPage.
-      const lockPage = rm.isDrawing || am.isDrawing || anm.isDrawing;
+      const lockPage = rm.isDrawing || am.isDrawing || wm.isDrawing || anm.isDrawing;
       switch (e.key) {
         case 'ArrowLeft': if (!lockPage) setPageNum((p) => Math.max(1, p - 1)); break;
         case 'ArrowRight': if (!lockPage) setPageNum((p) => Math.min(totalPages, p + 1)); break;
@@ -1051,10 +1114,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [totalPages, handleFitToWidth, rm, am, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, pendingItemPlacement, contextMenu, captureElev, pendingElev]);
+  }, [totalPages, handleFitToWidth, rm, am, wm, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, finishActiveWall, pendingItemPlacement, contextMenu, captureElev, pendingElev]);
 
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
-  const anyDrawing = rm.isDrawing || am.isDrawing;
+  const anyDrawing = rm.isDrawing || am.isDrawing || wm.isDrawing;
   const toolbarProps = {
     onBack: handleBack,
     onLoadPlan: handleLoadPlan, loading, pageNum, totalPages, onPrevPage: prevPage,
@@ -1063,6 +1126,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: true,
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,
     canAddArea, onAddArea: am.handleAddArea, isDrawingArea: am.isDrawing,
+    canAddWall, onAddWall: wm.handleAddWall, isDrawingWall: wm.isDrawing,
     canAnnotate, onStartAnnotation: handleStartAnnotation, isAnnotating: anm.isDrawing,
     canCaptureElev: totalPages > 0,
     captureElev,
@@ -1175,7 +1239,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             scale={scale}
             rotation={pageRotation}
             resetPanKey={resetPanKey}
-            panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing && !selectMode && !captureElev) || spaceHeld}
+            panEnabled={(!calibrating && !rm.isDrawing && !am.isDrawing && !wm.isDrawing && !anm.isDrawing && !selectMode && !captureElev) || spaceHeld}
             onViewportChange={setViewport}
             onDocLoaded={handleDocLoaded}
             onPageSizeKnown={handlePageSizeKnown}
@@ -1196,7 +1260,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             activeRunId={rm.activeRunId}
             selectedRunId={rm.selectedRunId}
             onRunSelect={handleRunSelect}
-            mousePosition={am.isDrawing ? am.mousePos : rm.mousePos}
+            mousePosition={am.isDrawing ? am.mousePos : wm.isDrawing ? wm.mousePos : rm.mousePos}
             scalePxPerFt={pageScalePxPerFt}
             onMouseMove={handleOverlayMouseMove}
             spaceHeld={spaceHeld}
@@ -1222,7 +1286,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
               : null}
             multiSelected={multiSelected}
             marqueeRect={marqueeRect}
-            dragEnabled={!calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing
+            dragEnabled={!calibrating && !rm.isDrawing && !am.isDrawing && !wm.isDrawing && !anm.isDrawing
               && !selectMode && !spaceHeld && rm.interactionMode === 'normal'}
             onRunVertexDrag={handleRunVertexDrag}
             onAreaVertexDrag={handleAreaVertexDrag}
@@ -1235,6 +1299,15 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
               scalePxPerFt={pageScalePxPerFt}
               showHeatmap={showHeatmap}
               showPoints
+            />
+            <WallOverlay
+              walls={visibleWalls}
+              activeWallId={wm.activeWallId}
+              selectedWallId={wm.selectedWallId}
+              mousePosition={wm.isDrawing ? wm.mousePos : null}
+              scalePxPerFt={pageScalePxPerFt}
+              interactive={!calibrating && !anyDrawing && !selectMode}
+              onSelect={handleWallSelect}
             />
           </DrawingOverlay>
           {calibration.panelContent}
@@ -1300,6 +1373,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
             onEditArea={am.handleEditArea}
             onDeleteArea={am.handleDeleteArea}
             onSendAreasToBid={() => setShowSendAreasConfirm(true)}
+            walls={wm.pageWalls}
+            allWalls={wm.walls}
+            activeWallId={wm.activeWallId}
+            selectedWallId={wm.selectedWallId}
+            onSelectWall={handleWallSelect}
+            onEditWall={wm.handleEditWall}
+            onDeleteWall={wm.handleDeleteWall}
+            onSendWallsToBid={() => setShowSendWallsConfirm(true)}
             activeTab={summaryTab}
             onTabChange={setSummaryTab}
           />
@@ -1366,6 +1447,18 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         />
       )}
 
+      {wm.showConfigModal && (
+        <WallConfigModal
+          onConfirm={(config) => {
+            if (wm.editingConfig) history.record();
+            wm.handleConfigConfirm(config);
+          }}
+          onCancel={wm.handleConfigCancel}
+          initialConfig={wm.editingConfig}
+          lastWallConfig={wm.lastWallConfig}
+        />
+      )}
+
       {/* Annotation text modal */}
       {showAnnotationTextModal && (
         <div className="modal-overlay" onClick={handleAnnotationTextCancel}>
@@ -1405,6 +1498,24 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           message={`Delete "${am.areas.find((a) => a.id === am.pendingDeleteId)?.label || 'this area'}"?`}
           onYes={() => { history.record(); am.confirmDelete(); }}
           onNo={am.cancelDelete}
+        />
+      )}
+
+      {showSendWallsConfirm && (
+        <ConfirmDialog
+          message={`Send ${wm.walls.filter((w) => w.points.length >= 2).length} wall${wm.walls.filter((w) => w.points.length >= 2).length !== 1 ? 's' : ''} to bid? This will create a "Concrete Walls" section with concrete, formwork, and rebar line items grouped by wall config.`}
+          onYes={handleSendWallsToBid}
+          onNo={() => setShowSendWallsConfirm(false)}
+          yesLabel="Send to Bid"
+          variant="neutral"
+        />
+      )}
+
+      {wm.pendingDeleteId !== null && (
+        <ConfirmDialog
+          message={`Delete "${wm.walls.find((w) => w.id === wm.pendingDeleteId)?.label || 'this wall'}"?`}
+          onYes={() => { history.record(); wm.confirmDelete(); }}
+          onNo={wm.cancelDelete}
         />
       )}
 

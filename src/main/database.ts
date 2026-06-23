@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import crypto from 'crypto';
 import { app } from 'electron';
-import { TRADE_SEED_DATA, TradeType } from '../shared/constants/seed-data';
+import { TRADE_SEED_DATA, TradeType, SeedAssembly } from '../shared/constants/seed-data';
 
 /**
  * Tables that get a stable `uuid` column in migration v28. Catalog rows sync
@@ -173,6 +173,44 @@ export function seedDatabase(
       );
     }
 
+    // Starter assemblies. These are material-only bundles (labor/equipment are
+    // left for the estimator to attach via crew/production rates), seeded with
+    // deterministic uuids so they re-seed idempotently and carry stable
+    // identity across installs for cloud sync. Items resolve to this machine's
+    // material ids through each material's own seed uuid.
+    const assemblyMap = new Map<string, SeedAssembly>();
+    for (const tradeKey of trades) {
+      for (const asm of TRADE_SEED_DATA[tradeKey]?.assemblies ?? []) {
+        if (!assemblyMap.has(asm.name)) assemblyMap.set(asm.name, asm);
+      }
+    }
+    if (assemblyMap.size > 0) {
+      const insertAssembly = db.prepare(
+        'INSERT OR IGNORE INTO assemblies (name, description, unit, notes, uuid) VALUES (?, ?, ?, ?, ?)'
+      );
+      const insertAssemblyItem = db.prepare(
+        'INSERT OR IGNORE INTO assembly_items (assembly_id, material_id, quantity, uuid) VALUES (?, ?, ?, ?)'
+      );
+      const materialIdByUuid = new Map(
+        (db.prepare('SELECT id, uuid FROM materials').all() as { id: number; uuid: string }[])
+          .map((r) => [r.uuid, r.id])
+      );
+      for (const asm of assemblyMap.values()) {
+        const asmUuid = seedUuid('assemblies', asm.name);
+        insertAssembly.run(asm.name, asm.description, asm.unit, asm.notes ?? null, asmUuid);
+        const asmId = (db.prepare('SELECT id FROM assemblies WHERE uuid = ?').get(asmUuid) as any)?.id;
+        if (!asmId) continue;
+        for (const item of asm.items) {
+          const matId = materialIdByUuid.get(seedUuid('materials', `${item.category}/${item.name}`));
+          if (!matId) continue; // material from an unselected trade — skip
+          insertAssemblyItem.run(
+            asmId, matId, item.quantity,
+            seedUuid('assembly_items', `${asm.name}/${item.category}/${item.name}`)
+          );
+        }
+      }
+    }
+
     // Get current schema version to suppress backup reminder on fresh installs
     const schemaVersion = (db.prepare('SELECT MAX(version) as v FROM schema_version').get() as any)?.v ?? 0;
 
@@ -198,6 +236,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV33,
   migrateV34,
   migrateV35,
+  migrateV36,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -383,6 +422,51 @@ function migrateV35(db: Database.Database): void {
     ALTER TABLE takeoff_areas ADD COLUMN grade_value_ft REAL;   -- depth, or finished elevation
 
     INSERT INTO schema_version (version) VALUES (35);
+  `);
+}
+
+// V36: Wall-run takeoff — open polylines measured by length, expanded to
+// concrete volume + formwork contact area (SFCA) + optional rebar grid. A
+// parallel entity to takeoff_areas (which stay closed polygons); created
+// after v28 so it carries its own uuid handling rather than going through
+// UUID_TABLES.
+function migrateV36(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE takeoff_walls (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      label           TEXT NOT NULL DEFAULT '',
+      height_ft       REAL NOT NULL DEFAULT 8,
+      thickness_in    REAL NOT NULL DEFAULT 8,
+      faces           INTEGER NOT NULL DEFAULT 2,
+      rebar_spacing_in REAL NOT NULL DEFAULT 0,
+      material_id     INTEGER REFERENCES materials(id),
+      assembly_id     INTEGER REFERENCES assemblies(id),
+      color           TEXT NOT NULL DEFAULT '#6D4C41',
+      sort_order      INTEGER NOT NULL DEFAULT 0,
+      pdf_page        INTEGER NOT NULL DEFAULT 1,
+      uuid            TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX idx_takeoff_walls_job ON takeoff_walls(job_id);
+    UPDATE takeoff_walls SET uuid = ${SQL_RANDOM_UUID} WHERE uuid IS NULL;
+    CREATE UNIQUE INDEX idx_takeoff_walls_uuid ON takeoff_walls(uuid);
+    CREATE TRIGGER trg_takeoff_walls_uuid AFTER INSERT ON takeoff_walls WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE takeoff_walls SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    CREATE TABLE takeoff_wall_points (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      wall_id     INTEGER NOT NULL REFERENCES takeoff_walls(id) ON DELETE CASCADE,
+      x_px        REAL NOT NULL,
+      y_px        REAL NOT NULL,
+      sort_order  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_takeoff_wall_points_wall ON takeoff_wall_points(wall_id);
+
+    INSERT INTO schema_version (version) VALUES (36);
   `);
 }
 

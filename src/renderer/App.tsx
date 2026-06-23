@@ -16,11 +16,13 @@ import { AssembliesPage } from './pages/AssembliesPage';
 import { getActiveModules } from './modules';
 import type { TradeModule } from './modules';
 import { TrenchProfiler } from './modules/underground';
+import { ConcreteCalculator } from './modules/concrete';
 
 // Maps tool route paths to their components.
 // Add new entries here as tools are built.
 const TOOL_COMPONENTS: Record<string, React.FC> = {
   '/tools/trench-profiler': TrenchProfiler,
+  '/tools/concrete-calculator': ConcreteCalculator,
 };
 
 const APP_VERSION = `v${__APP_VERSION__}`;
@@ -91,6 +93,12 @@ const ToolIcons: Record<string, React.ReactNode> = {
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
       <polyline points="14 2 14 8 20 8"/>
       <line x1="9" y1="15" x2="15" y2="15"/>
+    </svg>
+  ),
+  '/tools/concrete-calculator': (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="8" width="18" height="12" rx="1"/>
+      <path d="M3 12h18"/><path d="M9 8v4"/><path d="M15 12v8"/>
     </svg>
   ),
 };

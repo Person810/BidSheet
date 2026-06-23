@@ -1,5 +1,6 @@
 import type { TradeModule } from './types';
 import { undergroundModule } from './underground';
+import { concreteModule } from './concrete';
 
 // Maps TradeType values (from seed-data / app_settings.trade_types) to modules.
 // Multiple trade types can map to the same module (water_sewer and storm_drain
@@ -7,6 +8,7 @@ import { undergroundModule } from './underground';
 const MODULE_MAP: Record<string, TradeModule> = {
   water_sewer: undergroundModule,
   storm_drain: undergroundModule,
+  concrete: concreteModule,
   // future: gas, electrical, telecom, steel, roofing, etc.
 };
 

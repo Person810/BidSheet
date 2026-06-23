@@ -165,6 +165,41 @@ export interface AreaConfig {
   gradeValueFt?: number | null;
 }
 
+/**
+ * A measured wall run — an open polyline traced on the plan with a height,
+ * thickness, and formed-face count, so it expands to concrete volume, formwork
+ * contact area (SFCA), and an optional rebar grid.
+ *
+ * ID convention: same as TakeoffRun (negative = local-only, positive = DB).
+ */
+export interface TakeoffWall {
+  id: number;
+  jobId: number;
+  label: string;
+  heightFt: number;
+  thicknessIn: number;
+  faces: number;          // 1 or 2 formed faces
+  rebarSpacingIn: number; // 0 = none
+  materialId: number | null;
+  assemblyId: number | null;
+  color: string;
+  pdfPage: number;
+  points: PdfPoint[];
+}
+
+/** Config fields shared between new-wall and edit-wall modals */
+export interface WallConfig {
+  label: string;
+  heightFt: number;
+  thicknessIn: number;
+  faces: number;
+  rebarSpacingIn: number;
+  materialId: number | null;
+  assemblyId: number | null;
+}
+
+export const WALL_COLOR = '#6D4C41';
+
 /** A single surveyed elevation point on a job surface (PDF px + elevation ft). */
 export interface SurfacePoint {
   x: number;       // PDF-native px (at scale=1)

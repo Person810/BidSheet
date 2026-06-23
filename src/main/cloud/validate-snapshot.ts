@@ -72,6 +72,9 @@ const snapshotSchema = z.strictObject({
     areas: rows,
     area_points: rows,
     annotations: rows,
+    // Added in v36; optional so pre-v36 snapshots still validate.
+    walls: rows.optional(),
+    wall_points: rows.optional(),
     // Added in v35; optional so pre-v35 snapshots still validate.
     surfaces: rows.optional(),
     surface_points: rows.optional(),

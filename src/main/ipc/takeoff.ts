@@ -491,6 +491,72 @@ export function registerTakeoffHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM takeoff_areas WHERE id = ?').run(id);
   });
 
+  // ---- Takeoff Walls (open polylines -> concrete volume / formwork / rebar) ----
+
+  safeHandle('db:takeoff-walls:list', (_event, jobId: number) => {
+    const walls = db.prepare('SELECT * FROM takeoff_walls WHERE job_id = ? ORDER BY sort_order').all(jobId) as any[];
+    const pointsStmt = db.prepare(
+      'SELECT x_px, y_px FROM takeoff_wall_points WHERE wall_id = ? ORDER BY sort_order'
+    );
+    return walls.map((w) => ({
+      id: w.id,
+      jobId: w.job_id,
+      label: w.label,
+      heightFt: w.height_ft,
+      thicknessIn: w.thickness_in,
+      faces: w.faces,
+      rebarSpacingIn: w.rebar_spacing_in,
+      materialId: w.material_id,
+      assemblyId: w.assembly_id,
+      color: w.color,
+      pdfPage: w.pdf_page,
+      points: (pointsStmt.all(w.id) as any[]).map((p) => ({ x: p.x_px, y: p.y_px })),
+    }));
+  });
+
+  safeHandle('db:takeoff-walls:save', (_event, wall: any) => {
+    const saveTx = db.transaction(() => {
+      let wallId: number;
+      if (wall.id && wall.id > 0) {
+        db.prepare(`
+          UPDATE takeoff_walls SET
+            label = ?, height_ft = ?, thickness_in = ?, faces = ?, rebar_spacing_in = ?,
+            material_id = ?, assembly_id = ?, color = ?, sort_order = ?, pdf_page = ?,
+            updated_at = datetime('now','localtime')
+          WHERE id = ?
+        `).run(
+          wall.label, wall.heightFt, wall.thicknessIn, wall.faces, wall.rebarSpacingIn ?? 0,
+          wall.materialId ?? null, wall.assemblyId ?? null, wall.color, wall.sortOrder ?? 0, wall.pdfPage, wall.id
+        );
+        wallId = wall.id;
+      } else {
+        const result = db.prepare(`
+          INSERT INTO takeoff_walls
+            (job_id, label, height_ft, thickness_in, faces, rebar_spacing_in, material_id, assembly_id, color, sort_order, pdf_page)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          wall.jobId, wall.label, wall.heightFt, wall.thicknessIn, wall.faces, wall.rebarSpacingIn ?? 0,
+          wall.materialId ?? null, wall.assemblyId ?? null, wall.color, wall.sortOrder ?? 0, wall.pdfPage
+        );
+        wallId = Number(result.lastInsertRowid);
+      }
+
+      db.prepare('DELETE FROM takeoff_wall_points WHERE wall_id = ?').run(wallId);
+      const insertPt = db.prepare('INSERT INTO takeoff_wall_points (wall_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)');
+      if (wall.points) {
+        for (let i = 0; i < wall.points.length; i++) {
+          insertPt.run(wallId, wall.points[i].x, wall.points[i].y, i);
+        }
+      }
+      return { id: wallId };
+    });
+    return saveTx();
+  });
+
+  safeHandle('db:takeoff-walls:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM takeoff_walls WHERE id = ?').run(id);
+  });
+
   // ---- Takeoff Surfaces (existing/proposed elevation point sets -> TIN) ----
 
   safeHandle('db:takeoff-surfaces:list', (_event, jobId: number) => {
@@ -590,6 +656,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
     const replaceTx = db.transaction(() => {
       db.prepare('DELETE FROM takeoff_items WHERE job_id = ?').run(jobId);
       db.prepare('DELETE FROM takeoff_areas WHERE job_id = ?').run(jobId);
+      db.prepare('DELETE FROM takeoff_walls WHERE job_id = ?').run(jobId);
       db.prepare('DELETE FROM takeoff_runs WHERE job_id = ?').run(jobId);
       db.prepare('DELETE FROM takeoff_nodes WHERE job_id = ?').run(jobId);
       db.prepare('DELETE FROM takeoff_annotations WHERE job_id = ?').run(jobId);
@@ -654,6 +721,22 @@ export function registerTakeoffHandlers(db: Database.Database): void {
           a.gradeMode ?? null, a.gradeValueFt ?? null);
         (a.points || []).forEach((pt: any, i: number) => {
           insertAreaPt.run(a.id, pt.x, pt.y, i);
+        });
+      });
+
+      const insertWall = db.prepare(
+        `INSERT INTO takeoff_walls (id, job_id, label, height_ft, thickness_in, faces, rebar_spacing_in, material_id, assembly_id, color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const insertWallPt = db.prepare(
+        'INSERT INTO takeoff_wall_points (wall_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
+      );
+      (state.walls || []).forEach((w: any, idx: number) => {
+        if (w.id <= 0) return;
+        insertWall.run(w.id, jobId, w.label, w.heightFt, w.thicknessIn, w.faces,
+          w.rebarSpacingIn ?? 0, w.materialId ?? null, w.assemblyId ?? null, w.color, idx, w.pdfPage);
+        (w.points || []).forEach((pt: any, i: number) => {
+          insertWallPt.run(w.id, pt.x, pt.y, i);
         });
       });
 

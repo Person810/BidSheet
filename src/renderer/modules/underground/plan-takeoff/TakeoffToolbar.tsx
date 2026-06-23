@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { UTILITY_COLORS, AREA_COLORS, ANNOTATION_COLOR, type UtilityType, type AnnotationKind } from './types';
+import { UTILITY_COLORS, AREA_COLORS, ANNOTATION_COLOR, WALL_COLOR, type UtilityType, type AnnotationKind } from './types';
 
 function Separator() {
   return <div className="tk-sep" />;
 }
 
 /** Keys for the overlay layer visibility toggles */
-export type LayerKey = UtilityType | 'items' | 'areas' | 'annotations';
+export type LayerKey = UtilityType | 'items' | 'areas' | 'walls' | 'annotations';
 
 const LAYER_OPTIONS: { key: LayerKey; label: string; color: string }[] = [
   { key: 'sanitary', label: 'Sanitary Sewer', color: UTILITY_COLORS.sanitary },
@@ -16,6 +16,7 @@ const LAYER_OPTIONS: { key: LayerKey; label: string; color: string }[] = [
   { key: 'other', label: 'Other Runs', color: UTILITY_COLORS.other },
   { key: 'items', label: 'Count Items', color: '#e91e63' },
   { key: 'areas', label: 'Areas', color: AREA_COLORS.asphalt },
+  { key: 'walls', label: 'Walls', color: WALL_COLOR },
   { key: 'annotations', label: 'Annotations', color: ANNOTATION_COLOR },
 ];
 
@@ -41,6 +42,7 @@ const Icons = {
   select: ic(<path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />),
   run: ic(<><circle cx="5" cy="19" r="2" /><circle cx="12" cy="9" r="2" /><circle cx="19" cy="14" r="2" /><line x1="6" y1="17.2" x2="11" y2="10.8" /><line x1="13.8" y1="10.3" x2="17.4" y2="12.9" /></>),
   area: ic(<><path d="M4 8L9 4l11 3-2 13-12-2z" /><circle cx="4" cy="8" r="1.5" fill="currentColor" /><circle cx="9" cy="4" r="1.5" fill="currentColor" /><circle cx="20" cy="7" r="1.5" fill="currentColor" /><circle cx="18" cy="20" r="1.5" fill="currentColor" /><circle cx="6" cy="18" r="1.5" fill="currentColor" /></>),
+  wall: ic(<><polyline points="3 18 9 6 15 15 21 5" /><circle cx="3" cy="18" r="1.5" fill="currentColor" /><circle cx="9" cy="6" r="1.5" fill="currentColor" /><circle cx="15" cy="15" r="1.5" fill="currentColor" /><circle cx="21" cy="5" r="1.5" fill="currentColor" /></>),
   annotate: ic(<><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></>),
   layers: ic(<><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></>),
   export: ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>),
@@ -117,6 +119,10 @@ interface TakeoffToolbarProps {
   canAddArea: boolean;
   onAddArea: () => void;
   isDrawingArea: boolean;
+  // Walls
+  canAddWall: boolean;
+  onAddWall: () => void;
+  isDrawingWall: boolean;
   // Annotations
   canAnnotate: boolean;
   onStartAnnotation: (kind: AnnotationKind) => void;
@@ -159,6 +165,7 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
     calibrating, onToggleCalibrate, canCalibrate, scaleDisplay,
     canAddRun, onAddRun, isDrawing,
     canAddArea, onAddArea, isDrawingArea,
+    canAddWall, onAddWall, isDrawingWall,
     canAnnotate, onStartAnnotation, isAnnotating,
     canCaptureElev, captureElev, onToggleCaptureElev, surfacePointCount,
     showHeatmap, onToggleHeatmap, canSendEarthwork, onSendEarthworkToBid,
@@ -256,6 +263,9 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       <ToolBtn icon={Icons.area} label="Area" active={isDrawingArea} disabled={!canAddArea}
         title={!canAddArea && !isDrawingArea ? 'Calibrate scale first' : 'Measure a surface area (pavement patch, restoration)'}
         onClick={onAddArea} />
+      <ToolBtn icon={Icons.wall} label="Wall" active={isDrawingWall} disabled={!canAddWall}
+        title={!canAddWall && !isDrawingWall ? 'Calibrate scale first' : 'Trace a wall run (length × height → concrete, formwork, rebar)'}
+        onClick={onAddWall} />
 
       <div ref={annotateRef} style={{ position: 'relative', flexShrink: 0 }}>
         <button
