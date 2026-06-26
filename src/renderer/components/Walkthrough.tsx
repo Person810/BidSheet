@@ -51,7 +51,7 @@ const STEPS: TourStep[] = [
   {
     target: 'tools',
     title: 'Takeoff Tools',
-    body: 'Measure quantities straight from your plans: load a PDF, calibrate the scale, draw pipe runs and areas, and send measured quantities into your estimate. The trench profiler calculates excavation and backfill volumes.',
+    body: 'Measure quantities straight from your plans: load a PDF, calibrate the scale, draw pipe runs and areas, and send measured quantities into your estimate.',
   },
   {
     target: 'settings',
