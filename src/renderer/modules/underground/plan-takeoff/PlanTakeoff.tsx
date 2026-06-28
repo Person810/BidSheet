@@ -27,7 +27,7 @@ import { sendAreasToBid } from './sendAreasToBid';
 import { sendWallsToBid } from './sendWallsToBid';
 import { sendEarthworkToBid } from './sendEarthworkToBid';
 import { useSurfaceManager } from './useSurfaceManager';
-import { buildGroundSampler, buildGroundTin } from './surfaceSampler';
+import { buildGroundSampler } from './surfaceSampler';
 import SurfaceOverlay from './SurfaceOverlay';
 import WallOverlay from './WallOverlay';
 import { buildTakeoffCsv } from './exportTakeoffCsv';
@@ -1597,7 +1597,6 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         const run = rm.runs.find((r) => r.id === profileRunId);
         if (!run) return null;
         const groundSampler = buildGroundSampler(sm.surface, run.pdfPage);
-        const groundTin = buildGroundTin(sm.surface, run.pdfPage);
         return (
           <div className="modal-overlay" onClick={() => setProfileRunId(null)}>
             <div className="modal" style={{ maxWidth: 960, width: '92vw' }} onClick={(e) => e.stopPropagation()}>
@@ -1619,7 +1618,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
               {profileMode === '3d'
                 ? (
                   <React.Suspense fallback={<p className="text-muted" style={{ padding: 24 }}>Loading 3D view…</p>}>
-                    <Trench3DView run={run} scalePxPerFt={pageScalePxPerFt} groundSampler={groundSampler} groundTin={groundTin} />
+                    <Trench3DView run={run} scalePxPerFt={pageScalePxPerFt} groundSampler={groundSampler} />
                   </React.Suspense>
                 )
                 : <RunProfileView run={run} scalePxPerFt={pageScalePxPerFt} groundSampler={groundSampler} />}
