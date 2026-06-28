@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateLocal, formatCurrency, statusBadge } from './jobs/helpers';
 
@@ -117,9 +118,7 @@ export function Dashboard() {
 
       {dueSoonJobs.length > 0 && (
         <div className="due-soon-banner mb-16">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
-            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-          </svg>
+          <Clock size={14} strokeWidth={2.5} color="#f59e0b" style={{ flexShrink: 0 }} />
           <span style={{ fontWeight: 500 }}>
             {dueSoonJobs.length} bid{dueSoonJobs.length > 1 ? 's' : ''} due within 7 days
           </span>

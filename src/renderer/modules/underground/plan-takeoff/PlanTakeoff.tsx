@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { ArrowLeft, FileText, Ruler } from 'lucide-react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
 import { DrawingOverlay, screenToPdf } from './DrawingOverlay';
 import { useScaleCalibration, formatScale } from './ScaleCalibration';
@@ -1177,10 +1178,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     <div className="tk-workspace">
       <div className="tk-toolbar">
         <button className="tk-btn" onClick={onBack} title="Back to Job">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
+          <ArrowLeft size={16} strokeWidth={1.8} />
           <span>Back to Job</span>
         </button>
         <div className="tk-sep" />
@@ -1188,12 +1186,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       </div>
       <div className="tk-empty-stage">
         <div className="tk-empty-card">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)"
-            strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" />
-          </svg>
+          <FileText size={40} strokeWidth={1.2} color="var(--text-muted)" />
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
               {loading ? 'Loading plan…' : 'No plan loaded'}
@@ -1393,10 +1386,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           {statusHint}
         </span>
         <span className="tk-status-cell" title="Plan scale">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21.3 8.7l-6-6L2.7 15.3l6 6L21.3 8.7z" />
-          </svg>
+          <Ruler size={11} strokeWidth={2} />
           {scaleDisplay ?? 'Not calibrated'}
         </span>
         <span className="tk-status-cell" title="Current page">
