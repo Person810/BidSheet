@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Lock, Unlock } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { EditJobModal, type EditJobForm } from './EditJobModal';
@@ -23,21 +24,9 @@ import { PdfCustomizerModal } from './PdfCustomizerModal';
 import { useToastStore } from '../../stores/toast-store';
 import { useBidHistory, type BidSnapshot } from './useBidHistory';
 
-// Lock icon SVGs -- inline to avoid any import dependency
-const LockClosedIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-  </svg>
-);
-const LockOpenIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-  </svg>
-);
+// Lock icons (lucide-react)
+const LockClosedIcon = () => <Lock size={16} strokeWidth={2} />;
+const LockOpenIcon = () => <Unlock size={16} strokeWidth={2} />;
 
 interface JobDetailProps {
   jobId: number;
