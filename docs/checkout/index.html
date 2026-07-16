@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://*.paddle.com https://*.profitwell.com; style-src 'self' 'unsafe-inline' https://*.paddle.com; img-src 'self' data: https://*.paddle.com https://*.profitwell.com; font-src 'self'; connect-src 'self' https://*.paddle.com https://*.profitwell.com; frame-src https://*.paddle.com; manifest-src 'self'; form-action 'self'; base-uri 'none'">
   <title>BidSheet Cloud · Checkout</title>
   <meta name="robots" content="noindex">
   <link rel="icon" href="/icon.png" type="image/png">
@@ -71,37 +72,6 @@
   </nav>
 
   <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-  <script>
-    // Client-side token (public by design): Paddle dashboard → Developer
-    // tools → Authentication → Client-side tokens. test_… = sandbox,
-    // live_… = production; the environment is derived from the prefix, so
-    // going live is a one-line swap.
-    var PADDLE_CLIENT_TOKEN = 'test_177c96a1c8d1992fb9a4ebef5b0';
-
-    var status = document.getElementById('status');
-    var txn = new URLSearchParams(location.search).get('_ptxn');
-
-    if (PADDLE_CLIENT_TOKEN.indexOf('__') === 0) {
-      status.textContent = 'Checkout is not configured yet.';
-    } else if (!txn) {
-      status.innerHTML = 'Nothing to check out. Start from the BidSheet app: ' +
-        'Settings → Cloud Sync → Subscribe. <a href="/">Back to bidsheet.co</a>';
-    } else {
-      if (PADDLE_CLIENT_TOKEN.indexOf('test_') === 0) {
-        Paddle.Environment.set('sandbox');
-      }
-      // Paddle.js spots the _ptxn parameter and opens the overlay checkout
-      // for that transaction on its own once initialized.
-      Paddle.Initialize({
-        token: PADDLE_CLIENT_TOKEN,
-        eventCallback: function (ev) {
-          if (ev.name === 'checkout.completed') {
-            status.textContent = 'Payment complete. You can close this tab and return to BidSheet.';
-          }
-        }
-      });
-      status.textContent = 'Opening secure checkout…';
-    }
-  </script>
+  <script src="/assets/js/checkout.js"></script>
 </body>
 </html>
