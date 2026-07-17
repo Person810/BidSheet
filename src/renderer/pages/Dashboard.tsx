@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateLocal, formatCurrency, statusBadge } from './jobs/helpers';
+import { breakdownByClient, breakdownBySize, type WinLossRow } from './winLoss';
 
 function statCardClass(type: string, value: number): string {
   if (type === 'drafts' && value > 0) return 'card stat-card-info';
@@ -19,11 +20,41 @@ function daysUntilBid(bidDate: string): number | null {
   return Math.ceil((target.getTime() - now.getTime()) / 86400000);
 }
 
+function WinLossTable({ rows }: { rows: WinLossRow[] }) {
+  return (
+    <table className="data-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th className="text-right">W / L</th>
+          <th className="text-right">Rate</th>
+          <th className="text-right">Won Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.key}>
+            <td style={{ fontWeight: 500 }}>{r.key}</td>
+            <td className="text-right text-muted">{r.won} / {r.lost}</td>
+            <td className="text-right" style={{
+              fontWeight: 600,
+              color: r.winRatePct >= 50 ? 'var(--success)' : 'var(--warning)',
+            }}>{r.winRatePct}%</td>
+            <td className="text-right text-muted">{r.wonVolume > 0 ? formatCurrency(r.wonVolume) : '--'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function Dashboard() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
   const navigate = useNavigate();
   const [dueSoonJobs, setDueSoonJobs] = useState<any[]>([]);
+  const [winLossByClient, setWinLossByClient] = useState<WinLossRow[]>([]);
+  const [winLossBySize, setWinLossBySize] = useState<WinLossRow[]>([]);
   const [stats, setStats] = useState({
     drafts: 0,
     submitted: 0,
@@ -45,17 +76,24 @@ export function Dashboard() {
         const lost = allJobs.filter((j: any) => j.status === 'lost').length;
         const decided = won + lost;
 
-        // Get bid totals for submitted + won jobs (single batch IPC call)
+        // Get bid totals for submitted/won/lost jobs (single batch IPC call).
+        // Lost jobs are included so the win/loss size buckets have totals.
         let totalVolume = 0;
-        const bidJobIds = allJobs
-          .filter((j: any) => j.status === 'submitted' || j.status === 'won')
-          .map((j: any) => j.id);
-        if (bidJobIds.length > 0) {
-          const summaries = await window.api.getBidSummaryBatch(bidJobIds);
+        const volumes = new Map<number, number>();
+        const bidJobs = allJobs.filter(
+          (j: any) => j.status === 'submitted' || j.status === 'won' || j.status === 'lost'
+        );
+        if (bidJobs.length > 0) {
+          const statusById = new Map(bidJobs.map((j: any) => [j.id, j.status]));
+          const summaries = await window.api.getBidSummaryBatch(bidJobs.map((j: any) => j.id));
           for (const s of summaries) {
-            if (s) totalVolume += s.grandTotal;
+            if (!s) continue;
+            volumes.set(s.jobId, s.grandTotal);
+            if (statusById.get(s.jobId) !== 'lost') totalVolume += s.grandTotal;
           }
         }
+        setWinLossByClient(breakdownByClient(allJobs, volumes));
+        setWinLossBySize(breakdownBySize(allJobs, volumes));
 
         setStats({
           drafts,
@@ -128,6 +166,26 @@ export function Dashboard() {
               return `${j.name} (${d === 0 ? 'Today' : d + 'd'})`;
             }).join(' \u00b7 ')}
           </span>
+        </div>
+      )}
+
+      {(winLossByClient.length > 0 || winLossBySize.length > 0) && (
+        <div className="card mb-16">
+          <h3 style={{ marginBottom: 12 }}>Where You Win</h3>
+          <div className="flex gap-16" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            {winLossByClient.length > 0 && (
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>By client</div>
+                <WinLossTable rows={winLossByClient.slice(0, 8)} />
+              </div>
+            )}
+            {winLossBySize.length > 0 && (
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>By bid size</div>
+                <WinLossTable rows={winLossBySize} />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
