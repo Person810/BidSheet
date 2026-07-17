@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  parsePipeSizeFromName,
+  parsePipeSizeFromName, depthZoneBreakdown,
   type TrenchInput, type ValidationError,
 } from '../../modules/underground/trenchCalc';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
@@ -8,6 +8,7 @@ import { NATIVE_MATERIAL_ITEM } from '../../modules/underground/useTrenchMateria
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from '../../modules/underground/trenchInputToRun';
 import { buildGroundSampler } from '../../modules/underground/plan-takeoff/surfaceSampler';
 import type { TakeoffRun, TakeoffSurface } from '../../modules/underground/plan-takeoff/types';
+import { DepthZoneTable } from '../../modules/underground/DepthZoneTable';
 
 const Trench3DView = React.lazy(() =>
   import('../../modules/underground/plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
@@ -42,6 +43,10 @@ export function TrenchProfileForm({
   const hasError = (field: string) => errors.some((e) => e.field === field);
   const [linkedRunId, setLinkedRunId] = useState<number | null>(null);
   const linkedRun = takeoffRuns.find((r) => r.id === linkedRunId) ?? null;
+  const depthZones = useMemo(
+    () => (errors.length === 0 ? depthZoneBreakdown(form) : []),
+    [form, errors]
+  );
 
   const backfillItems = useMemo(
     () => [NATIVE_MATERIAL_ITEM, ...beddingMaterials],
@@ -184,6 +189,13 @@ export function TrenchProfileForm({
         <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(239,68,68,0.1)',
           borderRadius: 6, fontSize: 12, color: 'var(--danger)' }}>
           {errors.map((e, i) => <div key={i}>{e.message}</div>)}
+        </div>
+      )}
+
+      {depthZones.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <label>Depth Summary</label>
+          <DepthZoneTable zones={depthZones} />
         </div>
       )}
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  calculateTrench, validateInput, parsePipeSizeFromName, explainTrench,
+  calculateTrench, validateInput, parsePipeSizeFromName, explainTrench, depthZoneBreakdown,
   type TrenchInput,
 } from './trenchCalc';
 import { CalcPopover } from '../../components/CalcPopover';
@@ -8,6 +8,7 @@ import type { CalcBreakdown } from '../../../shared/calcExplain';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from './useTrenchMaterials';
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from './trenchInputToRun';
+import { DepthZoneTable } from './DepthZoneTable';
 
 const Trench3DView = React.lazy(() =>
   import('./plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
@@ -38,6 +39,7 @@ export function TrenchProfiler() {
   const errors = useMemo(() => validateInput(input), [input]);
   const result = useMemo(() => (errors.length === 0 ? calculateTrench(input) : null), [input, errors]);
   const math = useMemo(() => (result ? explainTrench(input, result) : null), [input, result]);
+  const depthZones = useMemo(() => (result ? depthZoneBreakdown(input) : []), [input, result]);
 
   const hasError = (field: string) => errors.some((e) => e.field === field);
 
@@ -211,6 +213,16 @@ export function TrenchProfiler() {
             <p className="text-muted" style={{ padding: 24, textAlign: 'center' }}>
               Fix input errors to see results.
             </p>
+          )}
+
+          {depthZones.length > 0 && (
+            <>
+              <h3 style={{ margin: '16px 0 10px' }}>Depth Summary</h3>
+              <DepthZoneTable zones={depthZones} />
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+                5/10/15 ft bands line up with typical shoring/trench-box trigger depths.
+              </p>
+            </>
           )}
         </div>
       </div>
