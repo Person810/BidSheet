@@ -16,6 +16,7 @@ import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { QuotesTab } from './QuotesTab';
 import { DocumentsTab } from './DocumentsTab';
 import { BidAnalysisModal } from './BidAnalysisModal';
+import { IndirectCostsCard } from './IndirectCostsCard';
 import { CostCodeReportModal } from './CostCodeReportModal';
 import { BidItemImportModal } from './BidItemImportModal';
 import { JobPriceImportModal } from './JobPriceImportModal';
@@ -883,6 +884,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         isChangeOrder={isChangeOrder}
         materialAges={materialAges}
       />
+
+      <IndirectCostsCard jobId={jobId} isLocked={isLocked} onChanged={loadJob} />
 
       {/* Add Section */}
       <div className="no-print" style={{ padding: '10px 0' }}>

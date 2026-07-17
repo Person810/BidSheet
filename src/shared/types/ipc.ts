@@ -278,6 +278,24 @@ export interface BidItemImportRow {
   itemNumber: string | null;
 }
 
+export interface IndirectCostRow {
+  id: number;
+  job_id: number;
+  description: string;
+  amount: number;
+  sort_order: number;
+  uuid: string | null;
+  created_at: string;
+}
+
+export interface SaveIndirectCostPayload {
+  id?: number;
+  jobId?: number;
+  description: string;
+  amount: number;
+  sortOrder?: number;
+}
+
 export interface JobDocumentRow {
   id: number;
   job_id: number;

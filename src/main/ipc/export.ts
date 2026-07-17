@@ -7,7 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { fmtMoney } from '../../shared/calcExplain';
-import { safeHandle, getSectionCostRows } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
 
 export function registerExportHandlers(db: Database.Database): void {
@@ -35,7 +35,7 @@ export function registerExportHandlers(db: Database.Database): void {
 
     // Calculate summary (same logic as db:jobs:summary)
     const costRows = getSectionCostRows(db, jobId);
-    const summary = computeBidSummaryFromSections(costRows, job);
+    const summary = computeBidSummaryFromSections(costRows, job, getIndirectTotal(db, jobId));
     const hasMarkupOverrides = costRows.some((r) => !r.is_alternate && (
       r.overhead_percent_override != null
       || r.profit_percent_override != null
@@ -98,25 +98,50 @@ export function registerExportHandlers(db: Database.Database): void {
     lines.push('');
     lines.push(row('Item No', 'Description', 'Unit', 'Quantity', 'Unit Price', 'Extension'));
 
+    // Section markups resolve overrides the same way the bid summary does
+    const sectionMarkupPct = (section: any) => (
+      (section.overhead_percent_override ?? job.overhead_percent ?? 0)
+      + (section.profit_percent_override ?? job.profit_percent ?? 0)
+      + (section.bond_percent_override ?? job.bond_percent ?? 0)
+    ) / 100;
+
+    const lineSell = (item: any, markupPct: number): number => {
+      const escalatedMaterial = (item.material_total || 0) * (1 + escPct);
+      const directWithEsc = (item.total_cost || 0) - (item.material_total || 0) + escalatedMaterial;
+      return directWithEsc * (1 + markupPct) + escalatedMaterial * taxPct;
+    };
+
+    // Indirect pool (marked up with job-level percentages, matching
+    // bidCalc) is spread proportionally into the BASE bid's unit prices —
+    // the whole point of an owner-facing unit price schedule is that
+    // indirects are invisible.
+    const indirectTotal = getIndirectTotal(db, jobId);
+    const jobMarkupPct = ((job.overhead_percent || 0) + (job.profit_percent || 0) + (job.bond_percent || 0)) / 100;
+    const indirectSell = indirectTotal * (1 + jobMarkupPct);
+    let baseSellSum = 0;
+    for (const section of sections.filter((s) => !s.is_alternate)) {
+      const items = db.prepare(
+        'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
+      ).all(section.id) as any[];
+      const markupPct = sectionMarkupPct(section);
+      for (const item of items) baseSellSum += lineSell(item, markupPct);
+    }
+    const spreadFactor = baseSellSum > 0 ? 1 + indirectSell / baseSellSum : 1;
+
     const buildSection = (section: any): number => {
       const items = db.prepare(
         'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
       ).all(section.id) as any[];
       if (items.length === 0) return 0;
 
-      // Section markups resolve overrides the same way the bid summary does
-      const markupPct = (
-        (section.overhead_percent_override ?? job.overhead_percent ?? 0)
-        + (section.profit_percent_override ?? job.profit_percent ?? 0)
-        + (section.bond_percent_override ?? job.bond_percent ?? 0)
-      ) / 100;
+      const markupPct = sectionMarkupPct(section);
+      // Alternates never carry the base bid's indirects
+      const factor = section.is_alternate ? 1 : spreadFactor;
 
       lines.push(row(section.is_alternate ? `ADD ALTERNATE: ${section.name}` : section.name, '', '', '', '', ''));
       let sectionTotal = 0;
       for (const item of items) {
-        const escalatedMaterial = (item.material_total || 0) * (1 + escPct);
-        const directWithEsc = (item.total_cost || 0) - (item.material_total || 0) + escalatedMaterial;
-        const sellTotal = directWithEsc * (1 + markupPct) + escalatedMaterial * taxPct;
+        const sellTotal = lineSell(item, markupPct) * factor;
         const qty = item.quantity || 0;
         // Round the unit price to cents and extend from the rounded price,
         // as owner bid forms require qty x unit price = extension
@@ -146,7 +171,11 @@ export function registerExportHandlers(db: Database.Database): void {
       }
     }
     lines.push('');
-    lines.push(row('Note: unit prices include overhead, profit, bond, escalation, and sales tax. Extensions use rounded unit prices and may differ from the proposal total by cents.'));
+    lines.push(row(
+      indirectTotal > 0
+        ? 'Note: unit prices include overhead, profit, bond, escalation, sales tax, and spread indirect costs. Extensions use rounded unit prices and may differ from the proposal total by cents.'
+        : 'Note: unit prices include overhead, profit, bond, escalation, and sales tax. Extensions use rounded unit prices and may differ from the proposal total by cents.'
+    ));
 
     const csvContent = lines.join('\r\n') + '\r\n';
     const safeName = (job.job_number || job.name || 'schedule').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -183,12 +212,13 @@ export function registerExportHandlers(db: Database.Database): void {
       ).all(section.id) as any[];
     }
 
-    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job);
+    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId));
 
     return {
       job, settings, sections, lineItemsBySection,
       totals: summary,
       escalation: summary.escalation,
+      indirect: summary.indirect_total,
       overhead: summary.overhead, profit: summary.profit,
       bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
       alternates: summary.alternates,
@@ -473,6 +503,7 @@ interface PdfData {
   lineItemsBySection: Record<number, any[]>;
   totals: any;
   escalation: number;
+  indirect: number;
   overhead: number;
   profit: number;
   bond: number;
@@ -489,7 +520,7 @@ interface PdfData {
 
 function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   const { job, settings, sections, lineItemsBySection, totals,
-    escalation, overhead, profit, bond, tax, grandTotal, alternates,
+    escalation, indirect, overhead, profit, bond, tax, grandTotal, alternates,
     escalationPct, overheadPct, profitPct, bondPct, taxPct } = data;
 
   const companyName = escHtml(settings?.company_name || '');
@@ -551,6 +582,7 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   let summaryRows = '';
   summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtMoney(totals.direct_cost_total)}</td></tr>`;
   if (escalationPct > 0) summaryRows += `<tr><td class="sum-label">Material Escalation (${escalationPct}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
+  if (indirect > 0) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
   if (overheadPct > 0) summaryRows += `<tr><td class="sum-label">Overhead (${overheadPct}%)</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
   if (profitPct > 0) summaryRows += `<tr><td class="sum-label">Profit (${profitPct}%)</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
   if (bondPct > 0) summaryRows += `<tr><td class="sum-label">Bond (${bondPct}%)</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;

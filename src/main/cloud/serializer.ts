@@ -41,6 +41,8 @@ export interface JobSnapshot {
   line_items: any[];
   trench_profiles: any[];
   quotes: any[];
+  /** Job-level indirect costs. Optional: absent in pre-v39 snapshots. */
+  indirect_costs?: any[];
   takeoff: {
     settings: Record<string, any> | null;
     page_scales: any[];
@@ -148,6 +150,7 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
       all('SELECT * FROM trench_profiles WHERE job_id = ? ORDER BY id')
     ),
     quotes: all('SELECT * FROM quotes WHERE job_id = ? ORDER BY id'),
+    indirect_costs: all('SELECT * FROM job_indirect_costs WHERE job_id = ? ORDER BY id'),
     takeoff: {
       settings: settingsOut,
       page_scales: all('SELECT * FROM takeoff_page_scales WHERE job_id = ? ORDER BY page_number'),
@@ -348,6 +351,7 @@ export function importJob(
         'DELETE FROM bid_line_items WHERE job_id = ?',
         'DELETE FROM trench_profiles WHERE job_id = ?',
         'DELETE FROM quotes WHERE job_id = ?',
+        'DELETE FROM job_indirect_costs WHERE job_id = ?',
         'DELETE FROM takeoff_items WHERE job_id = ?',
         'DELETE FROM takeoff_runs WHERE job_id = ?',
         'DELETE FROM takeoff_nodes WHERE job_id = ?',
@@ -379,6 +383,7 @@ export function importJob(
 
     for (const tp of snapshot.trench_profiles) insertRow('trench_profiles', { ...tp, job_id: jobId });
     for (const q of snapshot.quotes) insertRow('quotes', { ...q, job_id: jobId });
+    for (const ic of snapshot.indirect_costs || []) insertRow('job_indirect_costs', { ...ic, job_id: jobId });
 
     const t = snapshot.takeoff;
 

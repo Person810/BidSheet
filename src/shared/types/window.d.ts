@@ -9,9 +9,11 @@ import type {
   CsvParseResult,
   EquipmentRow,
   FileExportResult,
+  IndirectCostRow,
   JobBidSummary,
   JobDocumentRow,
   JobRow,
+  SaveIndirectCostPayload,
   MaterialCategoryRow,
   MaterialRow,
   MaterialWithCategoryRow,
@@ -148,6 +150,11 @@ declare global {
       saveQuote: (quote: SaveQuotePayload) => Promise<{ id: number }>;
       selectQuote: (jobId: number, scope: string, quoteId: number | null) => Promise<{ success: boolean }>;
       deleteQuote: (id: number) => Promise<SqlRunResult>;
+
+      // Indirect costs
+      getIndirectCosts: (jobId: number) => Promise<IndirectCostRow[]>;
+      saveIndirectCost: (indirect: SaveIndirectCostPayload) => Promise<{ id: number }>;
+      deleteIndirectCost: (id: number) => Promise<SqlRunResult>;
 
       // Job documents
       listJobDocuments: (jobId: number) => Promise<JobDocumentRow[]>;

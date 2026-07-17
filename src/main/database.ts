@@ -239,6 +239,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV36,
   migrateV37,
   migrateV38,
+  migrateV39,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -508,6 +509,31 @@ function migrateV38(db: Database.Database): void {
     END;
 
     INSERT INTO schema_version (version) VALUES (38);
+  `);
+}
+
+// V39: Job-level indirect costs (mobilization, traffic control, dewatering…)
+// entered once per job instead of faked as line items. Job-level markups
+// apply to the pool in bidCalc; tax/escalation do not.
+function migrateV39(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE job_indirect_costs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      amount      REAL NOT NULL DEFAULT 0,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      uuid        TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_job_indirects_job ON job_indirect_costs(job_id);
+    CREATE UNIQUE INDEX idx_job_indirects_uuid ON job_indirect_costs(uuid);
+    CREATE TRIGGER trg_job_indirects_uuid AFTER INSERT ON job_indirect_costs WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE job_indirect_costs SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (39);
   `);
 }
 

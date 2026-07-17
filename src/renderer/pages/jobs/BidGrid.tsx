@@ -426,6 +426,16 @@ export function BidGrid({
               <td colSpan={2}></td>
             </tr>
           )}
+          {/* Indirect costs (conditional) */}
+          {(summary.indirect_total || 0) > 0 && (
+            <tr>
+              <td colSpan={6} className="text-right" title="Job-level indirect costs (mobilization, traffic control, …). Markups apply on top; tax and escalation do not.">
+                Indirect Costs
+              </td>
+              <td className="text-right">{formatCurrency(summary.indirect_total)}</td>
+              <td colSpan={2}></td>
+            </tr>
+          )}
           {/* Overhead */}
           <tr>
             <td colSpan={6} className="text-right">Overhead{hasMarkupOverrides ? '*' : ` (${job.overhead_percent}%)`}</td>
