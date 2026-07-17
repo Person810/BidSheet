@@ -5,10 +5,16 @@ sign in to the same BidSheet Cloud account as the office, unlock with the
 account recovery key, and get:
 
 - **Job list** — every cloud-synced job, with names decrypted on-device
+- **Files** — every synced file on the job (plans, photos, markup, snapshot)
+  with type, size, and date
 - **Plan viewing** — download the job's plan set once on wifi, view it
   offline at the jobsite (PDFKit: pinch-zoom, page scrubbing)
+- **Takeoff viewing** — the estimator's markup drawn over the plan sheet:
+  pipe runs, structures, count items, restoration areas, and annotations,
+  with computed LF/SF quantities and a per-sheet quantities summary
 - **Jobsite photos** — camera capture with GPS + timestamp, encrypted on the
-  phone and uploaded into the job's cloud folder for the office to pull down
+  phone and uploaded into the job's cloud folder; synced photos view (and
+  cache) on the phone with their capture metadata
 
 Everything is end-to-end encrypted with the same frozen wire formats as the
 desktop (`src/main/cloud/sync-crypto.ts`): the server only ever stores
@@ -64,6 +70,7 @@ BidSheetField/
   Auth/SupabaseAuth.swift   GoTrue REST client: password → TOTP → aal2 JWT
   API/CloudAPI.swift        Worker API subset (/me, /jobs, manifest, files)
   API/Models.swift          wire models
+  API/TakeoffModels.swift   markup/takeoff.json document + LF/SF math
   State/AppModel.swift      signedOut → needsTotp → locked → ready
   State/FileCache.swift     offline cache (job list, job.json, plan PDFs)
   Views/                    SwiftUI screens
@@ -91,7 +98,8 @@ project.yml                 XcodeGen spec (generates the .xcodeproj)
 
 - Desktop-side photo gallery (Phase 5b) — pull the crew's photos into the
   job's Documents tab
-- Takeoff markup overlay on the plan viewer (decrypt `markup/takeoff.json`)
+- Walls and elevation surfaces in the takeoff overlay (runs, areas, items,
+  nodes, and annotations render today)
 - Offline upload queue (photos taken with no signal send when back on wifi)
 - Short-recovery-key unlock (scrypt)
 - Background manifest refresh + push on new addenda
