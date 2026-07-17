@@ -23,7 +23,7 @@ Everything runs locally on your machine.
 - Plan annotations (text notes, arrows, revision clouds) and marquee multi-select with bulk edit
 - Full undo/redo, layer visibility toggles, and takeoff quantity CSV export
 - Side-by-side estimate comparison for what-if scenarios
-- Trench profiler with excavation and backfill volume calculations
+- Trench profiles on each job (Profiles tab) with excavation and backfill volume calculations
 - CSV price sheet import with fuzzy matching to your catalog
 - Win/loss tracking and bid status management
 - Database backup and restore
