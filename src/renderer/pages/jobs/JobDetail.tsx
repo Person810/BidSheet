@@ -15,6 +15,7 @@ import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { QuotesTab } from './QuotesTab';
 import { DocumentsTab } from './DocumentsTab';
+import { BidAnalysisModal } from './BidAnalysisModal';
 import { CostCodeReportModal } from './CostCodeReportModal';
 import { BidItemImportModal } from './BidItemImportModal';
 import { JobPriceImportModal } from './JobPriceImportModal';
@@ -47,6 +48,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [parentJob, setParentJob] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'documents' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
+  const [showBidAnalysis, setShowBidAnalysis] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [showPdfCustomizer, setShowPdfCustomizer] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -309,7 +311,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // effect's deps to one value instead of an easy-to-forget list, so adding a
   // future modal only requires updating this one expression.
   const anyModalOpen = !!(showLineItemModal || editingSection || showEditJob || showAssemblyPicker
-    || showBidItemImport || showPriceImport || showCompare || showCostCodeReport
+    || showBidItemImport || showPriceImport || showCompare || showCostCodeReport || showBidAnalysis
     || showPdfCustomizer || confirmState);
 
   // Ctrl/Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo — estimate tab only, and
@@ -780,6 +782,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
                     { label: 'QuickBooks CSV', action: handleExportQB },
                     { label: 'Unit Price Schedule CSV', action: handleExportUnitPrices },
                     { label: 'Cost Code Report', action: () => setShowCostCodeReport(true) },
+                    { label: 'Bid Analysis', action: () => setShowBidAnalysis(true) },
                   ].map((opt) => (
                     <div key={opt.label}
                       onClick={() => { setShowExportMenu(false); opt.action(); }}
@@ -1002,6 +1005,16 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           sections={sections}
           lineItems={lineItems}
           onClose={() => setShowCostCodeReport(false)}
+        />
+      )}
+
+      {/* Bid Analysis Modal */}
+      {showBidAnalysis && (
+        <BidAnalysisModal
+          job={job}
+          sections={sections}
+          lineItems={lineItems}
+          onClose={() => setShowBidAnalysis(false)}
         />
       )}
 

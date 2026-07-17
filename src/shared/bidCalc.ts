@@ -151,7 +151,10 @@ export function computeBidSummary(totals: BidTotals, job: BidJobParams): BidSumm
 }
 
 /** Job params with any section-level overrides applied. */
-function sectionParams(section: SectionCostRow, job: BidJobParams): BidJobParams {
+export function sectionParams(
+  section: Pick<SectionCostRow, 'overhead_percent_override' | 'profit_percent_override' | 'bond_percent_override'>,
+  job: BidJobParams,
+): BidJobParams {
   return {
     overhead_percent: section.overhead_percent_override ?? job.overhead_percent,
     profit_percent: section.profit_percent_override ?? job.profit_percent,
