@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useToastStore } from '../../stores/toast-store';
 
 interface SectionSettingsModalProps {
   section: any;
@@ -21,7 +22,21 @@ function parseOverride(value: string): number | null {
 }
 
 export function SectionSettingsModal({ section, job, onSave, onClose }: SectionSettingsModalProps) {
+  const addToast = useToastStore((s) => s.addToast);
   const [name, setName] = useState<string>(section.name || '');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  const handleSaveAsTemplate = async () => {
+    setSavingTemplate(true);
+    try {
+      const result = await window.api.saveSectionTemplate(section.id, name.trim() || section.name);
+      addToast(`Saved "${name.trim() || section.name}" as a template (${result.itemCount} items). Reuse it from "+ From Template" on any job.`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save template.', 'error');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
   const [isAlternate, setIsAlternate] = useState<boolean>(section.is_alternate === 1);
   const [overhead, setOverhead] = useState<string>(
     section.overhead_percent_override != null ? String(section.overhead_percent_override) : ''
@@ -89,9 +104,15 @@ export function SectionSettingsModal({ section, job, onSave, onClose }: SectionS
           </div>
         </div>
 
-        <div className="modal-actions">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!name.trim()}>Save</button>
+        <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
+          <button className="btn btn-secondary" onClick={handleSaveAsTemplate} disabled={savingTemplate}
+            title="Snapshot this section's line items as a reusable package for future bids">
+            {savingTemplate ? 'Saving…' : 'Save as Template'}
+          </button>
+          <div className="flex gap-8">
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={!name.trim()}>Save</button>
+          </div>
         </div>
       </div>
     </div>

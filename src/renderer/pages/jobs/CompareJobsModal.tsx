@@ -147,6 +147,7 @@ export function CompareJobsModal({ baseJobId, onClose }: {
               <tbody style={{ borderTop: '2px solid var(--border)' }}>
                 {summaryRow('Direct Cost', 'direct_cost_total')}
                 {summaryRow('Material Escalation', 'escalation')}
+                {summaryRow('Indirect Costs', 'indirect_total')}
                 {summaryRow('Overhead', 'overhead')}
                 {summaryRow('Profit', 'profit')}
                 {summaryRow('Bond', 'bond')}

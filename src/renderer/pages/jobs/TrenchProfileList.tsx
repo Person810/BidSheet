@@ -42,6 +42,7 @@ const DEFAULTS = {
   benchWidthFt: 0,
   beddingDepthFt: 0.5,
   backfillType: 'Native Material',
+  compactionPct: 0,
   pipeMaterialId: null as number | string | null,
   beddingMaterialId: null as number | string | null,
   backfillMaterialId: 'native' as number | string | null,
@@ -58,6 +59,7 @@ function rowToInput(row: any): TrenchInput {
     benchWidthFt: row.bench_width_ft,
     beddingDepthFt: row.bedding_depth_ft ?? 0.5,
     backfillType: row.backfill_type,
+    compactionPct: row.compaction_pct ?? 0,
   };
 }
 
@@ -111,6 +113,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     benchWidthFt: form.benchWidthFt,
     beddingDepthFt: form.beddingDepthFt,
     backfillType: form.backfillType,
+    compactionPct: form.compactionPct,
   };
   const formErrors = editingId !== null ? validateInput(formInput) : [];
 
@@ -138,6 +141,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       benchWidthFt: row.bench_width_ft,
       beddingDepthFt: row.bedding_depth_ft ?? 0.5,
       backfillType: row.backfill_type,
+      compactionPct: row.compaction_pct ?? 0,
       pipeMaterialId: row.pipe_material_id ?? null,
       beddingMaterialId: row.bedding_material_id ?? null,
       backfillMaterialId: row.backfill_material_id ?? (row.backfill_type === 'Native Material' ? 'native' : null),
@@ -166,6 +170,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       beddingType: beddingLabel,
       backfillType: backfillLabel,
       beddingDepthFt: form.beddingDepthFt,
+      compactionPct: form.compactionPct,
       pipeMaterialId: typeof form.pipeMaterialId === 'number' ? form.pipeMaterialId : null,
       beddingMaterialId: typeof form.beddingMaterialId === 'number' ? form.beddingMaterialId : null,
       backfillMaterialId: typeof form.backfillMaterialId === 'number' ? form.backfillMaterialId : null,

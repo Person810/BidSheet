@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { materialsToAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
+import { NATIVE_BACKFILL_LABEL } from './trenchCalc';
 
 const PIPE_CATEGORIES = ['PVC Pipe', 'Ductile Iron Pipe', 'HDPE Pipe', 'RCP Pipe'];
 const BEDDING_CATEGORY = 'Bedding & Backfill';
 
 export const NATIVE_MATERIAL_ITEM: AutocompleteItem = {
   id: 'native',
-  label: 'Native Material',
+  label: NATIVE_BACKFILL_LABEL,
   sublabel: 'Excavated trench material',
   detail: '',
   detailSub: '',

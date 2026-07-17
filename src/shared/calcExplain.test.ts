@@ -50,7 +50,7 @@ describe('explainCrewCost', () => {
 describe('bidCalc explainers', () => {
   const s: FullBidSummary = {
     material_total: 10000, labor_total: 5000, equipment_total: 2000, subcontractor_total: 1000,
-    direct_cost_total: 18000, escalation: 0, overhead: 1800, profit: 1800, bond: 0, tax: 800,
+    direct_cost_total: 18000, escalation: 0, indirect_total: 0, overhead: 1800, profit: 1800, bond: 0, tax: 800,
     grandTotal: 24200, alternates: [],
   };
 

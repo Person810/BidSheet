@@ -151,4 +151,48 @@ describe('computeBidSummaryFromSections', () => {
     expect(fromSections.tax).toBeCloseTo(direct.tax);
     expect(fromSections.escalation).toBeCloseTo(direct.escalation);
   });
+
+  it('marks up the indirect pool with job-level params, no tax or escalation', () => {
+    const jobWithEverything: BidJobParams = {
+      overhead_percent: 10,
+      profit_percent: 10,
+      bond_percent: 2,
+      tax_percent: 7,
+      escalation_percent: 3,
+    };
+    const base = computeBidSummaryFromSections(
+      [section({ material_total: 1000, direct_cost_total: 1000 })], jobWithEverything, 0,
+    );
+    const withIndirects = computeBidSummaryFromSections(
+      [section({ material_total: 1000, direct_cost_total: 1000 })], jobWithEverything, 500,
+    );
+
+    expect(withIndirects.indirect_total).toBe(500);
+    // OH/profit/bond grow by the pool's share
+    expect(withIndirects.overhead).toBeCloseTo(base.overhead + 50);
+    expect(withIndirects.profit).toBeCloseTo(base.profit + 50);
+    expect(withIndirects.bond).toBeCloseTo(base.bond + 10);
+    // Tax and escalation are material-only: unchanged
+    expect(withIndirects.tax).toBeCloseTo(base.tax);
+    expect(withIndirects.escalation).toBeCloseTo(base.escalation);
+    // Grand total grows by pool + its markups
+    expect(withIndirects.grandTotal).toBeCloseTo(base.grandTotal + 500 + 50 + 50 + 10);
+  });
+
+  it('ignores section overrides for the indirect pool', () => {
+    // Section zeroes its overhead; the pool still carries the job's 10%
+    const s = computeBidSummaryFromSections(
+      [section({ direct_cost_total: 100, overhead_percent_override: 0 })],
+      job,
+      1000,
+    );
+    expect(s.overhead).toBeCloseTo(100); // pool only
+    expect(s.grandTotal).toBeCloseTo(100 + 0 + 10 /* section profit */ + 1000 + 100 + 100 /* pool profit */);
+  });
+
+  it('treats a negative indirect total as zero', () => {
+    const s = computeBidSummaryFromSections([section({ direct_cost_total: 100 })], job, -50);
+    expect(s.indirect_total).toBe(0);
+    expect(s.grandTotal).toBeCloseTo(120);
+  });
 });

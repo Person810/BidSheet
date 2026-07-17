@@ -3,6 +3,7 @@ import {
   calculateTrench,
   parsePipeSizeFromName,
   validateInput,
+  NATIVE_BACKFILL_LABEL,
   type TrenchInput,
 } from './trenchCalc';
 
@@ -91,6 +92,45 @@ describe('calculateTrench', () => {
     // Bedding spec deeper than the trench itself
     const out = calculateTrench(input({ startDepthFt: 0.1, beddingDepthFt: 5 }));
     expect(out.backfillCY).toBe(0);
+  });
+});
+
+describe('compaction/waste factor (issue #9)', () => {
+  it('defaults to off: no compactionPct means unadjusted volumes', () => {
+    const base = calculateTrench(input());
+    const explicit = calculateTrench(input({ compactionPct: 0 }));
+    expect(explicit).toEqual(base);
+  });
+
+  it('inflates bedding and imported backfill by the factor, leaving excavation alone', () => {
+    const base = calculateTrench(input({ backfillType: '3/4" Crushed Stone' }));
+    const out = calculateTrench(input({ backfillType: '3/4" Crushed Stone', compactionPct: 15 }));
+    expect(out.beddingCY).toBeCloseTo(base.beddingCY * 1.15, 1);
+    expect(out.backfillCY).toBeCloseTo(base.backfillCY * 1.15, 1);
+    expect(out.excavationCY).toBeCloseTo(base.excavationCY, 2);
+    expect(out.pipeLF).toBeCloseTo(base.pipeLF, 2);
+  });
+
+  it('never adjusts native backfill, but still adjusts bedding', () => {
+    const base = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL }));
+    const out = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL, compactionPct: 20 }));
+    expect(out.backfillCY).toBeCloseTo(base.backfillCY, 2);
+    expect(out.beddingCY).toBeCloseTo(base.beddingCY * 1.2, 1);
+  });
+
+  it('subtracts the neat-line (compacted) bedding volume from backfill, not the inflated one', () => {
+    // 20% on bedding must not shrink the backfill volume: the trench space
+    // occupied by bedding is the compacted volume.
+    const base = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL }));
+    const out = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL, compactionPct: 20 }));
+    expect(out.backfillCY).toBeCloseTo(base.backfillCY, 2);
+  });
+
+  it('validates the range', () => {
+    expect(validateInput(input({ compactionPct: -5 })).map((e) => e.field)).toContain('compactionPct');
+    expect(validateInput(input({ compactionPct: 101 })).map((e) => e.field)).toContain('compactionPct');
+    expect(validateInput(input({ compactionPct: 15 }))).toEqual([]);
+    expect(validateInput(input({ compactionPct: 0 }))).toEqual([]);
   });
 });
 

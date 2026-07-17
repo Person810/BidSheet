@@ -237,6 +237,10 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV34,
   migrateV35,
   migrateV36,
+  migrateV37,
+  migrateV38,
+  migrateV39,
+  migrateV40,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -467,6 +471,94 @@ function migrateV36(db: Database.Database): void {
     CREATE INDEX idx_takeoff_wall_points_wall ON takeoff_wall_points(wall_id);
 
     INSERT INTO schema_version (version) VALUES (36);
+  `);
+}
+
+// V37: Compaction/waste percent on trench profiles (issue #9, trimmed scope).
+// Extra loose material purchased per compacted CY of imported bedding/backfill.
+function migrateV37(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE trench_profiles ADD COLUMN compaction_pct REAL NOT NULL DEFAULT 0;
+
+    INSERT INTO schema_version (version) VALUES (37);
+  `);
+}
+
+// V38: Per-job documents. Files are copied into the app-managed store
+// (userData/job-files/<job-id>/) under stored_name; filename keeps the
+// original display name. sha256/size support future cloud sync
+// (content-addressed upload, like the takeoff plan) and duplicate detection.
+function migrateV38(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE job_documents (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      filename    TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      category    TEXT NOT NULL DEFAULT 'other',
+      size_bytes  INTEGER NOT NULL DEFAULT 0,
+      sha256      TEXT NOT NULL DEFAULT '',
+      notes       TEXT,
+      uuid        TEXT,
+      added_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_job_documents_job ON job_documents(job_id);
+    CREATE UNIQUE INDEX idx_job_documents_uuid ON job_documents(uuid);
+    CREATE TRIGGER trg_job_documents_uuid AFTER INSERT ON job_documents WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE job_documents SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (38);
+  `);
+}
+
+// V39: Job-level indirect costs (mobilization, traffic control, dewatering…)
+// entered once per job instead of faked as line items. Job-level markups
+// apply to the pool in bidCalc; tax/escalation do not.
+function migrateV39(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE job_indirect_costs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      amount      REAL NOT NULL DEFAULT 0,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      uuid        TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_job_indirects_job ON job_indirect_costs(job_id);
+    CREATE UNIQUE INDEX idx_job_indirects_uuid ON job_indirect_costs(uuid);
+    CREATE TRIGGER trg_job_indirects_uuid AFTER INSERT ON job_indirect_costs WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE job_indirect_costs SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (39);
+  `);
+}
+
+// V40: Reusable bid section templates. items_json holds a snapshot of the
+// section's bid_line_items rows (ids stripped) so a standard package —
+// "8-inch sanitary sewer", "hydrant assembly" — drops into any job. JSON
+// keeps the snapshot resilient to future line-item columns; unknown keys
+// are filtered against the live schema on insert.
+function migrateV40(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE section_templates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      items_json  TEXT NOT NULL DEFAULT '[]',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      uuid        TEXT
+    );
+    CREATE UNIQUE INDEX idx_section_templates_uuid ON section_templates(uuid);
+    CREATE TRIGGER trg_section_templates_uuid AFTER INSERT ON section_templates WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE section_templates SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (40);
   `);
 }
 

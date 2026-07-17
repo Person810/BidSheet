@@ -1,6 +1,7 @@
 # Bid Management Competitive Analysis — HeavyBid & the Field vs. BidSheet
 
-*Research date: 2026-06-28. Audience: BidSheet product/engineering.*
+*Research date: 2026-06-28. Updated 2026-07-17 (added §4.6 job document
+management and roadmap item 5). Audience: BidSheet product/engineering.*
 
 This document contrasts the bid-management feature set of **HCSS HeavyBid** and the
 broader heavy-civil estimating market against **what BidSheet actually does today
@@ -225,7 +226,38 @@ Missing vs. the field:
   production for this job" capture would let crews tune `production_rates` over time —
   a poor-man's version of the HeavyBid↔HeavyJob loop.
 
-### 4.6 Collaboration
+### 4.6 Job document management — absent (added 2026-07-17)
+
+Enterprise suites treat the estimate as one artifact among many on a job:
+plans, addenda, geotech reports, sub quote PDFs, photos, specs, and signed
+proposals live alongside the bid (HeavyBid via HCSS Plans; commercial tools
+via cloud project folders). BidSheet has no per-job file story at all:
+
+- **[Table-stakes] Per-job document storage.** The only file a job references
+  is the takeoff plan, stored as an *absolute path* to wherever the user
+  picked it (`takeoff_job_settings.pdf_path`) — move or rename the file, or
+  open the DB on a second machine, and the takeoff silently loses its plan.
+  Everything else (addenda, quotes, geotech, photos, contracts) lives outside
+  the app entirely. Fix: a `job_documents` table + an app-managed store under
+  `userData/job-files/<job-uuid>/` (files **copied in** on attach, never
+  path-referenced), surfaced as a **Documents tab** in `JobDetail` with
+  categories (plans/quotes/specs/photos/contracts), sorting, drag-and-drop,
+  and open-in-OS. Migrating the takeoff plan into the managed store retires
+  the fragile `pdf_path` for free.
+- **[Differentiator] E2EE document sync.** The infrastructure mostly exists:
+  the cloud worker's R2 key convention is already
+  `accountId/jobId/<photos|plans|markup|job>/<filename>` with an unused
+  `photos` folder type, per-file caps, and storage-cap accounting
+  (`bidsheet-cloud/src/index.js`), and the desktop sync engine already
+  content-addresses, encrypts, and de-duplicates the plan PDF
+  (`sync-engine.ts`). Generalizing "one plan per job" to "N documents per
+  job" is incremental — and end-to-end-encrypted job files are something no
+  competitor at this price point offers.
+- *Caveat:* documents live outside SQLite, so the whole-DB encrypted backup
+  (`backup.ts`) will not include them; per-job sync covers them instead, and
+  the UI should say so.
+
+### 4.7 Collaboration
 
 - **[Differentiator] Multi-estimator / multi-seat.** Cloud is single-user backup
   today (`account_members` stubbed for "a later phase"). True concurrent editing is a
@@ -233,7 +265,7 @@ Missing vs. the field:
   priority** relative to bid-day tools. Multi-*device* for one user (already the cloud
   sync goal) matters more.
 
-### 4.7 Fixes to existing, advertised features
+### 4.8 Fixes to existing, advertised features
 
 - **[Fix] Re-enable or re-document the Trench Profiler.** `manifest.ts` `tools: []`.
 - **[Fix] Reconcile README ↔ reality** for cloud "sync" (it's backup + snapshot
@@ -278,20 +310,24 @@ realistically build on its current schema.
 4. **Fix the Trench Profiler / README mismatch.**
 
 ### Next (differentiators that build on BidSheet's strengths)
-5. **Reusable estimate/section templates** (a "master assembly library" of standard
+5. **Per-job document storage** (Documents tab + managed local store, §4.6), then
+   extend per-job cloud sync to cover documents — E2EE job files at $20/mo is a
+   real differentiator, and the takeoff-plan path fragility gets fixed as a
+   side effect. *(added 2026-07-17)*
+6. **Reusable estimate/section templates** (a "master assembly library" of standard
    utility packages), and **multi-resource line expansion** from assemblies.
-6. **Depth-/condition-based production rates**, wired to the trench profiler's known
+7. **Depth-/condition-based production rates**, wired to the trench profiler's known
    depths.
-7. **Vendor database + RFQ generation/tracking.**
-8. **Bid-analysis reports** (labor hrs, crew-days, $/LF by size) and **win/loss
+8. **Vendor database + RFQ generation/tracking.**
+9. **Bid-analysis reports** (labor hrs, crew-days, $/LF by size) and **win/loss
    breakdowns** by client/work-type/estimator.
 
 ### Later (high effort or narrow audience)
-9. **Bid balancing/unbalancing** for unit-price cash-flow strategy.
-10. **Actual-production capture** (lightweight field feedback loop) to tune rates.
-11. **Electronic DOT bid submission** (AASHTOWare/Bid Express) — only if a meaningful
+10. **Bid balancing/unbalancing** for unit-price cash-flow strategy.
+11. **Actual-production capture** (lightweight field feedback loop) to tune rates.
+12. **Electronic DOT bid submission** (AASHTOWare/Bid Express) — only if a meaningful
     share of users are primes, which today they are not.
-12. **Multi-estimator concurrent editing** — large lift, limited demand for 1–2-person shops.
+13. **Multi-estimator concurrent editing** — large lift, limited demand for 1–2-person shops.
 
 ### Explicitly *don't* build
 - A full HeavyBid-style activity/codebook rewrite. BidSheet's assembly model + a
