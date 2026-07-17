@@ -152,6 +152,15 @@ export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors, pi
             placeholder="Search backfill..."
           />
         </div>
+        <div className="form-group">
+          <label>Compaction/Waste (%)</label>
+          <input type="number" className={`form-control ${hasError('compactionPct') ? 'input-error' : ''}`}
+            value={form.compactionPct ?? 0} step="1" min="0" max="100"
+            onChange={(e) => onChange('compactionPct', parseFloat(e.target.value) || 0)} />
+          <span className="text-muted" style={{ fontSize: 11 }}>
+            Extra loose material on imported bedding/backfill. Native backfill is never adjusted.
+          </span>
+        </div>
       </div>
 
       {errors.length > 0 && (

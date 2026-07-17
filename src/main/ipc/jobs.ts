@@ -124,15 +124,17 @@ export function registerJobHandlers(db: Database.Database): void {
           job_id, label, pipe_size_in, pipe_material, start_depth_ft,
           grade_pct, run_length_lf, trench_width_ft, bench_width_ft,
           bedding_type, backfill_type, sort_order,
-          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft,
+          compaction_pct
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const p of profiles) {
         insertProfile.run(
           newJobId, p.label, p.pipe_size_in, p.pipe_material, p.start_depth_ft,
           p.grade_pct, p.run_length_lf, p.trench_width_ft, p.bench_width_ft,
           p.bedding_type, p.backfill_type, p.sort_order,
-          p.pipe_material_id, p.bedding_material_id, p.backfill_material_id, p.bedding_depth_ft
+          p.pipe_material_id, p.bedding_material_id, p.backfill_material_id, p.bedding_depth_ft,
+          p.compaction_pct ?? 0
         );
       }
 

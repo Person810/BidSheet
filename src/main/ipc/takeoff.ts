@@ -27,6 +27,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
           grade_pct = ?, run_length_lf = ?, trench_width_ft = ?, bench_width_ft = ?,
           bedding_type = ?, backfill_type = ?, sort_order = ?,
           pipe_material_id = ?, bedding_material_id = ?, backfill_material_id = ?, bedding_depth_ft = ?,
+          compaction_pct = ?,
           updated_at = datetime('now', 'localtime')
         WHERE id = ?`
       ).run(
@@ -35,6 +36,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         profile.beddingType ?? '', profile.backfillType ?? '', profile.sortOrder ?? 0,
         intOrNull(profile.pipeMaterialId), intOrNull(profile.beddingMaterialId),
         intOrNull(profile.backfillMaterialId), profile.beddingDepthFt ?? 0.5,
+        profile.compactionPct ?? 0,
         profile.id
       );
       return { id: profile.id };
@@ -42,14 +44,15 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       const result = db.prepare(
         `INSERT INTO trench_profiles (job_id, label, pipe_size_in, pipe_material, start_depth_ft,
           grade_pct, run_length_lf, trench_width_ft, bench_width_ft, bedding_type, backfill_type, sort_order,
-          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft, compaction_pct)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         profile.jobId, profile.label ?? '', profile.pipeSizeIn, profile.pipeMaterial ?? '', profile.startDepthFt,
         profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
         profile.beddingType ?? '', profile.backfillType ?? '', profile.sortOrder ?? 0,
         intOrNull(profile.pipeMaterialId), intOrNull(profile.beddingMaterialId),
-        intOrNull(profile.backfillMaterialId), profile.beddingDepthFt ?? 0.5
+        intOrNull(profile.backfillMaterialId), profile.beddingDepthFt ?? 0.5,
+        profile.compactionPct ?? 0
       );
       return { id: Number(result.lastInsertRowid) };
     }

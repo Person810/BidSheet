@@ -237,6 +237,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV34,
   migrateV35,
   migrateV36,
+  migrateV37,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -467,6 +468,16 @@ function migrateV36(db: Database.Database): void {
     CREATE INDEX idx_takeoff_wall_points_wall ON takeoff_wall_points(wall_id);
 
     INSERT INTO schema_version (version) VALUES (36);
+  `);
+}
+
+// V37: Compaction/waste percent on trench profiles (issue #9, trimmed scope).
+// Extra loose material purchased per compacted CY of imported bedding/backfill.
+function migrateV37(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE trench_profiles ADD COLUMN compaction_pct REAL NOT NULL DEFAULT 0;
+
+    INSERT INTO schema_version (version) VALUES (37);
   `);
 }
 

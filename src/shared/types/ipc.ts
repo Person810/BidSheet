@@ -343,6 +343,8 @@ export interface SaveTrenchProfilePayload {
   beddingMaterialId?: number | string | null;
   backfillMaterialId?: number | string | null;
   beddingDepthFt?: number;
+  /** Extra loose material % on imported bedding/backfill (0 = off) */
+  compactionPct?: number;
 }
 
 // ================================================================

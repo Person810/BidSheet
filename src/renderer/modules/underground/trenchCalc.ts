@@ -12,6 +12,13 @@ import { cubicFeetToYards, inchesToFeet } from '../../../shared/constants/units'
 
 // ---- Input / Output types --------------------------------------------------
 
+/**
+ * Sentinel label for excavated-native backfill. Compaction/waste never
+ * applies to it: you aren't buying native material, and its compaction
+ * shortfall is offset by excavation swell.
+ */
+export const NATIVE_BACKFILL_LABEL = 'Native Material';
+
 export interface TrenchInput {
   pipeSizeIn: number;         // inches
   pipeMaterial: string;
@@ -22,6 +29,13 @@ export interface TrenchInput {
   benchWidthFt: number;       // each side (0 = no bench)
   beddingDepthFt: number;     // bedding layer depth, feet
   backfillType: string;
+  /**
+   * Extra loose material purchased per compacted CY of *imported*
+   * bedding/backfill (issue #9, trimmed scope). 15 = buy 15% more than
+   * the neat-line volume. Applies to bedding always and to backfill
+   * unless it is NATIVE_BACKFILL_LABEL. 0/undefined = off.
+   */
+  compactionPct?: number;
 }
 
 export interface TrenchOutput {
@@ -64,6 +78,10 @@ export function validateInput(input: TrenchInput): ValidationError[] {
   if (input.beddingDepthFt < 0)
     errors.push({ field: 'beddingDepthFt', message: 'Bedding depth cannot be negative' });
 
+  const compactionPct = input.compactionPct ?? 0;
+  if (compactionPct < 0 || compactionPct > 100)
+    errors.push({ field: 'compactionPct', message: 'Compaction/waste must be between 0 and 100%' });
+
   const pipeDiameterFt = inchesToFeet(input.pipeSizeIn);
   if (pipeDiameterFt >= input.trenchWidthFt)
     errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than pipe' });
@@ -96,9 +114,15 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   const excavationCF = totalWidthFt * avgDepthFt * runLengthLF;
   const excavationCY = cubicFeetToYards(excavationCF);
 
+  // Compaction/waste: purchased loose volume per compacted CY of imported
+  // material. Bedding is always imported; backfill only when not native.
+  const compactionFactor = 1 + (input.compactionPct ?? 0) / 100;
+  const backfillFactor =
+    input.backfillType === NATIVE_BACKFILL_LABEL ? 1 : compactionFactor;
+
   // Bedding zone: full trench width x bedding depth x run length
   const beddingCF = trenchWidthFt * beddingDepthFt * runLengthLF;
-  const beddingCY = cubicFeetToYards(beddingCF);
+  const beddingCY = cubicFeetToYards(beddingCF) * compactionFactor;
 
   // Pipe volume (cylinder) -- subtract from backfill
   const pipeRadiusFt = inchesToFeet(pipeSizeIn) / 2;
@@ -109,7 +133,7 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   // invert). For bedding-to-springline specs this slightly understates
   // backfill -- conservative, and within takeoff tolerance.
   const backfillCF = Math.max(excavationCF - beddingCF - pipeCF, 0);
-  const backfillCY = cubicFeetToYards(backfillCF);
+  const backfillCY = cubicFeetToYards(backfillCF) * backfillFactor;
 
   // Tracer wire is taped to the pipe, so it follows the pipe slope; warning
   // tape is buried near-surface and runs the horizontal length.
@@ -151,6 +175,15 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
   const pipeRadiusFt = inchesToFeet(input.pipeSizeIn) / 2;
   const pipeCF = Math.PI * pipeRadiusFt ** 2 * output.pipeLF;
 
+  const compactionPct = input.compactionPct ?? 0;
+  const backfillCompacts =
+    compactionPct > 0 && input.backfillType !== NATIVE_BACKFILL_LABEL;
+  const compactionLine = {
+    label: 'Compaction/waste',
+    value: `+ ${fmtNum(compactionPct, 1)}%`,
+    kind: 'term' as const,
+  };
+
   return {
     avgDepth: {
       formula: 'Avg depth = (start depth + end depth) ÷ 2',
@@ -172,24 +205,32 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
       ],
     },
     bedding: {
-      formula: 'Bedding = width × bedding depth × length ÷ 27',
+      formula: compactionPct > 0
+        ? 'Bedding = width × bedding depth × length ÷ 27, plus compaction/waste'
+        : 'Bedding = width × bedding depth × length ÷ 27',
       lines: [
         { label: 'Trench width', value: ft(input.trenchWidthFt), kind: 'term' },
         { label: 'Bedding depth', value: ft(input.beddingDepthFt), kind: 'term' },
         { label: 'Run length', value: `${fmtNum(input.runLengthLF, 2)} LF`, kind: 'term' },
         { label: 'Volume', value: `${fmtNum(beddingCF, 1)} CF ÷ 27`, kind: 'term' },
+        ...(compactionPct > 0 ? [compactionLine] : []),
         { label: 'Bedding', value: cy(output.beddingCY), kind: 'result' },
       ],
     },
     backfill: {
-      formula: 'Backfill = excavation − bedding − pipe',
+      formula: backfillCompacts
+        ? 'Backfill = (excavation − bedding − pipe), plus compaction/waste'
+        : 'Backfill = excavation − bedding − pipe',
       lines: [
         { label: 'Excavation', value: `${fmtNum(excavationCF, 1)} CF`, kind: 'term' },
         { label: 'Bedding', value: `${fmtNum(beddingCF, 1)} CF`, kind: 'term' },
         { label: 'Pipe displacement', value: `${fmtNum(pipeCF, 1)} CF`, kind: 'term' },
+        ...(backfillCompacts ? [compactionLine] : []),
         { label: 'Backfill', value: cy(output.backfillCY), kind: 'result' },
       ],
-      note: 'Subtracts the full pipe cylinder (bedding-to-invert); conservative for bedding-to-springline specs.',
+      note: backfillCompacts
+        ? 'Subtracts the full pipe cylinder (bedding-to-invert); conservative for bedding-to-springline specs. Native backfill never carries compaction/waste.'
+        : 'Subtracts the full pipe cylinder (bedding-to-invert); conservative for bedding-to-springline specs.',
     },
   };
 }
