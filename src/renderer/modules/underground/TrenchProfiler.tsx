@@ -7,6 +7,10 @@ import { CalcPopover } from '../../components/CalcPopover';
 import type { CalcBreakdown } from '../../../shared/calcExplain';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from './useTrenchMaterials';
+import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from './trenchInputToRun';
+
+const Trench3DView = React.lazy(() =>
+  import('./plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
 
 const DEFAULTS: TrenchInput = {
   pipeSizeIn: 8,
@@ -210,6 +214,19 @@ export function TrenchProfiler() {
           )}
         </div>
       </div>
+
+      {result && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <h3 style={{ marginBottom: 14 }}>3D View</h3>
+          <React.Suspense fallback={<p className="text-muted" style={{ padding: 24 }}>Loading 3D view…</p>}>
+            <Trench3DView
+              run={trenchInputToTakeoffRun(input)}
+              scalePxPerFt={TRENCH_PREVIEW_SCALE_PX_PER_FT}
+              height={420}
+            />
+          </React.Suspense>
+        </div>
+      )}
     </div>
   );
 }

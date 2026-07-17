@@ -5,6 +5,10 @@ import {
 } from '../../modules/underground/trenchCalc';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { NATIVE_MATERIAL_ITEM } from '../../modules/underground/useTrenchMaterials';
+import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from '../../modules/underground/trenchInputToRun';
+
+const Trench3DView = React.lazy(() =>
+  import('../../modules/underground/plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
 
 interface FormData extends TrenchInput {
   label: string;
@@ -163,10 +167,20 @@ export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors, pi
         </div>
       </div>
 
-      {errors.length > 0 && (
+      {errors.length > 0 ? (
         <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(239,68,68,0.1)',
           borderRadius: 6, fontSize: 12, color: 'var(--danger)' }}>
           {errors.map((e, i) => <div key={i}>{e.message}</div>)}
+        </div>
+      ) : (
+        <div style={{ marginTop: 12 }}>
+          <React.Suspense fallback={<p className="text-muted" style={{ padding: 24 }}>Loading 3D view…</p>}>
+            <Trench3DView
+              run={trenchInputToTakeoffRun(form, form.label)}
+              scalePxPerFt={TRENCH_PREVIEW_SCALE_PX_PER_FT}
+              height={360}
+            />
+          </React.Suspense>
         </div>
       )}
 
