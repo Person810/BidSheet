@@ -1,0 +1,22 @@
+# Security headers, served by Cloudflare Pages.
+# Later matching rules stack with /*; "! Header" detaches the earlier value
+# before the per-path CSP replaces it.
+
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000
+
+# Home page fetches the latest release version from the GitHub API.
+/
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'
+
+# Checkout loads Paddle.js, which opens the overlay checkout in an iframe
+# and may load Paddle Retain (ProfitWell).
+/checkout/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://*.paddle.com https://*.profitwell.com; style-src 'self' 'unsafe-inline' https://*.paddle.com; img-src 'self' data: https://*.paddle.com https://*.profitwell.com; font-src 'self'; connect-src 'self' https://*.paddle.com https://*.profitwell.com; frame-src https://*.paddle.com; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'
