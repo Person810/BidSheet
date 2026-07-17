@@ -278,6 +278,29 @@ export interface BidItemImportRow {
   itemNumber: string | null;
 }
 
+export interface JobDocumentRow {
+  id: number;
+  job_id: number;
+  /** Original display name of the attached file */
+  filename: string;
+  /** Unique name inside the job's managed folder */
+  stored_name: string;
+  category: string;
+  size_bytes: number;
+  sha256: string;
+  notes: string | null;
+  uuid: string | null;
+  added_at: string;
+}
+
+export interface AddDocumentsResult {
+  added: number;
+  /** Files whose content already exists on this job (same sha256) */
+  skippedDuplicates: number;
+  /** Basenames that could not be read or copied */
+  failed: string[];
+}
+
 export interface QuoteRow {
   id: number;
   job_id: number;

@@ -145,6 +145,17 @@ contextBridge.exposeInMainWorld('api', {
   selectQuote: (jobId: number, scope: string, quoteId: number | null) => invoke('db:quotes:select', jobId, scope, quoteId),
   deleteQuote: (id: number) => invoke('db:quotes:delete', id),
 
+  // ---- Job documents ----
+  listJobDocuments: (jobId: number) => invoke('db:documents:list', jobId),
+  addJobDocuments: (jobId: number, category: string) => invoke('db:documents:add', jobId, category),
+  addJobDocumentPaths: (jobId: number, paths: string[], category: string) =>
+    invoke('db:documents:add-paths', jobId, paths, category),
+  openJobDocument: (id: number) => invoke('db:documents:open', id),
+  revealJobDocument: (id: number) => invoke('db:documents:reveal', id),
+  updateJobDocument: (id: number, fields: { category?: string; notes?: string | null }) =>
+    invoke('db:documents:update', id, fields),
+  deleteJobDocument: (id: number) => invoke('db:documents:delete', id),
+
   // ---- Export ----
   exportQuickBooksCSV: (jobId: number) => invoke('export:quickbooks-csv', jobId),
   exportUnitPriceCSV: (jobId: number) => invoke('export:unit-price-csv', jobId),

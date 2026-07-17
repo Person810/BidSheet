@@ -238,6 +238,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV35,
   migrateV36,
   migrateV37,
+  migrateV38,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -478,6 +479,35 @@ function migrateV37(db: Database.Database): void {
     ALTER TABLE trench_profiles ADD COLUMN compaction_pct REAL NOT NULL DEFAULT 0;
 
     INSERT INTO schema_version (version) VALUES (37);
+  `);
+}
+
+// V38: Per-job documents. Files are copied into the app-managed store
+// (userData/job-files/<job-id>/) under stored_name; filename keeps the
+// original display name. sha256/size support future cloud sync
+// (content-addressed upload, like the takeoff plan) and duplicate detection.
+function migrateV38(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE job_documents (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      filename    TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      category    TEXT NOT NULL DEFAULT 'other',
+      size_bytes  INTEGER NOT NULL DEFAULT 0,
+      sha256      TEXT NOT NULL DEFAULT '',
+      notes       TEXT,
+      uuid        TEXT,
+      added_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_job_documents_job ON job_documents(job_id);
+    CREATE UNIQUE INDEX idx_job_documents_uuid ON job_documents(uuid);
+    CREATE TRIGGER trg_job_documents_uuid AFTER INSERT ON job_documents WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE job_documents SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (38);
   `);
 }
 

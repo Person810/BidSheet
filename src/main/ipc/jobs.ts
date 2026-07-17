@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
+import { removeJobFiles } from './documents';
 
 export function registerJobHandlers(db: Database.Database): void {
   // ================================================================
@@ -59,7 +60,16 @@ export function registerJobHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:jobs:delete', (_event, id: number) => {
-    return db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
+    // Change orders are child jobs that cascade away with the parent —
+    // collect their ids first so their document folders get cleaned too.
+    const childIds = (db.prepare('SELECT id FROM jobs WHERE parent_job_id = ?').all(id) as any[])
+      .map((r) => r.id as number);
+    const result = db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
+    // job_documents rows cascade with the job; the copied files don't,
+    // so clear the managed document folders too.
+    removeJobFiles(id);
+    for (const childId of childIds) removeJobFiles(childId);
+    return result;
   });
 
   safeHandle('db:jobs:duplicate', (_event, id: number, newName?: string, newBidDate?: string) => {

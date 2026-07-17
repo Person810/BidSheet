@@ -1,4 +1,5 @@
 import type {
+  AddDocumentsResult,
   AppSettingsRow,
   AssemblyRow,
   BackupReminderStatus,
@@ -9,6 +10,7 @@ import type {
   EquipmentRow,
   FileExportResult,
   JobBidSummary,
+  JobDocumentRow,
   JobRow,
   MaterialCategoryRow,
   MaterialRow,
@@ -146,6 +148,16 @@ declare global {
       saveQuote: (quote: SaveQuotePayload) => Promise<{ id: number }>;
       selectQuote: (jobId: number, scope: string, quoteId: number | null) => Promise<{ success: boolean }>;
       deleteQuote: (id: number) => Promise<SqlRunResult>;
+
+      // Job documents
+      listJobDocuments: (jobId: number) => Promise<JobDocumentRow[]>;
+      /** Opens a native multi-select dialog; null when the user cancels */
+      addJobDocuments: (jobId: number, category: string) => Promise<AddDocumentsResult | null>;
+      addJobDocumentPaths: (jobId: number, paths: string[], category: string) => Promise<AddDocumentsResult>;
+      openJobDocument: (id: number) => Promise<void>;
+      revealJobDocument: (id: number) => Promise<void>;
+      updateJobDocument: (id: number, fields: { category?: string; notes?: string | null }) => Promise<void>;
+      deleteJobDocument: (id: number) => Promise<void>;
 
       // Export
       exportQuickBooksCSV: (jobId: number) => Promise<FileExportResult>;

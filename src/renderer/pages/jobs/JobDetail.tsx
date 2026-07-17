@@ -14,6 +14,7 @@ import { BidGrid } from './BidGrid';
 import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { QuotesTab } from './QuotesTab';
+import { DocumentsTab } from './DocumentsTab';
 import { CostCodeReportModal } from './CostCodeReportModal';
 import { BidItemImportModal } from './BidItemImportModal';
 import { JobPriceImportModal } from './JobPriceImportModal';
@@ -44,12 +45,13 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [changeOrders, setChangeOrders] = useState<any[]>([]);
   const [coSummaries, setCoSummaries] = useState<Record<number, any>>({});
   const [parentJob, setParentJob] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'changes'>('estimate');
+  const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'documents' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [showPdfCustomizer, setShowPdfCustomizer] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [profileCount, setProfileCount] = useState(0);
+  const [docCount, setDocCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
   const [showBidItemImport, setShowBidItemImport] = useState(false);
   const [showPriceImport, setShowPriceImport] = useState(false);
@@ -131,6 +133,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       setSummary(sum);
       const profs = await window.api.getTrenchProfiles(jobId);
       setProfileCount(profs.length);
+      const docRows = await window.api.listJobDocuments(jobId);
+      setDocCount(docRows.length);
 
       // Load change orders if this is a parent job
       if (!j.parent_job_id) {
@@ -827,6 +831,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         </button>
         <button className={`job-tab ${activeTab === 'quotes' ? 'job-tab-active' : ''}`}
           onClick={() => setActiveTab('quotes')}>Quotes</button>
+        <button className={`job-tab ${activeTab === 'documents' ? 'job-tab-active' : ''}`}
+          onClick={() => setActiveTab('documents')}>
+          Documents {docCount > 0 && <span className="job-tab-count">{docCount}</span>}
+        </button>
         {!isChangeOrder && (
           <button className={`job-tab ${activeTab === 'changes' ? 'job-tab-active' : ''}`}
             onClick={() => setActiveTab('changes')}>
@@ -905,6 +913,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             catch (err) { reject(err); }
           }, resolve);
         })} />
+      )}
+
+      {/* Documents tab */}
+      {activeTab === 'documents' && (
+        <DocumentsTab jobId={jobId} onCountChange={setDocCount} />
       )}
 
       {/* Changes tab */}
