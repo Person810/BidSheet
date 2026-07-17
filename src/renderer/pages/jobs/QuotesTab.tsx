@@ -33,10 +33,13 @@ export function QuotesTab({ jobId, onSendToBid }: {
   // scope is being compared against (session-local choice)
   const [sectionCosts, setSectionCosts] = useState<{ id: number; name: string; directCost: number }[]>([]);
   const [compareSections, setCompareSections] = useState<Record<string, number>>({});
+  // Known vendors across all jobs — suggestions + contact autofill
+  const [vendors, setVendors] = useState<{ vendor: string; contact: string | null }[]>([]);
 
   const load = useCallback(async () => {
     try {
       setQuotes(await window.api.getQuotes(jobId));
+      setVendors(await window.api.getQuoteVendors());
       const sections = await window.api.getBidSections(jobId);
       const costs = await Promise.all(sections.map(async (s) => {
         const items = await window.api.getBidLineItems(s.id);
@@ -285,9 +288,22 @@ export function QuotesTab({ jobId, onSendToBid }: {
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Vendor</label>
-                <input className="form-control" value={form.vendor}
-                  onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+                <input className="form-control" value={form.vendor} list="quote-vendor-suggestions"
+                  onChange={(e) => {
+                    const vendor = e.target.value;
+                    // Picking a known vendor autofills their latest contact
+                    // (only into a blank field — never overwrite a typed one)
+                    const known = vendors.find((v) => v.vendor.toLowerCase() === vendor.trim().toLowerCase());
+                    setForm((prev) => ({
+                      ...prev,
+                      vendor,
+                      contact: prev.contact || (known?.contact ?? ''),
+                    }));
+                  }}
                   placeholder="Company name" />
+                <datalist id="quote-vendor-suggestions">
+                  {vendors.map((v) => <option key={v.vendor} value={v.vendor} />)}
+                </datalist>
               </div>
               <div className="form-group">
                 <label className="form-label">Contact</label>

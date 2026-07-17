@@ -150,6 +150,7 @@ declare global {
       saveQuote: (quote: SaveQuotePayload) => Promise<{ id: number }>;
       selectQuote: (jobId: number, scope: string, quoteId: number | null) => Promise<{ success: boolean }>;
       deleteQuote: (id: number) => Promise<SqlRunResult>;
+      getQuoteVendors: () => Promise<{ vendor: string; contact: string | null; quote_count: number }[]>;
 
       // Indirect costs
       getIndirectCosts: (jobId: number) => Promise<IndirectCostRow[]>;

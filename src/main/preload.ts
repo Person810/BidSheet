@@ -144,6 +144,7 @@ contextBridge.exposeInMainWorld('api', {
   saveQuote: (quote: any) => invoke('db:quotes:save', quote),
   selectQuote: (jobId: number, scope: string, quoteId: number | null) => invoke('db:quotes:select', jobId, scope, quoteId),
   deleteQuote: (id: number) => invoke('db:quotes:delete', id),
+  getQuoteVendors: () => invoke('db:quotes:vendors'),
 
   // ---- Indirect costs ----
   getIndirectCosts: (jobId: number) => invoke('db:indirects:list', jobId),
