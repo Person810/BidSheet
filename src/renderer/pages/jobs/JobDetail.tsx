@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Lock, Unlock } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
@@ -18,7 +18,7 @@ import { DocumentsTab } from './DocumentsTab';
 import { CostCodeReportModal } from './CostCodeReportModal';
 import { BidItemImportModal } from './BidItemImportModal';
 import { JobPriceImportModal } from './JobPriceImportModal';
-import { PriceStateLegend } from './priceState';
+import { PriceStateLegend, priceAgeDays } from './priceState';
 import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { PdfCustomizerModal } from './PdfCustomizerModal';
@@ -168,6 +168,14 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     [sections, lineItems],
   );
   const history = useBidHistory({ jobId, getState: getBidState, reloadAll: loadJob });
+
+  // material_id → catalog price age (days), feeding the stale-price warnings
+  // in the legend and the per-line dots.
+  const materialAges = useMemo(() => {
+    const ages = new Map<number, number | null>();
+    for (const m of materials) ages.set(m.id, priceAgeDays(m.last_price_update));
+    return ages;
+  }, [materials]);
 
   useEffect(() => {
     loadJob();
@@ -852,7 +860,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         <button className="btn btn-sm btn-secondary" onClick={() => history.redo()}
           disabled={!history.canRedo} title="Redo (Ctrl+Shift+Z)">&#8635; Redo</button>
       </div>
-      <PriceStateLegend lineItems={lineItems} />
+      <PriceStateLegend lineItems={lineItems} materialAges={materialAges} />
       <BidGrid
         sections={sections}
         lineItems={lineItems}
@@ -870,6 +878,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         approvedCOTotal={approvedCOTotal}
         revisedTotal={revisedTotal}
         isChangeOrder={isChangeOrder}
+        materialAges={materialAges}
       />
 
       {/* Add Section */}
