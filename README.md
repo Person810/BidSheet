@@ -11,9 +11,13 @@ Everything runs locally on your machine.
 - Track equipment costs (owned and rented)
 - Create bid estimates organized by section and line item
 - Auto-calculate totals with overhead, profit, bond, tax, and material escalation markups
+- Job-level indirect costs (mobilization, traffic control, dewatering) spread into unit prices
 - Bid alternates and per-section markup overrides
+- Reusable section templates for standard work packages
 - Subcontractor/supplier quote tracking with winner selection per scope
 - Unit price schedule export (markups folded into unit sell prices) and cost-code roll-up reports
+- Bid analysis report: labor hours, crew-days, equipment hours, margin by section, $/LF by pipe size
+- Stale-price warnings when line items ride on catalog prices that haven't been updated in 90+ days
 - Assemblies with labor and equipment components, expandable from measured takeoff areas
 - Generate professional bid proposal PDFs
 - Duplicate previous bids as starting points for new jobs
@@ -24,8 +28,10 @@ Everything runs locally on your machine.
 - Full undo/redo, layer visibility toggles, and takeoff quantity CSV export
 - Side-by-side estimate comparison for what-if scenarios
 - Trench profiles on each job (Profiles tab) with excavation and backfill volume calculations
+- Compaction/waste factor on imported bedding and backfill quantities
+- Per-job document storage: plans, addenda, quotes, photos, and contracts in one managed place
 - CSV price sheet import with fuzzy matching to your catalog
-- Win/loss tracking and bid status management
+- Win/loss tracking and bid status management, with win-rate breakdowns by client and bid size
 - Database backup and restore
 
 ## Pricing
