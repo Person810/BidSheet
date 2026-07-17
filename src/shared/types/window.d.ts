@@ -11,6 +11,7 @@ import type {
   FileExportResult,
   IndirectCostRow,
   JobBidSummary,
+  JobDocumentFolderDTO,
   JobDocumentRow,
   JobRow,
   SaveIndirectCostPayload,
@@ -166,12 +167,20 @@ declare global {
       // Job documents
       listJobDocuments: (jobId: number) => Promise<JobDocumentRow[]>;
       /** Opens a native multi-select dialog; null when the user cancels */
-      addJobDocuments: (jobId: number, category: string) => Promise<AddDocumentsResult | null>;
-      addJobDocumentPaths: (jobId: number, paths: string[], category: string) => Promise<AddDocumentsResult>;
+      addJobDocuments: (jobId: number, folderId: number | null) => Promise<AddDocumentsResult | null>;
+      addJobDocumentPaths: (jobId: number, paths: string[], folderId: number | null) => Promise<AddDocumentsResult>;
       openJobDocument: (id: number) => Promise<void>;
       revealJobDocument: (id: number) => Promise<void>;
-      updateJobDocument: (id: number, fields: { category?: string; notes?: string | null }) => Promise<void>;
+      updateJobDocument: (id: number, fields: { notes?: string | null }) => Promise<void>;
       deleteJobDocument: (id: number) => Promise<void>;
+      moveJobDocument: (id: number, folderId: number | null) => Promise<void>;
+
+      // Job document folders
+      listJobDocumentFolders: (jobId: number) => Promise<JobDocumentFolderDTO[]>;
+      createJobDocumentFolder: (jobId: number, parentId: number | null, name: string) => Promise<{ id: number }>;
+      renameJobDocumentFolder: (id: number, name: string) => Promise<void>;
+      moveJobDocumentFolder: (id: number, newParentId: number | null) => Promise<void>;
+      deleteJobDocumentFolder: (id: number) => Promise<void>;
 
       // Export
       exportQuickBooksCSV: (jobId: number) => Promise<FileExportResult>;

@@ -29,7 +29,7 @@ Everything runs locally on your machine.
 - Side-by-side estimate comparison for what-if scenarios
 - Trench profiles on each job (Profiles tab) with excavation and backfill volume calculations
 - Compaction/waste factor on imported bedding and backfill quantities
-- Per-job document storage: plans, addenda, quotes, photos, and contracts in one managed place
+- Per-job document storage with user-organized nested folders: plans, addenda, quotes, photos, and contracts in one managed place
 - CSV price sheet import with fuzzy matching to your catalog
 - Win/loss tracking and bid status management, with win-rate breakdowns by client and bid size
 - Database backup and restore

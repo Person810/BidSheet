@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import type Database from 'better-sqlite3';
 import { safeHandle } from './shared';
 import { logger } from '../logger';
-import { isDocumentCategory, uniqueStoredName } from '../../shared/documentFiles';
+import { descendantIds, uniqueStoredName, type FolderLike } from '../../shared/documentFiles';
 
 /**
  * Per-job document store. Attached files are COPIED into
@@ -37,10 +37,13 @@ export function registerDocumentHandlers(db: Database.Database): void {
     db.prepare('SELECT * FROM job_documents WHERE job_id = ? ORDER BY added_at DESC, id DESC');
 
   /** Copy files into the job store and insert rows. Returns a result summary. */
-  function addFiles(jobId: number, sourcePaths: string[], category: string) {
-    const cat = isDocumentCategory(category) ? category : 'other';
+  function addFiles(jobId: number, sourcePaths: string[], folderId: number | null) {
     const job = db.prepare('SELECT id FROM jobs WHERE id = ?').get(jobId);
     if (!job) throw new Error('Job not found.');
+    if (folderId != null) {
+      const folder = db.prepare('SELECT id FROM job_document_folders WHERE id = ? AND job_id = ?').get(folderId, jobId);
+      if (!folder) throw new Error('Folder not found.');
+    }
 
     const dir = jobFilesDir(jobId);
     fs.mkdirSync(dir, { recursive: true });
@@ -55,8 +58,8 @@ export function registerDocumentHandlers(db: Database.Database): void {
     );
 
     const insert = db.prepare(
-      `INSERT INTO job_documents (job_id, filename, stored_name, category, size_bytes, sha256)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO job_documents (job_id, filename, stored_name, category, size_bytes, sha256, folder_id)
+       VALUES (?, ?, ?, 'other', ?, ?, ?)`
     );
 
     let added = 0;
@@ -79,7 +82,7 @@ export function registerDocumentHandlers(db: Database.Database): void {
         const originalName = path.basename(sourcePath);
         const storedName = uniqueStoredName(originalName, existingNames());
         fs.writeFileSync(documentPath(jobId, storedName), data);
-        insert.run(jobId, originalName, storedName, cat, stat.size, sha);
+        insert.run(jobId, originalName, storedName, stat.size, sha, folderId);
         existingHashes.add(sha);
         added++;
       } catch (err: any) {
@@ -96,20 +99,33 @@ export function registerDocumentHandlers(db: Database.Database): void {
   });
 
   // "Add Files" button: native multi-select dialog, then copy-in.
-  safeHandle('db:documents:add', async (_event, jobId: number, category: string) => {
+  safeHandle('db:documents:add', async (_event, jobId: number, folderId: number | null) => {
     const result = await dialog.showOpenDialog({
       title: 'Add Documents to Job',
       properties: ['openFile', 'multiSelections'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
-    return addFiles(jobId, result.filePaths, category);
+    return addFiles(jobId, result.filePaths, folderId);
   });
 
   // Drag-and-drop: the renderer resolves dropped Files to absolute paths
   // via getDroppedFilePath (webUtils) and passes them here.
-  safeHandle('db:documents:add-paths', (_event, jobId: number, paths: string[], category: string) => {
+  safeHandle('db:documents:add-paths', (_event, jobId: number, paths: string[], folderId: number | null) => {
     if (!Array.isArray(paths) || paths.length === 0) return { added: 0, skippedDuplicates: 0, failed: [] };
-    return addFiles(jobId, paths.map((p) => String(p)), category);
+    return addFiles(jobId, paths.map((p) => String(p)), folderId);
+  });
+
+  // Move a document into a different folder (drag onto the tree, or the
+  // "Move to..." picker). folderId = null moves it back to the job root.
+  safeHandle('db:documents:move', (_event, id: number, folderId: number | null) => {
+    const doc = db.prepare('SELECT id, job_id FROM job_documents WHERE id = ?').get(id) as any;
+    if (!doc) throw new Error('Document not found.');
+    if (folderId != null) {
+      const folder = db.prepare('SELECT id, job_id FROM job_document_folders WHERE id = ?').get(folderId) as any;
+      if (!folder) throw new Error('Folder not found.');
+      if (folder.job_id !== doc.job_id) throw new Error('Cannot move a document to a folder in a different job.');
+    }
+    db.prepare('UPDATE job_documents SET folder_id = ? WHERE id = ?').run(folderId, id);
   });
 
   safeHandle('db:documents:open', async (_event, id: number) => {
@@ -133,12 +149,11 @@ export function registerDocumentHandlers(db: Database.Database): void {
     shell.showItemInFolder(filePath);
   });
 
-  safeHandle('db:documents:update', (_event, id: number, fields: { category?: string; notes?: string | null }) => {
-    const row = db.prepare('SELECT id, category, notes FROM job_documents WHERE id = ?').get(id) as any;
+  safeHandle('db:documents:update', (_event, id: number, fields: { notes?: string | null }) => {
+    const row = db.prepare('SELECT id, notes FROM job_documents WHERE id = ?').get(id) as any;
     if (!row) throw new Error('Document not found.');
-    const category = isDocumentCategory(fields.category) ? fields.category : row.category;
     const notes = fields.notes !== undefined ? fields.notes : row.notes;
-    db.prepare('UPDATE job_documents SET category = ?, notes = ? WHERE id = ?').run(category, notes, id);
+    db.prepare('UPDATE job_documents SET notes = ? WHERE id = ?').run(notes, id);
   });
 
   safeHandle('db:documents:delete', (_event, id: number) => {
@@ -152,6 +167,70 @@ export function registerDocumentHandlers(db: Database.Database): void {
       logger.warn('documents:delete', `Could not remove file for document ${id}`, err.message);
     }
     db.prepare('DELETE FROM job_documents WHERE id = ?').run(id);
+  });
+
+  // ---- Document folders ----
+
+  safeHandle('db:document-folders:list', (_event, jobId: number) => {
+    return db.prepare(
+      'SELECT * FROM job_document_folders WHERE job_id = ? ORDER BY sort_order, name COLLATE NOCASE'
+    ).all(jobId);
+  });
+
+  safeHandle('db:document-folders:create', (_event, jobId: number, parentId: number | null, name: string) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) throw new Error('Folder name cannot be empty.');
+    if (parentId != null) {
+      const parent = db.prepare('SELECT id FROM job_document_folders WHERE id = ? AND job_id = ?').get(parentId, jobId);
+      if (!parent) throw new Error('Parent folder not found.');
+    }
+    const maxSort = (db.prepare(
+      'SELECT MAX(sort_order) m FROM job_document_folders WHERE job_id = ? AND parent_id IS ?'
+    ).get(jobId, parentId) as any)?.m ?? 0;
+    const info = db.prepare(
+      'INSERT INTO job_document_folders (job_id, parent_id, name, sort_order) VALUES (?, ?, ?, ?)'
+    ).run(jobId, parentId, trimmed, maxSort + 1);
+    return { id: Number(info.lastInsertRowid) };
+  });
+
+  safeHandle('db:document-folders:rename', (_event, id: number, name: string) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) throw new Error('Folder name cannot be empty.');
+    const row = db.prepare('SELECT id FROM job_document_folders WHERE id = ?').get(id);
+    if (!row) throw new Error('Folder not found.');
+    db.prepare('UPDATE job_document_folders SET name = ? WHERE id = ?').run(trimmed, id);
+  });
+
+  // Reparents a folder, guarding against moving it into itself or one of its
+  // own subfolders (which would detach that whole branch from the tree).
+  safeHandle('db:document-folders:move', (_event, id: number, newParentId: number | null) => {
+    const folder = db.prepare('SELECT * FROM job_document_folders WHERE id = ?').get(id) as any;
+    if (!folder) throw new Error('Folder not found.');
+    if (newParentId != null) {
+      if (newParentId === id) throw new Error('A folder cannot be moved into itself.');
+      const parent = db.prepare('SELECT id, job_id FROM job_document_folders WHERE id = ?').get(newParentId) as any;
+      if (!parent) throw new Error('Destination folder not found.');
+      if (parent.job_id !== folder.job_id) throw new Error('Cannot move a folder to a different job.');
+      const allInJob = db.prepare('SELECT id, parent_id FROM job_document_folders WHERE job_id = ?')
+        .all(folder.job_id) as FolderLike[];
+      if (descendantIds(allInJob, id).has(newParentId)) {
+        throw new Error('Cannot move a folder into one of its own subfolders.');
+      }
+    }
+    db.prepare('UPDATE job_document_folders SET parent_id = ? WHERE id = ?').run(newParentId, id);
+  });
+
+  // Only an empty folder can be deleted directly, so a stray click never
+  // silently removes files or nested folders.
+  safeHandle('db:document-folders:delete', (_event, id: number) => {
+    const folder = db.prepare('SELECT id FROM job_document_folders WHERE id = ?').get(id);
+    if (!folder) return;
+    const childFolders = (db.prepare('SELECT COUNT(*) c FROM job_document_folders WHERE parent_id = ?').get(id) as any).c;
+    const childDocs = (db.prepare('SELECT COUNT(*) c FROM job_documents WHERE folder_id = ?').get(id) as any).c;
+    if (childFolders > 0 || childDocs > 0) {
+      throw new Error('This folder is not empty. Move or delete its contents first.');
+    }
+    db.prepare('DELETE FROM job_document_folders WHERE id = ?').run(id);
   });
 }
 

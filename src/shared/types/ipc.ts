@@ -303,7 +303,10 @@ export interface JobDocumentRow {
   filename: string;
   /** Unique name inside the job's managed folder */
   stored_name: string;
+  /** Legacy fixed-category tag, superseded by folder_id; unused by current UI. */
   category: string;
+  /** The folder this document sits in; NULL = job root. */
+  folder_id: number | null;
   size_bytes: number;
   sha256: string;
   notes: string | null;
@@ -317,6 +320,16 @@ export interface AddDocumentsResult {
   skippedDuplicates: number;
   /** Basenames that could not be read or copied */
   failed: string[];
+}
+
+export interface JobDocumentFolderDTO {
+  id: number;
+  job_id: number;
+  parent_id: number | null;
+  name: string;
+  sort_order: number;
+  uuid: string | null;
+  created_at: string;
 }
 
 export interface QuoteRow {
