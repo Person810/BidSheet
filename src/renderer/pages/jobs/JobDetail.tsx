@@ -17,6 +17,7 @@ import { QuotesTab } from './QuotesTab';
 import { DocumentsTab } from './DocumentsTab';
 import { BidAnalysisModal } from './BidAnalysisModal';
 import { IndirectCostsCard } from './IndirectCostsCard';
+import { SectionTemplatePickerModal } from './SectionTemplatePickerModal';
 import { CostCodeReportModal } from './CostCodeReportModal';
 import { BidItemImportModal } from './BidItemImportModal';
 import { JobPriceImportModal } from './JobPriceImportModal';
@@ -50,6 +51,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'documents' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
   const [showBidAnalysis, setShowBidAnalysis] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [showPdfCustomizer, setShowPdfCustomizer] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -313,6 +315,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // future modal only requires updating this one expression.
   const anyModalOpen = !!(showLineItemModal || editingSection || showEditJob || showAssemblyPicker
     || showBidItemImport || showPriceImport || showCompare || showCostCodeReport || showBidAnalysis
+    || showTemplatePicker
     || showPdfCustomizer || confirmState);
 
   // Ctrl/Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo — estimate tab only, and
@@ -904,6 +907,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         ) : (
           <div className="flex gap-8">
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
+            <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowTemplatePicker(true))}
+              title="Insert a saved section package (create them via a section's settings)">+ From Template…</button>
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowBidItemImport(true))}
               title="Scaffold line items from an owner's bid schedule CSV">Import Bid Items…</button>
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowPriceImport(true))}
@@ -1008,6 +1013,15 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           sections={sections}
           lineItems={lineItems}
           onClose={() => setShowCostCodeReport(false)}
+        />
+      )}
+
+      {/* Section Template Picker */}
+      {showTemplatePicker && (
+        <SectionTemplatePickerModal
+          jobId={jobId}
+          onInserted={loadJob}
+          onClose={() => setShowTemplatePicker(false)}
         />
       )}
 

@@ -240,6 +240,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV37,
   migrateV38,
   migrateV39,
+  migrateV40,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -534,6 +535,30 @@ function migrateV39(db: Database.Database): void {
     END;
 
     INSERT INTO schema_version (version) VALUES (39);
+  `);
+}
+
+// V40: Reusable bid section templates. items_json holds a snapshot of the
+// section's bid_line_items rows (ids stripped) so a standard package —
+// "8-inch sanitary sewer", "hydrant assembly" — drops into any job. JSON
+// keeps the snapshot resilient to future line-item columns; unknown keys
+// are filtered against the live schema on insert.
+function migrateV40(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE section_templates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      items_json  TEXT NOT NULL DEFAULT '[]',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      uuid        TEXT
+    );
+    CREATE UNIQUE INDEX idx_section_templates_uuid ON section_templates(uuid);
+    CREATE TRIGGER trg_section_templates_uuid AFTER INSERT ON section_templates WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE section_templates SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (40);
   `);
 }
 

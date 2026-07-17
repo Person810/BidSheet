@@ -152,6 +152,12 @@ declare global {
       deleteQuote: (id: number) => Promise<SqlRunResult>;
       getQuoteVendors: () => Promise<{ vendor: string; contact: string | null; quote_count: number }[]>;
 
+      // Section templates
+      getSectionTemplates: () => Promise<{ id: number; name: string; created_at: string; item_count: number; direct_cost_total: number }[]>;
+      saveSectionTemplate: (sectionId: number, name: string) => Promise<{ id: number; itemCount: number }>;
+      deleteSectionTemplate: (id: number) => Promise<SqlRunResult>;
+      insertSectionTemplate: (templateId: number, jobId: number) => Promise<{ sectionId: number; itemCount: number }>;
+
       // Indirect costs
       getIndirectCosts: (jobId: number) => Promise<IndirectCostRow[]>;
       saveIndirectCost: (indirect: SaveIndirectCostPayload) => Promise<{ id: number }>;

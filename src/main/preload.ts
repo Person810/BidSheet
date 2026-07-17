@@ -146,6 +146,14 @@ contextBridge.exposeInMainWorld('api', {
   deleteQuote: (id: number) => invoke('db:quotes:delete', id),
   getQuoteVendors: () => invoke('db:quotes:vendors'),
 
+  // ---- Section templates ----
+  getSectionTemplates: () => invoke('db:section-templates:list'),
+  saveSectionTemplate: (sectionId: number, name: string) =>
+    invoke('db:section-templates:save-from-section', sectionId, name),
+  deleteSectionTemplate: (id: number) => invoke('db:section-templates:delete', id),
+  insertSectionTemplate: (templateId: number, jobId: number) =>
+    invoke('db:section-templates:insert-into-job', templateId, jobId),
+
   // ---- Indirect costs ----
   getIndirectCosts: (jobId: number) => invoke('db:indirects:list', jobId),
   saveIndirectCost: (indirect: any) => invoke('db:indirects:save', indirect),

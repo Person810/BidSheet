@@ -51,6 +51,118 @@ export function registerBidHandlers(db: Database.Database): void {
   });
 
   // ================================================================
+  // SECTION TEMPLATES (reusable packages: "8-inch sanitary sewer", …)
+  // ================================================================
+
+  /** Live bid_line_items columns, for filtering template snapshots on insert. */
+  const lineItemColumns = (): Set<string> => {
+    const cols = db.prepare('PRAGMA table_info(bid_line_items)').all() as any[];
+    return new Set(cols.map((c) => c.name));
+  };
+
+  const rowExists = (table: string, id: any): boolean => {
+    if (typeof id !== 'number') return false;
+    return !!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
+  };
+
+  safeHandle('db:section-templates:list', () => {
+    const rows = db.prepare(
+      'SELECT id, name, items_json, created_at FROM section_templates ORDER BY name COLLATE NOCASE, id'
+    ).all() as any[];
+    return rows.map((r) => {
+      let items: any[] = [];
+      try { items = JSON.parse(r.items_json) || []; } catch { /* corrupt json → empty */ }
+      return {
+        id: r.id,
+        name: r.name,
+        created_at: r.created_at,
+        item_count: items.length,
+        direct_cost_total: items.reduce((s, i) => s + (i.total_cost || 0), 0),
+      };
+    });
+  });
+
+  safeHandle('db:section-templates:save-from-section', (_event, sectionId: number, name: string) => {
+    const section = db.prepare('SELECT * FROM bid_sections WHERE id = ?').get(sectionId) as any;
+    if (!section) throw new Error('Section not found.');
+    const items = db.prepare(
+      'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
+    ).all(sectionId) as any[];
+    if (items.length === 0) throw new Error('This section has no line items to save.');
+
+    // Strip identity columns; everything else snapshots as-is.
+    const snapshot = items.map((it) => {
+      const { id, section_id, job_id, uuid, ...rest } = it;
+      return rest;
+    });
+
+    const result = db.prepare(
+      'INSERT INTO section_templates (name, items_json) VALUES (?, ?)'
+    ).run((name || section.name || 'Template').trim(), JSON.stringify(snapshot));
+    return { id: Number(result.lastInsertRowid), itemCount: snapshot.length };
+  });
+
+  safeHandle('db:section-templates:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM section_templates WHERE id = ?').run(id);
+  });
+
+  safeHandle('db:section-templates:insert-into-job', (_event, templateId: number, jobId: number) => {
+    const template = db.prepare('SELECT * FROM section_templates WHERE id = ?').get(templateId) as any;
+    if (!template) throw new Error('Template not found.');
+    const job = db.prepare('SELECT id FROM jobs WHERE id = ?').get(jobId);
+    if (!job) throw new Error('Job not found.');
+
+    let items: any[] = [];
+    try { items = JSON.parse(template.items_json) || []; } catch { items = []; }
+
+    const cols = lineItemColumns();
+    const catalogFks: Record<string, string> = {
+      material_id: 'materials',
+      crew_template_id: 'crew_templates',
+      production_rate_id: 'production_rates',
+      equipment_id: 'equipment',
+    };
+
+    const insertTx = db.transaction(() => {
+      const maxSort = (db.prepare(
+        'SELECT COALESCE(MAX(sort_order), -1) AS m FROM bid_sections WHERE job_id = ?'
+      ).get(jobId) as any).m;
+      const sectionResult = db.prepare(
+        'INSERT INTO bid_sections (job_id, name, sort_order, is_alternate) VALUES (?, ?, ?, 0)'
+      ).run(jobId, template.name, maxSort + 1);
+      const sectionId = Number(sectionResult.lastInsertRowid);
+
+      items.forEach((item, idx) => {
+        const clean: Record<string, any> = {};
+        for (const [k, v] of Object.entries(item)) {
+          if (!cols.has(k)) continue;
+          clean[k] = v;
+        }
+        // Catalog refs may have been deleted since the template was saved
+        for (const [col, table] of Object.entries(catalogFks)) {
+          if (clean[col] != null && !rowExists(table, clean[col])) clean[col] = null;
+        }
+        // Snapshot prices are real but not current — the price-state system
+        // (and stale-price warnings) should say so, not claim "confirmed".
+        if (cols.has('price_state') && (clean.price_state === 'confirmed' || clean.price_state === 'quoted')) {
+          clean.price_state = 'past_price';
+        }
+        clean.section_id = sectionId;
+        clean.job_id = jobId;
+        clean.sort_order = idx;
+
+        const keys = Object.keys(clean);
+        db.prepare(
+          `INSERT INTO bid_line_items (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`
+        ).run(...keys.map((k) => clean[k]));
+      });
+
+      return { sectionId, itemCount: items.length };
+    });
+    return insertTx();
+  });
+
+  // ================================================================
   // BID LINE ITEMS
   // ================================================================
 
