@@ -201,7 +201,7 @@ export function App() {
           </div>
           <ul className="nav-links">
             <li>
-              <NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/" end data-tour="dashboard" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/']}</span>
                 Dashboard
               </NavLink>
@@ -238,8 +238,8 @@ export function App() {
             </li>
 
             {/* Trade module tools -- only renders when modules have tools registered */}
-            {modulesWithTools.map((mod, modIdx) => (
-              <li key={mod.id} data-tour={modIdx === 0 ? 'tools' : undefined}>
+            {modulesWithTools.map((mod) => (
+              <li key={mod.id} data-tour={`tools-${mod.id}`}>
                 <div className="nav-section-label">{mod.name}</div>
                 <ul className="nav-links-nested">
                   {mod.tools.map((tool) => (
