@@ -1,0 +1,103 @@
+/**
+ * Wire models for the BidSheet Worker API — field names match the JSON the
+ * Worker returns (see bidsheet-cloud README "Endpoints" and the desktop's
+ * api-client.ts interfaces).
+ */
+
+import Foundation
+
+struct CloudJob: Codable, Identifiable {
+    let id: String
+    let account_id: String
+    /// Non-content placeholder under E2EE; the real name is in name_enc.
+    let name: String
+    /// Encrypted {name, status} blob (base64) — decrypted client-side.
+    let name_enc: String?
+    let status: String?
+    let lifecycle_state: String?
+    let updated_at: String?
+    let snapshot_hash: String?
+    let created_at: String?
+    let file_count: Int?
+    let bytes_used: Int?
+}
+
+/// Decrypted job metadata out of name_enc.
+struct JobMeta: Decodable {
+    let name: String
+    let status: String?
+}
+
+struct CloudAccount: Decodable {
+    let id: String
+    let name: String?
+    let plan: String?
+    let storage_bytes_used: Int
+    let storage_cap_bytes: Int
+    let subscription_status: String
+    let trial_ends_at: String?
+}
+
+struct MeResponse: Decodable {
+    let user_id: String
+    let email: String?
+    let account: CloudAccount
+    let role: String?
+}
+
+struct ManifestFile: Decodable, Identifiable {
+    let id: String
+    let job_id: String
+    let r2_key: String
+    /// photo | plan | markup | job
+    let type: String
+    let size_bytes: Int
+    let content_type: String?
+    let gps_lat: Double?
+    let gps_lng: Double?
+    let taken_at: String?
+    let uploaded_by: String?
+    let created_at: String?
+
+    var filename: String {
+        r2_key.split(separator: "/").last.map(String.init) ?? r2_key
+    }
+}
+
+struct JobManifest: Decodable {
+    let job: CloudJob
+    let files: [ManifestFile]
+}
+
+struct JobsResponse: Decodable {
+    let jobs: [CloudJob]
+}
+
+/// The account's E2EE key material (opaque to the server). Format 1 is the
+/// single-key shape; format 2 (per-member) adds the caller's own material.
+struct KeyMaterial: Decodable {
+    let format: Int
+    let wrapped_dek: String
+    let dek_fingerprint: String
+    let my_status: String?
+    let my_wrapped_priv: String?
+    let my_wrapped_dek: String?
+}
+
+/// The minimal slice of the desktop's job.json snapshot the field app needs.
+/// Decoded tolerantly — unknown fields are ignored, so desktop schema growth
+/// never breaks the phone.
+struct JobSnapshot: Decodable {
+    struct SnapshotJob: Decodable {
+        let name: String?
+        let status: String?
+        let client: String?
+        let location: String?
+    }
+    struct SnapshotPlan: Decodable {
+        let filename: String
+        let sha256: String
+    }
+    let job: SnapshotJob?
+    let plan: SnapshotPlan?
+}

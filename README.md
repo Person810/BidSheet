@@ -50,7 +50,7 @@ before they upload. We store the backup, but we can never read it.
 
 ## Platforms
 
-Windows and Linux today. **macOS is planned, alongside the iOS companion app.**
+Windows and Linux today. **macOS is planned, alongside the iOS companion app** — the iOS field app is now in early development in [`ios/`](ios/).
 
 ## Screenshots
 
