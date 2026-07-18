@@ -1,4 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft, FolderOpen, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2,
+  RotateCw, Undo2, Redo2, Ruler, MousePointer2, Waypoints, Pentagon, Spline,
+  Pencil, Layers, Download, Triangle, Grid2x2, Mountain, Type, ArrowUpRight,
+  Cloud, ChevronDown,
+} from 'lucide-react';
 import { UTILITY_COLORS, AREA_COLORS, ANNOTATION_COLOR, WALL_COLOR, type UtilityType, type AnnotationKind } from './types';
 
 function Separator() {
@@ -20,42 +26,37 @@ const LAYER_OPTIONS: { key: LayerKey; label: string; color: string }[] = [
   { key: 'annotations', label: 'Annotations', color: ANNOTATION_COLOR },
 ];
 
-/* ---- 16px stroke icons (feather-style, consistent with the app sidebar) ---- */
+/* ---- toolbar icons (lucide-react, 16px / 1.8 stroke to match the app shell) ---- */
 
-const ic = (paths: React.ReactNode, size = 16) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
-);
+const SZ = 16;
+const SW = 1.8;
 
 const Icons = {
-  back: ic(<><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></>),
-  open: ic(<><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></>),
-  prev: ic(<polyline points="15 18 9 12 15 6" />),
-  next: ic(<polyline points="9 18 15 12 9 6" />),
-  zoomIn: ic(<><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16" y2="16" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></>),
-  zoomOut: ic(<><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16" y2="16" /><line x1="8" y1="11" x2="14" y2="11" /></>),
-  fit: ic(<><polyline points="9 21 3 21 3 15" /><polyline points="15 3 21 3 21 9" /><line x1="3" y1="21" x2="10" y2="14" /><line x1="21" y1="3" x2="14" y2="10" /></>),
-  rotate: ic(<><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></>),
-  undo: ic(<><polyline points="9 14 4 9 9 4" /><path d="M20 20v-7a4 4 0 0 0-4-4H4" /></>),
-  redo: ic(<><polyline points="15 14 20 9 15 4" /><path d="M4 20v-7a4 4 0 0 1 4-4h12" /></>),
-  ruler: ic(<><path d="M21.3 8.7l-6-6L2.7 15.3l6 6L21.3 8.7z" /><line x1="14.5" y1="5.5" x2="16.5" y2="7.5" /><line x1="11.5" y1="8.5" x2="13.5" y2="10.5" /><line x1="8.5" y1="11.5" x2="10.5" y2="13.5" /><line x1="5.5" y1="14.5" x2="7.5" y2="16.5" /></>),
-  select: ic(<path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />),
-  run: ic(<><circle cx="5" cy="19" r="2" /><circle cx="12" cy="9" r="2" /><circle cx="19" cy="14" r="2" /><line x1="6" y1="17.2" x2="11" y2="10.8" /><line x1="13.8" y1="10.3" x2="17.4" y2="12.9" /></>),
-  area: ic(<><path d="M4 8L9 4l11 3-2 13-12-2z" /><circle cx="4" cy="8" r="1.5" fill="currentColor" /><circle cx="9" cy="4" r="1.5" fill="currentColor" /><circle cx="20" cy="7" r="1.5" fill="currentColor" /><circle cx="18" cy="20" r="1.5" fill="currentColor" /><circle cx="6" cy="18" r="1.5" fill="currentColor" /></>),
-  wall: ic(<><polyline points="3 18 9 6 15 15 21 5" /><circle cx="3" cy="18" r="1.5" fill="currentColor" /><circle cx="9" cy="6" r="1.5" fill="currentColor" /><circle cx="15" cy="15" r="1.5" fill="currentColor" /><circle cx="21" cy="5" r="1.5" fill="currentColor" /></>),
-  annotate: ic(<><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></>),
-  layers: ic(<><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></>),
-  export: ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>),
-  elevation: ic(<><polygon points="12 4 20 18 4 18" /><circle cx="12" cy="14.5" r="1.4" fill="currentColor" /></>),
-  heatmap: ic(<><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>),
-  earthwork: ic(<><path d="M2 18l6-8 4 5 3-4 7 7" /><line x1="2" y1="21" x2="22" y2="21" /></>),
-  text: ic(<><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></>, 14),
-  arrow: ic(<><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></>, 14),
-  cloud: ic(<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />, 14),
-  chevDown: (
-    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-  ),
+  back: <ArrowLeft size={SZ} strokeWidth={SW} />,
+  open: <FolderOpen size={SZ} strokeWidth={SW} />,
+  prev: <ChevronLeft size={SZ} strokeWidth={SW} />,
+  next: <ChevronRight size={SZ} strokeWidth={SW} />,
+  zoomIn: <ZoomIn size={SZ} strokeWidth={SW} />,
+  zoomOut: <ZoomOut size={SZ} strokeWidth={SW} />,
+  fit: <Maximize2 size={SZ} strokeWidth={SW} />,
+  rotate: <RotateCw size={SZ} strokeWidth={SW} />,
+  undo: <Undo2 size={SZ} strokeWidth={SW} />,
+  redo: <Redo2 size={SZ} strokeWidth={SW} />,
+  ruler: <Ruler size={SZ} strokeWidth={SW} />,
+  select: <MousePointer2 size={SZ} strokeWidth={SW} />,
+  run: <Waypoints size={SZ} strokeWidth={SW} />,
+  area: <Pentagon size={SZ} strokeWidth={SW} />,
+  wall: <Spline size={SZ} strokeWidth={SW} />,
+  annotate: <Pencil size={SZ} strokeWidth={SW} />,
+  layers: <Layers size={SZ} strokeWidth={SW} />,
+  export: <Download size={SZ} strokeWidth={SW} />,
+  elevation: <Triangle size={SZ} strokeWidth={SW} />,
+  heatmap: <Grid2x2 size={SZ} strokeWidth={SW} />,
+  earthwork: <Mountain size={SZ} strokeWidth={SW} />,
+  text: <Type size={14} strokeWidth={SW} />,
+  arrow: <ArrowUpRight size={14} strokeWidth={SW} />,
+  cloud: <Cloud size={14} strokeWidth={SW} />,
+  chevDown: <ChevronDown size={8} strokeWidth={3} />,
 };
 
 const ANNOTATION_OPTIONS: { kind: AnnotationKind; label: string; icon: React.ReactNode }[] = [

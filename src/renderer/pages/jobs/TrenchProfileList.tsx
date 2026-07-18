@@ -6,6 +6,8 @@ import {
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TrenchProfileForm } from './TrenchProfileForm';
 import { useTrenchMaterials } from '../../modules/underground/useTrenchMaterials';
+import { useSurfaceManager } from '../../modules/underground/plan-takeoff/useSurfaceManager';
+import type { TakeoffRun } from '../../modules/underground/plan-takeoff/types';
 
 export interface ConvertToBidProfile {
   label: string;
@@ -42,6 +44,7 @@ const DEFAULTS = {
   benchWidthFt: 0,
   beddingDepthFt: 0.5,
   backfillType: 'Native Material',
+  compactionPct: 0,
   pipeMaterialId: null as number | string | null,
   beddingMaterialId: null as number | string | null,
   backfillMaterialId: 'native' as number | string | null,
@@ -58,6 +61,7 @@ function rowToInput(row: any): TrenchInput {
     benchWidthFt: row.bench_width_ft,
     beddingDepthFt: row.bedding_depth_ft ?? 0.5,
     backfillType: row.backfill_type,
+    compactionPct: row.compaction_pct ?? 0,
   };
 }
 
@@ -68,6 +72,22 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
 
   const { pipeMaterials, beddingMaterials } = useTrenchMaterials();
+
+  // Plan Takeoff data (runs + terrain), so the 3D preview can show a profile
+  // against the real pipe route and surveyed ground instead of a synthetic
+  // straight line -- read-only here, this tab never edits takeoff data.
+  const [takeoffRuns, setTakeoffRuns] = useState<TakeoffRun[]>([]);
+  const [pageScales, setPageScales] = useState<Record<number, number>>({});
+  const { surface } = useSurfaceManager({ jobId });
+
+  useEffect(() => {
+    window.api.listTakeoffRuns(jobId).then(setTakeoffRuns);
+    window.api.listPageScales(jobId).then((rows: { page_number: number; scale_px_per_ft: number }[]) => {
+      const map: Record<number, number> = {};
+      rows.forEach((r) => { map[r.page_number] = r.scale_px_per_ft; });
+      setPageScales(map);
+    });
+  }, [jobId]);
 
   const loadProfiles = useCallback(async () => {
     const rows = await window.api.getTrenchProfiles(jobId);
@@ -111,6 +131,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     benchWidthFt: form.benchWidthFt,
     beddingDepthFt: form.beddingDepthFt,
     backfillType: form.backfillType,
+    compactionPct: form.compactionPct,
   };
   const formErrors = editingId !== null ? validateInput(formInput) : [];
 
@@ -138,6 +159,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       benchWidthFt: row.bench_width_ft,
       beddingDepthFt: row.bedding_depth_ft ?? 0.5,
       backfillType: row.backfill_type,
+      compactionPct: row.compaction_pct ?? 0,
       pipeMaterialId: row.pipe_material_id ?? null,
       beddingMaterialId: row.bedding_material_id ?? null,
       backfillMaterialId: row.backfill_material_id ?? (row.backfill_type === 'Native Material' ? 'native' : null),
@@ -166,6 +188,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       beddingType: beddingLabel,
       backfillType: backfillLabel,
       beddingDepthFt: form.beddingDepthFt,
+      compactionPct: form.compactionPct,
       pipeMaterialId: typeof form.pipeMaterialId === 'number' ? form.pipeMaterialId : null,
       beddingMaterialId: typeof form.beddingMaterialId === 'number' ? form.beddingMaterialId : null,
       backfillMaterialId: typeof form.backfillMaterialId === 'number' ? form.backfillMaterialId : null,
@@ -296,7 +319,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                     <tr><td colSpan={8} style={{ padding: 0 }}>
                       <TrenchProfileForm form={form} onChange={handleChange}
                         onSave={saveProfile} onCancel={() => setEditingId(null)} errors={formErrors}
-                        pipeMaterials={pipeMaterials} beddingMaterials={beddingMaterials} />
+                        pipeMaterials={pipeMaterials} beddingMaterials={beddingMaterials}
+                        takeoffRuns={takeoffRuns} pageScales={pageScales} surface={surface} />
                     </td></tr>
                   )}
                 </React.Fragment>

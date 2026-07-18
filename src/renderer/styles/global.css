@@ -2034,8 +2034,15 @@ body {
 
 .tour-dots {
   display: flex;
+  align-items: center;
   gap: 6px;
   margin-bottom: 14px;
+}
+
+.tour-step-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .tour-dot {

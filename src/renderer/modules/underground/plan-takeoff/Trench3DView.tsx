@@ -1,10 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import type { TakeoffRun } from './types';
 import type { GroundSampler } from './profileModel';
-import type { Tin } from '../surfaceModel';
 import {
   buildRunGeometry,
   prismCorners,
@@ -16,17 +15,15 @@ import {
 interface Trench3DViewProps {
   run: TakeoffRun;
   scalePxPerFt: number;
-  /** Existing-ground sampler so the trench follows real terrain. */
   groundSampler?: GroundSampler;
-  /** Raw TIN for rendering the existing-grade terrain mesh. */
-  groundTin?: Tin;
-  /** Plot height in CSS px (width fills the container) */
   height?: number;
 }
 
-const EARTH = '#8a6d3b';
-const BEDDING = '#b8a06a';
+const EARTH = '#7a5c32';
+const BEDDING = '#c4a86e';
 const STRUCTURE = '#9aa0a6';
+const TERRAIN_GRID = 36;
+const TERRAIN_BUFFER_FT = 40;
 
 /** One swept trapezoidal prism (excavation envelope or bedding zone). */
 function Prism({
@@ -53,29 +50,61 @@ function Prism({
         opacity={opacity}
         side={THREE.DoubleSide}
         flatShading
-        roughness={0.95}
+        roughness={0.9}
         metalness={0}
       />
     </mesh>
   );
 }
 
-/** Pipe swept along the invert centerline as a tube. */
-function Pipe({ model, color }: { model: Trench3DModel; color: string }) {
+/** One straight pipe segment between two centerline points. */
+function PipeSegment({
+  from, to, radius, color,
+}: {
+  from: { x: number; y: number; z: number };
+  to: { x: number; y: number; z: number };
+  radius: number; color: string;
+}) {
   const geometry = useMemo(() => {
-    const pts = model.pipeCenterline.map((p) => new THREE.Vector3(p.x, p.y, p.z));
-    if (pts.length < 2) return null;
-    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    const radius = Math.max(model.pipeDiaFt / 2, 0.05);
-    const tubular = Math.max(8, model.pipeCenterline.length * 8);
-    return new THREE.TubeGeometry(curve, tubular, radius, 16, false);
-  }, [model]);
+    const curve = new THREE.LineCurve3(
+      new THREE.Vector3(from.x, from.y, from.z),
+      new THREE.Vector3(to.x, to.y, to.z),
+    );
+    return new THREE.TubeGeometry(curve, 1, radius, 14, false);
+  }, [from, to, radius]);
 
-  if (!geometry) return null;
   return (
     <mesh geometry={geometry}>
-      <meshStandardMaterial color={color} roughness={0.4} metalness={0.1} />
+      <meshStandardMaterial color={color} roughness={0.35} metalness={0.15} />
     </mesh>
+  );
+}
+
+/**
+ * Pipe rendered as straight segments so each span is a true cylinder — bends
+ * are sharp at the vertex (matching a fitting joint). A slightly larger sphere
+ * sits at each interior bend to represent the fitting coupling.
+ */
+function PipeRun({ model, color }: { model: Trench3DModel; color: string }) {
+  const radius = Math.max(model.pipeDiaFt / 2, 0.05);
+  const cl = model.pipeCenterline;
+
+  return (
+    <>
+      {cl.map((pt, i) => {
+        if (i === 0) return null;
+        return (
+          <PipeSegment key={i} from={cl[i - 1]} to={pt} radius={radius} color={color} />
+        );
+      })}
+      {/* Fitting ball at each interior vertex */}
+      {cl.slice(1, -1).map((pt, i) => (
+        <mesh key={i} position={[pt.x, pt.y, pt.z]}>
+          <sphereGeometry args={[radius * 1.18, 14, 10]} />
+          <meshStandardMaterial color={color} roughness={0.3} metalness={0.2} />
+        </mesh>
+      ))}
+    </>
   );
 }
 
@@ -90,11 +119,15 @@ function Structure({ x, z, ground, invert }: { x: number; z: number; ground: num
   );
 }
 
-/** Existing-grade terrain surface built from the surveyed spot elevations. */
+/**
+ * Terrain mesh sampled on a regular grid over the pipe corridor.
+ * Clips to the run bounding box + TERRAIN_BUFFER_FT each side, and only
+ * renders cells where the groundSampler returns a value (inside the TIN).
+ */
 function TerrainMesh({
-  tin, run, scalePxPerFt, offset,
+  groundSampler, run, scalePxPerFt, offset,
 }: {
-  tin: Tin; run: TakeoffRun; scalePxPerFt: number;
+  groundSampler: GroundSampler; run: TakeoffRun; scalePxPerFt: number;
   offset: [number, number, number];
 }) {
   const geometry = useMemo(() => {
@@ -105,84 +138,124 @@ function TerrainMesh({
     const toX = (px: number) => (px - cx) / scalePxPerFt;
     const toZ = (py: number) => (py - cy) / scalePxPerFt;
 
+    const bufPx = TERRAIN_BUFFER_FT * scalePxPerFt;
+    const xs = run.points.map((p) => p.x);
+    const ys = run.points.map((p) => p.y);
+    const x0 = Math.min(...xs) - bufPx, x1 = Math.max(...xs) + bufPx;
+    const y0 = Math.min(...ys) - bufPx, y1 = Math.max(...ys) + bufPx;
+
+    const N = TERRAIN_GRID;
+    const vidx: (number | null)[][] = Array.from({ length: N + 1 }, () => new Array(N + 1).fill(null));
     const positions: number[] = [];
-    const { points, triangles } = tin;
-    for (let t = 0; t < triangles.length; t += 3) {
-      const a = points[triangles[t]];
-      const b = points[triangles[t + 1]];
-      const c = points[triangles[t + 2]];
-      positions.push(toX(a.x), a.z, toZ(a.y));
-      positions.push(toX(b.x), b.z, toZ(b.y));
-      positions.push(toX(c.x), c.z, toZ(c.y));
+
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        const xPx = x0 + (x1 - x0) * (i / N);
+        const yPx = y0 + (y1 - y0) * (j / N);
+        const z = groundSampler(xPx, yPx);
+        if (z != null) {
+          vidx[i][j] = positions.length / 3;
+          positions.push(toX(xPx), z, toZ(yPx));
+        }
+      }
     }
+
+    const indices: number[] = [];
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const a = vidx[i][j], b = vidx[i + 1][j], c = vidx[i + 1][j + 1], d = vidx[i][j + 1];
+        if (a != null && b != null && c != null) indices.push(a, b, c);
+        if (a != null && c != null && d != null) indices.push(a, c, d);
+      }
+    }
+
+    if (positions.length === 0) return null;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    g.setIndex(indices);
     g.computeVertexNormals();
     return g;
-  }, [tin, run, scalePxPerFt]);
+  }, [groundSampler, run, scalePxPerFt]);
 
+  if (!geometry) return null;
   return (
     <mesh geometry={geometry} position={offset}>
       <meshStandardMaterial
-        color="#5a8a4a"
+        color="#4d7a3a"
         transparent
-        opacity={0.55}
+        opacity={0.38}
         side={THREE.DoubleSide}
-        flatShading
-        roughness={0.9}
+        roughness={0.85}
         metalness={0}
       />
     </mesh>
   );
 }
 
-function Scene({ model, run, groundTin, scalePxPerFt }: {
-  model: Trench3DModel; run: TakeoffRun; groundTin?: Tin; scalePxPerFt: number;
+function Scene({ model, run, groundSampler, scalePxPerFt, hasBench }: {
+  model: Trench3DModel; run: TakeoffRun;
+  groundSampler?: GroundSampler; scalePxPerFt: number;
+  hasBench: boolean;
 }) {
-  // Recenter the model on the world origin so orbit/zoom stays well-behaved.
   const offset: [number, number, number] = [-model.center.x, -model.center.y, -model.center.z];
-  const floorY = model.center.y - model.radius; // a touch below the deepest point
+  const floorY = -model.radius;
 
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[model.radius, model.radius * 2, model.radius]} intensity={1.1} castShadow />
-      <directionalLight position={[-model.radius, model.radius, -model.radius]} intensity={0.3} />
+      <ambientLight intensity={0.55} />
+      <directionalLight position={[model.radius, model.radius * 2.5, model.radius * 0.5]} intensity={1.2} />
+      <directionalLight position={[-model.radius * 0.5, model.radius, -model.radius]} intensity={0.35} />
 
-      {groundTin && (
-        <TerrainMesh tin={groundTin} run={run} scalePxPerFt={scalePxPerFt} offset={offset} />
+      {groundSampler && (
+        <TerrainMesh
+          groundSampler={groundSampler}
+          run={run}
+          scalePxPerFt={scalePxPerFt}
+          offset={offset}
+        />
       )}
 
       <group position={offset}>
         {model.segments.map((seg, i) => (
           <React.Fragment key={i}>
-            {/* Excavation envelope: ground -> trench bottom, full benched width */}
+            {/*
+             * Stair-step bench geometry:
+             *   Upper zone  (ground → invert): full cut width including benches
+             *   Lower zone  (invert → bottom): narrow trench width only
+             * This creates the visible step at the invert/bench-floor level.
+             * When benchWidthFt = 0, totalWidthFt = trenchWidthFt so both
+             * prisms have the same width (no step rendered).
+             */}
             <Prism
               seg={seg} halfWidth={model.totalWidthFt / 2}
               topA={seg.groundA} topB={seg.groundB}
-              botA={seg.bottomA} botB={seg.bottomB}
-              color={EARTH} opacity={0.22}
+              botA={seg.invertA} botB={seg.invertB}
+              color={EARTH} opacity={hasBench ? 0.55 : 0.5}
             />
-            {/* Bedding zone: trench bottom -> invert, nominal trench width */}
             <Prism
               seg={seg} halfWidth={model.trenchWidthFt / 2}
               topA={seg.invertA} topB={seg.invertB}
               botA={seg.bottomA} botB={seg.bottomB}
-              color={BEDDING} opacity={0.9}
+              color={EARTH} opacity={0.5}
+            />
+            <Prism
+              seg={seg} halfWidth={model.trenchWidthFt / 2}
+              topA={seg.invertA} topB={seg.invertB}
+              botA={seg.bottomA} botB={seg.bottomB}
+              color={BEDDING} opacity={0.92}
             />
           </React.Fragment>
         ))}
 
-        <Pipe model={model} color={run.color} />
+        <PipeRun model={model} color={run.color} />
 
         {model.structures.map((s, i) => (
           <Structure key={i} x={s.x} z={s.z} ground={s.ground} invert={s.invert} />
         ))}
       </group>
 
-      {/* Reference grid for scale/orientation, recentered with the model */}
       <Grid
-        position={[0, floorY - model.center.y, 0]}
+        position={[0, floorY, 0]}
         args={[model.radius * 6, model.radius * 6]}
         cellSize={Math.max(1, Math.round(model.radius / 5))}
         sectionSize={Math.max(5, Math.round(model.radius))}
@@ -192,7 +265,7 @@ function Scene({ model, run, groundTin, scalePxPerFt }: {
         infiniteGrid={false}
       />
 
-      <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+      <OrbitControls makeDefault enableDamping dampingFactor={0.12} />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
         <GizmoViewport axisColors={['#e06666', '#93c47d', '#6fa8dc']} labelColor="#fff" />
       </GizmoHelper>
@@ -200,45 +273,122 @@ function Scene({ model, run, groundTin, scalePxPerFt }: {
   );
 }
 
-/**
- * Interactive 3D view of a pipe run's ditchwork: the excavation envelope,
- * bedding zone, sloped pipe, and structures, swept along the drawn plan path.
- * Orbit/pan/zoom via the mouse. Elevations come from the same profile model
- * as the 2D side view, drawn here at true 1:1 scale.
- */
-export function Trench3DView({ run, scalePxPerFt, groundSampler, groundTin, height = 460 }: Trench3DViewProps) {
-  const model = useMemo(() => buildRunGeometry(run, scalePxPerFt, groundSampler), [run, scalePxPerFt, groundSampler]);
+function LegendSwatch({ color, opacity, label }: { color: string; opacity: number; label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{
+        width: 12, height: 12, borderRadius: 2, flexShrink: 0,
+        background: color, opacity,
+        border: '1px solid rgba(255,255,255,0.15)',
+      }} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }: Trench3DViewProps) {
+  const [resetKey, setResetKey] = useState(0);
+
+  const model = useMemo(
+    () => buildRunGeometry(run, scalePxPerFt, groundSampler),
+    [run, scalePxPerFt, groundSampler],
+  );
 
   if (!model) {
     return <p className="text-muted">This run has no measurable length yet.</p>;
   }
 
-  const dist = model.radius * 2.6;
+  // Cross-section-aware camera distance. For very long runs the bounding radius
+  // is dominated by plan length, leaving the narrow trench cross-section invisible
+  // from the default overview. Cap so the cross-section is always legible on first
+  // open; users can scroll out to see the full run.
+  const maxCutDepth = Math.max(
+    ...model.segments.map((s) => Math.max(s.groundA - s.bottomA, s.groundB - s.bottomB)),
+    model.totalWidthFt,
+    1,
+  );
+  const viewSize = Math.max(maxCutDepth * 1.5, model.totalWidthFt * 4, 8);
+  const dist = Math.min(model.radius * 2.6, viewSize * 5);
+
+  const hasBench = run.benchWidthFt > 0;
+  const benchWidthFt = run.benchWidthFt;
 
   return (
     <div>
-      <div style={{ height, borderRadius: 6, overflow: 'hidden', background: '#0e1116' }}>
+      <div style={{ position: 'relative', height, borderRadius: 6, overflow: 'hidden', background: '#0e1116' }}>
         <Canvas
-          camera={{ position: [dist * 0.7, dist * 0.7, dist * 0.7], fov: 45, near: 0.1, far: dist * 50 }}
+          key={resetKey}
+          // Lower elevation (≈25°) so cross-section side faces are clearly visible
+          camera={{ position: [dist * 0.6, dist * 0.4, dist * 0.6] as [number, number, number], fov: 45, near: 0.1, far: dist * 50 }}
           dpr={[1, 2]}
         >
           <color attach="background" args={['#0e1116']} />
-          <Scene model={model} run={run} groundTin={groundTin} scalePxPerFt={scalePxPerFt} />
+          <Scene
+            model={model}
+            run={run}
+            groundSampler={groundSampler}
+            scalePxPerFt={scalePxPerFt}
+            hasBench={hasBench}
+          />
         </Canvas>
+
+        {/* Legend */}
+        <div style={{
+          position: 'absolute', bottom: 12, left: 12,
+          background: 'rgba(14,17,22,0.82)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 5, padding: '7px 10px',
+          fontSize: 11, color: 'var(--text-muted)',
+          display: 'flex', flexDirection: 'column', gap: 5,
+          backdropFilter: 'blur(4px)',
+          pointerEvents: 'none',
+        }}>
+          <LegendSwatch color={EARTH} opacity={0.85} label={hasBench ? `Excavation (benched ${benchWidthFt}′ ea side)` : 'Excavation cut'} />
+          <LegendSwatch color={BEDDING} opacity={1} label={`Bedding (${run.beddingDepthFt}′ depth)`} />
+          <LegendSwatch color={run.color} opacity={1} label={`${run.pipeSizeIn}" ${run.pipeMaterial}`} />
+          {model.structures.length > 0 && (
+            <LegendSwatch color={STRUCTURE} opacity={1} label="Structures" />
+          )}
+          {groundSampler && (
+            <LegendSwatch color="#4d7a3a" opacity={0.7} label="Existing terrain" />
+          )}
+        </div>
+
+        {/* Reset view button */}
+        <button
+          onClick={() => setResetKey((k) => k + 1)}
+          title="Reset camera"
+          style={{
+            position: 'absolute', top: 8, left: 8,
+            background: 'rgba(14,17,22,0.75)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 4, color: 'var(--text-muted)',
+            fontSize: 11, padding: '3px 8px', cursor: 'pointer',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          Reset view
+        </button>
       </div>
 
       <div className="flex gap-8" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-        <span>{run.pipeSizeIn}" {run.pipeMaterial}</span>
-        <span>·</span>
         <span>{model.totalLengthFt.toFixed(1)} LF</span>
         <span>·</span>
-        <span>trench {model.trenchWidthFt}' / dig {model.totalWidthFt}'</span>
+        <span>trench {model.trenchWidthFt}′ wide</span>
+        {hasBench && (
+          <>
+            <span>·</span>
+            <span>bench {benchWidthFt}′ each side → {model.totalWidthFt}′ total cut</span>
+          </>
+        )}
         <span>·</span>
-        <span>true 1:1 scale · drag to orbit, scroll to zoom</span>
+        <span>true 1:1 scale</span>
+        <span>·</span>
+        <span>drag to orbit · scroll to zoom</span>
         {model.mode === 'depth' && (
           <>
             <span>·</span>
-            <span>depths from start depth + design grade (no surveyed inverts)</span>
+            <span>depths estimated from start depth + grade</span>
           </>
         )}
       </div>

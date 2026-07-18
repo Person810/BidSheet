@@ -35,6 +35,8 @@ interface ExportLineItem {
 
 interface ExportSummary {
   escalation?: number;
+  /** Job-level indirect-cost pool (mobilization, traffic control, …) */
+  indirect_total?: number;
   overhead: number;
   profit: number;
   bond: number;
@@ -160,6 +162,12 @@ export function generateEstimateCSV(data: CSVExportData): string {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
       `Material Escalation (${fmt(job.escalation_percent || 0)}%)`, 1, fmt(summary.escalation!), fmt(summary.escalation!),
+    ));
+  }
+  if ((summary.indirect_total || 0) !== 0) {
+    lines.push(buildRow(
+      customer, invoiceNo, date, location, memo,
+      'Indirect Costs', 1, fmt(summary.indirect_total!), fmt(summary.indirect_total!),
     ));
   }
   if (summary.overhead !== 0) {

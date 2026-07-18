@@ -21,11 +21,52 @@ export function asPriceState(value: string | null | undefined): PriceState {
 }
 
 /**
+ * Stale-price warning (§4 follow-on): a catalog price untouched for this
+ * long gets flagged before the bid goes out. Duplicated jobs copy
+ * price_state verbatim, so even a "confirmed" line can be riding on last
+ * year's catalog price — staleness is judged on catalog age alone.
+ */
+export const STALE_PRICE_DAYS = 90;
+
+/**
+ * Whole days since a catalog timestamp (SQLite localtime format,
+ * 'YYYY-MM-DD HH:MM:SS'). Unparseable/missing input → null (never stale).
+ */
+export function priceAgeDays(lastUpdate: string | null | undefined, now: Date = new Date()): number | null {
+  if (!lastUpdate) return null;
+  const t = new Date(lastUpdate.replace(' ', 'T')).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.floor((now.getTime() - t) / 86_400_000);
+}
+
+/**
+ * Count line items whose material's catalog price is STALE_PRICE_DAYS or
+ * older. Lines without a material (labor-only, subs) never count.
+ */
+export function countStaleLines(
+  lineItems: Record<number, any[]>,
+  materialAges: Map<number, number | null>,
+): number {
+  let stale = 0;
+  for (const items of Object.values(lineItems)) {
+    for (const it of items) {
+      if (!it.material_id) continue;
+      const age = materialAges.get(it.material_id);
+      if (age != null && age >= STALE_PRICE_DAYS) stale++;
+    }
+  }
+  return stale;
+}
+
+/**
  * The legend + payoff strip shown above the bid grid: a key for the dot
  * colors, plus the running "X of N on confirmed/quoted prices · M still on
  * seed" tally (§4). Hidden when the bid has no lines.
  */
-export function PriceStateLegend({ lineItems }: { lineItems: Record<number, any[]> }) {
+export function PriceStateLegend({ lineItems, materialAges }: {
+  lineItems: Record<number, any[]>;
+  materialAges?: Map<number, number | null>;
+}) {
   const counts: Record<PriceState, number> = { seed: 0, past_price: 0, quoted: 0, confirmed: 0 };
   let total = 0;
   for (const items of Object.values(lineItems)) {
@@ -36,6 +77,7 @@ export function PriceStateLegend({ lineItems }: { lineItems: Record<number, any[
   }
   if (total === 0) return null;
 
+  const stale = materialAges ? countStaleLines(lineItems, materialAges) : 0;
   const live = counts.quoted + counts.confirmed;
   return (
     <div className="price-state-legend no-print">
@@ -51,20 +93,39 @@ export function PriceStateLegend({ lineItems }: { lineItems: Record<number, any[
         {live} of {total} on quoted prices
         {counts.seed > 0 ? ` · ${counts.seed} still on seed` : ''}
       </span>
+      {stale > 0 && (
+        <span className="legend-item" style={{ color: 'var(--warning)' }}
+          title={`${stale} line${stale !== 1 ? 's' : ''} priced from catalog entries not updated in ${STALE_PRICE_DAYS}+ days. Check current pricing before submitting.`}>
+          &#9888; {stale} stale price{stale !== 1 ? 's' : ''} ({STALE_PRICE_DAYS}+ days)
+        </span>
+      )}
     </div>
   );
 }
 
-/** Small left-of-description state dot. `source` enriches the tooltip. */
-export function PriceStateDot({ state, source }: { state: string | null | undefined; source?: string | null }) {
+/**
+ * Small left-of-description state dot. `source` enriches the tooltip;
+ * `ageDays` adds a quiet warning ring + tooltip when the backing catalog
+ * price has gone stale.
+ */
+export function PriceStateDot({ state, source, ageDays }: {
+  state: string | null | undefined;
+  source?: string | null;
+  ageDays?: number | null;
+}) {
   const meta = PRICE_STATE_META[asPriceState(state)];
-  const title = source ? `${meta.desc} · ${source}` : meta.desc;
+  const isStale = ageDays != null && ageDays >= STALE_PRICE_DAYS;
+  let title = source ? `${meta.desc} · ${source}` : meta.desc;
+  if (isStale) title += ` · catalog price ${ageDays} days old`;
   return (
     <span
       className="price-state-dot"
       title={title}
-      aria-label={meta.desc}
-      style={{ background: meta.color }}
+      aria-label={isStale ? `${meta.desc} (stale price)` : meta.desc}
+      style={{
+        background: meta.color,
+        ...(isStale ? { boxShadow: '0 0 0 2px var(--warning)' } : {}),
+      }}
     />
   );
 }

@@ -224,7 +224,9 @@ export function seedDatabase(
 
 // Ordered list of migrations; index 0 is v1. Each runs inside its own
 // transaction (below), so a multi-statement migration is all-or-nothing.
-const MIGRATIONS: Array<(db: Database.Database) => void> = [
+// Exported so tests can run a specific prefix of migrations (e.g. to seed
+// pre-upgrade data and verify a single migration's backfill in isolation).
+export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV1, migrateV2, migrateV3, migrateV4, migrateV5,
   migrateV6, migrateV7, migrateV8, migrateV9, migrateV10,
   migrateV11, migrateV12, migrateV13, migrateV14, migrateV15,
@@ -238,6 +240,11 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV35,
   migrateV36,
   migrateV37,
+  migrateV38,
+  migrateV39,
+  migrateV40,
+  migrateV41,
+  migrateV42,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -471,12 +478,162 @@ function migrateV36(db: Database.Database): void {
   `);
 }
 
-// V37: generalize the wall tool beyond concrete — the per-face "rebar grid"
-// becomes a trade-agnostic vertical-member spacing (studs / bars / posts).
+// V37: Compaction/waste percent on trench profiles (issue #9, trimmed scope).
+// Extra loose material purchased per compacted CY of imported bedding/backfill.
 function migrateV37(db: Database.Database): void {
   db.exec(`
-    ALTER TABLE takeoff_walls RENAME COLUMN rebar_spacing_in TO member_spacing_in;
+    ALTER TABLE trench_profiles ADD COLUMN compaction_pct REAL NOT NULL DEFAULT 0;
+
     INSERT INTO schema_version (version) VALUES (37);
+  `);
+}
+
+// V38: Per-job documents. Files are copied into the app-managed store
+// (userData/job-files/<job-id>/) under stored_name; filename keeps the
+// original display name. sha256/size support future cloud sync
+// (content-addressed upload, like the takeoff plan) and duplicate detection.
+function migrateV38(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE job_documents (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      filename    TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      category    TEXT NOT NULL DEFAULT 'other',
+      size_bytes  INTEGER NOT NULL DEFAULT 0,
+      sha256      TEXT NOT NULL DEFAULT '',
+      notes       TEXT,
+      uuid        TEXT,
+      added_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_job_documents_job ON job_documents(job_id);
+    CREATE UNIQUE INDEX idx_job_documents_uuid ON job_documents(uuid);
+    CREATE TRIGGER trg_job_documents_uuid AFTER INSERT ON job_documents WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE job_documents SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (38);
+  `);
+}
+
+// V39: Job-level indirect costs (mobilization, traffic control, dewatering…)
+// entered once per job instead of faked as line items. Job-level markups
+// apply to the pool in bidCalc; tax/escalation do not.
+function migrateV39(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE job_indirect_costs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      amount      REAL NOT NULL DEFAULT 0,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      uuid        TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_job_indirects_job ON job_indirect_costs(job_id);
+    CREATE UNIQUE INDEX idx_job_indirects_uuid ON job_indirect_costs(uuid);
+    CREATE TRIGGER trg_job_indirects_uuid AFTER INSERT ON job_indirect_costs WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE job_indirect_costs SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (39);
+  `);
+}
+
+// V40: Reusable bid section templates. items_json holds a snapshot of the
+// section's bid_line_items rows (ids stripped) so a standard package —
+// "8-inch sanitary sewer", "hydrant assembly" — drops into any job. JSON
+// keeps the snapshot resilient to future line-item columns; unknown keys
+// are filtered against the live schema on insert.
+function migrateV40(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE section_templates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      items_json  TEXT NOT NULL DEFAULT '[]',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      uuid        TEXT
+    );
+    CREATE UNIQUE INDEX idx_section_templates_uuid ON section_templates(uuid);
+    CREATE TRIGGER trg_section_templates_uuid AFTER INSERT ON section_templates WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE section_templates SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    INSERT INTO schema_version (version) VALUES (40);
+  `);
+}
+
+// V41: Nested folders for job documents, replacing the fixed 6-category
+// tagging. A document's location is now folder_id (NULL = job root) instead
+// of category; category stays on the row (unused by new code) rather than
+// being dropped, since SQLite can't cheaply drop a column with data workers
+// might still be reading via an older build mid-upgrade.
+//
+// Existing documents are backfilled into one same-named root folder per
+// category actually in use on each job ('other' stays unfiled at root,
+// since it was always the catch-all — the closest existing thing to "no
+// folder").
+function migrateV41(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE job_document_folders (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      parent_id   INTEGER REFERENCES job_document_folders(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      uuid        TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_job_document_folders_job ON job_document_folders(job_id);
+    CREATE INDEX idx_job_document_folders_parent ON job_document_folders(parent_id);
+    CREATE UNIQUE INDEX idx_job_document_folders_uuid ON job_document_folders(uuid);
+    CREATE TRIGGER trg_job_document_folders_uuid AFTER INSERT ON job_document_folders WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE job_document_folders SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    ALTER TABLE job_documents ADD COLUMN folder_id INTEGER REFERENCES job_document_folders(id) ON DELETE SET NULL;
+    CREATE INDEX idx_job_documents_folder ON job_documents(folder_id);
+  `);
+
+  const CATEGORY_FOLDER_NAMES: Record<string, string> = {
+    plans: 'Plans',
+    quotes: 'Quotes',
+    specs: 'Specs',
+    photos: 'Photos',
+    contracts: 'Contracts',
+    // 'other' intentionally omitted: it stays unfiled at root.
+  };
+
+  const jobsWithCategorizedDocs = db.prepare(`
+    SELECT DISTINCT job_id, category FROM job_documents
+    WHERE category IN ('plans', 'quotes', 'specs', 'photos', 'contracts')
+  `).all() as { job_id: number; category: string }[];
+
+  const insertFolder = db.prepare(
+    'INSERT INTO job_document_folders (job_id, parent_id, name) VALUES (?, NULL, ?)'
+  );
+  const backfillDocs = db.prepare(
+    'UPDATE job_documents SET folder_id = ? WHERE job_id = ? AND category = ?'
+  );
+
+  for (const { job_id, category } of jobsWithCategorizedDocs) {
+    const folderId = insertFolder.run(job_id, CATEGORY_FOLDER_NAMES[category]).lastInsertRowid;
+    backfillDocs.run(folderId, job_id, category);
+  }
+
+  db.exec('INSERT INTO schema_version (version) VALUES (41);');
+}
+
+// V42: generalize the wall tool beyond concrete — the per-face "rebar grid"
+// becomes a trade-agnostic vertical-member spacing (studs / bars / posts).
+function migrateV42(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE takeoff_walls RENAME COLUMN rebar_spacing_in TO member_spacing_in;
+    INSERT INTO schema_version (version) VALUES (42);
   `);
 }
 

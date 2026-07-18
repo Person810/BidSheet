@@ -278,6 +278,60 @@ export interface BidItemImportRow {
   itemNumber: string | null;
 }
 
+export interface IndirectCostRow {
+  id: number;
+  job_id: number;
+  description: string;
+  amount: number;
+  sort_order: number;
+  uuid: string | null;
+  created_at: string;
+}
+
+export interface SaveIndirectCostPayload {
+  id?: number;
+  jobId?: number;
+  description: string;
+  amount: number;
+  sortOrder?: number;
+}
+
+export interface JobDocumentRow {
+  id: number;
+  job_id: number;
+  /** Original display name of the attached file */
+  filename: string;
+  /** Unique name inside the job's managed folder */
+  stored_name: string;
+  /** Legacy fixed-category tag, superseded by folder_id; unused by current UI. */
+  category: string;
+  /** The folder this document sits in; NULL = job root. */
+  folder_id: number | null;
+  size_bytes: number;
+  sha256: string;
+  notes: string | null;
+  uuid: string | null;
+  added_at: string;
+}
+
+export interface AddDocumentsResult {
+  added: number;
+  /** Files whose content already exists on this job (same sha256) */
+  skippedDuplicates: number;
+  /** Basenames that could not be read or copied */
+  failed: string[];
+}
+
+export interface JobDocumentFolderDTO {
+  id: number;
+  job_id: number;
+  parent_id: number | null;
+  name: string;
+  sort_order: number;
+  uuid: string | null;
+  created_at: string;
+}
+
 export interface QuoteRow {
   id: number;
   job_id: number;
@@ -343,6 +397,8 @@ export interface SaveTrenchProfilePayload {
   beddingMaterialId?: number | string | null;
   backfillMaterialId?: number | string | null;
   beddingDepthFt?: number;
+  /** Extra loose material % on imported bedding/backfill (0 = off) */
+  compactionPct?: number;
 }
 
 // ================================================================

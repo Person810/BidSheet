@@ -12,6 +12,13 @@ import { cubicFeetToYards, inchesToFeet } from '../../../shared/constants/units'
 
 // ---- Input / Output types --------------------------------------------------
 
+/**
+ * Sentinel label for excavated-native backfill. Compaction/waste never
+ * applies to it: you aren't buying native material, and its compaction
+ * shortfall is offset by excavation swell.
+ */
+export const NATIVE_BACKFILL_LABEL = 'Native Material';
+
 export interface TrenchInput {
   pipeSizeIn: number;         // inches
   pipeMaterial: string;
@@ -22,6 +29,13 @@ export interface TrenchInput {
   benchWidthFt: number;       // each side (0 = no bench)
   beddingDepthFt: number;     // bedding layer depth, feet
   backfillType: string;
+  /**
+   * Extra loose material purchased per compacted CY of *imported*
+   * bedding/backfill (issue #9, trimmed scope). 15 = buy 15% more than
+   * the neat-line volume. Applies to bedding always and to backfill
+   * unless it is NATIVE_BACKFILL_LABEL. 0/undefined = off.
+   */
+  compactionPct?: number;
 }
 
 export interface TrenchOutput {
@@ -64,6 +78,10 @@ export function validateInput(input: TrenchInput): ValidationError[] {
   if (input.beddingDepthFt < 0)
     errors.push({ field: 'beddingDepthFt', message: 'Bedding depth cannot be negative' });
 
+  const compactionPct = input.compactionPct ?? 0;
+  if (compactionPct < 0 || compactionPct > 100)
+    errors.push({ field: 'compactionPct', message: 'Compaction/waste must be between 0 and 100%' });
+
   const pipeDiameterFt = inchesToFeet(input.pipeSizeIn);
   if (pipeDiameterFt >= input.trenchWidthFt)
     errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than pipe' });
@@ -96,9 +114,15 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   const excavationCF = totalWidthFt * avgDepthFt * runLengthLF;
   const excavationCY = cubicFeetToYards(excavationCF);
 
+  // Compaction/waste: purchased loose volume per compacted CY of imported
+  // material. Bedding is always imported; backfill only when not native.
+  const compactionFactor = 1 + (input.compactionPct ?? 0) / 100;
+  const backfillFactor =
+    input.backfillType === NATIVE_BACKFILL_LABEL ? 1 : compactionFactor;
+
   // Bedding zone: full trench width x bedding depth x run length
   const beddingCF = trenchWidthFt * beddingDepthFt * runLengthLF;
-  const beddingCY = cubicFeetToYards(beddingCF);
+  const beddingCY = cubicFeetToYards(beddingCF) * compactionFactor;
 
   // Pipe volume (cylinder) -- subtract from backfill
   const pipeRadiusFt = inchesToFeet(pipeSizeIn) / 2;
@@ -109,7 +133,7 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   // invert). For bedding-to-springline specs this slightly understates
   // backfill -- conservative, and within takeoff tolerance.
   const backfillCF = Math.max(excavationCF - beddingCF - pipeCF, 0);
-  const backfillCY = cubicFeetToYards(backfillCF);
+  const backfillCY = cubicFeetToYards(backfillCF) * backfillFactor;
 
   // Tracer wire is taped to the pipe, so it follows the pipe slope; warning
   // tape is buried near-surface and runs the horizontal length.
@@ -132,6 +156,91 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// ---- Depth-zone summary -----------------------------------------------------
+
+export interface DepthZone {
+  label: string;
+  lf: number;
+  excavationCY: number;
+}
+
+/**
+ * Depth bands the run is bucketed into for the summary below. 5/10/15 ft
+ * line up with OSHA's shoring/trench-box trigger depths, which is the same
+ * break utility estimators actually price against -- matches the depth-zone
+ * reports AGTEK, Carlson ("Depth Summary"), and MudShark all ship.
+ */
+export const DEFAULT_DEPTH_BREAKS_FT = [5, 10, 15, 20];
+
+/**
+ * Splits the run into depth bands and reports the horizontal length and
+ * excavation volume in each -- e.g. "40 LF / 22 CY under 5 ft, 60 LF / 55 CY
+ * from 5-10 ft". Depth is linear in station (constant grade), so each band
+ * maps to a contiguous station range; a flat run (gradePct = 0) sits in
+ * exactly one band for its whole length.
+ */
+export function depthZoneBreakdown(
+  input: TrenchInput,
+  breaksFt: number[] = DEFAULT_DEPTH_BREAKS_FT,
+): DepthZone[] {
+  const { startDepthFt, gradePct, runLengthLF, trenchWidthFt, benchWidthFt } = input;
+  if (runLengthLF <= 0 || trenchWidthFt <= 0) return [];
+
+  const fallFt = (gradePct / 100) * runLengthLF;
+  const endDepthFt = startDepthFt + fallFt;
+  const totalWidthFt = trenchWidthFt + benchWidthFt * 2;
+  const sortedBreaks = [...new Set(breaksFt)].sort((a, b) => a - b);
+  const bounds = [0, ...sortedBreaks, Infinity];
+
+  const zoneLabel = (lo: number, hi: number) =>
+    hi === Infinity ? `${fmtNum(lo, 0)}+ ft` : `${fmtNum(lo, 0)}–${fmtNum(hi, 0)} ft`;
+
+  const zones: DepthZone[] = [];
+
+  if (fallFt === 0) {
+    // Flat trench: the whole run sits at one depth, so it belongs to exactly one band.
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const lo = bounds[i];
+      const hi = bounds[i + 1];
+      if (startDepthFt >= lo && startDepthFt < hi) {
+        const excavationCF = totalWidthFt * startDepthFt * runLengthLF;
+        zones.push({
+          label: zoneLabel(lo, hi),
+          lf: round2(runLengthLF),
+          excavationCY: round2(cubicFeetToYards(excavationCF)),
+        });
+        break;
+      }
+    }
+    return zones;
+  }
+
+  const loDepth = Math.min(startDepthFt, endDepthFt);
+  const hiDepth = Math.max(startDepthFt, endDepthFt);
+  const stationAtDepth = (d: number) => ((d - startDepthFt) * runLengthLF) / fallFt;
+
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const binLo = bounds[i];
+    const binHi = bounds[i + 1];
+    const d0 = Math.max(loDepth, binLo);
+    const d1 = Math.min(hiDepth, binHi);
+    if (d1 <= d0) continue;
+
+    const lf = Math.abs(stationAtDepth(d1) - stationAtDepth(d0));
+    if (lf <= 0) continue;
+
+    const avgDepth = (d0 + d1) / 2;
+    const excavationCF = totalWidthFt * avgDepth * lf;
+    zones.push({
+      label: zoneLabel(binLo, binHi),
+      lf: round2(lf),
+      excavationCY: round2(cubicFeetToYards(excavationCF)),
+    });
+  }
+
+  return zones;
+}
+
 /**
  * "Show the math" for the trench takeoff (§5). Re-derives the substituted
  * arithmetic for the volumes from the same inputs, so the numbers in the
@@ -150,6 +259,15 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
   const beddingCF = input.trenchWidthFt * input.beddingDepthFt * input.runLengthLF;
   const pipeRadiusFt = inchesToFeet(input.pipeSizeIn) / 2;
   const pipeCF = Math.PI * pipeRadiusFt ** 2 * output.pipeLF;
+
+  const compactionPct = input.compactionPct ?? 0;
+  const backfillCompacts =
+    compactionPct > 0 && input.backfillType !== NATIVE_BACKFILL_LABEL;
+  const compactionLine = {
+    label: 'Compaction/waste',
+    value: `+ ${fmtNum(compactionPct, 1)}%`,
+    kind: 'term' as const,
+  };
 
   return {
     avgDepth: {
@@ -172,24 +290,32 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
       ],
     },
     bedding: {
-      formula: 'Bedding = width × bedding depth × length ÷ 27',
+      formula: compactionPct > 0
+        ? 'Bedding = width × bedding depth × length ÷ 27, plus compaction/waste'
+        : 'Bedding = width × bedding depth × length ÷ 27',
       lines: [
         { label: 'Trench width', value: ft(input.trenchWidthFt), kind: 'term' },
         { label: 'Bedding depth', value: ft(input.beddingDepthFt), kind: 'term' },
         { label: 'Run length', value: `${fmtNum(input.runLengthLF, 2)} LF`, kind: 'term' },
         { label: 'Volume', value: `${fmtNum(beddingCF, 1)} CF ÷ 27`, kind: 'term' },
+        ...(compactionPct > 0 ? [compactionLine] : []),
         { label: 'Bedding', value: cy(output.beddingCY), kind: 'result' },
       ],
     },
     backfill: {
-      formula: 'Backfill = excavation − bedding − pipe',
+      formula: backfillCompacts
+        ? 'Backfill = (excavation − bedding − pipe), plus compaction/waste'
+        : 'Backfill = excavation − bedding − pipe',
       lines: [
         { label: 'Excavation', value: `${fmtNum(excavationCF, 1)} CF`, kind: 'term' },
         { label: 'Bedding', value: `${fmtNum(beddingCF, 1)} CF`, kind: 'term' },
         { label: 'Pipe displacement', value: `${fmtNum(pipeCF, 1)} CF`, kind: 'term' },
+        ...(backfillCompacts ? [compactionLine] : []),
         { label: 'Backfill', value: cy(output.backfillCY), kind: 'result' },
       ],
-      note: 'Subtracts the full pipe cylinder (bedding-to-invert); conservative for bedding-to-springline specs.',
+      note: backfillCompacts
+        ? 'Subtracts the full pipe cylinder (bedding-to-invert); conservative for bedding-to-springline specs. Native backfill never carries compaction/waste.'
+        : 'Subtracts the full pipe cylinder (bedding-to-invert); conservative for bedding-to-springline specs.',
     },
   };
 }

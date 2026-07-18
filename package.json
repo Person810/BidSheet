@@ -1,6 +1,6 @@
 {
   "name": "bidsheet",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Open source underground utility estimating software for subcontractors",
   "author": {
     "name": "Person810",
@@ -27,6 +27,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "electron .",
+    "start:debug": "electron --remote-debugging-port=9222 .",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux"
@@ -100,6 +101,7 @@
     "better-sqlite3": "^12.10.0",
     "delaunator": "^5.1.0",
     "electron-updater": "^6.8.9",
+    "lucide-react": "^0.460.0",
     "pdfjs-dist": "4.8.69",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

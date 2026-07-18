@@ -55,6 +55,13 @@ export interface AlternateSummary extends BidTotals, BidSummary {
 }
 
 export interface FullBidSummary extends BidTotals, BidSummary {
+  /**
+   * Job-level indirect costs (mobilization, traffic control, dewatering,
+   * trailers…) entered once instead of faked as line items. Joins the bid
+   * before markups: job-level OH/profit/bond apply on top of it, but tax
+   * and escalation don't (it isn't material).
+   */
+  indirect_total: number;
   /** Each alternate section priced independently with its own markups */
   alternates: AlternateSummary[];
 }
@@ -72,6 +79,8 @@ interface SummaryAmounts {
   bond: number;
   tax: number;
   grandTotal: number;
+  /** Optional: job-level indirect cost pool (alternates never carry one) */
+  indirect_total?: number;
 }
 
 /** Direct cost = material + labor + equipment + subcontractor (across base sections). */
@@ -116,11 +125,15 @@ export function explainMarkup(
 
 /** Bid total = direct cost + escalation + overhead + profit + bond + tax. */
 export function explainGrandTotal(s: SummaryAmounts): CalcBreakdown {
+  const indirect = s.indirect_total || 0;
   return explainSum(
-    'Bid total = direct cost + escalation + markups + tax',
+    indirect > 0
+      ? 'Bid total = direct cost + escalation + indirects + markups + tax'
+      : 'Bid total = direct cost + escalation + markups + tax',
     [
       { label: 'Direct cost', value: fmtMoney(s.direct_cost_total) },
       { label: 'Escalation', value: fmtMoney(s.escalation) },
+      ...(indirect > 0 ? [{ label: 'Indirect costs', value: fmtMoney(indirect) }] : []),
       { label: 'Overhead', value: fmtMoney(s.overhead) },
       { label: 'Profit', value: fmtMoney(s.profit) },
       { label: 'Bond', value: fmtMoney(s.bond) },
@@ -151,7 +164,10 @@ export function computeBidSummary(totals: BidTotals, job: BidJobParams): BidSumm
 }
 
 /** Job params with any section-level overrides applied. */
-function sectionParams(section: SectionCostRow, job: BidJobParams): BidJobParams {
+export function sectionParams(
+  section: Pick<SectionCostRow, 'overhead_percent_override' | 'profit_percent_override' | 'bond_percent_override'>,
+  job: BidJobParams,
+): BidJobParams {
   return {
     overhead_percent: section.overhead_percent_override ?? job.overhead_percent,
     profit_percent: section.profit_percent_override ?? job.profit_percent,
@@ -179,10 +195,15 @@ function addTotals(acc: BidTotals, row: BidTotals): void {
  *
  * Base totals/markups cover non-alternate sections only; each alternate
  * section is returned separately with its own marked-up total.
+ *
+ * `indirectTotal` is the job-level indirect-cost pool (mobilization, bond
+ * riders, traffic control…). It belongs to the base bid: job-level
+ * overhead/profit/bond percentages apply to it, tax and escalation do not.
  */
 export function computeBidSummaryFromSections(
   rows: SectionCostRow[],
   job: BidJobParams,
+  indirectTotal = 0,
 ): FullBidSummary {
   const baseTotals: BidTotals = { ...EMPTY_TOTALS };
   let escalation = 0;
@@ -216,14 +237,23 @@ export function computeBidSummaryFromSections(
     }
   }
 
+  // Indirect pool: job-level OH/profit/bond apply (never section
+  // overrides — indirects aren't in any section); no tax, no escalation.
+  const indirect = Math.max(indirectTotal, 0);
+  overhead += indirect * (job.overhead_percent / 100);
+  profit += indirect * (job.profit_percent / 100);
+  bond += indirect * ((job.bond_percent || 0) / 100);
+
   return {
     ...baseTotals,
     escalation,
+    indirect_total: indirect,
     overhead,
     profit,
     bond,
     tax,
-    grandTotal: baseTotals.direct_cost_total + escalation + overhead + profit + bond + tax,
+    grandTotal:
+      baseTotals.direct_cost_total + escalation + indirect + overhead + profit + bond + tax,
     alternates,
   };
 }

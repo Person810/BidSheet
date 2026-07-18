@@ -61,6 +61,8 @@ const snapshotSchema = z.strictObject({
   line_items: rows,
   trench_profiles: rows,
   quotes: rows,
+  // Added in v39; optional so pre-v39 snapshots still validate.
+  indirect_costs: rows.optional(),
   takeoff: z.strictObject({
     settings: row.nullable(),
     page_scales: rows,

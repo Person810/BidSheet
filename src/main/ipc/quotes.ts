@@ -60,4 +60,22 @@ export function registerQuoteHandlers(db: Database.Database): void {
     return db.prepare('DELETE FROM quotes WHERE id = ?').run(id);
   });
 
+  // Known vendors across all jobs, for reuse when logging a new quote:
+  // name, the most recent non-blank contact, and how often they've quoted.
+  safeHandle('db:quotes:vendors', () => {
+    return db.prepare(
+      `SELECT
+        vendor,
+        (SELECT q2.contact FROM quotes q2
+          WHERE q2.vendor = q.vendor COLLATE NOCASE
+            AND TRIM(COALESCE(q2.contact, '')) != ''
+          ORDER BY q2.id DESC LIMIT 1) AS contact,
+        COUNT(*) AS quote_count
+      FROM quotes q
+      WHERE TRIM(vendor) != ''
+      GROUP BY vendor COLLATE NOCASE
+      ORDER BY quote_count DESC, vendor COLLATE NOCASE`
+    ).all();
+  });
+
 }

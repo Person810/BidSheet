@@ -21,17 +21,22 @@ const STEPS: TourStep[] = [
     target: null,
     route: '/',
     title: 'Welcome to BidSheet',
-    body: "Your catalog is loaded and you're ready to estimate. Here's a quick tour of how everything is organized. It takes about a minute, and you can skip it anytime and replay it later from Settings.",
+    body: "Your catalog is loaded and you're ready to estimate. This tour walks the whole workflow — from pricing your catalog to measuring plans to sending a proposal. It takes a couple of minutes, and you can skip it anytime and replay it later from Settings.",
+  },
+  {
+    target: 'dashboard',
+    title: 'Dashboard',
+    body: 'Your bid pipeline at a glance: active drafts, submitted bids, win rate, and total bid volume, plus a heads-up on anything due in the next week. As you mark jobs won or lost, the numbers keep themselves up to date.',
   },
   {
     target: 'materials',
     title: 'Materials',
-    body: 'Your material catalog with unit prices and full price history. Start here: review the seeded items and update prices to match your suppliers. You can also import a CSV price sheet from Settings on this page.',
+    body: 'Your material catalog with unit prices and full price history. Start here: review the seeded items and update prices to match your suppliers. You can also import a CSV price sheet from Settings on this page — it fuzzy-matches against your catalog.',
   },
   {
     target: 'labor',
     title: 'Labor & Crews',
-    body: 'Set up labor roles with burdened hourly rates, then combine them into crew templates with production rates (like feet of pipe per day). Accurate crews are what drive your labor costs on every bid.',
+    body: 'Set up labor roles with burdened hourly rates, combine them into crew templates, and dial in production rates (like feet of pipe per day). Accurate crews are what drive your labor costs on every bid.',
   },
   {
     target: 'equipment',
@@ -41,28 +46,38 @@ const STEPS: TourStep[] = [
   {
     target: 'assemblies',
     title: 'Assemblies',
-    body: 'Bundle materials, labor, and equipment into reusable per-unit assemblies (like "8″ PVC water main per LF"). Drop an assembly on a bid line item and the whole cost buildup comes with it.',
+    body: 'Bundle materials, labor, and equipment into reusable per-unit assemblies (like "8″ PVC water main per LF"). Drop an assembly on a bid line item and the whole cost buildup comes with it. Starter assemblies for your trades are already seeded — tweak them to match how you build.',
   },
   {
     target: 'jobs',
     title: 'Jobs & Bids',
-    body: 'This is where bids come together. Create a job, build the estimate by section and line item, apply overhead, profit, bond, and tax markups, track quotes, and export a professional bid proposal PDF.',
+    body: 'This is where bids come together. Create a job, build the estimate by section and line item, and apply overhead, profit, bond, tax, and escalation markups — with per-section overrides and bid alternates when you need them. Every calculated number opens up to show its math, and you can duplicate a past bid to start the next one.',
   },
   {
-    target: 'tools',
-    title: 'Takeoff Tools',
-    body: 'Measure quantities straight from your plans: load a PDF, calibrate the scale, draw pipe runs and areas, and send measured quantities into your estimate. The trench profiler calculates excavation and backfill volumes.',
+    target: 'jobs',
+    title: 'Plan Takeoff',
+    body: 'Every job includes plan takeoff. Load the plan PDF, calibrate the scale, then draw pipe runs, measure restoration areas, trace wall runs, count fixtures, and add annotations. Check trenches in the 3D view, then send measured quantities straight into your estimate — or export them to CSV.',
+  },
+  {
+    target: 'jobs',
+    title: 'Quotes, Changes & Reports',
+    body: 'Inside a job you can also track subcontractor and supplier quotes side by side and pick a winner per scope, log change orders after the win, and pull cost-code roll-ups, unit price schedules, and side-by-side estimate comparisons.',
+  },
+  {
+    target: 'tools-concrete',
+    title: 'Concrete Tools',
+    body: 'Quick answers for concrete work: size up slabs, footings, and walls to get concrete volume with waste, formwork contact area, and rebar — handy for sanity checks before anything hits a bid.',
   },
   {
     target: 'settings',
     title: 'Settings',
-    body: 'Company info for your proposals, default markup percentages, and database backup & restore. Make a backup once your pricing is dialed in. Everything lives locally on this machine.',
+    body: 'Company info and logo for your proposals, default markup percentages, PDF proposal templates, and database backup & restore. Make a backup once your pricing is dialed in. Everything lives locally on this machine — cloud sync is optional and can be set up (or hidden entirely) here.',
   },
   {
     target: null,
     route: '/jobs',
     title: "You're all set",
-    body: 'A good first session: check your Materials prices, build a crew or two, then create your first job in Jobs & Bids. Press ? anytime to see keyboard shortcuts, and replay this tour from Settings.',
+    body: 'A good first session: check your Materials prices, build a crew or two, then create your first job in Jobs & Bids and take it all the way to a proposal PDF. Press ? anytime to see keyboard shortcuts, and replay this tour from Settings.',
   },
 ];
 
@@ -110,6 +125,7 @@ export function Walkthrough() {
   const isOpen = useWalkthroughStore((s) => s.isOpen);
   const close = useWalkthroughStore((s) => s.close);
   const navigate = useNavigate();
+  const [steps, setSteps] = useState<TourStep[]>(STEPS);
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
   // Direction of travel so steps with a missing target (e.g. no takeoff
@@ -121,23 +137,33 @@ export function Walkthrough() {
     setStepIndex(i);
   };
 
-  // Reset to the first step each time the tour opens
+  // Reset to the first step each time the tour opens. Steps whose spotlight
+  // target isn't in the app at all (e.g. a trade module the user didn't
+  // enable) are dropped up front so the dots and counter reflect the tour
+  // this user will actually see -- every target lives in the always-mounted
+  // sidebar, so presence can be checked right when the tour opens. The
+  // per-step skip in the layout effect below stays as a safety net.
   useEffect(() => {
     if (isOpen) {
       dirRef.current = 1;
+      setSteps(
+        STEPS.filter(
+          (s) => !s.target || document.querySelector(`[data-tour="${s.target}"]`)
+        )
+      );
       setStepIndex(0);
     }
   }, [isOpen]);
 
-  const step = STEPS[stepIndex];
+  const step = steps[stepIndex];
 
   // Measure the spotlight target before paint; if the target isn't in
   // the DOM, hop over the step in the current direction of travel
   useLayoutEffect(() => {
     if (!isOpen) return;
-    if (step.target && !document.querySelector(`[data-tour="${step.target}"]`)) {
+    if (!step || (step.target && !document.querySelector(`[data-tour="${step.target}"]`))) {
       const next = stepIndex + dirRef.current;
-      if (next < 0 || next >= STEPS.length) close();
+      if (!step || next < 0 || next >= steps.length) close();
       else setStepIndex(next);
       return;
     }
@@ -151,7 +177,7 @@ export function Walkthrough() {
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, [isOpen, step, stepIndex, close, navigate]);
+  }, [isOpen, step, stepIndex, steps, close, navigate]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -160,7 +186,7 @@ export function Walkthrough() {
         close();
       } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
         e.preventDefault();
-        if (stepIndex < STEPS.length - 1) goTo(stepIndex + 1);
+        if (stepIndex < steps.length - 1) goTo(stepIndex + 1);
         else close();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -169,11 +195,11 @@ export function Walkthrough() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, stepIndex, close]);
+  }, [isOpen, stepIndex, steps, close]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !step) return null;
 
-  const isLast = stepIndex === STEPS.length - 1;
+  const isLast = stepIndex === steps.length - 1;
   const spotlightRect = step.target ? rect : null;
 
   // Tooltip sits to the right of spotlighted sidebar items, clamped to
@@ -207,10 +233,11 @@ export function Walkthrough() {
         <h4>{step.title}</h4>
         <p>{step.body}</p>
         <div className="tour-dots">
-          {STEPS.map((_, i) => (
+          {steps.map((_, i) => (
             <div key={i} className={`tour-dot ${i === stepIndex ? 'active' : ''}`}
               onClick={() => goTo(i)} />
           ))}
+          <span className="tour-step-count">{stepIndex + 1} / {steps.length}</span>
         </div>
         <div className="tour-nav">
           <button className="tour-skip" onClick={close}

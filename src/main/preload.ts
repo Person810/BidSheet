@@ -144,6 +144,41 @@ contextBridge.exposeInMainWorld('api', {
   saveQuote: (quote: any) => invoke('db:quotes:save', quote),
   selectQuote: (jobId: number, scope: string, quoteId: number | null) => invoke('db:quotes:select', jobId, scope, quoteId),
   deleteQuote: (id: number) => invoke('db:quotes:delete', id),
+  getQuoteVendors: () => invoke('db:quotes:vendors'),
+
+  // ---- Section templates ----
+  getSectionTemplates: () => invoke('db:section-templates:list'),
+  saveSectionTemplate: (sectionId: number, name: string) =>
+    invoke('db:section-templates:save-from-section', sectionId, name),
+  deleteSectionTemplate: (id: number) => invoke('db:section-templates:delete', id),
+  insertSectionTemplate: (templateId: number, jobId: number) =>
+    invoke('db:section-templates:insert-into-job', templateId, jobId),
+
+  // ---- Indirect costs ----
+  getIndirectCosts: (jobId: number) => invoke('db:indirects:list', jobId),
+  saveIndirectCost: (indirect: any) => invoke('db:indirects:save', indirect),
+  deleteIndirectCost: (id: number) => invoke('db:indirects:delete', id),
+
+  // ---- Job documents ----
+  listJobDocuments: (jobId: number) => invoke('db:documents:list', jobId),
+  addJobDocuments: (jobId: number, folderId: number | null) => invoke('db:documents:add', jobId, folderId),
+  addJobDocumentPaths: (jobId: number, paths: string[], folderId: number | null) =>
+    invoke('db:documents:add-paths', jobId, paths, folderId),
+  openJobDocument: (id: number) => invoke('db:documents:open', id),
+  revealJobDocument: (id: number) => invoke('db:documents:reveal', id),
+  updateJobDocument: (id: number, fields: { notes?: string | null }) =>
+    invoke('db:documents:update', id, fields),
+  deleteJobDocument: (id: number) => invoke('db:documents:delete', id),
+  moveJobDocument: (id: number, folderId: number | null) => invoke('db:documents:move', id, folderId),
+
+  // ---- Job document folders ----
+  listJobDocumentFolders: (jobId: number) => invoke('db:document-folders:list', jobId),
+  createJobDocumentFolder: (jobId: number, parentId: number | null, name: string) =>
+    invoke('db:document-folders:create', jobId, parentId, name),
+  renameJobDocumentFolder: (id: number, name: string) => invoke('db:document-folders:rename', id, name),
+  moveJobDocumentFolder: (id: number, newParentId: number | null) =>
+    invoke('db:document-folders:move', id, newParentId),
+  deleteJobDocumentFolder: (id: number) => invoke('db:document-folders:delete', id),
 
   // ---- Export ----
   exportQuickBooksCSV: (jobId: number) => invoke('export:quickbooks-csv', jobId),

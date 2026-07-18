@@ -29,6 +29,14 @@ export function getSectionCostRows(db: Database.Database, jobId: number): Sectio
   ).all(jobId) as SectionCostRow[];
 }
 
+/** Job-level indirect-cost pool total, feeding computeBidSummaryFromSections. */
+export function getIndirectTotal(db: Database.Database, jobId: number): number {
+  const row = db.prepare(
+    'SELECT COALESCE(SUM(amount), 0) AS total FROM job_indirect_costs WHERE job_id = ?'
+  ).get(jobId) as any;
+  return row.total;
+}
+
 // ================================================================
 // Error handling utilities
 // ================================================================
