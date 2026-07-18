@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import type Database from 'better-sqlite3';
 
 /**
@@ -67,6 +69,44 @@ describe('document folders', () => {
     await call('db:document-folders:rename', id, 'Site Plans');
     const list = await call('db:document-folders:list', jobId);
     expect(list[0].name).toBe('Site Plans');
+  });
+
+  it('suffixes " - Copy" when creating a duplicate sibling name', async () => {
+    await call('db:document-folders:create', jobId, null, 'Plans');
+    const { id: second } = await call('db:document-folders:create', jobId, null, 'Plans');
+    const { id: third } = await call('db:document-folders:create', jobId, null, 'plans');
+    const list = await call('db:document-folders:list', jobId);
+    expect(list.find((f: any) => f.id === second).name).toBe('Plans - Copy');
+    expect(list.find((f: any) => f.id === third).name).toBe('plans - Copy (2)');
+  });
+
+  it('allows the same name under different parents', async () => {
+    const { id: parentId } = await call('db:document-folders:create', jobId, null, 'Plans');
+    const { id: nested } = await call('db:document-folders:create', jobId, parentId, 'Plans');
+    const list = await call('db:document-folders:list', jobId);
+    expect(list.find((f: any) => f.id === nested).name).toBe('Plans');
+  });
+
+  it('refuses to rename a folder onto a sibling\'s name', async () => {
+    await call('db:document-folders:create', jobId, null, 'Plans');
+    const { id } = await call('db:document-folders:create', jobId, null, 'Photos');
+    await expect(call('db:document-folders:rename', id, 'plans')).rejects.toThrow(/already exists/i);
+  });
+
+  it('lets a rename keep or re-case the folder\'s own name', async () => {
+    const { id } = await call('db:document-folders:create', jobId, null, 'plans');
+    await call('db:document-folders:rename', id, 'Plans');
+    const list = await call('db:document-folders:list', jobId);
+    expect(list.find((f: any) => f.id === id).name).toBe('Plans');
+  });
+
+  it('suffixes " - Copy" when a move lands next to a same-named sibling', async () => {
+    const { id: parentId } = await call('db:document-folders:create', jobId, null, 'A');
+    const { id: movedId } = await call('db:document-folders:create', jobId, parentId, 'Plans');
+    await call('db:document-folders:create', jobId, null, 'Plans');
+    await call('db:document-folders:move', movedId, null);
+    const list = await call('db:document-folders:list', jobId);
+    expect(list.find((f: any) => f.id === movedId)).toMatchObject({ parent_id: null, name: 'Plans - Copy' });
   });
 
   it('moves a folder to a new parent', async () => {
@@ -138,5 +178,66 @@ describe('document folders', () => {
     db.prepare('DELETE FROM jobs WHERE id = ?').run(jobId);
     const remaining = db.prepare('SELECT COUNT(*) c FROM job_document_folders WHERE job_id = ?').get(jobId) as any;
     expect(remaining.c).toBe(0);
+  });
+});
+
+describe('create text document', () => {
+  let db: Database.Database;
+  let jobId: number;
+  // The electron mock's app.getPath returns '/tmp', so created files land
+  // under /tmp/job-files/<jobId>.
+  const filesRoot = path.join('/tmp', 'job-files');
+
+  beforeEach(() => {
+    handlers.clear();
+    db = initializeDatabase(':memory:');
+    registerDocumentHandlers(db);
+    jobId = Number(db.prepare("INSERT INTO jobs (name, client) VALUES ('J', 'C')").run().lastInsertRowid);
+  });
+
+  afterEach(() => {
+    fs.rmSync(filesRoot, { recursive: true, force: true });
+  });
+
+  it('creates an empty .txt file on disk and a DB row', async () => {
+    const { id } = await call('db:documents:create-text', jobId, null, 'Site Notes');
+    const row = db.prepare('SELECT * FROM job_documents WHERE id = ?').get(id) as any;
+    expect(row).toMatchObject({ job_id: jobId, filename: 'Site Notes.txt', size_bytes: 0, folder_id: null });
+    const filePath = path.join(filesRoot, String(jobId), row.stored_name);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('');
+  });
+
+  it('keeps an explicit extension instead of forcing .txt', async () => {
+    const { id } = await call('db:documents:create-text', jobId, null, 'readme.md');
+    const row = db.prepare('SELECT filename FROM job_documents WHERE id = ?').get(id) as any;
+    expect(row.filename).toBe('readme.md');
+  });
+
+  it('defaults a blank name to New Note.txt', async () => {
+    const { id } = await call('db:documents:create-text', jobId, null, '   ');
+    const row = db.prepare('SELECT filename FROM job_documents WHERE id = ?').get(id) as any;
+    expect(row.filename).toBe('New Note.txt');
+  });
+
+  it('creates the file inside a folder', async () => {
+    const { id: folderId } = await call('db:document-folders:create', jobId, null, 'Plans');
+    const { id } = await call('db:documents:create-text', jobId, folderId, 'Notes');
+    const row = db.prepare('SELECT folder_id FROM job_documents WHERE id = ?').get(id) as any;
+    expect(row.folder_id).toBe(folderId);
+  });
+
+  it('rejects a folder from a different job', async () => {
+    const otherJobId = Number(db.prepare("INSERT INTO jobs (name, client) VALUES ('J2', 'C')").run().lastInsertRowid);
+    const { id: folderId } = await call('db:document-folders:create', otherJobId, null, 'Plans');
+    await expect(call('db:documents:create-text', jobId, folderId, 'Notes')).rejects.toThrow(/folder not found/i);
+  });
+
+  it('deduplicates the stored name when a same-named file exists', async () => {
+    const { id: first } = await call('db:documents:create-text', jobId, null, 'Notes');
+    const { id: second } = await call('db:documents:create-text', jobId, null, 'Notes');
+    const a = db.prepare('SELECT stored_name FROM job_documents WHERE id = ?').get(first) as any;
+    const b = db.prepare('SELECT stored_name FROM job_documents WHERE id = ?').get(second) as any;
+    expect(a.stored_name).toBe('Notes.txt');
+    expect(b.stored_name).toBe('Notes (2).txt');
   });
 });

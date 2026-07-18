@@ -166,6 +166,8 @@ contextBridge.exposeInMainWorld('api', {
   addJobDocuments: (jobId: number, folderId: number | null) => invoke('db:documents:add', jobId, folderId),
   addJobDocumentPaths: (jobId: number, paths: string[], folderId: number | null) =>
     invoke('db:documents:add-paths', jobId, paths, folderId),
+  createJobTextDocument: (jobId: number, folderId: number | null, name: string) =>
+    invoke('db:documents:create-text', jobId, folderId, name),
   openJobDocument: (id: number) => invoke('db:documents:open', id),
   revealJobDocument: (id: number) => invoke('db:documents:reveal', id),
   updateJobDocument: (id: number, fields: { notes?: string | null }) =>

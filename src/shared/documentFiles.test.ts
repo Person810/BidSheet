@@ -5,6 +5,7 @@ import {
   folderPath,
   formatBytes,
   sanitizeFilename,
+  uniqueSiblingFolderName,
   uniqueStoredName,
   type FolderLike,
 } from './documentFiles';
@@ -48,6 +49,27 @@ describe('uniqueStoredName', () => {
   it('handles extensionless and dotfile names', () => {
     expect(uniqueStoredName('README', ['README'])).toBe('README (2)');
     expect(uniqueStoredName('.env', ['.env'])).toBe('.env (2)');
+  });
+});
+
+describe('uniqueSiblingFolderName', () => {
+  it('returns the name unchanged when no sibling has it', () => {
+    expect(uniqueSiblingFolderName('Plans', [])).toBe('Plans');
+    expect(uniqueSiblingFolderName('Plans', ['Photos', 'Quotes'])).toBe('Plans');
+  });
+
+  it('appends " - Copy" on the first collision, Windows-style', () => {
+    expect(uniqueSiblingFolderName('Plans', ['Plans'])).toBe('Plans - Copy');
+  });
+
+  it('numbers further copies', () => {
+    expect(uniqueSiblingFolderName('Plans', ['Plans', 'Plans - Copy'])).toBe('Plans - Copy (2)');
+    expect(uniqueSiblingFolderName('Plans', ['Plans', 'Plans - Copy', 'Plans - Copy (2)'])).toBe('Plans - Copy (3)');
+  });
+
+  it('collides case-insensitively', () => {
+    expect(uniqueSiblingFolderName('plans', ['Plans'])).toBe('plans - Copy');
+    expect(uniqueSiblingFolderName('Plans', ['plans', 'PLANS - copy'])).toBe('Plans - Copy (2)');
   });
 });
 

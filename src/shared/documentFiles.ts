@@ -42,6 +42,25 @@ export function uniqueStoredName(original: string, existing: Iterable<string>): 
   }
 }
 
+/**
+ * Windows-style collision handling for folder names within one parent:
+ * "Plans" → "Plans - Copy" → "Plans - Copy (2)" → "Plans - Copy (3)"…
+ * Comparison is case-insensitive so "plans" and "Plans" count as the
+ * same name.
+ */
+export function uniqueSiblingFolderName(desired: string, siblings: Iterable<string>): string {
+  const taken = new Set<string>();
+  for (const name of siblings) taken.add(name.toLowerCase());
+  if (!taken.has(desired.toLowerCase())) return desired;
+
+  const copy = `${desired} - Copy`;
+  if (!taken.has(copy.toLowerCase())) return copy;
+  for (let n = 2; ; n++) {
+    const candidate = `${copy} (${n})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 /** "1.5 MB", "320 KB", "48 B" — for the Documents table's size column. */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '--';

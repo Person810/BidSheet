@@ -9,6 +9,8 @@ interface FolderActions {
   onDeleteRequest: (node: { id: number; name: string }) => void;
   onMoveRequest: (node: { id: number; name: string }) => void;
   onDropDocument: (docId: number, folderId: number | null) => void;
+  /** Right-click on a folder row (or the root "Documents" header with node = null). */
+  onContextMenu: (node: { id: number; name: string } | null, x: number, y: number) => void;
 }
 
 interface Props extends FolderActions {
@@ -21,11 +23,17 @@ interface Props extends FolderActions {
 export function FolderTree({ tree, selectedId, onSelect, ...actions }: Props) {
   const [addingRoot, setAddingRoot] = useState(false);
   const [rootDragOver, setRootDragOver] = useState(false);
+  const [fillerDragOver, setFillerDragOver] = useState(false);
 
   return (
-    <div className="card" style={{ padding: 6 }}>
+    <div className="card" style={{ padding: 6, flex: 1, display: 'flex', flexDirection: 'column' }}>
       <div
         onClick={() => onSelect(null)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          actions.onContextMenu(null, e.clientX, e.clientY);
+        }}
         onDragOver={(e) => { e.preventDefault(); setRootDragOver(true); }}
         onDragLeave={() => setRootDragOver(false)}
         onDrop={(e) => {
@@ -61,12 +69,36 @@ export function FolderTree({ tree, selectedId, onSelect, ...actions }: Props) {
           + New Folder
         </button>
       )}
+
+      {/* Empty space under the folder list still drops-to-root and right-clicks
+          the root, so the whole sidebar is a target — not just the header row. */}
+      <div
+        onClick={() => onSelect(null)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          actions.onContextMenu(null, e.clientX, e.clientY);
+        }}
+        onDragOver={(e) => { e.preventDefault(); setFillerDragOver(true); }}
+        onDragLeave={() => setFillerDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setFillerDragOver(false);
+          const docId = e.dataTransfer.getData(DOC_DRAG_TYPE);
+          if (docId) actions.onDropDocument(Number(docId), null);
+        }}
+        style={{
+          flex: 1, minHeight: 24, marginTop: 4, borderRadius: 4,
+          background: fillerDragOver ? 'rgba(74,144,217,0.25)' : 'transparent',
+          outline: fillerDragOver ? '1px dashed var(--accent, #4a90d9)' : undefined,
+        }}
+      />
     </div>
   );
 }
 
 function FolderRow({
-  node, depth, selectedId, onSelect, onCreateFolder, onRename, onDeleteRequest, onMoveRequest, onDropDocument,
+  node, depth, selectedId, onSelect, onCreateFolder, onRename, onDeleteRequest, onMoveRequest, onDropDocument, onContextMenu,
 }: FolderActions & {
   node: FolderNode;
   depth: number;
@@ -100,6 +132,11 @@ function FolderRow({
           if (docId) onDropDocument(Number(docId), node.id);
         }}
         onClick={() => !renaming && onSelect(node.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu({ id: node.id, name: node.name }, e.clientX, e.clientY);
+        }}
         style={{
           display: 'flex', alignItems: 'center', gap: 4, height: 26,
           paddingLeft: 6 + depth * 14, paddingRight: 4,
@@ -151,6 +188,7 @@ function FolderRow({
           key={child.id} node={child} depth={depth + 1} selectedId={selectedId} onSelect={onSelect}
           onCreateFolder={onCreateFolder} onRename={onRename}
           onDeleteRequest={onDeleteRequest} onMoveRequest={onMoveRequest} onDropDocument={onDropDocument}
+          onContextMenu={onContextMenu}
         />
       ))}
     </div>

@@ -5,7 +5,13 @@ import crypto from 'crypto';
 import type Database from 'better-sqlite3';
 import { safeHandle } from './shared';
 import { logger } from '../logger';
-import { descendantIds, uniqueStoredName, type FolderLike } from '../../shared/documentFiles';
+import {
+  descendantIds,
+  sanitizeFilename,
+  uniqueSiblingFolderName,
+  uniqueStoredName,
+  type FolderLike,
+} from '../../shared/documentFiles';
 
 /**
  * Per-job document store. Attached files are COPIED into
@@ -115,6 +121,36 @@ export function registerDocumentHandlers(db: Database.Database): void {
     return addFiles(jobId, paths.map((p) => String(p)), folderId);
   });
 
+  // "New Text File": create an empty text document directly in the store
+  // (no source file to copy). The renderer opens it right after, so the
+  // user lands in their OS text editor ready to type.
+  safeHandle('db:documents:create-text', (_event, jobId: number, folderId: number | null, name: string) => {
+    const job = db.prepare('SELECT id FROM jobs WHERE id = ?').get(jobId);
+    if (!job) throw new Error('Job not found.');
+    if (folderId != null) {
+      const folder = db.prepare('SELECT id FROM job_document_folders WHERE id = ? AND job_id = ?').get(folderId, jobId);
+      if (!folder) throw new Error('Folder not found.');
+    }
+
+    let filename = sanitizeFilename(String(name || '').trim() || 'New Note');
+    if (!/\.[^.]+$/.test(filename)) filename += '.txt';
+
+    const dir = jobFilesDir(jobId);
+    fs.mkdirSync(dir, { recursive: true });
+    const existingNames = (db.prepare('SELECT stored_name FROM job_documents WHERE job_id = ?').all(jobId) as any[])
+      .map((r) => r.stored_name);
+    const storedName = uniqueStoredName(filename, existingNames);
+
+    const data = Buffer.alloc(0);
+    const sha = crypto.createHash('sha256').update(data).digest('hex');
+    fs.writeFileSync(documentPath(jobId, storedName), data);
+    const info = db.prepare(
+      `INSERT INTO job_documents (job_id, filename, stored_name, category, size_bytes, sha256, folder_id)
+       VALUES (?, ?, ?, 'other', 0, ?, ?)`
+    ).run(jobId, filename, storedName, sha, folderId);
+    return { id: Number(info.lastInsertRowid) };
+  });
+
   // Move a document into a different folder (drag onto the tree, or the
   // "Move to..." picker). folderId = null moves it back to the job root.
   safeHandle('db:documents:move', (_event, id: number, folderId: number | null) => {
@@ -177,6 +213,13 @@ export function registerDocumentHandlers(db: Database.Database): void {
     ).all(jobId);
   });
 
+  /** Names of the folders directly inside `parentId` (null = job root), minus `excludeId` if given. */
+  function siblingFolderNames(jobId: number, parentId: number | null, excludeId?: number): string[] {
+    return (db.prepare(
+      'SELECT name FROM job_document_folders WHERE job_id = ? AND parent_id IS ? AND id IS NOT ?'
+    ).all(jobId, parentId, excludeId ?? null) as any[]).map((r) => r.name);
+  }
+
   safeHandle('db:document-folders:create', (_event, jobId: number, parentId: number | null, name: string) => {
     const trimmed = String(name || '').trim();
     if (!trimmed) throw new Error('Folder name cannot be empty.');
@@ -184,20 +227,28 @@ export function registerDocumentHandlers(db: Database.Database): void {
       const parent = db.prepare('SELECT id FROM job_document_folders WHERE id = ? AND job_id = ?').get(parentId, jobId);
       if (!parent) throw new Error('Parent folder not found.');
     }
+    // Nothing in the schema stops sibling folders from sharing a name, so
+    // dedupe Windows-style here: "Plans" → "Plans - Copy" → "Plans - Copy (2)".
+    const finalName = uniqueSiblingFolderName(trimmed, siblingFolderNames(jobId, parentId));
     const maxSort = (db.prepare(
       'SELECT MAX(sort_order) m FROM job_document_folders WHERE job_id = ? AND parent_id IS ?'
     ).get(jobId, parentId) as any)?.m ?? 0;
     const info = db.prepare(
       'INSERT INTO job_document_folders (job_id, parent_id, name, sort_order) VALUES (?, ?, ?, ?)'
-    ).run(jobId, parentId, trimmed, maxSort + 1);
+    ).run(jobId, parentId, finalName, maxSort + 1);
     return { id: Number(info.lastInsertRowid) };
   });
 
   safeHandle('db:document-folders:rename', (_event, id: number, name: string) => {
     const trimmed = String(name || '').trim();
     if (!trimmed) throw new Error('Folder name cannot be empty.');
-    const row = db.prepare('SELECT id FROM job_document_folders WHERE id = ?').get(id);
+    const row = db.prepare('SELECT id, job_id, parent_id FROM job_document_folders WHERE id = ?').get(id) as any;
     if (!row) throw new Error('Folder not found.');
+    // Renaming onto a sibling's name is refused (like Windows), rather than
+    // silently deduped — the user typed that exact name on purpose.
+    const clash = siblingFolderNames(row.job_id, row.parent_id, id)
+      .some((n) => n.toLowerCase() === trimmed.toLowerCase());
+    if (clash) throw new Error(`A folder named "${trimmed}" already exists here.`);
     db.prepare('UPDATE job_document_folders SET name = ? WHERE id = ?').run(trimmed, id);
   });
 
@@ -217,7 +268,10 @@ export function registerDocumentHandlers(db: Database.Database): void {
         throw new Error('Cannot move a folder into one of its own subfolders.');
       }
     }
-    db.prepare('UPDATE job_document_folders SET parent_id = ? WHERE id = ?').run(newParentId, id);
+    // Landing next to a same-named sibling gets the Windows " - Copy" suffix,
+    // same as create.
+    const newName = uniqueSiblingFolderName(folder.name, siblingFolderNames(folder.job_id, newParentId, id));
+    db.prepare('UPDATE job_document_folders SET parent_id = ?, name = ? WHERE id = ?').run(newParentId, newName, id);
   });
 
   // Only an empty folder can be deleted directly, so a stray click never

@@ -170,6 +170,7 @@ declare global {
       /** Opens a native multi-select dialog; null when the user cancels */
       addJobDocuments: (jobId: number, folderId: number | null) => Promise<AddDocumentsResult | null>;
       addJobDocumentPaths: (jobId: number, paths: string[], folderId: number | null) => Promise<AddDocumentsResult>;
+      createJobTextDocument: (jobId: number, folderId: number | null, name: string) => Promise<{ id: number }>;
       openJobDocument: (id: number) => Promise<void>;
       revealJobDocument: (id: number) => Promise<void>;
       updateJobDocument: (id: number, fields: { notes?: string | null }) => Promise<void>;
