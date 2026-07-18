@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateTrench,
+  depthZoneBreakdown,
   parsePipeSizeFromName,
   validateInput,
+  NATIVE_BACKFILL_LABEL,
   type TrenchInput,
 } from './trenchCalc';
 
@@ -91,6 +93,90 @@ describe('calculateTrench', () => {
     // Bedding spec deeper than the trench itself
     const out = calculateTrench(input({ startDepthFt: 0.1, beddingDepthFt: 5 }));
     expect(out.backfillCY).toBe(0);
+  });
+});
+
+describe('compaction/waste factor (issue #9)', () => {
+  it('defaults to off: no compactionPct means unadjusted volumes', () => {
+    const base = calculateTrench(input());
+    const explicit = calculateTrench(input({ compactionPct: 0 }));
+    expect(explicit).toEqual(base);
+  });
+
+  it('inflates bedding and imported backfill by the factor, leaving excavation alone', () => {
+    const base = calculateTrench(input({ backfillType: '3/4" Crushed Stone' }));
+    const out = calculateTrench(input({ backfillType: '3/4" Crushed Stone', compactionPct: 15 }));
+    expect(out.beddingCY).toBeCloseTo(base.beddingCY * 1.15, 1);
+    expect(out.backfillCY).toBeCloseTo(base.backfillCY * 1.15, 1);
+    expect(out.excavationCY).toBeCloseTo(base.excavationCY, 2);
+    expect(out.pipeLF).toBeCloseTo(base.pipeLF, 2);
+  });
+
+  it('never adjusts native backfill, but still adjusts bedding', () => {
+    const base = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL }));
+    const out = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL, compactionPct: 20 }));
+    expect(out.backfillCY).toBeCloseTo(base.backfillCY, 2);
+    expect(out.beddingCY).toBeCloseTo(base.beddingCY * 1.2, 1);
+  });
+
+  it('subtracts the neat-line (compacted) bedding volume from backfill, not the inflated one', () => {
+    // 20% on bedding must not shrink the backfill volume: the trench space
+    // occupied by bedding is the compacted volume.
+    const base = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL }));
+    const out = calculateTrench(input({ backfillType: NATIVE_BACKFILL_LABEL, compactionPct: 20 }));
+    expect(out.backfillCY).toBeCloseTo(base.backfillCY, 2);
+  });
+
+  it('validates the range', () => {
+    expect(validateInput(input({ compactionPct: -5 })).map((e) => e.field)).toContain('compactionPct');
+    expect(validateInput(input({ compactionPct: 101 })).map((e) => e.field)).toContain('compactionPct');
+    expect(validateInput(input({ compactionPct: 15 }))).toEqual([]);
+    expect(validateInput(input({ compactionPct: 0 }))).toEqual([]);
+  });
+});
+
+describe('depthZoneBreakdown', () => {
+  it('puts a flat run entirely in the one band it falls in', () => {
+    const zones = depthZoneBreakdown(input({ startDepthFt: 4, gradePct: 0, runLengthLF: 100 }));
+    expect(zones).toHaveLength(1);
+    expect(zones[0].label).toBe('0–5 ft');
+    expect(zones[0].lf).toBeCloseTo(100);
+    // 3' wide (no bench) * 4' deep * 100 LF / 27 = 44.44 CY
+    expect(zones[0].excavationCY).toBeCloseTo(44.44, 2);
+  });
+
+  it('splits a sloped run across bands at the depth breaks', () => {
+    // 4 ft start, 2% grade over 100 ft -> falls from 4 ft to 6 ft: crosses the 5 ft break at station 50.
+    const zones = depthZoneBreakdown(input({ startDepthFt: 4, gradePct: 2, runLengthLF: 100 }));
+    expect(zones.map((z) => z.label)).toEqual(['0–5 ft', '5–10 ft']);
+    expect(zones[0].lf).toBeCloseTo(50);
+    expect(zones[1].lf).toBeCloseTo(50);
+  });
+
+  it('LF across all bands sums to the run length and CY sums to total excavation', () => {
+    const inp = input({ startDepthFt: 2, gradePct: 3, runLengthLF: 400, trenchWidthFt: 4, benchWidthFt: 1 });
+    const zones = depthZoneBreakdown(inp);
+    const totalLf = zones.reduce((sum, z) => sum + z.lf, 0);
+    const totalCy = zones.reduce((sum, z) => sum + z.excavationCY, 0);
+    expect(totalLf).toBeCloseTo(400, 1);
+    expect(totalCy).toBeCloseTo(calculateTrench(inp).excavationCY, 0);
+  });
+
+  it('skips bands entirely above the run when the run starts deep', () => {
+    // Starts at 12 ft, flat -- never touches the 0-5 or 5-10 ft bands.
+    const zones = depthZoneBreakdown(input({ startDepthFt: 12, gradePct: 0, runLengthLF: 50 }));
+    expect(zones).toHaveLength(1);
+    expect(zones[0].label).toBe('10–15 ft');
+  });
+
+  it('reports an open-ended top band past the last break', () => {
+    const zones = depthZoneBreakdown(input({ startDepthFt: 18, gradePct: 1, runLengthLF: 500 }));
+    expect(zones[zones.length - 1].label).toBe('20+ ft');
+  });
+
+  it('returns nothing for a degenerate run', () => {
+    expect(depthZoneBreakdown(input({ runLengthLF: 0 }))).toEqual([]);
+    expect(depthZoneBreakdown(input({ trenchWidthFt: 0 }))).toEqual([]);
   });
 });
 

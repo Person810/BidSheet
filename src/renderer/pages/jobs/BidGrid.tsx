@@ -24,6 +24,8 @@ interface BidGridProps {
   approvedCOTotal: number;
   revisedTotal: number;
   isChangeOrder: boolean;
+  /** material_id → catalog price age in days, for stale-price warnings */
+  materialAges?: Map<number, number | null>;
 }
 
 const COL_COUNT = 9;
@@ -61,6 +63,7 @@ export function BidGrid({
   approvedCOTotal,
   revisedTotal,
   isChangeOrder,
+  materialAges,
 }: BidGridProps) {
   // ---- Inline cell editing ----
   // One cell edits at a time (spreadsheet-style). `editing` holds the target
@@ -297,7 +300,8 @@ export function BidGrid({
                 items.map((item: any) => (
                   <tr key={item.id} className="bid-grid-item-row">
                     <td className="bid-grid-item-desc">
-                      <PriceStateDot state={item.price_state} source={item.price_source} />
+                      <PriceStateDot state={item.price_state} source={item.price_source}
+                        ageDays={item.material_id ? materialAges?.get(item.material_id) : null} />
                       {item.item_number && (
                         <span className="text-muted" style={{ marginRight: 6, fontSize: 11 }}>
                           {item.item_number}
@@ -419,6 +423,16 @@ export function BidGrid({
                 {formatCurrency(summary.escalation)}
                 <CalcPopover ariaLabel="Show escalation math" breakdown={explainEscalation(summary, job.escalation_percent)} />
               </td>
+              <td colSpan={2}></td>
+            </tr>
+          )}
+          {/* Indirect costs (conditional) */}
+          {(summary.indirect_total || 0) > 0 && (
+            <tr>
+              <td colSpan={6} className="text-right" title="Job-level indirect costs (mobilization, traffic control, …). Markups apply on top; tax and escalation do not.">
+                Indirect Costs
+              </td>
+              <td className="text-right">{formatCurrency(summary.indirect_total)}</td>
               <td colSpan={2}></td>
             </tr>
           )}

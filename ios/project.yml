@@ -1,0 +1,55 @@
+# XcodeGen spec — run `xcodegen generate` in this directory on a Mac to
+# produce BidSheetField.xcodeproj (the project file itself stays out of git).
+#   brew install xcodegen
+name: BidSheetField
+options:
+  bundleIdPrefix: com.bidsheet
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Set to your Apple ID team in Xcode (Signing & Capabilities) — a free
+    # account works for running on your own device.
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  BidSheetField:
+    type: application
+    platform: iOS
+    sources: [BidSheetField]
+    scheme:
+      testTargets: [BidSheetFieldTests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bidsheet.field
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    info:
+      path: BidSheetField/Info.plist
+      properties:
+        CFBundleDisplayName: BidSheet Field
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: >-
+          BidSheet Field uses the camera to take jobsite photos that sync back
+          to your bids on the office computer.
+        NSLocationWhenInUseUsageDescription: >-
+          Location tags jobsite photos with where they were taken, so the
+          office can see which part of the run each photo shows.
+        NSPhotoLibraryAddUsageDescription: >-
+          Lets you save copies of jobsite photos to your photo library.
+
+  BidSheetFieldTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [BidSheetFieldTests]
+    dependencies:
+      - target: BidSheetField

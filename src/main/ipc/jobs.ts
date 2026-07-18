@@ -6,7 +6,8 @@ import { getDbPath, isSetupComplete, seedDatabase } from '../database';
 import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
-import { safeHandle, getSectionCostRows } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
+import { removeJobFiles } from './documents';
 
 export function registerJobHandlers(db: Database.Database): void {
   // ================================================================
@@ -59,7 +60,16 @@ export function registerJobHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:jobs:delete', (_event, id: number) => {
-    return db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
+    // Change orders are child jobs that cascade away with the parent —
+    // collect their ids first so their document folders get cleaned too.
+    const childIds = (db.prepare('SELECT id FROM jobs WHERE parent_job_id = ?').all(id) as any[])
+      .map((r) => r.id as number);
+    const result = db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
+    // job_documents rows cascade with the job; the copied files don't,
+    // so clear the managed document folders too.
+    removeJobFiles(id);
+    for (const childId of childIds) removeJobFiles(childId);
+    return result;
   });
 
   safeHandle('db:jobs:duplicate', (_event, id: number, newName?: string, newBidDate?: string) => {
@@ -124,16 +134,27 @@ export function registerJobHandlers(db: Database.Database): void {
           job_id, label, pipe_size_in, pipe_material, start_depth_ft,
           grade_pct, run_length_lf, trench_width_ft, bench_width_ft,
           bedding_type, backfill_type, sort_order,
-          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft,
+          compaction_pct
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const p of profiles) {
         insertProfile.run(
           newJobId, p.label, p.pipe_size_in, p.pipe_material, p.start_depth_ft,
           p.grade_pct, p.run_length_lf, p.trench_width_ft, p.bench_width_ft,
           p.bedding_type, p.backfill_type, p.sort_order,
-          p.pipe_material_id, p.bedding_material_id, p.backfill_material_id, p.bedding_depth_ft
+          p.pipe_material_id, p.bedding_material_id, p.backfill_material_id, p.bedding_depth_ft,
+          p.compaction_pct ?? 0
         );
+      }
+
+      // Copy indirect costs
+      const indirects = db.prepare('SELECT * FROM job_indirect_costs WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
+      const insertIndirect = db.prepare(
+        'INSERT INTO job_indirect_costs (job_id, description, amount, sort_order) VALUES (?, ?, ?, ?)'
+      );
+      for (const ic of indirects) {
+        insertIndirect.run(newJobId, ic.description, ic.amount, ic.sort_order);
       }
 
       // Copy takeoff page scales
@@ -293,11 +314,39 @@ export function registerJobHandlers(db: Database.Database): void {
     return { newJobId: Number(result.lastInsertRowid), changeOrderNumber: nextCO };
   });
 
+  // ================================================================
+  // INDIRECT COSTS (job-level pool: mobilization, traffic control, …)
+  // ================================================================
+
+  safeHandle('db:indirects:list', (_event, jobId: number) => {
+    return db.prepare(
+      'SELECT * FROM job_indirect_costs WHERE job_id = ? ORDER BY sort_order, id'
+    ).all(jobId);
+  });
+
+  safeHandle('db:indirects:save', (_event, indirect: any) => {
+    const amount = Number(indirect.amount) || 0;
+    if (indirect.id) {
+      db.prepare(
+        'UPDATE job_indirect_costs SET description = ?, amount = ?, sort_order = ? WHERE id = ?'
+      ).run(indirect.description ?? '', amount, indirect.sortOrder ?? 0, indirect.id);
+      return { id: indirect.id };
+    }
+    const result = db.prepare(
+      'INSERT INTO job_indirect_costs (job_id, description, amount, sort_order) VALUES (?, ?, ?, ?)'
+    ).run(indirect.jobId, indirect.description ?? '', amount, indirect.sortOrder ?? 0);
+    return { id: Number(result.lastInsertRowid) };
+  });
+
+  safeHandle('db:indirects:delete', (_event, id: number) => {
+    return db.prepare('DELETE FROM job_indirect_costs WHERE id = ?').run(id);
+  });
+
   safeHandle('db:jobs:summary', (_event, jobId: number) => {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job) return null;
 
-    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job);
+    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId));
 
     return {
       jobId,
@@ -316,7 +365,7 @@ export function registerJobHandlers(db: Database.Database): void {
       const job = jobMap.get(id);
       if (!job) return null;
 
-      const summary = computeBidSummaryFromSections(getSectionCostRows(db, id), job);
+      const summary = computeBidSummaryFromSections(getSectionCostRows(db, id), job, getIndirectTotal(db, id));
 
       return {
         jobId: id,

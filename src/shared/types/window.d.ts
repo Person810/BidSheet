@@ -1,4 +1,5 @@
 import type {
+  AddDocumentsResult,
   AppSettingsRow,
   AssemblyRow,
   BackupReminderStatus,
@@ -8,8 +9,12 @@ import type {
   CsvParseResult,
   EquipmentRow,
   FileExportResult,
+  IndirectCostRow,
   JobBidSummary,
+  JobDocumentFolderDTO,
+  JobDocumentRow,
   JobRow,
+  SaveIndirectCostPayload,
   MaterialCategoryRow,
   MaterialRow,
   MaterialWithCategoryRow,
@@ -147,6 +152,36 @@ declare global {
       saveQuote: (quote: SaveQuotePayload) => Promise<{ id: number }>;
       selectQuote: (jobId: number, scope: string, quoteId: number | null) => Promise<{ success: boolean }>;
       deleteQuote: (id: number) => Promise<SqlRunResult>;
+      getQuoteVendors: () => Promise<{ vendor: string; contact: string | null; quote_count: number }[]>;
+
+      // Section templates
+      getSectionTemplates: () => Promise<{ id: number; name: string; created_at: string; item_count: number; direct_cost_total: number }[]>;
+      saveSectionTemplate: (sectionId: number, name: string) => Promise<{ id: number; itemCount: number }>;
+      deleteSectionTemplate: (id: number) => Promise<SqlRunResult>;
+      insertSectionTemplate: (templateId: number, jobId: number) => Promise<{ sectionId: number; itemCount: number }>;
+
+      // Indirect costs
+      getIndirectCosts: (jobId: number) => Promise<IndirectCostRow[]>;
+      saveIndirectCost: (indirect: SaveIndirectCostPayload) => Promise<{ id: number }>;
+      deleteIndirectCost: (id: number) => Promise<SqlRunResult>;
+
+      // Job documents
+      listJobDocuments: (jobId: number) => Promise<JobDocumentRow[]>;
+      /** Opens a native multi-select dialog; null when the user cancels */
+      addJobDocuments: (jobId: number, folderId: number | null) => Promise<AddDocumentsResult | null>;
+      addJobDocumentPaths: (jobId: number, paths: string[], folderId: number | null) => Promise<AddDocumentsResult>;
+      openJobDocument: (id: number) => Promise<void>;
+      revealJobDocument: (id: number) => Promise<void>;
+      updateJobDocument: (id: number, fields: { notes?: string | null }) => Promise<void>;
+      deleteJobDocument: (id: number) => Promise<void>;
+      moveJobDocument: (id: number, folderId: number | null) => Promise<void>;
+
+      // Job document folders
+      listJobDocumentFolders: (jobId: number) => Promise<JobDocumentFolderDTO[]>;
+      createJobDocumentFolder: (jobId: number, parentId: number | null, name: string) => Promise<{ id: number }>;
+      renameJobDocumentFolder: (id: number, name: string) => Promise<void>;
+      moveJobDocumentFolder: (id: number, newParentId: number | null) => Promise<void>;
+      deleteJobDocumentFolder: (id: number) => Promise<void>;
 
       // Export
       exportQuickBooksCSV: (jobId: number) => Promise<FileExportResult>;

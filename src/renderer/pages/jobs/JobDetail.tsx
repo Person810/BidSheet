@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Lock, Unlock } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { EditJobModal, type EditJobForm } from './EditJobModal';
@@ -13,31 +14,23 @@ import { BidGrid } from './BidGrid';
 import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
 import { QuotesTab } from './QuotesTab';
+import { DocumentsTab } from './DocumentsTab';
+import { BidAnalysisModal } from './BidAnalysisModal';
+import { IndirectCostsCard } from './IndirectCostsCard';
+import { SectionTemplatePickerModal } from './SectionTemplatePickerModal';
 import { CostCodeReportModal } from './CostCodeReportModal';
 import { BidItemImportModal } from './BidItemImportModal';
 import { JobPriceImportModal } from './JobPriceImportModal';
-import { PriceStateLegend } from './priceState';
+import { PriceStateLegend, priceAgeDays } from './priceState';
 import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { PdfCustomizerModal } from './PdfCustomizerModal';
 import { useToastStore } from '../../stores/toast-store';
 import { useBidHistory, type BidSnapshot } from './useBidHistory';
 
-// Lock icon SVGs -- inline to avoid any import dependency
-const LockClosedIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-  </svg>
-);
-const LockOpenIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-  </svg>
-);
+// Lock icons (lucide-react)
+const LockClosedIcon = () => <Lock size={16} strokeWidth={2} />;
+const LockOpenIcon = () => <Unlock size={16} strokeWidth={2} />;
 
 interface JobDetailProps {
   jobId: number;
@@ -55,12 +48,15 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [changeOrders, setChangeOrders] = useState<any[]>([]);
   const [coSummaries, setCoSummaries] = useState<Record<number, any>>({});
   const [parentJob, setParentJob] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'changes'>('estimate');
+  const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'documents' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
+  const [showBidAnalysis, setShowBidAnalysis] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [showPdfCustomizer, setShowPdfCustomizer] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [profileCount, setProfileCount] = useState(0);
+  const [docCount, setDocCount] = useState(0);
   const [showAddSection, setShowAddSection] = useState(false);
   const [showBidItemImport, setShowBidItemImport] = useState(false);
   const [showPriceImport, setShowPriceImport] = useState(false);
@@ -142,6 +138,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       setSummary(sum);
       const profs = await window.api.getTrenchProfiles(jobId);
       setProfileCount(profs.length);
+      const docRows = await window.api.listJobDocuments(jobId);
+      setDocCount(docRows.length);
 
       // Load change orders if this is a parent job
       if (!j.parent_job_id) {
@@ -175,6 +173,14 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     [sections, lineItems],
   );
   const history = useBidHistory({ jobId, getState: getBidState, reloadAll: loadJob });
+
+  // material_id → catalog price age (days), feeding the stale-price warnings
+  // in the legend and the per-line dots.
+  const materialAges = useMemo(() => {
+    const ages = new Map<number, number | null>();
+    for (const m of materials) ages.set(m.id, priceAgeDays(m.last_price_update));
+    return ages;
+  }, [materials]);
 
   useEffect(() => {
     loadJob();
@@ -308,7 +314,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // effect's deps to one value instead of an easy-to-forget list, so adding a
   // future modal only requires updating this one expression.
   const anyModalOpen = !!(showLineItemModal || editingSection || showEditJob || showAssemblyPicker
-    || showBidItemImport || showPriceImport || showCompare || showCostCodeReport
+    || showBidItemImport || showPriceImport || showCompare || showCostCodeReport || showBidAnalysis
+    || showTemplatePicker
     || showPdfCustomizer || confirmState);
 
   // Ctrl/Cmd+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo — estimate tab only, and
@@ -779,6 +786,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
                     { label: 'QuickBooks CSV', action: handleExportQB },
                     { label: 'Unit Price Schedule CSV', action: handleExportUnitPrices },
                     { label: 'Cost Code Report', action: () => setShowCostCodeReport(true) },
+                    { label: 'Bid Analysis', action: () => setShowBidAnalysis(true) },
                   ].map((opt) => (
                     <div key={opt.label}
                       onClick={() => { setShowExportMenu(false); opt.action(); }}
@@ -838,6 +846,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         </button>
         <button className={`job-tab ${activeTab === 'quotes' ? 'job-tab-active' : ''}`}
           onClick={() => setActiveTab('quotes')}>Quotes</button>
+        <button className={`job-tab ${activeTab === 'documents' ? 'job-tab-active' : ''}`}
+          onClick={() => setActiveTab('documents')}>
+          Documents {docCount > 0 && <span className="job-tab-count">{docCount}</span>}
+        </button>
         {!isChangeOrder && (
           <button className={`job-tab ${activeTab === 'changes' ? 'job-tab-active' : ''}`}
             onClick={() => setActiveTab('changes')}>
@@ -855,7 +867,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         <button className="btn btn-sm btn-secondary" onClick={() => history.redo()}
           disabled={!history.canRedo} title="Redo (Ctrl+Shift+Z)">&#8635; Redo</button>
       </div>
-      <PriceStateLegend lineItems={lineItems} />
+      <PriceStateLegend lineItems={lineItems} materialAges={materialAges} />
       <BidGrid
         sections={sections}
         lineItems={lineItems}
@@ -873,7 +885,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         approvedCOTotal={approvedCOTotal}
         revisedTotal={revisedTotal}
         isChangeOrder={isChangeOrder}
+        materialAges={materialAges}
       />
+
+      <IndirectCostsCard jobId={jobId} isLocked={isLocked} onChanged={loadJob} />
 
       {/* Add Section */}
       <div className="no-print" style={{ padding: '10px 0' }}>
@@ -892,6 +907,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         ) : (
           <div className="flex gap-8">
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowAddSection(true))}>+ Add Bid Section</button>
+            <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowTemplatePicker(true))}
+              title="Insert a saved section package (create them via a section's settings)">+ From Template…</button>
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowBidItemImport(true))}
               title="Scaffold line items from an owner's bid schedule CSV">Import Bid Items…</button>
             <button className="btn btn-secondary" onClick={() => withLockCheck(() => setShowPriceImport(true))}
@@ -916,6 +933,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             catch (err) { reject(err); }
           }, resolve);
         })} />
+      )}
+
+      {/* Documents tab */}
+      {activeTab === 'documents' && (
+        <DocumentsTab jobId={jobId} onCountChange={setDocCount} />
       )}
 
       {/* Changes tab */}
@@ -991,6 +1013,25 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           sections={sections}
           lineItems={lineItems}
           onClose={() => setShowCostCodeReport(false)}
+        />
+      )}
+
+      {/* Section Template Picker */}
+      {showTemplatePicker && (
+        <SectionTemplatePickerModal
+          jobId={jobId}
+          onInserted={loadJob}
+          onClose={() => setShowTemplatePicker(false)}
+        />
+      )}
+
+      {/* Bid Analysis Modal */}
+      {showBidAnalysis && (
+        <BidAnalysisModal
+          job={job}
+          sections={sections}
+          lineItems={lineItems}
+          onClose={() => setShowBidAnalysis(false)}
         />
       )}
 

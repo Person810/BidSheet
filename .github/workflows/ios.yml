@@ -1,0 +1,44 @@
+name: iOS
+
+# The iOS app builds on GitHub's free macOS runners — no Mac needed locally.
+# Compiles the app for the simulator and runs the unit tests, most
+# importantly SyncCryptoGoldenTests (byte-for-byte interop with the
+# desktop's frozen E2EE wire formats).
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build and test (iPhone simulator)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project BidSheetField.xcodeproj \
+            -scheme BidSheetField \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO
