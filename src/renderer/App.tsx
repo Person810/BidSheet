@@ -131,6 +131,14 @@ export function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // Settings can add a trade after setup; refresh active modules so the new
+  // trade's gated tools appear in the sidebar without a restart.
+  useEffect(() => {
+    const onTradesChanged = () => loadSettings();
+    window.addEventListener('bidsheet:trades-changed', onTradesChanged);
+    return () => window.removeEventListener('bidsheet:trades-changed', onTradesChanged);
+  }, []);
+
   useEffect(() => {
     window.api.isSetupComplete().then((complete) => {
       setSetupComplete(complete);

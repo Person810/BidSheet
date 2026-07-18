@@ -2,9 +2,9 @@ import { dialog, app, BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import type Database from 'better-sqlite3';
-import { getDbPath, isSetupComplete, seedDatabase } from '../database';
+import { getDbPath, isSetupComplete, seedDatabase, addTradeCatalog } from '../database';
 import { logger } from '../logger';
-import { TradeType } from '../../shared/constants/seed-data';
+import { TradeType, TRADE_SEED_DATA } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
 import { parsePdfTemplate, PdfTemplate } from '../../shared/types/pdf';
@@ -24,6 +24,20 @@ export function registerSettingsHandlers(db: Database.Database): void {
       seedDatabase(db, trades as TradeType[], includeBallparkPrices, companyName, localOnlyMode === true);
       logger.info('setup', `Setup complete: trades=${trades.join(',')}, company=${companyName}, localOnly=${localOnlyMode === true}`);
       return { success: true };
+    }
+  );
+
+  // Add a trade to an existing setup: seeds its catalog additively and makes
+  // its gated module/tools visible. Never deletes or overwrites edited rows.
+  safeHandle(
+    'db:settings:add-trade',
+    (_event, trade: string, includeBallparkPrices: boolean) => {
+      if (!(trade in TRADE_SEED_DATA)) {
+        throw new Error(`Unknown trade: ${trade}`);
+      }
+      const tradeTypes = addTradeCatalog(db, trade as TradeType, includeBallparkPrices !== false);
+      logger.info('settings', `Added trade "${trade}" (prices=${includeBallparkPrices !== false}); trades now: ${tradeTypes}`);
+      return { success: true, tradeTypes };
     }
   );
 

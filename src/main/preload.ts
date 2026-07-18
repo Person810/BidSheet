@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('api', {
   isSetupComplete: () => invoke('db:setup:is-complete'),
   runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean) =>
     invoke('db:setup:run', trades, includeBallparkPrices, companyName, localOnlyMode),
+  addTrade: (trade: string, includeBallparkPrices: boolean) =>
+    invoke('db:settings:add-trade', trade, includeBallparkPrices),
 
   // ---- CSV Import ----
   openCsvFile: () => invoke('db:csv:open'),

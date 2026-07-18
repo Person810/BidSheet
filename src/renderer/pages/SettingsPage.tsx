@@ -27,6 +27,9 @@ export function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const [tradeToAdd, setTradeToAdd] = useState('');
+  const [addTradePrices, setAddTradePrices] = useState(true);
+  const [addingTrade, setAddingTrade] = useState(false);
 
   useEffect(() => {
     window.api.getSettings().then((s: any) => {
@@ -90,6 +93,26 @@ export function SettingsPage() {
     electrical: 'Electrical / Conduit',
     telecom: 'Telecommunications / Fiber',
     concrete: 'Concrete',
+  };
+
+  const activeTrades = settings.tradeTypes.split(',').map((t) => t.trim()).filter(Boolean);
+  const availableTrades = Object.keys(tradeLabels).filter((t) => !activeTrades.includes(t));
+
+  const handleAddTrade = async () => {
+    if (!tradeToAdd || addingTrade) return;
+    setAddingTrade(true);
+    try {
+      const result = await window.api.addTrade(tradeToAdd, addTradePrices);
+      setSettings((prev) => ({ ...prev, tradeTypes: result.tradeTypes }));
+      setTradeToAdd('');
+      // Refresh the sidebar so the new trade's gated tools appear immediately.
+      window.dispatchEvent(new Event('bidsheet:trades-changed'));
+      addToast(`Added ${tradeLabels[tradeToAdd] || tradeToAdd}. Its catalog items were added to your existing catalog.`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to add trade', 'error');
+    } finally {
+      setAddingTrade(false);
+    }
   };
 
   if (loading) return <p className="text-muted">Loading settings...</p>;
@@ -345,14 +368,55 @@ export function SettingsPage() {
           labor roles, and equipment were loaded into your catalog.
         </p>
         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-          {settings.tradeTypes
-            ? settings.tradeTypes.split(',').map((t) => (
+          {activeTrades.length > 0
+            ? activeTrades.map((t) => (
                 <span key={t} className="badge badge-submitted" style={{ fontSize: 12, padding: '4px 12px' }}>
-                  {tradeLabels[t.trim()] || t.trim()}
+                  {tradeLabels[t] || t}
                 </span>
               ))
             : <span className="text-muted">No trades configured</span>}
         </div>
+
+        {availableTrades.length > 0 && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            <h4 style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600 }}>Add a trade</h4>
+            <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+              Loads the trade's seed materials, labor roles, equipment, and assemblies, and
+              makes its tools visible. This only adds new items — your existing catalog and any
+              prices you've edited are left untouched.
+            </p>
+            <div className="flex gap-8 items-center" style={{ flexWrap: 'wrap' }}>
+              <select
+                className="form-control"
+                style={{ maxWidth: 260 }}
+                value={tradeToAdd}
+                onChange={(e) => setTradeToAdd(e.target.value)}
+                disabled={addingTrade}
+              >
+                <option value="">Select a trade…</option>
+                {availableTrades.map((t) => (
+                  <option key={t} value={t}>{tradeLabels[t] || t}</option>
+                ))}
+              </select>
+              <label className="flex items-center gap-8" style={{ fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={addTradePrices}
+                  onChange={(e) => setAddTradePrices(e.target.checked)}
+                  disabled={addingTrade}
+                />
+                Include ballpark prices
+              </label>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleAddTrade}
+                disabled={!tradeToAdd || addingTrade}
+              >
+                {addingTrade ? 'Adding…' : 'Add Trade'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
