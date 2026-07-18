@@ -90,3 +90,34 @@ describe('migration v41 — document folders', () => {
     expect(foldersB.map((f) => f.name)).toEqual(['Quotes']);
   });
 });
+
+describe('migration v44 — client records backfill', () => {
+  const insertClientJob = (db: Database.Database, client: string, updatedAt: string): number =>
+    Number(
+      db
+        .prepare("INSERT INTO jobs (name, client, updated_at) VALUES ('J', ?, ?)")
+        .run(client, updatedAt).lastInsertRowid
+    );
+
+  it('creates one client per distinct name (case-insensitive) and links the jobs', () => {
+    const db = dbAtVersion(43);
+    const older = insertClientJob(db, 'smith construction', '2026-01-01 00:00:00');
+    const newer = insertClientJob(db, 'Smith Construction', '2026-02-01 00:00:00');
+    const jones = insertClientJob(db, 'Jones Paving', '2026-01-15 00:00:00');
+    const blank = insertClientJob(db, '   ', '2026-01-16 00:00:00');
+
+    db.transaction(() => MIGRATIONS[43](db))();
+
+    const clients = db.prepare('SELECT * FROM clients ORDER BY id').all() as any[];
+    expect(clients).toHaveLength(2);
+    // Display name comes from the most recently updated job in the group
+    expect(clients.map((c) => c.name).sort()).toEqual(['Jones Paving', 'Smith Construction']);
+    for (const c of clients) expect(c.uuid).toMatch(/^[0-9a-f-]{36}$/);
+
+    const clientIdOf = (jobId: number) =>
+      (db.prepare('SELECT client_id FROM jobs WHERE id = ?').get(jobId) as any).client_id;
+    expect(clientIdOf(older)).toBe(clientIdOf(newer));
+    expect(clientIdOf(jones)).not.toBe(clientIdOf(newer));
+    expect(clientIdOf(blank)).toBeNull();
+  });
+});

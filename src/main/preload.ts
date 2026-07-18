@@ -57,6 +57,13 @@ contextBridge.exposeInMainWorld('api', {
   checkJobNumberInUse: (jobNumber: string, excludeJobId?: number) =>
     invoke('db:jobs:number-in-use', jobNumber, excludeJobId),
 
+  // ---- Clients ----
+  getClients: (includeInactive?: boolean) => invoke('db:clients:list', includeInactive),
+  getClient: (id: number) => invoke('db:clients:get', id),
+  saveClient: (client: any) => invoke('db:clients:save', client),
+  deleteClient: (id: number) => invoke('db:clients:delete', id),
+  restoreClient: (id: number) => invoke('db:clients:restore', id),
+
   getBidSections: (jobId: number) => invoke('db:bid-sections:list', jobId),
   saveBidSection: (section: any) => invoke('db:bid-sections:save', section),
   deleteBidSection: (id: number) => invoke('db:bid-sections:delete', id),

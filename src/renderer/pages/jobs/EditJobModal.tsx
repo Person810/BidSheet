@@ -1,5 +1,6 @@
 import React from 'react';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
+import { ClientField, type ClientDetailsDraft } from '../../components/ClientField';
 
 export interface EditJobForm {
   name: string;
@@ -22,10 +23,15 @@ interface EditJobModalProps {
   onClose: () => void;
   /** Excluded from the duplicate-number warning (a job matches itself). */
   jobId?: number;
+  /** Client details draft (#94), committed by the parent's onSave. */
+  clientDetails: ClientDetailsDraft | null;
+  onClientDetailsChange: (details: ClientDetailsDraft | null) => void;
 }
 
 /** Edit-job info + markups modal, extracted from JobDetail. */
-export function EditJobModal({ form, setForm, onSave, onClose, jobId }: EditJobModalProps) {
+export function EditJobModal({
+  form, setForm, onSave, onClose, jobId, clientDetails, onClientDetailsChange,
+}: EditJobModalProps) {
   const numberWarning = useJobNumberWarning(form.jobNumber, jobId);
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -51,8 +57,9 @@ export function EditJobModal({ form, setForm, onSave, onClose, jobId }: EditJobM
         <div className="form-row">
           <div className="form-group">
             <label>Client / GC</label>
-            <input type="text" className="form-control" value={form.client}
-              onChange={(e) => setForm({ ...form, client: e.target.value })} />
+            <ClientField value={form.client}
+              onChange={(client) => setForm({ ...form, client })}
+              details={clientDetails} onDetailsChange={onClientDetailsChange} />
           </div>
           <div className="form-group">
             <label>Bid Date</label>
