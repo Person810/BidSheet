@@ -6,6 +6,7 @@ import { getDbPath, isSetupComplete, seedDatabase } from '../database';
 import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
+import { nextJobNumber } from '../../shared/jobNumbering';
 import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
 import { removeJobFiles } from './documents';
 
@@ -57,6 +58,41 @@ export function registerJobHandlers(db: Database.Database): void {
           job.parentJobId || null, job.changeOrderNumber || null
         );
     }
+  });
+
+  // Next auto job number to suggest in the create form. Derived fresh from
+  // the max existing match each call — see shared/jobNumbering.ts for why
+  // there is no stored counter.
+  safeHandle('db:jobs:next-number', () => {
+    const s = db
+      .prepare('SELECT job_number_auto, job_number_format, job_number_start FROM app_settings WHERE id = 1')
+      .get() as any;
+    if (!s || s.job_number_auto !== 1) return { enabled: false, suggestion: null };
+    const numbers = (
+      db.prepare('SELECT job_number FROM jobs WHERE job_number IS NOT NULL').all() as any[]
+    ).map((r) => r.job_number as string);
+    return {
+      enabled: true,
+      suggestion: nextJobNumber(s.job_number_format || 'YYYY-NNN', numbers, s.job_number_start || 1),
+    };
+  });
+
+  // Duplicate job numbers warn in the UI, never fail: legacy data may already
+  // hold dupes, and change orders share the parent's number by design (they
+  // are excluded here so a parent's own COs don't flag it).
+  safeHandle('db:jobs:number-in-use', (_event, jobNumber: string, excludeJobId?: number) => {
+    const trimmed = String(jobNumber || '').trim();
+    if (!trimmed) return { inUse: false };
+    const row = db
+      .prepare(
+        `SELECT id, name FROM jobs
+         WHERE TRIM(job_number) = ? COLLATE NOCASE
+           AND parent_job_id IS NULL
+           AND id != COALESCE(?, -1)
+         LIMIT 1`
+      )
+      .get(trimmed, excludeJobId ?? null) as any;
+    return row ? { inUse: true, jobId: row.id, jobName: row.name } : { inUse: false };
   });
 
   safeHandle('db:jobs:delete', (_event, id: number) => {

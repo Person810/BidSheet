@@ -473,6 +473,9 @@ export interface AppSettingsRow {
   auto_lock_on_close: number;
   last_backup_schema_version: number;
   local_only_mode: number;
+  job_number_auto: number;
+  job_number_format: string;
+  job_number_start: number;
 }
 
 export interface SaveSettingsPayload {
@@ -488,6 +491,9 @@ export interface SaveSettingsPayload {
   defaultBondPercent: number;
   autoLockOnClose?: boolean | number;
   localOnlyMode?: boolean | number;
+  jobNumberAuto?: boolean | number;
+  jobNumberFormat?: string;
+  jobNumberStart?: number;
 }
 
 export interface CsvParseResult {

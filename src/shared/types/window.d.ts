@@ -102,6 +102,11 @@ declare global {
       duplicateJob: (id: number, newName?: string, newBidDate?: string | null) => Promise<{ newJobId: number } | null>;
       getChangeOrders: (parentJobId: number) => Promise<JobRow[]>;
       createChangeOrder: (parentJobId: number) => Promise<{ newJobId: number; changeOrderNumber: number } | null>;
+      getNextJobNumber: () => Promise<{ enabled: boolean; suggestion: string | null }>;
+      checkJobNumberInUse: (
+        jobNumber: string,
+        excludeJobId?: number
+      ) => Promise<{ inUse: boolean; jobId?: number; jobName?: string }>;
       getBidSections: (jobId: number) => Promise<BidSectionRow[]>;
       saveBidSection: (section: SaveBidSectionPayload) => Promise<{ id: number }>;
       deleteBidSection: (id: number) => Promise<SqlRunResult>;

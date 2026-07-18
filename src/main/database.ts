@@ -288,6 +288,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV40,
   migrateV41,
   migrateV42,
+  migrateV43,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -677,6 +678,22 @@ function migrateV42(db: Database.Database): void {
   db.exec(`
     ALTER TABLE takeoff_walls RENAME COLUMN rebar_spacing_in TO member_spacing_in;
     INSERT INTO schema_version (version) VALUES (42);
+  `);
+}
+
+// V43: Auto-suggested job numbers (#95). Suggest-don't-enforce: the create-
+// job form pre-fills the next number in this format but the field stays
+// editable (contractors often must match a GC's or legacy numbering), and a
+// duplicate warns instead of failing — existing data may already hold blanks
+// or dupes. The next number is derived from the max existing match at
+// creation time (see shared/jobNumbering.ts), so there is no stored counter
+// to drift across synced machines.
+function migrateV43(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN job_number_auto INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE app_settings ADD COLUMN job_number_format TEXT NOT NULL DEFAULT 'YYYY-NNN';
+    ALTER TABLE app_settings ADD COLUMN job_number_start INTEGER NOT NULL DEFAULT 1;
+    INSERT INTO schema_version (version) VALUES (43);
   `);
 }
 

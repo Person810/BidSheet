@@ -993,6 +993,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           setForm={setEditJobForm}
           onSave={saveJobInfo}
           onClose={() => setShowEditJob(false)}
+          jobId={job?.id}
         />
       )}
 

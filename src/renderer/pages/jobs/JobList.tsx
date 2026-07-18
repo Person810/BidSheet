@@ -3,6 +3,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
 import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
+import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
 import { formatDateLocal, statusBadge } from './helpers';
 
 const JOB_SORT_ACCESSORS = {
@@ -27,6 +28,28 @@ export function JobList({ onOpenJob }: JobListProps) {
   const [form, setForm] = useState({
     name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
   });
+  // The auto-suggested number currently sitting in the field (so the hint
+  // disappears as soon as the user types their own).
+  const [suggestedNumber, setSuggestedNumber] = useState<string | null>(null);
+  const numberWarning = useJobNumberWarning(showCreate ? form.jobNumber : '');
+
+  const openCreate = async () => {
+    setShowCreate(true);
+    try {
+      const res = await window.api.getNextJobNumber();
+      if (res?.enabled && res.suggestion) {
+        const suggestion = res.suggestion;
+        // Only pre-fill an empty field — a number typed before a cancel wins.
+        setForm((f) => {
+          if (f.jobNumber) return f;
+          setSuggestedNumber(suggestion);
+          return { ...f, jobNumber: suggestion };
+        });
+      }
+    } catch {
+      // Suggestion is a convenience — the modal works without one.
+    }
+  };
 
   const loadJobs = useCallback(async () => {
     try {
@@ -58,6 +81,7 @@ export function JobList({ onOpenJob }: JobListProps) {
     });
     setShowCreate(false);
     setForm({ name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '' });
+    setSuggestedNumber(null);
     // Drop the user straight into the job they just created
     if (result?.lastInsertRowid) {
       onOpenJob(Number(result.lastInsertRowid));
@@ -174,7 +198,7 @@ export function JobList({ onOpenJob }: JobListProps) {
     <div>
       <div className="page-header">
         <h2>Jobs & Bids</h2>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Job</button>
+        <button className="btn btn-primary" onClick={openCreate}>+ New Job</button>
       </div>
 
       <div className="flex gap-8 mb-24">
@@ -367,6 +391,13 @@ export function JobList({ onOpenJob }: JobListProps) {
                 <label>Job Number (optional)</label>
                 <input type="text" className="form-control" value={form.jobNumber}
                   onChange={(e) => setForm({ ...form, jobNumber: e.target.value })} placeholder="e.g. 2026-042" />
+                {numberWarning ? (
+                  <div className="text-warning" style={{ fontSize: 12, marginTop: 4 }}>{numberWarning}</div>
+                ) : suggestedNumber && form.jobNumber === suggestedNumber ? (
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Suggested next number — edit freely
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="form-row">

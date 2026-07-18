@@ -53,6 +53,9 @@ contextBridge.exposeInMainWorld('api', {
   duplicateJob: (id: number, newName?: string, newBidDate?: string) => invoke('db:jobs:duplicate', id, newName, newBidDate),
   getChangeOrders: (parentJobId: number) => invoke('db:jobs:change-orders', parentJobId),
   createChangeOrder: (parentJobId: number) => invoke('db:jobs:create-change-order', parentJobId),
+  getNextJobNumber: () => invoke('db:jobs:next-number'),
+  checkJobNumberInUse: (jobNumber: string, excludeJobId?: number) =>
+    invoke('db:jobs:number-in-use', jobNumber, excludeJobId),
 
   getBidSections: (jobId: number) => invoke('db:bid-sections:list', jobId),
   saveBidSection: (section: any) => invoke('db:bid-sections:save', section),

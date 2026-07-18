@@ -55,6 +55,9 @@ const SYNCED_SETTINGS = [
   'default_profit_percent',
   'default_tax_percent',
   'default_bond_percent',
+  'job_number_auto',
+  'job_number_format',
+  'job_number_start',
 ] as const;
 
 /** Intra-catalog FKs: column → referenced table. All are NOT NULL columns. */

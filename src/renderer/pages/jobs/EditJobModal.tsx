@@ -1,4 +1,5 @@
 import React from 'react';
+import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
 
 export interface EditJobForm {
   name: string;
@@ -19,10 +20,13 @@ interface EditJobModalProps {
   setForm: (form: EditJobForm) => void;
   onSave: () => void;
   onClose: () => void;
+  /** Excluded from the duplicate-number warning (a job matches itself). */
+  jobId?: number;
 }
 
 /** Edit-job info + markups modal, extracted from JobDetail. */
-export function EditJobModal({ form, setForm, onSave, onClose }: EditJobModalProps) {
+export function EditJobModal({ form, setForm, onSave, onClose, jobId }: EditJobModalProps) {
+  const numberWarning = useJobNumberWarning(form.jobNumber, jobId);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -39,6 +43,9 @@ export function EditJobModal({ form, setForm, onSave, onClose }: EditJobModalPro
             <input type="text" className="form-control" value={form.jobNumber}
               onChange={(e) => setForm({ ...form, jobNumber: e.target.value })}
               placeholder="optional" />
+            {numberWarning && (
+              <div className="text-warning" style={{ fontSize: 12, marginTop: 4 }}>{numberWarning}</div>
+            )}
           </div>
         </div>
         <div className="form-row">

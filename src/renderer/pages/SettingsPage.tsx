@@ -4,6 +4,7 @@ import { UpdateBanner } from '../components/UpdateBanner';
 import { useToastStore } from '../stores/toast-store';
 import { useWalkthroughStore } from '../stores/walkthrough-store';
 import { CloudSyncCard } from '../components/CloudSyncCard';
+import { nextJobNumber } from '../../shared/jobNumbering';
 
 export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
@@ -22,6 +23,9 @@ export function SettingsPage() {
     tradeTypes: '',
     autoLockOnClose: true,
     localOnlyMode: false,
+    jobNumberAuto: true,
+    jobNumberFormat: 'YYYY-NNN',
+    jobNumberStart: 1,
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -48,6 +52,9 @@ export function SettingsPage() {
           tradeTypes: s.trade_types || '',
           autoLockOnClose: s.auto_lock_on_close !== 0,
           localOnlyMode: s.local_only_mode === 1,
+          jobNumberAuto: s.job_number_auto !== 0,
+          jobNumberFormat: s.job_number_format || 'YYYY-NNN',
+          jobNumberStart: s.job_number_start || 1,
         });
       }
     }).finally(() => setLoading(false));
@@ -67,6 +74,9 @@ export function SettingsPage() {
       defaultBondPercent: settings.defaultBondPercent,
       autoLockOnClose: settings.autoLockOnClose,
       localOnlyMode: settings.localOnlyMode,
+      jobNumberAuto: settings.jobNumberAuto,
+      jobNumberFormat: settings.jobNumberFormat,
+      jobNumberStart: settings.jobNumberStart,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -254,6 +264,65 @@ export function SettingsPage() {
             />
           </div>
         </div>
+      </div>
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Job Numbering</h3>
+        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input
+            type="checkbox"
+            id="jobNumberAuto"
+            checked={settings.jobNumberAuto}
+            onChange={(e) => update('jobNumberAuto', e.target.checked)}
+            style={{ width: 16, height: 16, cursor: 'pointer' }}
+          />
+          <label htmlFor="jobNumberAuto" style={{ margin: 0, cursor: 'pointer' }}>
+            Suggest the next job number for new jobs
+          </label>
+        </div>
+        {settings.jobNumberAuto && (
+          <>
+            <p className="text-muted mb-16" style={{ marginTop: 8 }}>
+              The suggestion continues from your highest existing number in this format, and the
+              field stays editable — type over it any time a job needs a different number.
+            </p>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Format</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={settings.jobNumberFormat}
+                  onChange={(e) => update('jobNumberFormat', e.target.value)}
+                  placeholder="YYYY-NNN"
+                />
+                <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  N&apos;s become the counter (their count sets the padding); YYYY becomes the
+                  current year. Year formats restart the count each January.
+                </div>
+              </div>
+              <div className="form-group" style={{ maxWidth: 140 }}>
+                <label>Start At</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  min={1}
+                  step={1}
+                  value={settings.jobNumberStart}
+                  onChange={(e) => update('jobNumberStart', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                />
+              </div>
+              <div className="form-group" style={{ maxWidth: 180 }}>
+                <label>Preview</label>
+                <div className="form-control" style={{ background: 'transparent' }}>
+                  {nextJobNumber(settings.jobNumberFormat, [], settings.jobNumberStart) ?? (
+                    <span className="text-warning">Add at least one N</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card mb-24">
