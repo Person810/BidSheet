@@ -246,7 +246,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       if (count === 0) {
         addToast('No walls on calibrated pages to send.', 'error');
       } else {
-        addToast(`Created ${count} line items in "Concrete Walls" section.`, 'success');
+        addToast(`Created ${count} line items in "Walls" section.`, 'success');
       }
     } catch (err) {
       console.error('Send walls to bid failed:', err);
@@ -1493,7 +1493,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
       {showSendWallsConfirm && (
         <ConfirmDialog
-          message={`Send ${wm.walls.filter((w) => w.points.length >= 2).length} wall${wm.walls.filter((w) => w.points.length >= 2).length !== 1 ? 's' : ''} to bid? This will create a "Concrete Walls" section with concrete, formwork, and rebar line items grouped by wall config.`}
+          message={`Send ${wm.walls.filter((w) => w.points.length >= 2).length} wall${wm.walls.filter((w) => w.points.length >= 2).length !== 1 ? 's' : ''} to bid? This will create a "Walls" section grouped by wall config — billed by a linked material/assembly, or as length + members.`}
           onYes={handleSendWallsToBid}
           onNo={() => setShowSendWallsConfirm(false)}
           yesLabel="Send to Bid"

@@ -43,7 +43,7 @@ function wallToConfig(wall: TakeoffWall): WallConfig {
     heightFt: wall.heightFt,
     thicknessIn: wall.thicknessIn,
     faces: wall.faces,
-    rebarSpacingIn: wall.rebarSpacingIn,
+    memberSpacingIn: wall.memberSpacingIn,
     materialId: wall.materialId,
     assemblyId: wall.assemblyId,
   };

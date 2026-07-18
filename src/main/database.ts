@@ -244,6 +244,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV39,
   migrateV40,
   migrateV41,
+  migrateV42,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -625,6 +626,15 @@ function migrateV41(db: Database.Database): void {
   }
 
   db.exec('INSERT INTO schema_version (version) VALUES (41);');
+}
+
+// V42: generalize the wall tool beyond concrete — the per-face "rebar grid"
+// becomes a trade-agnostic vertical-member spacing (studs / bars / posts).
+function migrateV42(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE takeoff_walls RENAME COLUMN rebar_spacing_in TO member_spacing_in;
+    INSERT INTO schema_version (version) VALUES (42);
+  `);
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */

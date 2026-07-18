@@ -1,42 +1,44 @@
 import { describe, expect, it } from 'vitest';
 import { computeWallQuantities } from './wallTakeoff';
 
+const wall = (over: Partial<Parameters<typeof computeWallQuantities>[0]> = {}) =>
+  computeWallQuantities({ lengthLF: 100, heightFt: 8, thicknessIn: 8, faces: 2, memberSpacingIn: 0, ...over });
+
 describe('computeWallQuantities', () => {
-  it('converts length × height × thickness to concrete CY', () => {
-    // 100 LF × 8 ft × (8/12) ft = 533.33 CF ÷ 27 = 19.75 CY
-    const q = computeWallQuantities({ lengthLF: 100, heightFt: 8, thicknessIn: 8, faces: 2, rebarSpacingIn: 0 });
-    expect(q.faceSF).toBeCloseTo(800, 6);
-    expect(q.concreteCY).toBeCloseTo(19.753, 2);
+  it('passes length through and computes one-face area', () => {
+    const q = wall();
+    expect(q.lengthLF).toBe(100);
+    expect(q.faceSF).toBeCloseTo(800, 6); // 100 × 8
   });
 
-  it('form contact area scales with faces formed', () => {
-    const one = computeWallQuantities({ lengthLF: 50, heightFt: 10, thicknessIn: 8, faces: 1, rebarSpacingIn: 0 });
-    const two = computeWallQuantities({ lengthLF: 50, heightFt: 10, thicknessIn: 8, faces: 2, rebarSpacingIn: 0 });
-    expect(one.formSFCA).toBe(500);   // 50 × 10 × 1
-    expect(two.formSFCA).toBe(1000);  // 50 × 10 × 2
+  it('surface area scales with the number of faces', () => {
+    expect(wall({ faces: 1 }).surfaceSF).toBe(800);
+    expect(wall({ faces: 2 }).surfaceSF).toBe(1600);
   });
 
-  it('omits rebar when spacing is zero, includes it otherwise', () => {
-    const none = computeWallQuantities({ lengthLF: 40, heightFt: 8, thicknessIn: 8, faces: 2, rebarSpacingIn: 0 });
-    const grid = computeWallQuantities({ lengthLF: 40, heightFt: 8, thicknessIn: 8, faces: 2, rebarSpacingIn: 12 });
-    expect(none.rebarLF).toBe(0);
-    expect(grid.rebarLF).toBeGreaterThan(0);
+  it('volume is length × height × thickness in CY', () => {
+    // 100 × 8 × (8/12) = 533.33 CF ÷ 27 = 19.75 CY
+    expect(wall().volumeCY).toBeCloseTo(19.753, 2);
   });
 
-  it('tighter rebar spacing yields more steel', () => {
-    const tight = computeWallQuantities({ lengthLF: 40, heightFt: 8, thicknessIn: 8, faces: 2, rebarSpacingIn: 6 });
-    const loose = computeWallQuantities({ lengthLF: 40, heightFt: 8, thicknessIn: 8, faces: 2, rebarSpacingIn: 18 });
-    expect(tight.rebarLF).toBeGreaterThan(loose.rebarLF);
+  it('thicker walls have proportionally more volume', () => {
+    expect(wall({ thicknessIn: 12 }).volumeCY).toBeCloseTo(wall({ thicknessIn: 6 }).volumeCY * 2, 5);
   });
 
-  it('passes length through unchanged', () => {
-    const q = computeWallQuantities({ lengthLF: 123.4, heightFt: 8, thicknessIn: 8, faces: 2, rebarSpacingIn: 0 });
-    expect(q.lengthLF).toBe(123.4);
+  it('no members when spacing is zero', () => {
+    const q = wall({ memberSpacingIn: 0 });
+    expect(q.memberCount).toBe(0);
+    expect(q.memberLF).toBe(0);
   });
 
-  it('thicker walls pour more concrete', () => {
-    const thin = computeWallQuantities({ lengthLF: 100, heightFt: 8, thicknessIn: 6, faces: 2, rebarSpacingIn: 0 });
-    const thick = computeWallQuantities({ lengthLF: 100, heightFt: 8, thicknessIn: 12, faces: 2, rebarSpacingIn: 0 });
-    expect(thick.concreteCY).toBeCloseTo(thin.concreteCY * 2, 5);
+  it('counts vertical members at spacing, each full height', () => {
+    // 12 ft run at 16" o.c.: floor(12 / 1.333) + 1 = 9 + 1 = 10 members; × 8 ft = 80 LF
+    const q = computeWallQuantities({ lengthLF: 12, heightFt: 8, thicknessIn: 6, faces: 2, memberSpacingIn: 16 });
+    expect(q.memberCount).toBe(10);
+    expect(q.memberLF).toBeCloseTo(80, 6);
+  });
+
+  it('tighter spacing yields more members', () => {
+    expect(wall({ memberSpacingIn: 12 }).memberCount).toBeGreaterThan(wall({ memberSpacingIn: 24 }).memberCount);
   });
 });
