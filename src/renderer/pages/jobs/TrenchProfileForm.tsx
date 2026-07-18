@@ -1,10 +1,17 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  parsePipeSizeFromName,
+  parsePipeSizeFromName, depthZoneBreakdown,
   type TrenchInput, type ValidationError,
 } from '../../modules/underground/trenchCalc';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { NATIVE_MATERIAL_ITEM } from '../../modules/underground/useTrenchMaterials';
+import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from '../../modules/underground/trenchInputToRun';
+import { buildGroundSampler } from '../../modules/underground/plan-takeoff/surfaceSampler';
+import type { TakeoffRun, TakeoffSurface } from '../../modules/underground/plan-takeoff/types';
+import { DepthZoneTable } from '../../modules/underground/DepthZoneTable';
+
+const Trench3DView = React.lazy(() =>
+  import('../../modules/underground/plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
 
 interface FormData extends TrenchInput {
   label: string;
@@ -21,10 +28,25 @@ interface Props {
   errors: ValidationError[];
   pipeMaterials: AutocompleteItem[];
   beddingMaterials: AutocompleteItem[];
+  /** Runs already drawn on this job's Plan Takeoff PDF, for the "preview against the plan" option below. */
+  takeoffRuns: TakeoffRun[];
+  /** PDF page number -> real px/ft scale, so a linked run renders at true scale. */
+  pageScales: Record<number, number>;
+  /** The job's surveyed-terrain surface, if any, so a linked run can ground against real elevations. */
+  surface: TakeoffSurface | null;
 }
 
-export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors, pipeMaterials, beddingMaterials }: Props) {
+export function TrenchProfileForm({
+  form, onChange, onSave, onCancel, errors, pipeMaterials, beddingMaterials,
+  takeoffRuns, pageScales, surface,
+}: Props) {
   const hasError = (field: string) => errors.some((e) => e.field === field);
+  const [linkedRunId, setLinkedRunId] = useState<number | null>(null);
+  const linkedRun = takeoffRuns.find((r) => r.id === linkedRunId) ?? null;
+  const depthZones = useMemo(
+    () => (errors.length === 0 ? depthZoneBreakdown(form) : []),
+    [form, errors]
+  );
 
   const backfillItems = useMemo(
     () => [NATIVE_MATERIAL_ITEM, ...beddingMaterials],
@@ -169,6 +191,55 @@ export function TrenchProfileForm({ form, onChange, onSave, onCancel, errors, pi
           {errors.map((e, i) => <div key={i}>{e.message}</div>)}
         </div>
       )}
+
+      {depthZones.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <label>Depth Summary</label>
+          <DepthZoneTable zones={depthZones} />
+        </div>
+      )}
+
+      {takeoffRuns.length > 0 && (
+        <div className="form-group" style={{ marginTop: 8 }}>
+          <label>Preview against plan run</label>
+          <select
+            className="form-control"
+            value={linkedRunId ?? ''}
+            onChange={(e) => setLinkedRunId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">— synthetic preview from the numbers above —</option>
+            {takeoffRuns.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label || `Run ${r.id}`} · {r.pipeSizeIn}&quot; {r.pipeMaterial || ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {(errors.length === 0 || linkedRun) && (() => {
+        const groundSampler = linkedRun ? buildGroundSampler(surface, linkedRun.pdfPage) : undefined;
+        const run = linkedRun ?? trenchInputToTakeoffRun(form, form.label);
+        const scalePxPerFt = linkedRun ? (pageScales[linkedRun.pdfPage] || TRENCH_PREVIEW_SCALE_PX_PER_FT) : TRENCH_PREVIEW_SCALE_PX_PER_FT;
+        return (
+          <div style={{ marginTop: 12 }}>
+            {linkedRun && (
+              <p className="text-muted" style={{ fontSize: 11, marginBottom: 6 }}>
+                Showing &quot;{linkedRun.label || `Run ${linkedRun.id}`}&quot; as drawn on the plan
+                {groundSampler ? ', grounded to surveyed terrain' : ''} — not the numbers above.
+              </p>
+            )}
+            <React.Suspense fallback={<p className="text-muted" style={{ padding: 24 }}>Loading 3D view…</p>}>
+              <Trench3DView
+                run={run}
+                scalePxPerFt={scalePxPerFt}
+                groundSampler={groundSampler}
+                height={360}
+              />
+            </React.Suspense>
+          </div>
+        );
+      })()}
 
       <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn btn-secondary btn-sm" onClick={onCancel}>Cancel</button>

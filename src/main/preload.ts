@@ -161,14 +161,24 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- Job documents ----
   listJobDocuments: (jobId: number) => invoke('db:documents:list', jobId),
-  addJobDocuments: (jobId: number, category: string) => invoke('db:documents:add', jobId, category),
-  addJobDocumentPaths: (jobId: number, paths: string[], category: string) =>
-    invoke('db:documents:add-paths', jobId, paths, category),
+  addJobDocuments: (jobId: number, folderId: number | null) => invoke('db:documents:add', jobId, folderId),
+  addJobDocumentPaths: (jobId: number, paths: string[], folderId: number | null) =>
+    invoke('db:documents:add-paths', jobId, paths, folderId),
   openJobDocument: (id: number) => invoke('db:documents:open', id),
   revealJobDocument: (id: number) => invoke('db:documents:reveal', id),
-  updateJobDocument: (id: number, fields: { category?: string; notes?: string | null }) =>
+  updateJobDocument: (id: number, fields: { notes?: string | null }) =>
     invoke('db:documents:update', id, fields),
   deleteJobDocument: (id: number) => invoke('db:documents:delete', id),
+  moveJobDocument: (id: number, folderId: number | null) => invoke('db:documents:move', id, folderId),
+
+  // ---- Job document folders ----
+  listJobDocumentFolders: (jobId: number) => invoke('db:document-folders:list', jobId),
+  createJobDocumentFolder: (jobId: number, parentId: number | null, name: string) =>
+    invoke('db:document-folders:create', jobId, parentId, name),
+  renameJobDocumentFolder: (id: number, name: string) => invoke('db:document-folders:rename', id, name),
+  moveJobDocumentFolder: (id: number, newParentId: number | null) =>
+    invoke('db:document-folders:move', id, newParentId),
+  deleteJobDocumentFolder: (id: number) => invoke('db:document-folders:delete', id),
 
   // ---- Export ----
   exportQuickBooksCSV: (jobId: number) => invoke('export:quickbooks-csv', jobId),

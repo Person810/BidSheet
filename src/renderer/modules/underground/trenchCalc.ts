@@ -156,6 +156,91 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// ---- Depth-zone summary -----------------------------------------------------
+
+export interface DepthZone {
+  label: string;
+  lf: number;
+  excavationCY: number;
+}
+
+/**
+ * Depth bands the run is bucketed into for the summary below. 5/10/15 ft
+ * line up with OSHA's shoring/trench-box trigger depths, which is the same
+ * break utility estimators actually price against -- matches the depth-zone
+ * reports AGTEK, Carlson ("Depth Summary"), and MudShark all ship.
+ */
+export const DEFAULT_DEPTH_BREAKS_FT = [5, 10, 15, 20];
+
+/**
+ * Splits the run into depth bands and reports the horizontal length and
+ * excavation volume in each -- e.g. "40 LF / 22 CY under 5 ft, 60 LF / 55 CY
+ * from 5-10 ft". Depth is linear in station (constant grade), so each band
+ * maps to a contiguous station range; a flat run (gradePct = 0) sits in
+ * exactly one band for its whole length.
+ */
+export function depthZoneBreakdown(
+  input: TrenchInput,
+  breaksFt: number[] = DEFAULT_DEPTH_BREAKS_FT,
+): DepthZone[] {
+  const { startDepthFt, gradePct, runLengthLF, trenchWidthFt, benchWidthFt } = input;
+  if (runLengthLF <= 0 || trenchWidthFt <= 0) return [];
+
+  const fallFt = (gradePct / 100) * runLengthLF;
+  const endDepthFt = startDepthFt + fallFt;
+  const totalWidthFt = trenchWidthFt + benchWidthFt * 2;
+  const sortedBreaks = [...new Set(breaksFt)].sort((a, b) => a - b);
+  const bounds = [0, ...sortedBreaks, Infinity];
+
+  const zoneLabel = (lo: number, hi: number) =>
+    hi === Infinity ? `${fmtNum(lo, 0)}+ ft` : `${fmtNum(lo, 0)}–${fmtNum(hi, 0)} ft`;
+
+  const zones: DepthZone[] = [];
+
+  if (fallFt === 0) {
+    // Flat trench: the whole run sits at one depth, so it belongs to exactly one band.
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const lo = bounds[i];
+      const hi = bounds[i + 1];
+      if (startDepthFt >= lo && startDepthFt < hi) {
+        const excavationCF = totalWidthFt * startDepthFt * runLengthLF;
+        zones.push({
+          label: zoneLabel(lo, hi),
+          lf: round2(runLengthLF),
+          excavationCY: round2(cubicFeetToYards(excavationCF)),
+        });
+        break;
+      }
+    }
+    return zones;
+  }
+
+  const loDepth = Math.min(startDepthFt, endDepthFt);
+  const hiDepth = Math.max(startDepthFt, endDepthFt);
+  const stationAtDepth = (d: number) => ((d - startDepthFt) * runLengthLF) / fallFt;
+
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const binLo = bounds[i];
+    const binHi = bounds[i + 1];
+    const d0 = Math.max(loDepth, binLo);
+    const d1 = Math.min(hiDepth, binHi);
+    if (d1 <= d0) continue;
+
+    const lf = Math.abs(stationAtDepth(d1) - stationAtDepth(d0));
+    if (lf <= 0) continue;
+
+    const avgDepth = (d0 + d1) / 2;
+    const excavationCF = totalWidthFt * avgDepth * lf;
+    zones.push({
+      label: zoneLabel(binLo, binHi),
+      lf: round2(lf),
+      excavationCY: round2(cubicFeetToYards(excavationCF)),
+    });
+  }
+
+  return zones;
+}
+
 /**
  * "Show the math" for the trench takeoff (§5). Re-derives the substituted
  * arithmetic for the volumes from the same inputs, so the numbers in the
