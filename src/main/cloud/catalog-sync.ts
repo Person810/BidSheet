@@ -37,6 +37,8 @@ export interface CatalogSnapshot {
   production_rates: any[];
   assemblies: any[];
   assembly_items: any[];
+  /** Client records (#94). Optional: absent in pre-v44 snapshots. */
+  clients?: any[];
 }
 
 /**
@@ -74,6 +76,7 @@ const UUID_CATALOG_TABLES = [
   'equipment',
   'crew_templates',
   'assemblies',
+  'clients',
   'materials',
   'production_rates',
   'assembly_items',
@@ -129,6 +132,7 @@ export function exportCatalog(db: Database.Database): CatalogSnapshot {
     production_rates: exportTable('production_rates'),
     assemblies: exportTable('assemblies'),
     assembly_items: exportTable('assembly_items'),
+    clients: exportTable('clients'),
   };
 }
 
@@ -215,7 +219,8 @@ export function importCatalog(db: Database.Database, raw: unknown): CatalogImpor
 
   const run = db.transaction(() => {
     for (const table of UUID_CATALOG_TABLES) {
-      upsertTable(table, (snapshot as any)[table]);
+      // Optional tables (clients) are absent in snapshots from older builds.
+      upsertTable(table, (snapshot as any)[table] ?? []);
     }
 
     // crew_members: wholesale replace for every template the snapshot

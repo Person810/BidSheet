@@ -40,7 +40,12 @@ function buildCatalog(db: Database.Database) {
     matId
   );
   db.prepare("UPDATE app_settings SET company_name = 'Dirt Bros LLC', default_overhead_percent = 12 WHERE id = 1").run();
-  return { catId, matId, roleId, crewId, asmId };
+  const clientId = lastId(
+    db
+      .prepare("INSERT INTO clients (name, address, contact_name) VALUES ('Smith Construction', '12 Main St', 'Bob')")
+      .run()
+  );
+  return { catId, matId, roleId, crewId, asmId, clientId };
 }
 
 describe('exportCatalog', () => {
@@ -66,6 +71,11 @@ describe('exportCatalog', () => {
     // machine-local settings never travel
     expect(snap.settings?.setup_complete).toBeUndefined();
     expect(snap.settings?.local_only_mode).toBeUndefined();
+    // client records ride along with the catalog (#94)
+    expect(snap.clients).toHaveLength(1);
+    expect(snap.clients![0].id).toBeUndefined();
+    expect(snap.clients![0].uuid).toBeTruthy();
+    expect(snap.clients![0].contact_name).toBe('Bob');
   });
 
   it('hashes deterministically, ignoring volatile metadata', () => {
@@ -100,6 +110,16 @@ describe('importCatalog', () => {
     expect(b.prepare('SELECT company_name FROM app_settings WHERE id = 1').get()).toEqual({
       company_name: 'Dirt Bros LLC',
     });
+  });
+
+  it('accepts snapshots from pre-clients builds (clients key absent)', () => {
+    const a = freshDb();
+    buildCatalog(a);
+    const snap = exportCatalog(a) as any;
+    delete snap.clients;
+    const b = freshDb();
+    expect(() => importCatalog(b, snap)).not.toThrow();
+    expect((b.prepare('SELECT COUNT(*) AS n FROM clients').get() as any).n).toBe(0);
   });
 
   it('is idempotent — re-importing an identical catalog applies nothing', () => {

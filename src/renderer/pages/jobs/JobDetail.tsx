@@ -3,6 +3,7 @@ import { Lock, Unlock } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { EditJobModal, type EditJobForm } from './EditJobModal';
+import { commitClientDetails, type ClientDetailsDraft } from '../../components/ClientField';
 import { ChangeOrdersTab } from './ChangeOrdersTab';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
@@ -84,6 +85,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
     overheadPercent: 0, profitPercent: 0, bondPercent: 0, taxPercent: 0, escalationPercent: 0,
   });
+  const [editClientDetails, setEditClientDetails] = useState<ClientDetailsDraft | null>(null);
   const [lockBypassed, setLockBypassed] = useState(false);
 
   // Derived: bid is effectively locked when job is won or lost, bid_locked=1, and user hasn't bypassed this session
@@ -235,11 +237,15 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       taxPercent: job.tax_percent ?? 0,
       escalationPercent: job.escalation_percent ?? 0,
     });
+    setEditClientDetails(null);
     setShowEditJob(true);
   };
 
   const saveJobInfo = async () => {
     if (!job || !editJobForm.name.trim()) return;
+    // Edited client details land on the client record first; saveJob then
+    // re-links the job to that record by name.
+    await commitClientDetails(editJobForm.client, editClientDetails);
     await window.api.saveJob({
       ...jobToPayload(job),
       name: editJobForm.name.trim(),
@@ -994,6 +1000,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           onSave={saveJobInfo}
           onClose={() => setShowEditJob(false)}
           jobId={job?.id}
+          clientDetails={editClientDetails}
+          onClientDetailsChange={setEditClientDetails}
         />
       )}
 

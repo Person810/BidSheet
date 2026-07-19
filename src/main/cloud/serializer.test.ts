@@ -32,7 +32,14 @@ function buildFixture(db: Database.Database) {
   );
   const asmId = lastId(db.prepare("INSERT INTO assemblies (name) VALUES ('Sidewalk demo + pour')").run());
 
-  const jobId = lastId(db.prepare("INSERT INTO jobs (name) VALUES ('Elm Street Sewer')").run());
+  const clientId = lastId(
+    db.prepare("INSERT INTO clients (name, contact_name) VALUES ('Smith Construction', 'Bob')").run()
+  );
+  const jobId = lastId(
+    db
+      .prepare("INSERT INTO jobs (name, client, client_id) VALUES ('Elm Street Sewer', 'Smith Construction', ?)")
+      .run(clientId)
+  );
   const sectionId = lastId(
     db.prepare("INSERT INTO bid_sections (job_id, name) VALUES (?, 'Base Bid')").run(jobId)
   );
@@ -55,7 +62,7 @@ function buildFixture(db: Database.Database) {
   );
   db.prepare('INSERT INTO takeoff_surface_points (surface_id, x, y, z_ft, pdf_page, sort_order) VALUES (?, 1, 2, 100.5, 1, 0)').run(surfaceId);
   db.prepare('INSERT INTO takeoff_surface_points (surface_id, x, y, z_ft, pdf_page, sort_order) VALUES (?, 3, 4, 101.25, 1, 1)').run(surfaceId);
-  return { jobId, matId, equipId, asmId, surfaceId };
+  return { jobId, matId, equipId, asmId, surfaceId, clientId };
 }
 
 describe('v28 uuid migration', () => {
@@ -99,6 +106,15 @@ describe('exportJob (format 2)', () => {
     expect(snap.takeoff.surfaces).toHaveLength(1);
     expect(snap.takeoff.surface_points).toHaveLength(2);
     expect(snap.takeoff.surface_points[0].z_ft).toBe(100.5);
+  });
+
+  it('replaces the client link with the client row uuid', () => {
+    const db = freshDb();
+    const { jobId, clientId } = buildFixture(db);
+    const snap = exportJob(db, jobId);
+    expect(snap.job.client_uuid).toBe(uuidOf(db, 'clients', clientId));
+    expect(snap.job.client_id).toBeUndefined();
+    expect(snap.job.client).toBe('Smith Construction');
   });
 });
 
@@ -160,6 +176,38 @@ describe('importJob (format 2)', () => {
     expect(li.equipment_id).toBeNull();
     const area = b.prepare('SELECT * FROM takeoff_areas WHERE job_id = ?').get(result.jobId) as any;
     expect(area.assembly_id).toBeNull();
+  });
+
+  it('resolves the client by uuid when the record already synced', () => {
+    const { b, snap } = exportAndImport();
+    const bClientId = lastId(
+      b.prepare("INSERT INTO clients (name, uuid) VALUES ('Smith Construction', ?)").run(snap.job.client_uuid)
+    );
+    const result = importJob(b, 'cloud-job-1', snap);
+    const job = b.prepare('SELECT * FROM jobs WHERE id = ?').get(result.jobId) as any;
+    expect(job.client_id).toBe(bClientId);
+  });
+
+  it('falls back to a same-named local client when the uuid is unknown', () => {
+    const { b, snap } = exportAndImport();
+    const bClientId = lastId(
+      b.prepare("INSERT INTO clients (name) VALUES ('smith construction')").run()
+    );
+    const result = importJob(b, 'cloud-job-1', snap);
+    const job = b.prepare('SELECT * FROM jobs WHERE id = ?').get(result.jobId) as any;
+    expect(job.client_id).toBe(bClientId);
+  });
+
+  it('creates a stub client carrying the remote uuid when nothing matches', () => {
+    const { b, snap } = exportAndImport();
+    const result = importJob(b, 'cloud-job-1', snap);
+    const job = b.prepare('SELECT * FROM jobs WHERE id = ?').get(result.jobId) as any;
+    expect(job.client_id).not.toBeNull();
+    const client = b.prepare('SELECT * FROM clients WHERE id = ?').get(job.client_id) as any;
+    expect(client.name).toBe('Smith Construction');
+    // The stub adopts the remote uuid, so the later catalog pull merges the
+    // full record onto this same row instead of duplicating the client.
+    expect(client.uuid).toBe(snap.job.client_uuid);
   });
 
   it('keeps row uuids stable across machines', () => {

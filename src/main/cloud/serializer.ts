@@ -113,6 +113,12 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
     id == null
       ? null
       : ((db.prepare(`SELECT uuid FROM ${refTable} WHERE id = ?`).get(id) as any)?.uuid ?? null);
+
+  // The client link travels as the client row's uuid (clients sync
+  // account-wide with the catalog); the denormalized job.client name rides
+  // along either way.
+  jobOut.client_uuid = uuidOf('clients', job.client_id);
+  delete jobOut.client_id;
   const withUuidRefs = (table: string, rows: any[]): any[] => {
     const fks = CATALOG_FKS[table];
     if (!fks) return rows;
@@ -336,6 +342,37 @@ export function importJob(
       if (jobCols.has(k)) jobFields[k] = v;
     }
     jobFields.parent_job_id = parentRow?.id ?? null;
+
+    // Client link: resolve by uuid; else by name (the machines typed the
+    // same client independently); else create a name-only stub carrying the
+    // remote uuid, so the catalog snapshot — which may sync after this job —
+    // merges the full record onto the same row instead of duplicating it.
+    // (client_uuid isn't a jobs column, so the loop above already skipped it.)
+    const clientUuid = snapshot.job.client_uuid;
+    let clientId: number | null = null;
+    if (typeof clientUuid === 'string' && clientUuid) {
+      clientId = idForUuid('clients', clientUuid);
+      if (clientId == null) {
+        const name = typeof snapshot.job.client === 'string' ? snapshot.job.client.trim() : '';
+        if (name) {
+          const byName = db
+            .prepare(
+              `SELECT id FROM clients WHERE TRIM(name) = ? COLLATE NOCASE
+               ORDER BY is_active DESC, id LIMIT 1`
+            )
+            .get(name) as any;
+          clientId = byName
+            ? byName.id
+            : Number(
+                db.prepare('INSERT INTO clients (name, uuid) VALUES (?, ?)').run(name, clientUuid)
+                  .lastInsertRowid
+              );
+        } else {
+          dropped++;
+        }
+      }
+    }
+    jobFields.client_id = clientId;
 
     let jobId: number;
     if (existing) {

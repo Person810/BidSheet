@@ -4,6 +4,7 @@ import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
 import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
+import { ClientField, commitClientDetails, type ClientDetailsDraft } from '../../components/ClientField';
 import { formatDateLocal, statusBadge } from './helpers';
 
 const JOB_SORT_ACCESSORS = {
@@ -31,6 +32,8 @@ export function JobList({ onOpenJob }: JobListProps) {
   // The auto-suggested number currently sitting in the field (so the hint
   // disappears as soon as the user types their own).
   const [suggestedNumber, setSuggestedNumber] = useState<string | null>(null);
+  // Client details draft, when the user opens "Add/Edit details" (#94).
+  const [clientDetails, setClientDetails] = useState<ClientDetailsDraft | null>(null);
   const numberWarning = useJobNumberWarning(showCreate ? form.jobNumber : '');
 
   const openCreate = async () => {
@@ -70,6 +73,9 @@ export function JobList({ onOpenJob }: JobListProps) {
 
   const handleCreate = async () => {
     const settings = await window.api.getSettings();
+    // Any edited client details go to the client record first; saveJob then
+    // links the job to that record by name.
+    await commitClientDetails(form.client, clientDetails);
     const result = await window.api.saveJob({
       name: form.name, jobNumber: form.jobNumber || null, client: form.client,
       location: form.location || null, bidDate: form.bidDate || null, startDate: null,
@@ -82,6 +88,7 @@ export function JobList({ onOpenJob }: JobListProps) {
     setShowCreate(false);
     setForm({ name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '' });
     setSuggestedNumber(null);
+    setClientDetails(null);
     // Drop the user straight into the job they just created
     if (result?.lastInsertRowid) {
       onOpenJob(Number(result.lastInsertRowid));
@@ -436,8 +443,10 @@ export function JobList({ onOpenJob }: JobListProps) {
             <div className="form-row">
               <div className="form-group">
                 <label>Client / GC</label>
-                <input type="text" className="form-control" value={form.client}
-                  onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="General contractor or owner" />
+                <ClientField value={form.client}
+                  onChange={(client) => setForm({ ...form, client })}
+                  details={clientDetails} onDetailsChange={setClientDetails}
+                  placeholder="General contractor or owner" />
               </div>
               <div className="form-group">
                 <label>Bid Date</label>

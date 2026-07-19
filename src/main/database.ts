@@ -289,6 +289,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV41,
   migrateV42,
   migrateV43,
+  migrateV44,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -695,6 +696,64 @@ function migrateV43(db: Database.Database): void {
     ALTER TABLE app_settings ADD COLUMN job_number_start INTEGER NOT NULL DEFAULT 1;
     INSERT INTO schema_version (version) VALUES (43);
   `);
+}
+
+// V44: Reusable client records (#94). jobs.client stays the denormalized
+// display name — CSV export, sorting, and the dashboard's win-rate-by-client
+// all keep reading it unchanged — while jobs.client_id links the canonical
+// record that carries address/contact details. db:jobs:save re-derives
+// client_id from the typed name on every save (find-or-create), so the link
+// tracks the text and can never go stale. Clients sync account-wide with the
+// catalog snapshot, so rows get the v28-style uuid + autofill trigger.
+function migrateV44(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE clients (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL,
+      address       TEXT,
+      contact_name  TEXT,
+      contact_phone TEXT,
+      contact_email TEXT,
+      notes         TEXT,
+      is_active     INTEGER NOT NULL DEFAULT 1,
+      uuid          TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE UNIQUE INDEX idx_clients_uuid ON clients(uuid);
+    CREATE TRIGGER trg_clients_uuid AFTER INSERT ON clients WHEN NEW.uuid IS NULL
+    BEGIN
+      UPDATE clients SET uuid = ${SQL_RANDOM_UUID} WHERE id = NEW.id;
+    END;
+
+    ALTER TABLE jobs ADD COLUMN client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL;
+    CREATE INDEX idx_jobs_client ON jobs(client_id);
+  `);
+
+  // Backfill: one client per distinct existing name (case-insensitive —
+  // "Smith Const." and "smith const." were always the same client), keeping
+  // the capitalization from the most recently updated job that used it.
+  const jobs = db
+    .prepare(
+      `SELECT id, TRIM(client) AS name FROM jobs
+       WHERE TRIM(COALESCE(client, '')) != ''
+       ORDER BY updated_at DESC, id DESC`
+    )
+    .all() as { id: number; name: string }[];
+  const insertClient = db.prepare('INSERT INTO clients (name) VALUES (?)');
+  const linkJob = db.prepare('UPDATE jobs SET client_id = ? WHERE id = ?');
+  const idByKey = new Map<string, number>();
+  for (const job of jobs) {
+    const key = job.name.toLowerCase();
+    let clientId = idByKey.get(key);
+    if (clientId === undefined) {
+      clientId = Number(insertClient.run(job.name).lastInsertRowid);
+      idByKey.set(key, clientId);
+    }
+    linkJob.run(clientId, job.id);
+  }
+
+  db.exec('INSERT INTO schema_version (version) VALUES (44);');
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */

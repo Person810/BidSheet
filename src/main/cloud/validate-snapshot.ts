@@ -110,6 +110,8 @@ const catalogSchema = z.strictObject({
   production_rates: rows,
   assemblies: rows,
   assembly_items: rows,
+  // Added in v44; optional so pre-v44 snapshots still validate.
+  clients: rows.optional(),
 });
 
 // Checked by a manual pre-scan: zod's record handling quietly tolerates an
