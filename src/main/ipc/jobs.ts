@@ -6,7 +6,9 @@ import { getDbPath, isSetupComplete, seedDatabase } from '../database';
 import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
+import { nextJobNumber } from '../../shared/jobNumbering';
 import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
+import { findOrCreateClient } from './clients';
 import { removeJobFiles } from './documents';
 
 export function registerJobHandlers(db: Database.Database): void {
@@ -26,37 +28,79 @@ export function registerJobHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:jobs:save', (_event, job: any) => {
-    if (job.id) {
-      return db
-        .prepare(
-          `UPDATE jobs SET
-            name = ?, job_number = ?, client = ?, location = ?,
-            bid_date = ?, start_date = ?, description = ?, status = ?,
-            overhead_percent = ?, profit_percent = ?, bond_percent = ?,
-            tax_percent = ?, escalation_percent = ?, notes = ?, bid_locked = ?,
-            updated_at = datetime('now', 'localtime')
-          WHERE id = ?`
-        )
-        .run(
-          job.name, job.jobNumber, job.client, job.location,
-          job.bidDate, job.startDate, job.description, job.status,
-          job.overheadPercent, job.profitPercent, job.bondPercent,
-          job.taxPercent, job.escalationPercent ?? 0, job.notes, job.bidLocked ? 1 : 0, job.id
-        );
-    } else {
-      return db
-        .prepare(
-          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, parent_job_id, change_order_number)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          job.name, job.jobNumber, job.client, job.location,
-          job.bidDate, job.startDate, job.description,
-          job.overheadPercent, job.profitPercent, job.bondPercent,
-          job.taxPercent, job.escalationPercent ?? 0, job.notes,
-          job.parentJobId || null, job.changeOrderNumber || null
-        );
-    }
+    // client_id is re-derived from the typed name on every save (creating
+    // the client record when it's new — that's how "add a client without
+    // leaving the job form" works), so the link always tracks the text.
+    const save = db.transaction(() => {
+      const clientId = findOrCreateClient(db, job.client);
+      if (job.id) {
+        return db
+          .prepare(
+            `UPDATE jobs SET
+              name = ?, job_number = ?, client = ?, client_id = ?, location = ?,
+              bid_date = ?, start_date = ?, description = ?, status = ?,
+              overhead_percent = ?, profit_percent = ?, bond_percent = ?,
+              tax_percent = ?, escalation_percent = ?, notes = ?, bid_locked = ?,
+              updated_at = datetime('now', 'localtime')
+            WHERE id = ?`
+          )
+          .run(
+            job.name, job.jobNumber, job.client, clientId, job.location,
+            job.bidDate, job.startDate, job.description, job.status,
+            job.overheadPercent, job.profitPercent, job.bondPercent,
+            job.taxPercent, job.escalationPercent ?? 0, job.notes, job.bidLocked ? 1 : 0, job.id
+          );
+      } else {
+        return db
+          .prepare(
+            `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, parent_job_id, change_order_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            job.name, job.jobNumber, job.client, clientId, job.location,
+            job.bidDate, job.startDate, job.description,
+            job.overheadPercent, job.profitPercent, job.bondPercent,
+            job.taxPercent, job.escalationPercent ?? 0, job.notes,
+            job.parentJobId || null, job.changeOrderNumber || null
+          );
+      }
+    });
+    return save();
+  });
+
+  // Next auto job number to suggest in the create form. Derived fresh from
+  // the max existing match each call — see shared/jobNumbering.ts for why
+  // there is no stored counter.
+  safeHandle('db:jobs:next-number', () => {
+    const s = db
+      .prepare('SELECT job_number_auto, job_number_format, job_number_start FROM app_settings WHERE id = 1')
+      .get() as any;
+    if (!s || s.job_number_auto !== 1) return { enabled: false, suggestion: null };
+    const numbers = (
+      db.prepare('SELECT job_number FROM jobs WHERE job_number IS NOT NULL').all() as any[]
+    ).map((r) => r.job_number as string);
+    return {
+      enabled: true,
+      suggestion: nextJobNumber(s.job_number_format || 'YYYY-NNN', numbers, s.job_number_start || 1),
+    };
+  });
+
+  // Duplicate job numbers warn in the UI, never fail: legacy data may already
+  // hold dupes, and change orders share the parent's number by design (they
+  // are excluded here so a parent's own COs don't flag it).
+  safeHandle('db:jobs:number-in-use', (_event, jobNumber: string, excludeJobId?: number) => {
+    const trimmed = String(jobNumber || '').trim();
+    if (!trimmed) return { inUse: false };
+    const row = db
+      .prepare(
+        `SELECT id, name FROM jobs
+         WHERE TRIM(job_number) = ? COLLATE NOCASE
+           AND parent_job_id IS NULL
+           AND id != COALESCE(?, -1)
+         LIMIT 1`
+      )
+      .get(trimmed, excludeJobId ?? null) as any;
+    return row ? { inUse: true, jobId: row.id, jobName: row.name } : { inUse: false };
   });
 
   safeHandle('db:jobs:delete', (_event, id: number) => {
@@ -72,18 +116,21 @@ export function registerJobHandlers(db: Database.Database): void {
     return result;
   });
 
-  safeHandle('db:jobs:duplicate', (_event, id: number, newName?: string, newBidDate?: string) => {
+  safeHandle('db:jobs:duplicate', (_event, id: number, newName?: string, newBidDate?: string, newJobNumber?: string | null) => {
     const duplicate = db.transaction(() => {
       const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as any;
       if (!job) return null;
+      // undefined = caller didn't offer a number field (keep the source's);
+      // '' / null = deliberately cleared.
+      const jobNumber = newJobNumber === undefined ? job.job_number : newJobNumber || null;
 
       const newJob = db
         .prepare(
-          `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`
         )
         .run(
-          newName || job.name + ' (Copy)', job.job_number, job.client, job.location,
+          newName || job.name + ' (Copy)', jobNumber, job.client, job.client_id, job.location,
           newBidDate ?? job.bid_date, job.start_date, job.description,
           job.overhead_percent, job.profit_percent, job.bond_percent,
           job.tax_percent, job.escalation_percent ?? 0, job.notes
@@ -299,12 +346,12 @@ export function registerJobHandlers(db: Database.Database): void {
     const nextCO = (maxCO?.max_co || 0) + 1;
 
     const result = db.prepare(
-      `INSERT INTO jobs (name, job_number, client, location, bid_date, start_date, description, status,
+      `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status,
         overhead_percent, profit_percent, bond_percent, tax_percent, notes,
         parent_job_id, change_order_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
     ).run(
-      `CO #${nextCO}`, parent.job_number, parent.client, parent.location,
+      `CO #${nextCO}`, parent.job_number, parent.client, parent.client_id, parent.location,
       null, null, null, parent.overhead_percent, parent.profit_percent,
       parent.bond_percent, parent.tax_percent, null,
       parentJobId, nextCO

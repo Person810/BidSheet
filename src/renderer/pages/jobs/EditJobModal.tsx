@@ -1,4 +1,6 @@
 import React from 'react';
+import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
+import { ClientField, type ClientDetailsDraft } from '../../components/ClientField';
 
 export interface EditJobForm {
   name: string;
@@ -19,10 +21,18 @@ interface EditJobModalProps {
   setForm: (form: EditJobForm) => void;
   onSave: () => void;
   onClose: () => void;
+  /** Excluded from the duplicate-number warning (a job matches itself). */
+  jobId?: number;
+  /** Client details draft (#94), committed by the parent's onSave. */
+  clientDetails: ClientDetailsDraft | null;
+  onClientDetailsChange: (details: ClientDetailsDraft | null) => void;
 }
 
 /** Edit-job info + markups modal, extracted from JobDetail. */
-export function EditJobModal({ form, setForm, onSave, onClose }: EditJobModalProps) {
+export function EditJobModal({
+  form, setForm, onSave, onClose, jobId, clientDetails, onClientDetailsChange,
+}: EditJobModalProps) {
+  const numberWarning = useJobNumberWarning(form.jobNumber, jobId);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -39,13 +49,17 @@ export function EditJobModal({ form, setForm, onSave, onClose }: EditJobModalPro
             <input type="text" className="form-control" value={form.jobNumber}
               onChange={(e) => setForm({ ...form, jobNumber: e.target.value })}
               placeholder="optional" />
+            {numberWarning && (
+              <div className="text-warning" style={{ fontSize: 12, marginTop: 4 }}>{numberWarning}</div>
+            )}
           </div>
         </div>
         <div className="form-row">
           <div className="form-group">
             <label>Client / GC</label>
-            <input type="text" className="form-control" value={form.client}
-              onChange={(e) => setForm({ ...form, client: e.target.value })} />
+            <ClientField value={form.client}
+              onChange={(client) => setForm({ ...form, client })}
+              details={clientDetails} onDetailsChange={onClientDetailsChange} />
           </div>
           <div className="form-group">
             <label>Bid Date</label>

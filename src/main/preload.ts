@@ -50,9 +50,20 @@ contextBridge.exposeInMainWorld('api', {
   getJob: (id: number) => invoke('db:jobs:get', id),
   saveJob: (job: any) => invoke('db:jobs:save', job),
   deleteJob: (id: number) => invoke('db:jobs:delete', id),
-  duplicateJob: (id: number, newName?: string, newBidDate?: string) => invoke('db:jobs:duplicate', id, newName, newBidDate),
+  duplicateJob: (id: number, newName?: string, newBidDate?: string, newJobNumber?: string | null) =>
+    invoke('db:jobs:duplicate', id, newName, newBidDate, newJobNumber),
   getChangeOrders: (parentJobId: number) => invoke('db:jobs:change-orders', parentJobId),
   createChangeOrder: (parentJobId: number) => invoke('db:jobs:create-change-order', parentJobId),
+  getNextJobNumber: () => invoke('db:jobs:next-number'),
+  checkJobNumberInUse: (jobNumber: string, excludeJobId?: number) =>
+    invoke('db:jobs:number-in-use', jobNumber, excludeJobId),
+
+  // ---- Clients ----
+  getClients: (includeInactive?: boolean) => invoke('db:clients:list', includeInactive),
+  getClient: (id: number) => invoke('db:clients:get', id),
+  saveClient: (client: any) => invoke('db:clients:save', client),
+  deleteClient: (id: number) => invoke('db:clients:delete', id),
+  restoreClient: (id: number) => invoke('db:clients:restore', id),
 
   getBidSections: (jobId: number) => invoke('db:bid-sections:list', jobId),
   saveBidSection: (section: any) => invoke('db:bid-sections:save', section),

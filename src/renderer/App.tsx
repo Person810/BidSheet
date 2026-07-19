@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import {
   LayoutGrid, Folder, Package, Boxes, Users, Truck, Settings,
-  Spline, FileText, Calculator,
+  Spline, FileText, Calculator, Contact,
 } from 'lucide-react';
 import { SetupWizard } from './components/SetupWizard';
 import { ToastContainer } from './components/Toast';
@@ -15,6 +15,7 @@ import { MaterialsPage } from './pages/MaterialsPage';
 import { LaborPage } from './pages/LaborPage';
 import { EquipmentPage } from './pages/EquipmentPage';
 import { JobsPage } from './pages/JobsPage';
+import { ClientsPage } from './pages/ClientsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AssembliesPage } from './pages/AssembliesPage';
 import { getActiveModules } from './modules';
@@ -40,6 +41,7 @@ const NAV_STROKE = 2;
 const SidebarIcons: Record<string, React.ReactNode> = {
   '/': <LayoutGrid size={NAV_ICON} strokeWidth={NAV_STROKE} />,
   '/jobs': <Folder size={NAV_ICON} strokeWidth={NAV_STROKE} />,
+  '/clients': <Contact size={NAV_ICON} strokeWidth={NAV_STROKE} />,
   '/materials': <Package size={NAV_ICON} strokeWidth={NAV_STROKE} />,
   '/assemblies': <Boxes size={NAV_ICON} strokeWidth={NAV_STROKE} />,
   '/labor': <Users size={NAV_ICON} strokeWidth={NAV_STROKE} />,
@@ -221,6 +223,12 @@ export function App() {
               </NavLink>
             </li>
             <li>
+              <NavLink to="/clients" className={({ isActive }) => isActive ? 'active' : ''}>
+                <span className="nav-icon">{SidebarIcons['/clients']}</span>
+                Clients
+              </NavLink>
+            </li>
+            <li>
               <NavLink to="/materials" data-tour="materials" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/materials']}</span>
                 Materials
@@ -276,6 +284,7 @@ export function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/jobs" element={<JobsPage />} />
+              <Route path="/clients" element={<ClientsPage />} />
               <Route path="/materials" element={<MaterialsPage />} />
               <Route path="/assemblies" element={<AssembliesPage />} />
               <Route path="/labor" element={<LaborPage />} />

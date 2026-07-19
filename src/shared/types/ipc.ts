@@ -145,6 +145,7 @@ export interface JobRow {
   name: string;
   job_number: string | null;
   client: string;
+  client_id: number | null;
   location: string | null;
   bid_date: string | null;
   start_date: string | null;
@@ -182,6 +183,33 @@ export interface SaveJobPayload {
   bidLocked?: boolean | number;
   parentJobId?: number | null;
   changeOrderNumber?: number | null;
+}
+
+export interface ClientRow {
+  id: number;
+  name: string;
+  address: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  notes: string | null;
+  is_active: number;
+  uuid: string;
+  created_at: string;
+  updated_at: string;
+  /** Present on db:clients:list rows (top-level jobs linked to this client). */
+  job_count?: number;
+}
+
+export interface SaveClientPayload {
+  /** Omit to upsert by name (the job form's path — it never tracks ids). */
+  id?: number;
+  name: string;
+  address?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  notes?: string | null;
 }
 
 export interface BidSectionRow {
@@ -473,6 +501,9 @@ export interface AppSettingsRow {
   auto_lock_on_close: number;
   last_backup_schema_version: number;
   local_only_mode: number;
+  job_number_auto: number;
+  job_number_format: string;
+  job_number_start: number;
 }
 
 export interface SaveSettingsPayload {
@@ -488,6 +519,9 @@ export interface SaveSettingsPayload {
   defaultBondPercent: number;
   autoLockOnClose?: boolean | number;
   localOnlyMode?: boolean | number;
+  jobNumberAuto?: boolean | number;
+  jobNumberFormat?: string;
+  jobNumberStart?: number;
 }
 
 export interface CsvParseResult {

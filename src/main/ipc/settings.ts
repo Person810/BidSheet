@@ -211,7 +211,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
           company_email = ?, company_tagline = ?, company_logo = ?,
           default_overhead_percent = ?, default_profit_percent = ?,
           default_tax_percent = ?, default_bond_percent = ?,
-          auto_lock_on_close = ?, local_only_mode = ?
+          auto_lock_on_close = ?, local_only_mode = ?,
+          job_number_auto = ?, job_number_format = ?, job_number_start = ?
         WHERE id = 1`
       )
       .run(
@@ -220,7 +221,10 @@ export function registerSettingsHandlers(db: Database.Database): void {
         settings.defaultOverheadPercent, settings.defaultProfitPercent,
         settings.defaultTaxPercent, settings.defaultBondPercent,
         settings.autoLockOnClose ? 1 : 0,
-        settings.localOnlyMode ? 1 : 0
+        settings.localOnlyMode ? 1 : 0,
+        settings.jobNumberAuto ? 1 : 0,
+        settings.jobNumberFormat || 'YYYY-NNN',
+        Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1)
       );
   });
 

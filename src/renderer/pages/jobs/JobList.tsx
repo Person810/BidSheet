@@ -3,6 +3,8 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
 import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
+import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
+import { ClientField, commitClientDetails, type ClientDetailsDraft } from '../../components/ClientField';
 import { formatDateLocal, statusBadge } from './helpers';
 
 const JOB_SORT_ACCESSORS = {
@@ -27,6 +29,30 @@ export function JobList({ onOpenJob }: JobListProps) {
   const [form, setForm] = useState({
     name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
   });
+  // The auto-suggested number currently sitting in the field (so the hint
+  // disappears as soon as the user types their own).
+  const [suggestedNumber, setSuggestedNumber] = useState<string | null>(null);
+  // Client details draft, when the user opens "Add/Edit details" (#94).
+  const [clientDetails, setClientDetails] = useState<ClientDetailsDraft | null>(null);
+  const numberWarning = useJobNumberWarning(showCreate ? form.jobNumber : '');
+
+  const openCreate = async () => {
+    setShowCreate(true);
+    try {
+      const res = await window.api.getNextJobNumber();
+      if (res?.enabled && res.suggestion) {
+        const suggestion = res.suggestion;
+        // Only pre-fill an empty field — a number typed before a cancel wins.
+        setForm((f) => {
+          if (f.jobNumber) return f;
+          setSuggestedNumber(suggestion);
+          return { ...f, jobNumber: suggestion };
+        });
+      }
+    } catch {
+      // Suggestion is a convenience — the modal works without one.
+    }
+  };
 
   const loadJobs = useCallback(async () => {
     try {
@@ -47,6 +73,9 @@ export function JobList({ onOpenJob }: JobListProps) {
 
   const handleCreate = async () => {
     const settings = await window.api.getSettings();
+    // Any edited client details go to the client record first; saveJob then
+    // links the job to that record by name.
+    await commitClientDetails(form.client, clientDetails);
     const result = await window.api.saveJob({
       name: form.name, jobNumber: form.jobNumber || null, client: form.client,
       location: form.location || null, bidDate: form.bidDate || null, startDate: null,
@@ -58,6 +87,8 @@ export function JobList({ onOpenJob }: JobListProps) {
     });
     setShowCreate(false);
     setForm({ name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '' });
+    setSuggestedNumber(null);
+    setClientDetails(null);
     // Drop the user straight into the job they just created
     if (result?.lastInsertRowid) {
       onOpenJob(Number(result.lastInsertRowid));
@@ -149,19 +180,38 @@ export function JobList({ onOpenJob }: JobListProps) {
     });
   };
 
-  const [dupState, setDupState] = useState<{ jobId: number; name: string; bidDate: string } | null>(null);
+  const [dupState, setDupState] = useState<{ jobId: number; name: string; bidDate: string; jobNumber: string } | null>(null);
+  const [dupSuggested, setDupSuggested] = useState<string | null>(null);
+  const dupNumberWarning = useJobNumberWarning(dupState?.jobNumber || '');
 
-  const startDuplicate = (job: any) => {
+  const startDuplicate = async (job: any) => {
+    // Copying the source's number would mint a guaranteed duplicate, so
+    // suggest the next number instead when auto-numbering is on.
+    let jobNumber = job.job_number || '';
+    let suggested: string | null = null;
+    try {
+      const res = await window.api.getNextJobNumber();
+      if (res?.enabled && res.suggestion) {
+        jobNumber = res.suggestion;
+        suggested = res.suggestion;
+      }
+    } catch {
+      // Fall back to the source's number; the field stays editable.
+    }
+    setDupSuggested(suggested);
     setDupState({
       jobId: job.id,
       name: job.name + ' (Copy)',
       bidDate: new Date().toISOString().slice(0, 10),
+      jobNumber,
     });
   };
 
   const handleDuplicate = async () => {
     if (!dupState) return;
-    const result = await window.api.duplicateJob(dupState.jobId, dupState.name, dupState.bidDate || null);
+    const result = await window.api.duplicateJob(
+      dupState.jobId, dupState.name, dupState.bidDate || null, dupState.jobNumber.trim() || null
+    );
     setDupState(null);
     if (result?.newJobId) {
       loadJobs();
@@ -174,7 +224,7 @@ export function JobList({ onOpenJob }: JobListProps) {
     <div>
       <div className="page-header">
         <h2>Jobs & Bids</h2>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ New Job</button>
+        <button className="btn btn-primary" onClick={openCreate}>+ New Job</button>
       </div>
 
       <div className="flex gap-8 mb-24">
@@ -339,10 +389,24 @@ export function JobList({ onOpenJob }: JobListProps) {
               <input type="text" className="form-control" value={dupState.name}
                 onChange={(e) => setDupState({ ...dupState, name: e.target.value })} autoFocus />
             </div>
-            <div className="form-group">
-              <label>Bid Date</label>
-              <input type="date" className="form-control" value={dupState.bidDate}
-                onChange={(e) => setDupState({ ...dupState, bidDate: e.target.value })} />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Job Number (optional)</label>
+                <input type="text" className="form-control" value={dupState.jobNumber}
+                  onChange={(e) => setDupState({ ...dupState, jobNumber: e.target.value })} />
+                {dupNumberWarning ? (
+                  <div className="text-warning" style={{ fontSize: 12, marginTop: 4 }}>{dupNumberWarning}</div>
+                ) : dupSuggested && dupState.jobNumber === dupSuggested ? (
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Suggested next number — edit freely
+                  </div>
+                ) : null}
+              </div>
+              <div className="form-group">
+                <label>Bid Date</label>
+                <input type="date" className="form-control" value={dupState.bidDate}
+                  onChange={(e) => setDupState({ ...dupState, bidDate: e.target.value })} />
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setDupState(null)}>Cancel</button>
@@ -367,13 +431,22 @@ export function JobList({ onOpenJob }: JobListProps) {
                 <label>Job Number (optional)</label>
                 <input type="text" className="form-control" value={form.jobNumber}
                   onChange={(e) => setForm({ ...form, jobNumber: e.target.value })} placeholder="e.g. 2026-042" />
+                {numberWarning ? (
+                  <div className="text-warning" style={{ fontSize: 12, marginTop: 4 }}>{numberWarning}</div>
+                ) : suggestedNumber && form.jobNumber === suggestedNumber ? (
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Suggested next number — edit freely
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="form-row">
               <div className="form-group">
                 <label>Client / GC</label>
-                <input type="text" className="form-control" value={form.client}
-                  onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="General contractor or owner" />
+                <ClientField value={form.client}
+                  onChange={(client) => setForm({ ...form, client })}
+                  details={clientDetails} onDetailsChange={setClientDetails}
+                  placeholder="General contractor or owner" />
               </div>
               <div className="form-group">
                 <label>Bid Date</label>

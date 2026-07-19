@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { registerSettingsHandlers } from './ipc/settings';
 import { registerCatalogHandlers } from './ipc/catalog';
 import { registerJobHandlers } from './ipc/jobs';
+import { registerClientHandlers } from './ipc/clients';
 import { registerBidHandlers } from './ipc/bids';
 import { registerQuoteHandlers } from './ipc/quotes';
 import { registerTakeoffHandlers } from './ipc/takeoff';
@@ -17,6 +18,7 @@ export function registerIpcHandlers(db: Database.Database): void {
   registerSettingsHandlers(db);
   registerCatalogHandlers(db);
   registerJobHandlers(db);
+  registerClientHandlers(db);
   registerBidHandlers(db);
   registerQuoteHandlers(db);
   registerTakeoffHandlers(db);
