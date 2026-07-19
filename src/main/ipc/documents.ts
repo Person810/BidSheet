@@ -30,7 +30,7 @@ export function jobFilesDir(jobId: number): string {
 function documentPath(jobId: number, storedName: string): string {
   // stored_name is produced by uniqueStoredName (no separators), but be
   // defensive: never let a crafted name escape the job folder.
-  const dir = jobFilesDir(jobId);
+  const dir = path.resolve(jobFilesDir(jobId));
   const resolved = path.resolve(dir, storedName);
   if (!resolved.startsWith(dir + path.sep)) {
     throw new Error('Invalid document name.');
