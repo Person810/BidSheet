@@ -297,8 +297,9 @@ export function SettingsPage() {
                   placeholder="YYYY-NNN"
                 />
                 <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  N&apos;s become the counter (their count sets the padding); YYYY becomes the
-                  current year. Year formats restart the count each January.
+                  N&apos;s become the counter (their count sets the padding); YYYY or YY the
+                  current year, MM the month. Date formats restart the count each new
+                  year or month.
                 </div>
               </div>
               <div className="form-group" style={{ maxWidth: 140 }}>
