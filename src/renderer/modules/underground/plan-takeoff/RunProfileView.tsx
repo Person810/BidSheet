@@ -1,6 +1,10 @@
 import React, { useMemo } from 'react';
 import type { TakeoffRun } from './types';
 import { buildRunProfile, niceTickStep, segmentGrades, type GroundSampler } from './profileModel';
+import {
+  convertQty, formatPipeSize, formatQty, fromDisplay,
+} from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 
 interface RunProfileViewProps {
   run: TakeoffRun;
@@ -21,6 +25,8 @@ const M = { top: 34, right: 26, bottom: 34, left: 58 };
  * sheet, with the exaggeration factor shown.
  */
 export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, height = 420 }: RunProfileViewProps) {
+  const system = useUnitSystem();
+  const metric = system === 'metric';
   const profile = useMemo(() => buildRunProfile(run, scalePxPerFt, groundSampler), [run, scalePxPerFt, groundSampler]);
 
   if (!profile) {
@@ -42,12 +48,17 @@ export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, 
 
   const verticalExaggeration = (plotH / elevSpan) / (plotW / profile.totalLengthFt);
 
-  const stationStep = niceTickStep(profile.totalLengthFt);
-  const elevStep = niceTickStep(elevSpan);
+  // Ticks live in the display unit so metric gets round metre steps instead
+  // of converted feet; positions map back to canonical when plotting.
+  // Imperial passes through both directions untouched.
+  const cv = (ft: number) => convertQty(ft, 'ft', system);
+  const inv = (disp: number) => fromDisplay(disp, 'ft', system);
+  const stationStep = niceTickStep(cv(profile.totalLengthFt));
+  const elevStep = niceTickStep(cv(elevSpan));
   const stationTicks: number[] = [];
-  for (let s = 0; s <= profile.totalLengthFt + 0.01; s += stationStep) stationTicks.push(s);
+  for (let s = 0; s <= cv(profile.totalLengthFt) + 0.01; s += stationStep) stationTicks.push(s);
   const elevTicks: number[] = [];
-  for (let e = Math.ceil(elevMin / elevStep) * elevStep; e <= elevMax; e += elevStep) {
+  for (let e = Math.ceil(cv(elevMin) / elevStep) * elevStep; e <= cv(elevMax); e += elevStep) {
     // In depth mode the datum is ground level — "negative depth" ticks are noise
     if (profile.mode === 'depth' && e > 0.001) continue;
     elevTicks.push(e);
@@ -70,8 +81,9 @@ export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, 
   const pipeRegion = `${forward((p) => p.invert + profile.pipeDiaFt)} ${backward((p) => p.invert)} Z`;
 
   const structures = pts.filter((p) => p.structureType || p.rim != null);
+  // Both take display-unit values; callers convert canonical feet with cv()
   const fmtElev = (v: number) => v.toFixed(2);
-  const fmtDepth = (v: number) => `${v.toFixed(1)}'`;
+  const fmtDepth = (v: number) => (metric ? `${v.toFixed(1)} m` : `${v.toFixed(1)}'`);
 
   return (
     <div>
@@ -82,27 +94,27 @@ export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, 
           fill="var(--bg-primary, #111419)" stroke="var(--border, #333)" />
         {elevTicks.map((e) => (
           <g key={`e${e}`}>
-            <line x1={M.left} y1={sy(e)} x2={M.left + plotW} y2={sy(e)}
+            <line x1={M.left} y1={sy(inv(e))} x2={M.left + plotW} y2={sy(inv(e))}
               stroke="var(--border, #333)" strokeWidth={0.5} strokeDasharray="2 4" />
-            <text x={M.left - 6} y={sy(e) + 3} textAnchor="end" fontSize={10}
+            <text x={M.left - 6} y={sy(inv(e)) + 3} textAnchor="end" fontSize={10}
               fill="var(--text-muted, #888)">{profile.mode === 'elevation' ? fmtElev(e) : fmtDepth(-e)}</text>
           </g>
         ))}
         {stationTicks.map((s) => (
           <g key={`s${s}`}>
-            <line x1={sx(s)} y1={M.top} x2={sx(s)} y2={M.top + plotH}
+            <line x1={sx(inv(s))} y1={M.top} x2={sx(inv(s))} y2={M.top + plotH}
               stroke="var(--border, #333)" strokeWidth={0.5} strokeDasharray="2 4" />
-            <text x={sx(s)} y={M.top + plotH + 14} textAnchor="middle" fontSize={10}
-              fill="var(--text-muted, #888)">{s.toFixed(0)}'</text>
+            <text x={sx(inv(s))} y={M.top + plotH + 14} textAnchor="middle" fontSize={10}
+              fill="var(--text-muted, #888)">{s.toFixed(0)}{metric ? ' m' : "'"}</text>
           </g>
         ))}
         {/* Axis titles */}
         <text x={M.left + plotW / 2} y={height - 6} textAnchor="middle" fontSize={10}
-          fill="var(--text-secondary, #aaa)">Station (ft)</text>
+          fill="var(--text-secondary, #aaa)">Station ({metric ? 'm' : 'ft'})</text>
         <text x={14} y={M.top + plotH / 2} textAnchor="middle" fontSize={10}
           fill="var(--text-secondary, #aaa)"
           transform={`rotate(-90 14 ${M.top + plotH / 2})`}>
-          {profile.mode === 'elevation' ? 'Elevation (ft)' : 'Depth below grade'}
+          {profile.mode === 'elevation' ? `Elevation (${metric ? 'm' : 'ft'})` : 'Depth below grade'}
         </text>
 
         {/* Trench, bedding, pipe */}
@@ -153,11 +165,11 @@ export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, 
                 fill="var(--text-primary, #ddd)">{p.structureType || 'STR'}</text>
               <text x={x} y={above - 7} textAnchor="middle" fontSize={9}
                 fill="var(--text-muted, #888)">
-                {p.rim != null ? `RIM ${fmtElev(p.rim)}` : ''}
+                {p.rim != null ? `RIM ${fmtElev(cv(p.rim))}` : ''}
               </text>
               <text x={x} y={sy(p.invert - profile.beddingDepthFt) + 12} textAnchor="middle" fontSize={9}
                 fill="var(--text-muted, #888)">
-                {p.knownInvert ? `INV ${fmtElev(p.invert)}` : ''}
+                {p.knownInvert ? `INV ${fmtElev(cv(p.invert))}` : ''}
               </text>
             </g>
           );
@@ -170,7 +182,7 @@ export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, 
           return (
             <text key={`d${i}`} x={sx(p.station)} y={sy(p.invert - profile.beddingDepthFt) + 12}
               textAnchor="middle" fontSize={9}
-              fill="var(--text-muted, #888)">{fmtDepth(depth)}</text>
+              fill="var(--text-muted, #888)">{fmtDepth(cv(depth))}</text>
           );
         })}
 
@@ -180,11 +192,11 @@ export function RunProfileView({ run, scalePxPerFt, groundSampler, width = 880, 
       </svg>
 
       <div className="flex gap-8" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-        <span>{run.pipeSizeIn}" {run.pipeMaterial}</span>
+        <span>{formatPipeSize(run.pipeSizeIn, system)} {run.pipeMaterial}</span>
         <span>·</span>
-        <span>{profile.totalLengthFt.toFixed(1)} LF</span>
+        <span>{metric ? formatQty(profile.totalLengthFt, 'lf', system, 1) : `${profile.totalLengthFt.toFixed(1)} LF`}</span>
         <span>·</span>
-        <span>bedding {profile.beddingDepthFt}'</span>
+        <span>bedding {metric ? formatQty(profile.beddingDepthFt, 'ft', system, 2) : `${profile.beddingDepthFt}'`}</span>
         {profile.mode === 'depth' && (
           <>
             <span>·</span>

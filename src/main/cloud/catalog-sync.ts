@@ -60,6 +60,7 @@ const SYNCED_SETTINGS = [
   'job_number_auto',
   'job_number_format',
   'job_number_start',
+  'unit_system',
 ] as const;
 
 /** Intra-catalog FKs: column → referenced table. All are NOT NULL columns. */

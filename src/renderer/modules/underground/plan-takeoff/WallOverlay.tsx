@@ -1,6 +1,8 @@
 import React from 'react';
 import type { PdfPoint, TakeoffWall } from './types';
 import { computeRunLengthLF, segmentMidpoint } from './takeoffUtils';
+import { formatQty } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 
 interface WallOverlayProps {
   walls: TakeoffWall[];
@@ -24,6 +26,7 @@ interface WallOverlayProps {
 export default function WallOverlay({
   walls, activeWallId, selectedWallId, mousePosition, scalePxPerFt, interactive, onSelect,
 }: WallOverlayProps) {
+  const system = useUnitSystem();
   const spp = scalePxPerFt && scalePxPerFt > 0 ? scalePxPerFt : 10;
   const r = spp * 0.3;
   const fs = spp * 0.95;
@@ -79,7 +82,8 @@ export default function WallOverlay({
               <text x={labelAnchor.x} y={labelAnchor.y - r * 1.5} fontSize={fs}
                 fill={wall.color} stroke="#0b1220" strokeWidth={fs * 0.06} paintOrder="stroke"
                 textAnchor="middle" style={{ pointerEvents: 'none' }}>
-                {wall.label ? `${wall.label} · ` : ''}{lengthLF.toFixed(1)} LF
+                {wall.label ? `${wall.label} · ` : ''}
+                {system === 'metric' ? formatQty(lengthLF, 'lf', system, 1) : `${lengthLF.toFixed(1)} LF`}
               </text>
             )}
           </g>

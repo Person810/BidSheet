@@ -9,6 +9,8 @@ import {
 } from './takeoffUtils';
 import { computeWallQuantities } from './wallTakeoff';
 import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
+import { formatQty } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 
 export type SummaryTab = 'runs' | 'items' | 'areas' | 'walls';
 
@@ -139,6 +141,7 @@ function RunsTabContent({ runs, allRuns, activeRunId, selectedRunId, scalePxPerF
   onSelectRun: (id: number | null) => void; onEditRun: (id: number) => void;
   onDeleteRun: (id: number) => void; onSendToProfiles?: () => void;
 }) {
+  const system = useUnitSystem();
   const focusedRun = runs.find((r) => r.id === (activeRunId ?? selectedRunId));
 
   if (focusedRun) {
@@ -176,7 +179,7 @@ function RunsTabContent({ runs, allRuns, activeRunId, selectedRunId, scalePxPerF
               {run.label || `Run ${globalIdx + 1}`}
             </span>
             <span className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-              {fmt(lf)}'
+              {system === 'metric' ? formatQty(lf, 'lf', system, 1) : `${fmt(lf)}'`}
             </span>
           </div>
         );
@@ -195,6 +198,8 @@ function RunDetail({ run, scalePxPerFt, isActive, onEdit, onDelete }: {
   run: TakeoffRun; scalePxPerFt: number; isActive: boolean;
   onEdit: () => void; onDelete: () => void;
 }) {
+  const system = useUnitSystem();
+  const metric = system === 'metric';
   const runLengthLF = computeRunLengthLF(run.points, scalePxPerFt);
   const maxDepth = getMaxDepthFt(run, scalePxPerFt);
   const result = runLengthLF > 0 ? calculateTrench(buildTrenchInput(run, runLengthLF)) : null;
@@ -215,14 +220,21 @@ function RunDetail({ run, scalePxPerFt, isActive, onEdit, onDelete }: {
       </div>
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <tbody>
-          <QtyRow label="Total LF" value={fmt(runLengthLF)} />
+          <QtyRow label={metric ? 'Total Length' : 'Total LF'}
+            value={metric ? formatQty(runLengthLF, 'lf', system, 1) : fmt(runLengthLF)} />
           {result && (<>
-            <QtyRow label="Pipe LF" value={fmt(result.pipeLF)} />
-            <QtyRow label="Excavation" value={`${fmt(result.excavationCY)} CY`} />
-            <QtyRow label="Bedding" value={`${fmt(result.beddingCY)} CY`} />
-            <QtyRow label="Backfill" value={`${fmt(result.backfillCY)} CY`} />
-            <QtyRow label="Tracer Wire" value={`${fmt(result.tracerWireLF)} LF`} />
-            <QtyRow label="Warning Tape" value={`${fmt(result.warningTapeLF)} LF`} />
+            <QtyRow label={metric ? 'Pipe Length' : 'Pipe LF'}
+              value={metric ? formatQty(result.pipeLF, 'lf', system, 1) : fmt(result.pipeLF)} />
+            <QtyRow label="Excavation"
+              value={metric ? formatQty(result.excavationCY, 'cy', system, 1) : `${fmt(result.excavationCY)} CY`} />
+            <QtyRow label="Bedding"
+              value={metric ? formatQty(result.beddingCY, 'cy', system, 1) : `${fmt(result.beddingCY)} CY`} />
+            <QtyRow label="Backfill"
+              value={metric ? formatQty(result.backfillCY, 'cy', system, 1) : `${fmt(result.backfillCY)} CY`} />
+            <QtyRow label="Tracer Wire"
+              value={metric ? formatQty(result.tracerWireLF, 'lf', system, 1) : `${fmt(result.tracerWireLF)} LF`} />
+            <QtyRow label="Warning Tape"
+              value={metric ? formatQty(result.warningTapeLF, 'lf', system, 1) : `${fmt(result.warningTapeLF)} LF`} />
           </>)}
         </tbody>
       </table>
@@ -230,7 +242,9 @@ function RunDetail({ run, scalePxPerFt, isActive, onEdit, onDelete }: {
         <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 4,
           background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)',
           fontSize: 11, color: '#d97706' }}>
-          &#9888; Max depth {maxDepth.toFixed(1)}&apos; exceeds {SHORING_DEPTH_THRESHOLD_FT}&apos; &mdash; shoring may be required
+          {metric
+            ? <>&#9888; Max depth {formatQty(maxDepth, 'ft', system, 1)} exceeds {formatQty(SHORING_DEPTH_THRESHOLD_FT, 'ft', system, 1)} &mdash; shoring may be required</>
+            : <>&#9888; Max depth {maxDepth.toFixed(1)}&apos; exceeds {SHORING_DEPTH_THRESHOLD_FT}&apos; &mdash; shoring may be required</>}
         </div>
       )}
       {!isActive && (
@@ -334,6 +348,8 @@ function AreasTabContent({ areas, allAreas, activeAreaId, selectedAreaId, scaleP
   onSelectArea: (id: number | null) => void; onEditArea: (id: number) => void;
   onDeleteArea: (id: number) => void; onSendAreasToBid?: () => void;
 }) {
+  const system = useUnitSystem();
+  const metric = system === 'metric';
   const focusedArea = areas.find((a) => a.id === (activeAreaId ?? selectedAreaId));
 
   if (focusedArea) {
@@ -374,14 +390,16 @@ function AreasTabContent({ areas, allAreas, activeAreaId, selectedAreaId, scaleP
               {area.label || `Area ${globalIdx + 1}`}
             </span>
             <span className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-              {Math.round(sf).toLocaleString()} SF
+              {metric ? formatQty(sf, 'sf', system, 0) : `${Math.round(sf).toLocaleString()} SF`}
             </span>
           </div>
         );
       })}
       {areas.length > 1 && (
         <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', marginTop: 6, paddingRight: 8 }}>
-          Page total: {Math.round(pageTotalSF).toLocaleString()} SF ({squareFeetToYards(pageTotalSF).toFixed(1)} SY)
+          {metric
+            ? <>Page total: {formatQty(pageTotalSF, 'sf', system, 0)}</>
+            : <>Page total: {Math.round(pageTotalSF).toLocaleString()} SF ({squareFeetToYards(pageTotalSF).toFixed(1)} SY)</>}
         </div>
       )}
       {onSendAreasToBid && hasCompletedAreas && !activeAreaId && (
@@ -398,6 +416,8 @@ function AreaDetail({ area, scalePxPerFt, isActive, onEdit, onDelete }: {
   area: TakeoffArea; scalePxPerFt: number; isActive: boolean;
   onEdit: () => void; onDelete: () => void;
 }) {
+  const system = useUnitSystem();
+  const metric = system === 'metric';
   const sf = area.points.length >= 3 ? computePolygonAreaSF(area.points, scalePxPerFt) : 0;
   const sy = squareFeetToYards(sf);
   const cy = cubicFeetToYards(sf * area.depthFt);
@@ -416,14 +436,22 @@ function AreaDetail({ area, scalePxPerFt, isActive, onEdit, onDelete }: {
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
         {AREA_TYPE_LABELS[area.areaType]} &middot;{' '}
         {area.points.length} vert{area.points.length !== 1 ? 'ices' : 'ex'}
-        {depthIn > 0 ? <> &middot; {depthIn}&quot; depth</> : null}
+        {depthIn > 0
+          ? <> &middot; {metric ? formatQty(depthIn, 'in', system, 0) : <>{depthIn}&quot;</>} depth</>
+          : null}
       </div>
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <tbody>
-          <QtyRow label="Area (SF)" value={`${Math.round(sf).toLocaleString()} SF`} />
-          <QtyRow label="Area (SY)" value={`${sy.toFixed(1)} SY`} />
-          {cy > 0 && <QtyRow label="Volume" value={`${cy.toFixed(1)} CY`} />}
-          <QtyRow label="Perimeter" value={`${perimeter.toFixed(1)} LF`} />
+          {metric ? (
+            <QtyRow label="Area" value={formatQty(sf, 'sf', system, 1)} />
+          ) : (<>
+            <QtyRow label="Area (SF)" value={`${Math.round(sf).toLocaleString()} SF`} />
+            <QtyRow label="Area (SY)" value={`${sy.toFixed(1)} SY`} />
+          </>)}
+          {cy > 0 && <QtyRow label="Volume"
+            value={metric ? formatQty(cy, 'cy', system, 1) : `${cy.toFixed(1)} CY`} />}
+          <QtyRow label="Perimeter"
+            value={metric ? formatQty(perimeter, 'lf', system, 1) : `${perimeter.toFixed(1)} LF`} />
         </tbody>
       </table>
       {!isActive && (
@@ -446,6 +474,7 @@ function WallsTabContent({ walls, allWalls, activeWallId, selectedWallId, scaleP
   onSelectWall: (id: number | null) => void; onEditWall: (id: number) => void;
   onDeleteWall: (id: number) => void; onSendWallsToBid?: () => void;
 }) {
+  const system = useUnitSystem();
   const focusedWall = walls.find((w) => w.id === (activeWallId ?? selectedWallId));
 
   if (focusedWall) {
@@ -483,7 +512,7 @@ function WallsTabContent({ walls, allWalls, activeWallId, selectedWallId, scaleP
               {wall.label || `Wall ${globalIdx + 1}`}
             </span>
             <span className="text-muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-              {fmt(lf)}'
+              {system === 'metric' ? formatQty(lf, 'lf', system, 1) : `${fmt(lf)}'`}
             </span>
           </div>
         );
@@ -502,6 +531,8 @@ function WallDetail({ wall, scalePxPerFt, isActive, onEdit, onDelete }: {
   wall: TakeoffWall; scalePxPerFt: number; isActive: boolean;
   onEdit: () => void; onDelete: () => void;
 }) {
+  const system = useUnitSystem();
+  const metric = system === 'metric';
   const lengthLF = computeRunLengthLF(wall.points, scalePxPerFt);
   const q = computeWallQuantities({
     lengthLF, heightFt: wall.heightFt, thicknessIn: wall.thicknessIn,
@@ -518,16 +549,22 @@ function WallDetail({ wall, scalePxPerFt, isActive, onEdit, onDelete }: {
         {isActive && <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>DRAWING</span>}
       </div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
-        {wall.heightFt}&apos; H &middot; {wall.thicknessIn}&quot; thk &middot;{' '}
+        {metric
+          ? <>{formatQty(wall.heightFt, 'ft', system)} H &middot; {formatQty(wall.thicknessIn, 'in', system, 0)} thk</>
+          : <>{wall.heightFt}&apos; H &middot; {wall.thicknessIn}&quot; thk</>} &middot;{' '}
         {wall.faces} face{wall.faces !== 1 ? 's' : ''}
       </div>
       <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
         <tbody>
-          <QtyRow label="Length" value={`${fmt(lengthLF)} LF`} />
-          <QtyRow label="Surface area" value={`${Math.round(q.surfaceSF).toLocaleString()} SF`} />
-          <QtyRow label="Volume" value={`${q.volumeCY.toFixed(2)} CY`} />
+          <QtyRow label="Length"
+            value={metric ? formatQty(lengthLF, 'lf', system, 1) : `${fmt(lengthLF)} LF`} />
+          <QtyRow label="Surface area"
+            value={metric ? formatQty(q.surfaceSF, 'sf', system, 1) : `${Math.round(q.surfaceSF).toLocaleString()} SF`} />
+          <QtyRow label="Volume"
+            value={metric ? formatQty(q.volumeCY, 'cy', system, 2) : `${q.volumeCY.toFixed(2)} CY`} />
           {q.memberCount > 0 && (
-            <QtyRow label="Members" value={`${q.memberCount} @ ${fmt(q.memberLF)} LF`} />
+            <QtyRow label="Members"
+              value={`${q.memberCount} @ ${metric ? formatQty(q.memberLF, 'lf', system, 1) : `${fmt(q.memberLF)} LF`}`} />
           )}
         </tbody>
       </table>

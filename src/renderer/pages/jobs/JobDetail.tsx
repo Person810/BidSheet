@@ -11,6 +11,7 @@ import { buildAssemblyLineItems } from '../../../shared/assemblyExpansion';
 import { buildLineItemPayload, lineItemRowToPayload } from '../../../shared/lineItemPayload';
 import { parseManualFields, withManual } from '../../../shared/manualFields';
 import { effectiveMaterialUnitCost } from '../../../shared/unitConversion';
+import { bidLineQty, metricUnitPrice } from '../../../shared/unitSystem';
 import { BidGrid } from './BidGrid';
 import { SectionSettingsModal } from './SectionSettingsModal';
 import { TakeoffSummaryCard } from './TakeoffSummaryCard';
@@ -27,6 +28,7 @@ import { CompareJobsModal } from './CompareJobsModal';
 import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
 import { PdfCustomizerModal } from './PdfCustomizerModal';
 import { useToastStore } from '../../stores/toast-store';
+import { useUnitSystem } from '../../stores/units-store';
 import { useBidHistory, type BidSnapshot } from './useBidHistory';
 
 // Lock icons (lucide-react)
@@ -65,7 +67,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [showLineItemModal, setShowLineItemModal] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<number | null>(null);
   const [editingLineItem, setEditingLineItem] = useState<any>(null);
-  const [lineForm, setLineForm] = useState(emptyLineForm());
+  const system = useUnitSystem();
+  const [lineForm, setLineForm] = useState(emptyLineForm(system));
 
   // Catalog data for pickers
   const [materials, setMaterials] = useState<any[]>([]);
@@ -387,7 +390,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     withLockCheck(() => {
       setEditingSectionId(sectionId);
       setEditingLineItem(null);
-      setLineForm(emptyLineForm());
+      setLineForm(emptyLineForm(system));
       setShowLineItemModal(true);
     });
   };
@@ -588,32 +591,64 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         notes: opts.notes,
       }));
 
+    // Linear line items (pipe, tracer, tape): LF imperial, m metric. An
+    // LF-priced material converts to an exact $/m; other units price manually.
+    const linearItem = (opts: { description: string; qtyLF: number; mat: any | null; materialId: number | null }) => {
+      const { quantity, unit } = bidLineQty(opts.qtyLF, 'lf', system);
+      let unitCost = opts.mat?.default_unit_cost || 0;
+      let note = profileNote;
+      if (system === 'metric' && opts.mat && opts.mat.unit !== 'm') {
+        if (opts.mat.unit === 'LF') {
+          unitCost = metricUnitPrice(opts.mat.default_unit_cost, 'lf');
+          note = `${profileNote} | Catalog price ${formatCurrency(opts.mat.default_unit_cost)}/LF, using ${formatCurrency(unitCost)}/m`;
+        } else {
+          unitCost = 0;
+          note = `${profileNote} | Catalog unit is ${opts.mat.unit} -- adjust pricing manually`;
+        }
+      }
+      return saveItem({
+        description: opts.description, quantity, unit,
+        materialId: opts.materialId, materialUnitCost: unitCost, notes: note,
+      });
+    };
+
     // Pipe line items (one per material type)
     for (const entry of pipeByKey.values()) {
       const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
-      await saveItem({
-        description: entry.name, quantity: entry.qty, unit: 'LF',
-        materialId: entry.materialId, materialUnitCost: mat?.default_unit_cost || 0,
-        notes: profileNote,
-      });
+      await linearItem({ description: entry.name, qtyLF: entry.qty, mat, materialId: entry.materialId });
     }
 
     // Excavation (single total)
+    const excavation = bidLineQty(totalExcavationCY, 'cy', system);
     await saveItem({
-      description: 'Excavation', quantity: totalExcavationCY, unit: 'CY',
+      description: 'Excavation', quantity: excavation.quantity, unit: excavation.unit,
       materialId: null, materialUnitCost: 0, notes: profileNote,
     });
 
-    // Bedding/backfill line items (one per material type). Quantities
-    // are CY; TON-priced aggregates use their per-CY price when one is
-    // set, otherwise the price is left at 0 with a note.
+    // Bedding/backfill line items (one per material type). Quantities are
+    // CY (m³ metric); mass-priced aggregates (TON/t) use their volume price
+    // when one is set, otherwise the price is left at 0 with a note. A
+    // volume price in the other system converts to an exact $/CY or $/m³.
     const volumeItem = (entry: { qty: number; materialId: number | null; name: string }) => {
       const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
+      const { quantity, unit } = bidLineQty(entry.qty, 'cy', system);
       let unitCost = 0;
       let note = profileNote;
       if (mat) {
-        const eff = effectiveMaterialUnitCost(mat, 'CY');
-        if (mat.unit === 'CY' || mat.unit === 'CYD') {
+        const eff = effectiveMaterialUnitCost(mat, system === 'metric' ? 'm³' : 'CY');
+        if (system === 'metric') {
+          if (mat.unit === 'm³') {
+            unitCost = mat.default_unit_cost;
+          } else if (eff.converted) {
+            unitCost = eff.cost;
+            note = `${profileNote} | Catalog price ${formatCurrency(mat.default_unit_cost)}/${mat.unit}, using ${formatCurrency(unitCost)}/m³`;
+          } else if (mat.unit === 'CY' || mat.unit === 'CYD') {
+            unitCost = metricUnitPrice(mat.default_unit_cost, 'cy');
+            note = `${profileNote} | Catalog price ${formatCurrency(mat.default_unit_cost)}/${mat.unit}, using ${formatCurrency(unitCost)}/m³`;
+          } else {
+            note = `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually`;
+          }
+        } else if (mat.unit === 'CY' || mat.unit === 'CYD') {
           unitCost = mat.default_unit_cost;
         } else if (eff.converted) {
           unitCost = eff.cost;
@@ -623,7 +658,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         }
       }
       return saveItem({
-        description: entry.name, quantity: entry.qty, unit: 'CY',
+        description: entry.name, quantity, unit,
         materialId: entry.materialId, materialUnitCost: unitCost, notes: note,
       });
     };
@@ -637,17 +672,15 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     }
 
     // Tracer Wire (single total)
-    await saveItem({
-      description: tracerMat?.name || 'Tracer Wire', quantity: totalTracerLF, unit: 'LF',
-      materialId: tracerMat?.id || null, materialUnitCost: tracerMat?.default_unit_cost || 0,
-      notes: profileNote,
+    await linearItem({
+      description: tracerMat?.name || 'Tracer Wire', qtyLF: totalTracerLF,
+      mat: tracerMat || null, materialId: tracerMat?.id || null,
     });
 
     // Warning Tape (single total)
-    await saveItem({
-      description: tapeMat?.name || 'Warning Tape', quantity: totalTapeLF, unit: 'LF',
-      materialId: tapeMat?.id || null, materialUnitCost: tapeMat?.default_unit_cost || 0,
-      notes: profileNote,
+    await linearItem({
+      description: tapeMat?.name || 'Warning Tape', qtyLF: totalTapeLF,
+      mat: tapeMat || null, materialId: tapeMat?.id || null,
     });
 
     await loadJob();

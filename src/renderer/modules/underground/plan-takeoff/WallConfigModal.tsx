@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FuzzyAutocomplete, materialsToAutocomplete, type AutocompleteItem } from '../../../components/FuzzyAutocomplete';
+import { UnitInput } from '../../../components/UnitInput';
+import { fromDisplay, unitLabel } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 import type { WallConfig } from './types';
 
 const DEFAULT_CONFIG: WallConfig = {
@@ -12,6 +15,13 @@ const DEFAULT_CONFIG: WallConfig = {
   assemblyId: null,
 };
 
+/** Metric defaults: round metric numbers (2.4 m high, 200 mm thick). */
+const METRIC_DEFAULT_CONFIG: WallConfig = {
+  ...DEFAULT_CONFIG,
+  heightFt: fromDisplay(2.4, 'ft', 'metric'),
+  thicknessIn: fromDisplay(200, 'in', 'metric'),
+};
+
 interface WallConfigModalProps {
   onConfirm: (config: WallConfig) => void;
   onCancel: () => void;
@@ -20,7 +30,10 @@ interface WallConfigModalProps {
 }
 
 export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallConfig }: WallConfigModalProps) {
-  const [config, setConfig] = useState<WallConfig>(initialConfig ?? { ...DEFAULT_CONFIG });
+  const system = useUnitSystem();
+  const [config, setConfig] = useState<WallConfig>(
+    initialConfig ?? { ...(system === 'metric' ? METRIC_DEFAULT_CONFIG : DEFAULT_CONFIG) }
+  );
   const [materialId, setMaterialId] = useState<number | string | null>(initialConfig?.materialId ?? null);
   const [assemblyId, setAssemblyId] = useState<number | string | null>(initialConfig?.assemblyId ?? null);
   const [materials, setMaterials] = useState<AutocompleteItem[]>([]);
@@ -87,17 +100,20 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
 
         <div className="form-row">
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Height (ft)</label>
-            <input
-              type="number" className="form-control" value={config.heightFt} min="0" step="0.5"
-              onChange={(e) => set('heightFt', parseFloat(e.target.value) || 0)}
+            <label className="form-label">Height{system === 'metric' ? '' : ' (ft)'}</label>
+            <UnitInput
+              mmToggle
+              className="form-control" value={config.heightFt} kind="ft"
+              min={0} step={0.5} metricStep={0.1}
+              onChange={(v) => set('heightFt', v)}
             />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Thickness (in)</label>
-            <input
-              type="number" className="form-control" value={config.thicknessIn} min="0" step="0.5"
-              onChange={(e) => set('thicknessIn', parseFloat(e.target.value) || 0)}
+            <label className="form-label">Thickness ({unitLabel('in', system)})</label>
+            <UnitInput
+              className="form-control" value={config.thicknessIn} kind="in"
+              min={0} step={0.5} metricStep={10}
+              onChange={(v) => set('thicknessIn', v)}
             />
           </div>
         </div>
@@ -115,10 +131,11 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
             </select>
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Member spacing (in, 0 = none)</label>
-            <input
-              type="number" className="form-control" value={config.memberSpacingIn} min="0" step="1"
-              onChange={(e) => set('memberSpacingIn', parseFloat(e.target.value) || 0)}
+            <label className="form-label">Member spacing ({unitLabel('in', system)}, 0 = none)</label>
+            <UnitInput
+              className="form-control" value={config.memberSpacingIn} kind="in"
+              min={0} step={1} metricStep={50}
+              onChange={(v) => set('memberSpacingIn', v)}
             />
           </div>
         </div>
@@ -134,11 +151,15 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
             items={assemblies}
             value={assemblyId}
             onSelect={(item) => setAssemblyId(item ? item.id : null)}
-            placeholder="Search assemblies (e.g. wall per LF / SF / CY)"
+            placeholder={system === 'metric'
+              ? 'Search assemblies (e.g. wall per m / m² / m³)'
+              : 'Search assemblies (e.g. wall per LF / SF / CY)'}
           />
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
             Send to Bid expands the assembly (materials + labor + equipment) by the measure
-            matching its unit — LF of wall, SF of surface, or CY of volume.
+            matching its unit — {system === 'metric'
+              ? 'm of wall, m² of surface, or m³ of volume'
+              : 'LF of wall, SF of surface, or CY of volume'}.
           </div>
         </div>
 
@@ -152,7 +173,9 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
               placeholder="Search material (e.g. concrete mix, CMU, stud)"
             />
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              The wall line bills in the material's unit — LF (length), SF/SY (surface), or CY (volume).
+              The wall line bills in the material's unit — {system === 'metric'
+                ? 'm (length), m² (surface), or m³ (volume)'
+                : 'LF (length), SF/SY (surface), or CY (volume)'}.
             </div>
           </div>
         )}

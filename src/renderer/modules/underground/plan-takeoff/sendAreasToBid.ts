@@ -2,8 +2,13 @@ import type { TakeoffArea } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import { computePolygonAreaSF, ftToInches, loadPageScaleMap } from './takeoffUtils';
 import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
+import {
+  bidLineQty, convertQty, formatQty, metricUnitPrice, roundTo,
+  DEFAULT_UNIT_SYSTEM, type UnitSystem,
+} from '../../../../shared/unitSystem';
 import { buildAssemblyLineItems } from '../../../../shared/assemblyExpansion';
 import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
+import { formatCurrency } from '../../../utils/format';
 
 interface AreaGroup {
   areaType: TakeoffArea['areaType'];
@@ -24,6 +29,7 @@ interface AreaGroup {
 export async function sendAreasToBid(
   areas: TakeoffArea[],
   jobId: number,
+  system: UnitSystem = DEFAULT_UNIT_SYSTEM,
 ): Promise<number> {
   const valid = areas.filter((a) => a.points.length >= 3);
   if (valid.length === 0) return 0;
@@ -82,12 +88,16 @@ export async function sendAreasToBid(
   let createdCount = 0;
   for (const g of groups.values()) {
     // Assembly-linked areas expand the full assembly (materials + labor +
-    // equipment) scaled by measured SY
+    // equipment) scaled by the measured area in the assembly's own unit —
+    // SY normally, m² for a metric-built assembly (unit-driven, not
+    // system-driven: identities don't flip with the setting).
     const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
     if (assembly) {
-      const qtySY = Math.round(g.totalSY * 10) / 10;
+      const qty = assembly.unit === 'm²'
+        ? roundTo(convertQty(g.totalSY, 'sy', 'metric'), 1)
+        : Math.round(g.totalSY * 10) / 10;
       const noteSuffix = g.labels.length ? ` (${g.labels.join('; ')})` : ' (from plan takeoff)';
-      const payloads = buildAssemblyLineItems(assembly, qtySY, crews, noteSuffix);
+      const payloads = buildAssemblyLineItems(assembly, qty, crews, noteSuffix);
       for (const payload of payloads) {
         await window.api.saveBidLineItem({
           sectionId,
@@ -102,25 +112,37 @@ export async function sendAreasToBid(
 
     const mat = g.materialId ? materials.find((m: any) => m.id === g.materialId) : null;
     const depthIn = ftToInches(g.depthFt);
+    const depthLabel = system === 'metric' ? formatQty(depthIn, 'in', system, 0) : `${depthIn}"`;
     const description =
       `${AREA_TYPE_LABELS[g.areaType]} Restoration` +
-      (depthIn > 0 ? ` (${depthIn}" depth)` : '');
-    // Only apply catalog pricing when the material is actually priced per SY;
-    // TON/CY-priced materials need a manual conversion the estimator controls.
-    const unitCost = mat && mat.unit === 'SY' ? mat.default_unit_cost : 0;
+      (depthIn > 0 ? ` (${depthLabel} depth)` : '');
+    // Only apply catalog pricing when the material is priced per the emitted
+    // area unit (SY, or m² metric — an SY price converts exactly); TON/CY
+    // materials need a manual conversion the estimator controls.
+    const areaUnit = system === 'metric' ? 'm²' : 'SY';
+    let unitCost = mat && mat.unit === areaUnit ? mat.default_unit_cost : 0;
+    let priceNote =
+      mat && mat.unit !== areaUnit ? `Material "${mat.name}" priced per ${mat.unit}, set unit cost manually` : '';
+    if (system === 'metric' && mat && mat.unit === 'SY') {
+      unitCost = metricUnitPrice(mat.default_unit_cost, 'sy');
+      priceNote = `Material "${mat.name}" priced ${formatCurrency(mat.default_unit_cost)}/SY, using ${formatCurrency(unitCost)}/m²`;
+    }
     const notes = [
       'From plan takeoff',
-      g.totalCY > 0 ? `${g.totalCY.toFixed(1)} CY volume` : '',
+      g.totalCY > 0
+        ? (system === 'metric' ? `${formatQty(g.totalCY, 'cy', system, 1)} volume` : `${g.totalCY.toFixed(1)} CY volume`)
+        : '',
       g.labels.join('; '),
-      mat && mat.unit !== 'SY' ? `Material "${mat.name}" priced per ${mat.unit}, set unit cost manually` : '',
+      priceNote,
     ].filter(Boolean).join('. ');
 
+    const { quantity, unit } = bidLineQty(Math.round(g.totalSY * 10) / 10, 'sy', system);
     await window.api.saveBidLineItem(buildLineItemPayload({
       sectionId,
       jobId,
       description,
-      quantity: Math.round(g.totalSY * 10) / 10,
-      unit: 'SY',
+      quantity,
+      unit,
       sortOrder: sortOrder++,
       materialId: g.materialId,
       materialUnitCost: unitCost,

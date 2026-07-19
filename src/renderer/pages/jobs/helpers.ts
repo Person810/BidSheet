@@ -1,4 +1,6 @@
 import React from 'react';
+import { defaultUnit } from '../../../shared/constants/units';
+import { DEFAULT_UNIT_SYSTEM, type UnitSystem } from '../../../shared/unitSystem';
 
 // Formatting helpers live in the neutral utils module; re-exported here so the
 // many jobs-area importers keep their existing import path.
@@ -15,13 +17,13 @@ export function statusBadge(status: string) {
   return React.createElement('span', { className: `badge ${classes[status] || 'badge-draft'}` }, status);
 }
 
-export function emptyLineForm() {
+export function emptyLineForm(system: UnitSystem = DEFAULT_UNIT_SYSTEM) {
   return {
     description: '',
     itemNumber: '',
     costCode: '',
     quantity: 0,
-    unit: 'LF',
+    unit: defaultUnit(system),
     materialId: 0,
     materialUnitCost: 0,
     crewTemplateId: 0,

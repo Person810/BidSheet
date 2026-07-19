@@ -2,10 +2,13 @@ import type { TakeoffWall } from './types';
 import { computeRunLengthLF, ftToInches, loadPageScaleMap } from './takeoffUtils';
 import { computeWallQuantities } from './wallTakeoff';
 import { squareFeetToYards } from '../../../../shared/constants/units';
+import {
+  bidLineQty, convertQty, formatQty, DEFAULT_UNIT_SYSTEM, type UnitSystem,
+} from '../../../../shared/unitSystem';
 import { buildAssemblyLineItems } from '../../../../shared/assemblyExpansion';
 import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
 
-interface WallGroup {
+export interface WallGroup {
   heightFt: number;
   thicknessIn: number;
   faces: number;
@@ -19,13 +22,21 @@ interface WallGroup {
   labels: string[];
 }
 
-/** Pick the quantity that matches a catalog/assembly unit. Defaults to LF. */
-function measureForUnit(unit: string | null | undefined, g: WallGroup): number {
+/**
+ * Pick the quantity that matches a catalog/assembly unit. Defaults to LF.
+ * Metric units map to the same wall measures converted (unit-driven, not
+ * system-driven: a material priced per m² bills its m² regardless of the
+ * active setting). Exported for tests.
+ */
+export function measureForUnit(unit: string | null | undefined, g: WallGroup): number {
   switch ((unit || '').trim().toUpperCase()) {
     case 'SF': return g.surfaceSF;
     case 'SY': return squareFeetToYards(g.surfaceSF);
     case 'CY':
     case 'CYD': return g.volumeCY;
+    case 'M': return convertQty(g.totalLF, 'lf', 'metric');
+    case 'M²': return convertQty(g.surfaceSF, 'sf', 'metric');
+    case 'M³': return convertQty(g.volumeCY, 'cy', 'metric');
     case 'LF':
     default: return g.totalLF;
   }
@@ -39,7 +50,11 @@ function measureForUnit(unit: string | null | undefined, g: WallGroup): number {
  * vertical-members line when a member spacing is set. Walls on uncalibrated
  * pages are skipped. Returns the line-item count.
  */
-export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promise<number> {
+export async function sendWallsToBid(
+  walls: TakeoffWall[],
+  jobId: number,
+  system: UnitSystem = DEFAULT_UNIT_SYSTEM,
+): Promise<number> {
   const valid = walls.filter((w) => w.points.length >= 2);
   if (valid.length === 0) return 0;
 
@@ -104,8 +119,11 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
   let createdCount = 0;
   const round1 = (n: number) => Math.round(n * 10) / 10;
 
+  const metric = system === 'metric';
   for (const g of groups.values()) {
-    const dims = `${g.heightFt}' H x ${g.thicknessIn}" thk`;
+    const dims = metric
+      ? `${formatQty(g.heightFt, 'ft', system)} H x ${formatQty(g.thicknessIn, 'in', system, 0)} thk`
+      : `${g.heightFt}' H x ${g.thicknessIn}" thk`;
     const labelSuffix = g.labels.length ? ` (${g.labels.join('; ')})` : ' (from plan takeoff)';
 
     // Assembly-linked walls expand by the measure matching the assembly's
@@ -124,10 +142,14 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
 
     const noteParts = [
       'From plan takeoff',
-      `${round1(g.totalLF)} LF wall, ${dims}`,
-      g.surfaceSF > 0 ? `${Math.round(g.surfaceSF)} SF surface (${g.faces} face${g.faces !== 1 ? 's' : ''})` : '',
-      g.volumeCY > 0 ? `${g.volumeCY.toFixed(2)} CY volume` : '',
-      g.memberLF > 0 ? `${round1(g.memberLF)} LF vertical members` : '',
+      metric ? `${formatQty(g.totalLF, 'lf', system, 1)} wall, ${dims}` : `${round1(g.totalLF)} LF wall, ${dims}`,
+      g.surfaceSF > 0
+        ? `${metric ? formatQty(g.surfaceSF, 'sf', system, 0) : `${Math.round(g.surfaceSF)} SF`} surface (${g.faces} face${g.faces !== 1 ? 's' : ''})`
+        : '',
+      g.volumeCY > 0 ? `${metric ? formatQty(g.volumeCY, 'cy', system, 2) : `${g.volumeCY.toFixed(2)} CY`} volume` : '',
+      g.memberLF > 0
+        ? `${metric ? formatQty(g.memberLF, 'lf', system, 1) : `${round1(g.memberLF)} LF`} vertical members`
+        : '',
       g.labels.join('; '),
     ].filter(Boolean);
 
@@ -149,12 +171,13 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
       createdCount += 1;
     } else {
       // No link: a generic length line carrying the other measures in notes.
+      const wallLine = bidLineQty(round1(g.totalLF), 'lf', system);
       await window.api.saveBidLineItem(buildLineItemPayload({
         sectionId,
         jobId,
         description: `Wall (${dims})`,
-        quantity: round1(g.totalLF),
-        unit: 'LF',
+        quantity: wallLine.quantity,
+        unit: wallLine.unit,
         sortOrder: sortOrder++,
         notes: noteParts.join('. '),
       }));
@@ -163,12 +186,14 @@ export async function sendWallsToBid(walls: TakeoffWall[], jobId: number): Promi
 
     // Vertical members (studs / bars / posts) as their own linear line.
     if (g.memberLF > 0) {
+      const spacing = metric ? formatQty(g.memberSpacingIn, 'in', system, 0) : `${g.memberSpacingIn}"`;
+      const memberLine = bidLineQty(round1(g.memberLF), 'lf', system);
       await window.api.saveBidLineItem(buildLineItemPayload({
         sectionId,
         jobId,
-        description: `Wall vertical members (${g.memberSpacingIn}" o.c.)`,
-        quantity: round1(g.memberLF),
-        unit: 'LF',
+        description: `Wall vertical members (${spacing} o.c.)`,
+        quantity: memberLine.quantity,
+        unit: memberLine.unit,
         sortOrder: sortOrder++,
         notes: `From plan takeoff. ${dims}`,
       }));

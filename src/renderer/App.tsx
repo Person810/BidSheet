@@ -9,7 +9,9 @@ import { ToastContainer } from './components/Toast';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { Walkthrough } from './components/Walkthrough';
 import { useToastStore } from './stores/toast-store';
+import { useUnitsStore } from './stores/units-store';
 import { useWalkthroughStore, hasSeenWalkthrough } from './stores/walkthrough-store';
+import { parseUnitSystem } from '../shared/unitSystem';
 import { Dashboard } from './pages/Dashboard';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { LaborPage } from './pages/LaborPage';
@@ -112,6 +114,7 @@ export function App() {
       // Company logo overrides the default BidSheet mark once one is uploaded
       // in Settings. Stored as a data URI, so it renders without a file fetch.
       setCompanyLogo(s?.company_logo || '');
+      useUnitsStore.getState().setUnitSystem(parseUnitSystem(s?.unit_system));
       setLoading(false);
     });
 

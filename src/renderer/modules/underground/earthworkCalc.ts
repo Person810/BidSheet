@@ -19,6 +19,9 @@ import type { CalcBreakdown } from '../../../shared/calcExplain';
 import { fmtNum } from '../../../shared/calcExplain';
 import { cubicFeetToYards, squareFeetToYards } from '../../../shared/constants/units';
 import {
+  DEFAULT_UNIT_SYSTEM, convertQty, unitLabel, type UnitSystem,
+} from '../../../shared/unitSystem';
+import {
   buildTin, interpolateZ, polygonAreaSF, pointInPolygon, bbox,
   type Pt2, type Pt3, type Tin,
 } from './surfaceModel';
@@ -219,21 +222,27 @@ function round2(n: number): number {
  * Re-derives the substituted arithmetic behind the totals so the summary
  * numbers are never a black box. Mirrors explainTrench in trenchCalc.ts.
  */
-export function explainEarthwork(input: EarthworkInput, output: EarthworkOutput): {
+export function explainEarthwork(
+  input: EarthworkInput,
+  output: EarthworkOutput,
+  system: UnitSystem = DEFAULT_UNIT_SYSTEM,
+): {
   totals: CalcBreakdown;
   regions: CalcBreakdown[];
 } {
-  const cy = (n: number) => `${fmtNum(n, 1)} CY`;
-  const ft = (n: number) => `${fmtNum(n, 2)} ft`;
+  const metric = system === 'metric';
+  const cy = (n: number) => `${fmtNum(convertQty(n, 'cy', system), 1)} ${unitLabel('cy', system)}`;
+  const ft = (n: number) => `${fmtNum(convertQty(n, 'ft', system), 2)} ${unitLabel('ft', system)}`;
+  const sf = (n: number) => `${fmtNum(convertQty(n, 'sf', system), 0)} ${unitLabel('sf', system)}`;
 
   const regions: CalcBreakdown[] = output.regions.map((r) => {
     if (r.mode === 'cut_depth' || r.mode === 'fill_depth') {
       const verb = r.mode === 'cut_depth' ? 'Cut' : 'Fill';
       const depth = input.regions.find((x) => x.id === r.id)?.value ?? 0;
       return {
-        formula: `${verb} = area × depth ÷ 27`,
+        formula: metric ? `${verb} = area × depth` : `${verb} = area × depth ÷ 27`,
         lines: [
-          { label: 'Area', value: `${fmtNum(r.areaSF, 0)} SF`, kind: 'term' },
+          { label: 'Area', value: sf(r.areaSF), kind: 'term' },
           { label: 'Depth', value: ft(depth), kind: 'term' },
           { label: verb, value: cy(r.mode === 'cut_depth' ? r.cutCY : r.fillCY), kind: 'result' },
         ],
@@ -242,10 +251,12 @@ export function explainEarthwork(input: EarthworkInput, output: EarthworkOutput)
     }
     const finished = input.regions.find((x) => x.id === r.id)?.value ?? 0;
     return {
-      formula: 'Cut/Fill = Σ (existing − finished) × cell area ÷ 27',
+      formula: metric
+        ? 'Cut/Fill = Σ (existing − finished) × cell area'
+        : 'Cut/Fill = Σ (existing − finished) × cell area ÷ 27',
       lines: [
         { label: 'Finished elevation', value: ft(finished), kind: 'term' },
-        { label: 'Footprint', value: `${fmtNum(r.areaSF, 0)} SF`, kind: 'term' },
+        { label: 'Footprint', value: sf(r.areaSF), kind: 'term' },
         { label: 'Cut', value: cy(r.cutCY), kind: 'term' },
         { label: 'Fill', value: cy(r.fillCY), kind: 'result' },
       ],
@@ -268,7 +279,7 @@ export function explainEarthwork(input: EarthworkInput, output: EarthworkOutput)
       { label: 'Export', value: cy(output.exportCY), kind: 'result' },
       { label: 'Import', value: cy(output.importCY), kind: 'result' },
     ],
-    note: `Swell ${fmtNum((input.swellPct ?? 0) * 100, 0)}%, shrink ${fmtNum((input.shrinkPct ?? 0) * 100, 0)}%. Export is loose CY hauled off; import is bank CY brought in.`,
+    note: `Swell ${fmtNum((input.swellPct ?? 0) * 100, 0)}%, shrink ${fmtNum((input.shrinkPct ?? 0) * 100, 0)}%. Export is loose ${unitLabel('cy', system)} hauled off; import is bank ${unitLabel('cy', system)} brought in.`,
   };
 
   return { totals, regions };

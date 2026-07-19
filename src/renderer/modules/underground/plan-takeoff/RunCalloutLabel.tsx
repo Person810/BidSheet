@@ -4,6 +4,8 @@ import {
   segmentMidpoint, segmentLengthPx, perpendicularOffset,
   trianglePointerVertices,
 } from './takeoffUtils';
+import { formatQty } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 
 /* ---- Constants ---- */
 
@@ -31,12 +33,13 @@ interface RunCalloutLabelProps {
 const RunCalloutLabel = React.memo(function RunCalloutLabel({
   p1, p2, scalePxPerFt, fontSize, color, segmentIndex, scale, isActive,
 }: RunCalloutLabelProps) {
+  const system = useUnitSystem();
   const distPx = segmentLengthPx(p1, p2);
   if (distPx < 1) return null;
   const distFt = distPx / scalePxPerFt;
   if (distFt < 1.5) return null;
 
-  const label = `${distFt.toFixed(1)}'`;
+  const label = system === 'metric' ? formatQty(distFt, 'ft', system, 1) : `${distFt.toFixed(1)}'`;
 
   // Sizing
   const padH = fontSize * 0.5;

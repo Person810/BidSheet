@@ -5,10 +5,13 @@ import { useToastStore } from '../stores/toast-store';
 import { useWalkthroughStore } from '../stores/walkthrough-store';
 import { CloudSyncCard } from '../components/CloudSyncCard';
 import { nextJobNumber } from '../../shared/jobNumbering';
+import { useUnitsStore } from '../stores/units-store';
+import { parseUnitSystem, type UnitSystem } from '../../shared/unitSystem';
 
 export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
   const openWalkthrough = useWalkthroughStore((s) => s.open);
+  const setUnitSystem = useUnitsStore((s) => s.setUnitSystem);
   const [settings, setSettings] = useState({
     companyName: '',
     companyAddress: '',
@@ -26,6 +29,7 @@ export function SettingsPage() {
     jobNumberAuto: true,
     jobNumberFormat: 'YYYY-NNN',
     jobNumberStart: 1,
+    unitSystem: 'imperial' as UnitSystem,
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -55,6 +59,7 @@ export function SettingsPage() {
           jobNumberAuto: s.job_number_auto !== 0,
           jobNumberFormat: s.job_number_format || 'YYYY-NNN',
           jobNumberStart: s.job_number_start || 1,
+          unitSystem: parseUnitSystem(s.unit_system),
         });
       }
     }).finally(() => setLoading(false));
@@ -77,7 +82,10 @@ export function SettingsPage() {
       jobNumberAuto: settings.jobNumberAuto,
       jobNumberFormat: settings.jobNumberFormat,
       jobNumberStart: settings.jobNumberStart,
+      unitSystem: settings.unitSystem,
     });
+    // Calculators read the store, so the change applies without a restart
+    setUnitSystem(settings.unitSystem);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -264,6 +272,26 @@ export function SettingsPage() {
             />
           </div>
         </div>
+      </div>
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Measurement Units</h3>
+        <div className="form-group" style={{ maxWidth: 320 }}>
+          <select
+            className="form-control"
+            value={settings.unitSystem}
+            onChange={(e) => update('unitSystem', parseUnitSystem(e.target.value))}
+          >
+            <option value="imperial">Imperial — ft, in, CY</option>
+            <option value="metric">Metric — m, mm, m³</option>
+          </select>
+        </div>
+        <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+          Metric changes how the calculators display and accept dimensions — type
+          metres, get m³. Your saved data is unaffected and switching back and
+          forth never changes any numbers. Catalog items and prices keep the
+          units they were entered in.
+        </p>
       </div>
 
       <div className="card mb-24">

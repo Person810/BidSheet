@@ -2,6 +2,9 @@ import type { TakeoffArea, TakeoffSurface } from './types';
 import { loadPageScaleMap } from './takeoffUtils';
 import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
 import {
+  bidLineQty, unitLabel, DEFAULT_UNIT_SYSTEM, type UnitSystem,
+} from '../../../../shared/unitSystem';
+import {
   calculateEarthwork, haulBalance, type ProposedRegion,
 } from '../earthworkCalc';
 import type { Pt3 } from '../surfaceModel';
@@ -19,6 +22,7 @@ export async function sendEarthworkToBid(
   areas: TakeoffArea[],
   surfaces: TakeoffSurface[],
   jobId: number,
+  system: UnitSystem = DEFAULT_UNIT_SYSTEM,
   opts: { gridSpacingFt?: number; swellPct?: number; shrinkPct?: number } = {},
 ): Promise<number> {
   const earthworkAreas = areas.filter((a) => a.gradeMode != null && a.points.length >= 3);
@@ -77,6 +81,7 @@ export async function sendEarthworkToBid(
   });
   const sectionId = sectionResult.id;
 
+  const vol = unitLabel('cy', system); // "CY" / "m³" in the provenance notes
   const lines: { description: string; quantity: number; notes: string }[] = [];
   if (totalCutCY > 0) {
     lines.push({ description: 'Excavation (Cut)', quantity: round1(totalCutCY), notes: 'From plan takeoff — bank volume' });
@@ -85,20 +90,21 @@ export async function sendEarthworkToBid(
     lines.push({ description: 'Embankment (Fill)', quantity: round1(totalFillCY), notes: 'From plan takeoff — compacted in place' });
   }
   if (exportCY > 0) {
-    lines.push({ description: 'Export / Haul Off', quantity: round1(exportCY), notes: 'Surplus hauled off (loose CY)' });
+    lines.push({ description: 'Export / Haul Off', quantity: round1(exportCY), notes: `Surplus hauled off (loose ${vol})` });
   }
   if (importCY > 0) {
-    lines.push({ description: 'Import / Borrow', quantity: round1(importCY), notes: 'Deficit brought in (bank CY)' });
+    lines.push({ description: 'Import / Borrow', quantity: round1(importCY), notes: `Deficit brought in (bank ${vol})` });
   }
 
   let sortOrder = 0;
   for (const l of lines) {
+    const { quantity, unit } = bidLineQty(l.quantity, 'cy', system, 'CYD');
     await window.api.saveBidLineItem(buildLineItemPayload({
       sectionId,
       jobId,
       description: l.description,
-      quantity: l.quantity,
-      unit: 'CYD',
+      quantity,
+      unit,
       sortOrder: sortOrder++,
       materialId: null,
       materialUnitCost: 0,

@@ -504,6 +504,7 @@ export interface AppSettingsRow {
   job_number_auto: number;
   job_number_format: string;
   job_number_start: number;
+  unit_system: string;
 }
 
 export interface SaveSettingsPayload {
@@ -522,6 +523,7 @@ export interface SaveSettingsPayload {
   jobNumberAuto?: boolean | number;
   jobNumberFormat?: string;
   jobNumberStart?: number;
+  unitSystem?: 'imperial' | 'metric';
 }
 
 export interface CsvParseResult {

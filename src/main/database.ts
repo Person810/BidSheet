@@ -290,6 +290,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV42,
   migrateV43,
   migrateV44,
+  migrateV45,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -754,6 +755,18 @@ function migrateV44(db: Database.Database): void {
   }
 
   db.exec('INSERT INTO schema_version (version) VALUES (44);');
+}
+
+// V45: Metric units toggle (#97). Purely presentational — every stored
+// dimension stays canonical imperial (ft/in/CY columns keep their meaning
+// on every machine regardless of this setting); metric users get conversion
+// at the render/input boundary via shared/unitSystem.ts. Syncs with the
+// other company settings so all of an account's machines agree.
+function migrateV45(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN unit_system TEXT NOT NULL DEFAULT 'imperial';
+    INSERT INTO schema_version (version) VALUES (45);
+  `);
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */

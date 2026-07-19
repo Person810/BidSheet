@@ -8,6 +8,7 @@ import { TradeType, TRADE_SEED_DATA } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
 import { parsePdfTemplate, PdfTemplate } from '../../shared/types/pdf';
+import { parseUnitSystem } from '../../shared/unitSystem';
 
 export function registerSettingsHandlers(db: Database.Database): void {
   // ================================================================
@@ -212,7 +213,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
           default_overhead_percent = ?, default_profit_percent = ?,
           default_tax_percent = ?, default_bond_percent = ?,
           auto_lock_on_close = ?, local_only_mode = ?,
-          job_number_auto = ?, job_number_format = ?, job_number_start = ?
+          job_number_auto = ?, job_number_format = ?, job_number_start = ?,
+          unit_system = ?
         WHERE id = 1`
       )
       .run(
@@ -224,7 +226,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
         settings.localOnlyMode ? 1 : 0,
         settings.jobNumberAuto ? 1 : 0,
         settings.jobNumberFormat || 'YYYY-NNN',
-        Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1)
+        Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1),
+        parseUnitSystem(settings.unitSystem)
       );
   });
 

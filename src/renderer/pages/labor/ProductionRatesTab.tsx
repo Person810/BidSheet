@@ -5,7 +5,8 @@ import {
 } from '../../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toast-store';
-import { UNITS } from '../../../shared/constants/units';
+import { defaultUnit, unitOptions } from '../../../shared/constants/units';
+import { useUnitSystem } from '../../stores/units-store';
 import type { CrewMember, CrewTemplate } from '../../../shared/types/labor';
 
 interface ProductionRate {
@@ -27,12 +28,13 @@ interface ProductionRatesTabProps {
 
 export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesTabProps) {
   const addToast = useToastStore((s) => s.addToast);
+  const system = useUnitSystem();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<ProductionRate | null>(null);
   const [form, setForm] = useState({
     description: '',
     crewTemplateId: 0,
-    unit: 'LF',
+    unit: defaultUnit(system),
     ratePerHour: 0,
     conditions: '',
     notes: '',
@@ -47,7 +49,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
     setForm({
       description: '',
       crewTemplateId: crews[0]?.id || 0,
-      unit: 'LF',
+      unit: defaultUnit(system),
       ratePerHour: 0,
       conditions: '',
       notes: '',
@@ -201,7 +203,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
                   value={form.unit}
                   onChange={(e) => setForm({ ...form, unit: e.target.value })}
                 >
-                  {UNITS.map((u) => (
+                  {unitOptions(system, form.unit).map((u) => (
                     <option key={u} value={u}>{u}</option>
                   ))}
                 </select>

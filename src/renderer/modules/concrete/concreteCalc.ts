@@ -18,6 +18,9 @@ import {
   inchesToFeet,
   CUBIC_FEET_PER_CUBIC_YARD,
 } from '../../../shared/constants/units';
+import {
+  DEFAULT_UNIT_SYSTEM, convertQty, unitLabel, type UnitSystem,
+} from '../../../shared/unitSystem';
 
 // ---- Input / Output types --------------------------------------------------
 
@@ -154,14 +157,24 @@ export function calculateConcrete(input: ConcreteInput): ConcreteOutput {
 
 // ---- Math explanation (for the CalcPopover) --------------------------------
 
-export function explainConcrete(input: ConcreteInput, out: ConcreteOutput): {
+export function explainConcrete(
+  input: ConcreteInput,
+  out: ConcreteOutput,
+  system: UnitSystem = DEFAULT_UNIT_SYSTEM,
+): {
   order: CalcBreakdown;
   forms: CalcBreakdown;
   rebar: CalcBreakdown | null;
   subbase: CalcBreakdown | null;
 } {
-  const cy = (n: number) => `${fmtNum(n, 2)} CY`;
-  const sf = (n: number) => `${fmtNum(n, 1)} SF`;
+  const metric = system === 'metric';
+  const cy = (n: number) => `${fmtNum(convertQty(n, 'cy', system), 2)} ${unitLabel('cy', system)}`;
+  const sf = (n: number) => `${fmtNum(convertQty(n, 'sf', system), 1)} ${unitLabel('sf', system)}`;
+  const lf = (n: number, frac: number) =>
+    `${fmtNum(convertQty(n, 'lf', system), frac)} ${unitLabel('lf', system)}`;
+  // Thin dimensions narrate in the unit they're entered in: decimal ft
+  // imperial, m metric (3 decimals keeps mm precision: 100 mm → 0.100 m)
+  const thin = (ft: number) => `${fmtNum(convertQty(ft, 'ft', system), 3)} ${unitLabel('ft', system)}`;
   const thicknessFt = inchesToFeet(input.thicknessIn);
   const neatCF = input.areaSF * thicknessFt;
 
@@ -171,45 +184,57 @@ export function explainConcrete(input: ConcreteInput, out: ConcreteOutput): {
         lines: [
           { label: 'Wall area', value: sf(input.areaSF), kind: 'term' },
           { label: 'Faces formed', value: `${input.formBothFaces ? 2 : 1}`, kind: 'term' },
-          { label: 'Contact area', value: `${fmtNum(out.formSFCA, 1)} SFCA`, kind: 'result' },
+          { label: 'Contact area', value: metric
+              ? `${fmtNum(convertQty(out.formSFCA, 'sf', system), 1)} m²`
+              : `${fmtNum(out.formSFCA, 1)} SFCA`, kind: 'result' },
         ],
       }
     : {
         formula: 'Edge form area = perimeter × form height',
         lines: [
-          { label: 'Perimeter', value: `${fmtNum(input.perimeterLF, 2)} LF`, kind: 'term' },
-          { label: 'Form height', value: `${fmtNum(inchesToFeet(input.formHeightIn || input.thicknessIn), 2)} ft`, kind: 'term' },
-          { label: 'Contact area', value: `${fmtNum(out.formSFCA, 1)} SFCA`, kind: 'result' },
+          { label: 'Perimeter', value: lf(input.perimeterLF, 2), kind: 'term' },
+          { label: 'Form height', value: `${fmtNum(convertQty(inchesToFeet(input.formHeightIn || input.thicknessIn), 'ft', system), 2)} ${unitLabel('ft', system)}`, kind: 'term' },
+          { label: 'Contact area', value: metric
+              ? `${fmtNum(convertQty(out.formSFCA, 'sf', system), 1)} m²`
+              : `${fmtNum(out.formSFCA, 1)} SFCA`, kind: 'result' },
         ],
       };
 
   return {
     order: {
-      formula: 'Order = (area × thickness ÷ 27) × (1 + waste)',
+      formula: metric
+        ? 'Order = area × thickness × (1 + waste)'
+        : 'Order = (area × thickness ÷ 27) × (1 + waste)',
       lines: [
         { label: 'Area', value: sf(input.areaSF), kind: 'term' },
-        { label: 'Thickness', value: `${fmtNum(thicknessFt, 3)} ft`, kind: 'term' },
-        { label: 'Neat volume', value: `${fmtNum(neatCF, 1)} CF ÷ ${CUBIC_FEET_PER_CUBIC_YARD} = ${cy(out.neatCY)}`, kind: 'term' },
+        { label: 'Thickness', value: thin(thicknessFt), kind: 'term' },
+        { label: 'Neat volume', value: metric
+            ? cy(out.neatCY)
+            : `${fmtNum(neatCF, 1)} CF ÷ ${CUBIC_FEET_PER_CUBIC_YARD} = ${cy(out.neatCY)}`, kind: 'term' },
         { label: `Waste (${fmtNum(input.wastePct, 1)}%)`, value: `× ${fmtNum(1 + input.wastePct / 100, 3)}`, kind: 'term' },
         { label: 'Order volume', value: cy(out.orderCY), kind: 'result' },
       ],
-      note: 'Round up to the nearest 1/4 CY when ordering; suppliers bill by the full yard.',
+      note: metric
+        ? 'Round up to the nearest 0.25 m³ when ordering; suppliers bill in half-metre steps.'
+        : 'Round up to the nearest 1/4 CY when ordering; suppliers bill by the full yard.',
     },
     forms,
     rebar: out.rebarLF > 0 ? {
       formula: 'Rebar = bars-per-direction × span × 2 directions',
       lines: [
         { label: 'Area', value: sf(input.areaSF), kind: 'term' },
-        { label: 'Spacing', value: `${fmtNum(input.rebarSpacingIn, 1)}" o.c. each way`, kind: 'term' },
-        { label: 'Grid length', value: `${fmtNum(out.rebarLF, 1)} LF`, kind: 'result' },
+        { label: 'Spacing', value: metric
+            ? `${fmtNum(convertQty(input.rebarSpacingIn, 'in', system), 0)} mm o.c. each way`
+            : `${fmtNum(input.rebarSpacingIn, 1)}" o.c. each way`, kind: 'term' },
+        { label: 'Grid length', value: lf(out.rebarLF, 1), kind: 'result' },
       ],
       note: 'Approximates the slab as a square; excludes laps and bends.',
     } : null,
     subbase: out.subbaseCY > 0 ? {
-      formula: 'Subbase = area × depth ÷ 27',
+      formula: metric ? 'Subbase = area × depth' : 'Subbase = area × depth ÷ 27',
       lines: [
         { label: 'Area', value: sf(input.areaSF), kind: 'term' },
-        { label: 'Depth', value: `${fmtNum(inchesToFeet(input.subbaseIn), 3)} ft`, kind: 'term' },
+        { label: 'Depth', value: thin(inchesToFeet(input.subbaseIn)), kind: 'term' },
         { label: 'Subbase', value: cy(out.subbaseCY), kind: 'result' },
       ],
     } : null,

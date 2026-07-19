@@ -12,6 +12,7 @@ import {
   type BidTotals,
 } from '../../../shared/bidCalc';
 import { parsePipeSizeFromName } from '../../modules/underground/trenchCalc';
+import { METERS_PER_FOOT } from '../../../shared/unitSystem';
 
 /** Crew-day conversion used for the effort strip (single-shift day). */
 export const CREW_DAY_HOURS = 8;
@@ -31,7 +32,7 @@ export interface SectionAnalysis {
   sellTotal: number;
   /** sellTotal − directCost */
   margin: number;
-  /** Total LF of pipe lines (LF unit + inch-marked description) */
+  /** Total pipe length in canonical LF (LF or metric-m lines, size-marked name) */
   pipeLF: number;
 }
 
@@ -50,10 +51,18 @@ export interface BidAnalysis {
   pipeSizes: PipeSizeAnalysis[];
 }
 
-/** True for line items that represent pipe runs: LF unit, inch-marked name. */
+/** True for line items that represent pipe runs: LF (or metric m) unit with a
+ *  size-marked name (`8" PVC` / `DN200 PVC`). Returns nominal inches, 0 = not pipe. */
 function pipeSizeOf(item: any): number {
-  if (String(item.unit || '').toUpperCase() !== 'LF') return 0;
+  const unit = String(item.unit || '').toUpperCase();
+  if (unit !== 'LF' && unit !== 'M') return 0;
   return parsePipeSizeFromName(String(item.description || ''));
+}
+
+/** Pipe-line quantity in canonical LF — metric lines are quantified in metres. */
+function pipeQtyLF(item: any): number {
+  const qty = item.quantity || 0;
+  return String(item.unit || '').toUpperCase() === 'M' ? qty / METERS_PER_FOOT : qty;
 }
 
 export function computeBidAnalysis(
@@ -87,7 +96,7 @@ export function computeBidAnalysis(
 
       const sizeIn = pipeSizeOf(item);
       if (sizeIn > 0) {
-        const qty = item.quantity || 0;
+        const qty = pipeQtyLF(item);
         secPipeLF += qty;
         const agg = bySize.get(sizeIn) || { sizeIn, totalLF: 0, directCost: 0, directPerLF: 0 };
         agg.totalLF += qty;

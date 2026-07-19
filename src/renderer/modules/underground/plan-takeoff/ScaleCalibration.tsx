@@ -1,11 +1,21 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { PdfPoint, OverlayMode } from './types';
+import {
+  fromDisplay, unitLabel, METERS_PER_FOOT, DEFAULT_UNIT_SYSTEM, type UnitSystem,
+} from '../../../../shared/unitSystem';
 
 /** PDF standard: 72 points per inch */
 const PDF_PTS_PER_INCH = 72;
 
-/** Common civil plan scales */
+/** PDF points per real foot on a 1:1 drawing (72 pt/in \u00d7 12 in/ft) \u2014 divide
+ *  by a ratio scale's R (1:R) to get px/ft. */
+const PDF_PTS_PER_FT = PDF_PTS_PER_INCH * 12;
+
+/** Common civil plan scales, engineering format (1" = X') */
 const COMMON_SCALES = [10, 20, 30, 40, 50, 60, 100];
+
+/** Common metric civil plan scales, ratio format (1:R) */
+const COMMON_RATIOS = [50, 100, 200, 250, 500, 1000];
 
 export interface ScaleResult {
   pxPerFt: number;
@@ -19,6 +29,7 @@ interface UseScaleCalibrationOptions {
   active: boolean;
   pageWidth: number;
   pageHeight: number;
+  system?: UnitSystem;
   onComplete: (result: ScaleResult) => void;
   onCancel: () => void;
 }
@@ -31,9 +42,13 @@ type CalibrationStep =
   | 'confirm'
   | 'direct-entry';
 
-/** Compute scale in engineering format: 1" = X' */
-export function formatScale(pxPerFt: number): string {
+/** Compute scale in engineering format (1" = X') or metric ratio (1:R). */
+export function formatScale(pxPerFt: number, system: UnitSystem = DEFAULT_UNIT_SYSTEM): string {
   if (!pxPerFt || pxPerFt <= 0) return 'No scale';
+  if (system === 'metric') {
+    const ratio = PDF_PTS_PER_FT / pxPerFt;
+    return `1:${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1)}`;
+  }
   const ftPerInch = PDF_PTS_PER_INCH / pxPerFt;
   const rounded = Math.round(ftPerInch);
   if (rounded > 0 && Math.abs(ftPerInch - rounded) < 0.5) {
@@ -49,7 +64,7 @@ function pixelDistance(p1: PdfPoint, p2: PdfPoint): number {
 }
 
 export function useScaleCalibration({
-  active, pageWidth, pageHeight, onComplete, onCancel,
+  active, pageWidth, pageHeight, system = DEFAULT_UNIT_SYSTEM, onComplete, onCancel,
 }: UseScaleCalibrationOptions) {
   const [step, setStep] = useState<CalibrationStep>('choose-method');
   const [point1, setPoint1] = useState<PdfPoint | null>(null);
@@ -95,14 +110,17 @@ export function useScaleCalibration({
   }, [step, point1]);
 
   const handleDistanceSubmit = useCallback(() => {
-    const ft = parseFloat(distanceInput);
-    if (!point1 || !point2 || !isFinite(ft) || ft <= 0) return;
+    // The user types the known distance in their system's unit (ft / m);
+    // the stored scale is canonical px-per-ft either way.
+    const typed = parseFloat(distanceInput);
+    if (!point1 || !point2 || !isFinite(typed) || typed <= 0) return;
+    const ft = fromDisplay(typed, 'ft', system);
     const distPx = pixelDistance(point1, point2);
     if (distPx < 1) return;
     const pxPerFt = distPx / ft;
     setComputedPxPerFt(pxPerFt);
     setStep('confirm');
-  }, [distanceInput, point1, point2]);
+  }, [distanceInput, point1, point2, system]);
 
   const handleAcceptTwoPoint = useCallback(() => {
     if (!point1 || !point2 || !computedPxPerFt) return;
@@ -110,9 +128,9 @@ export function useScaleCalibration({
       pxPerFt: computedPxPerFt,
       point1,
       point2,
-      distanceFt: parseFloat(distanceInput),
+      distanceFt: fromDisplay(parseFloat(distanceInput), 'ft', system),
     });
-  }, [point1, point2, computedPxPerFt, distanceInput, onComplete]);
+  }, [point1, point2, computedPxPerFt, distanceInput, system, onComplete]);
 
   const handleRedo = useCallback(() => {
     setStep('pick-p1');
@@ -124,15 +142,21 @@ export function useScaleCalibration({
 
   // -- Direct entry handlers --
 
-  const handlePresetClick = useCallback((ftPerInch: number) => {
-    onComplete({ pxPerFt: PDF_PTS_PER_INCH / ftPerInch });
-  }, [onComplete]);
+  // Direct entry: imperial takes the X of an engineering scale (1" = X'),
+  // metric the R of a ratio scale (1:R). Both resolve to canonical px/ft.
+  const handlePresetClick = useCallback((value: number) => {
+    onComplete({
+      pxPerFt: system === 'metric' ? PDF_PTS_PER_FT / value : PDF_PTS_PER_INCH / value,
+    });
+  }, [system, onComplete]);
 
   const handleDirectSubmit = useCallback(() => {
-    const ftPerInch = parseFloat(directInput);
-    if (!isFinite(ftPerInch) || ftPerInch <= 0) return;
-    onComplete({ pxPerFt: PDF_PTS_PER_INCH / ftPerInch });
-  }, [directInput, onComplete]);
+    const value = parseFloat(directInput);
+    if (!isFinite(value) || value <= 0) return;
+    onComplete({
+      pxPerFt: system === 'metric' ? PDF_PTS_PER_FT / value : PDF_PTS_PER_INCH / value,
+    });
+  }, [directInput, system, onComplete]);
 
   // -- Shared --
 
@@ -247,7 +271,7 @@ export function useScaleCalibration({
               min="0.01"
               step="any"
             />
-            <span style={{ color: 'var(--text-secondary)' }}>ft</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{unitLabel('ft', system)}</span>
             <button className="btn btn-primary btn-sm" onClick={handleDistanceSubmit}
               disabled={!distanceInput || !isFinite(parseFloat(distanceInput)) || parseFloat(distanceInput) <= 0}>
               OK
@@ -260,9 +284,11 @@ export function useScaleCalibration({
       panelContent = (
         <div style={panelStyle}>
           <div style={inlineStyle}>
-            <span style={{ fontWeight: 500 }}>Scale: {formatScale(computedPxPerFt)}</span>
+            <span style={{ fontWeight: 500 }}>Scale: {formatScale(computedPxPerFt, system)}</span>
             <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-              ({computedPxPerFt.toFixed(1)} px/ft)
+              {system === 'metric'
+                ? `(${(computedPxPerFt / METERS_PER_FOOT).toFixed(1)} px/m)`
+                : `(${computedPxPerFt.toFixed(1)} px/ft)`}
             </span>
             <button className="btn btn-primary btn-sm" onClick={handleAcceptTwoPoint}>Accept</button>
             <button className="btn btn-secondary btn-sm" onClick={handleRedo}>Redo</button>
@@ -275,16 +301,26 @@ export function useScaleCalibration({
         <div style={panelStyle}>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>Enter Drawing Scale</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-            {COMMON_SCALES.map((ft) => (
-              <button key={ft} className="btn btn-secondary btn-sm"
-                style={{ fontSize: 12 }}
-                onClick={() => handlePresetClick(ft)}>
-                1&quot; = {ft}&apos;
-              </button>
-            ))}
+            {system === 'metric'
+              ? COMMON_RATIOS.map((r) => (
+                <button key={r} className="btn btn-secondary btn-sm"
+                  style={{ fontSize: 12 }}
+                  onClick={() => handlePresetClick(r)}>
+                  1:{r}
+                </button>
+              ))
+              : COMMON_SCALES.map((ft) => (
+                <button key={ft} className="btn btn-secondary btn-sm"
+                  style={{ fontSize: 12 }}
+                  onClick={() => handlePresetClick(ft)}>
+                  1&quot; = {ft}&apos;
+                </button>
+              ))}
           </div>
           <div style={inlineStyle}>
-            <span style={{ color: 'var(--text-secondary)' }}>Custom: 1&quot; =</span>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {system === 'metric' ? 'Custom: 1 :' : <>Custom: 1&quot; =</>}
+            </span>
             <input
               ref={directInputRef}
               type="number"
@@ -297,7 +333,7 @@ export function useScaleCalibration({
               min="0.01"
               step="any"
             />
-            <span style={{ color: 'var(--text-secondary)' }}>ft</span>
+            {system !== 'metric' && <span style={{ color: 'var(--text-secondary)' }}>ft</span>}
             <button className="btn btn-primary btn-sm" onClick={handleDirectSubmit}
               disabled={!directInput || !isFinite(parseFloat(directInput)) || parseFloat(directInput) <= 0}>
               Apply
