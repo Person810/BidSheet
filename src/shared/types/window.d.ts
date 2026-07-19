@@ -149,8 +149,12 @@ declare global {
 
       // Setup
       isSetupComplete: () => Promise<boolean>;
-      runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean) => Promise<{ success: boolean }>;
+      runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean) => Promise<{ success: boolean }>;
       addTrade: (trade: string, includeBallparkPrices: boolean) => Promise<{ success: boolean; tradeTypes: string }>;
+      /** Sample-catalog (seed item) management */
+      seedsStatus: () => Promise<{ active: number; hidden: number }>;
+      seedsRemove: () => Promise<{ hidden: number; deletedRoles: number }>;
+      seedsRestore: (includeBallparkPrices: boolean) => Promise<{ restored: number; readded: number }>;
 
       // CSV Import
       openCsvFile: () => Promise<CsvParseResult | null>;

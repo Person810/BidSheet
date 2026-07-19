@@ -7,7 +7,9 @@ import type Database from 'better-sqlite3';
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp' } }));
 
 import BetterSqlite3 from 'better-sqlite3';
-import { MIGRATIONS } from './database';
+import {
+  MIGRATIONS, seedDatabase, seedCatalogStatus, removeSeedCatalog, restoreSeedCatalog,
+} from './database';
 
 /** Runs migrations 1..version (1-indexed, matching schema_version) against a fresh DB. */
 function dbAtVersion(version: number): Database.Database {
@@ -119,5 +121,75 @@ describe('migration v44 — client records backfill', () => {
     expect(clientIdOf(older)).toBe(clientIdOf(newer));
     expect(clientIdOf(jones)).not.toBe(clientIdOf(newer));
     expect(clientIdOf(blank)).toBeNull();
+  });
+});
+
+describe('sample-catalog management', () => {
+  const freshDb = () => dbAtVersion(MIGRATIONS.length);
+
+  it('setup can skip the sample catalog entirely, still recording trades', () => {
+    const db = freshDb();
+    seedDatabase(db, ['water_sewer'], true, 'Co', false, false);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM materials').get() as any).n).toBe(0);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM labor_roles').get() as any).n).toBe(0);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM equipment').get() as any).n).toBe(0);
+    const s = db.prepare('SELECT setup_complete, trade_types FROM app_settings WHERE id = 1').get() as any;
+    expect(s.setup_complete).toBe(1);
+    expect(s.trade_types).toBe('water_sewer');
+    expect(seedCatalogStatus(db)).toEqual({ active: 0, hidden: 0 });
+  });
+
+  it('hide spares user items and crew-referenced seed labor roles', () => {
+    const db = freshDb();
+    seedDatabase(db, ['water_sewer'], true, 'Co');
+    expect(seedCatalogStatus(db).active).toBeGreaterThan(0);
+
+    const catId = (db.prepare('SELECT id FROM material_categories LIMIT 1').get() as any).id;
+    db.prepare("INSERT INTO materials (category_id, name, unit) VALUES (?, 'My Pipe', 'LF')").run(catId);
+    const roleId = (db.prepare('SELECT id FROM labor_roles WHERE is_seed = 1 LIMIT 1').get() as any).id;
+    const crewId = Number(db.prepare("INSERT INTO crew_templates (name) VALUES ('Crew A')").run().lastInsertRowid);
+    db.prepare('INSERT INTO crew_members (crew_template_id, labor_role_id, quantity) VALUES (?, ?, 1)').run(crewId, roleId);
+
+    const removed = removeSeedCatalog(db);
+    expect(removed.hidden).toBeGreaterThan(0);
+    expect(removed.deletedRoles).toBeGreaterThan(0);
+
+    // The crew-referenced seed role is the only seed item left active
+    expect(seedCatalogStatus(db).active).toBe(1);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM labor_roles WHERE id = ?').get(roleId) as any).n).toBe(1);
+    // The user's own material is untouched
+    expect((db.prepare("SELECT is_active FROM materials WHERE name = 'My Pipe'").get() as any).is_active).toBe(1);
+  });
+
+  it('restore un-hides seed items with edits intact and re-creates deleted roles', () => {
+    const db = freshDb();
+    seedDatabase(db, ['water_sewer'], true, 'Co');
+    const mat = db.prepare('SELECT id FROM materials WHERE is_seed = 1 LIMIT 1').get() as any;
+    db.prepare('UPDATE materials SET default_unit_cost = 999 WHERE id = ?').run(mat.id);
+    const fullActive = seedCatalogStatus(db).active;
+    const roleCount = (db.prepare('SELECT COUNT(*) AS n FROM labor_roles WHERE is_seed = 1').get() as any).n;
+
+    removeSeedCatalog(db);
+    const r = restoreSeedCatalog(db, true);
+    // No crews reference roles here, so hide deleted them all; restore re-creates them
+    expect(r.readded).toBe(roleCount);
+    expect(r.restored).toBeGreaterThan(0);
+
+    const row = db.prepare('SELECT default_unit_cost, is_active FROM materials WHERE id = ?').get(mat.id) as any;
+    expect(row.is_active).toBe(1);
+    expect(row.default_unit_cost).toBe(999); // user edit survives the round trip
+    expect(seedCatalogStatus(db)).toEqual({ active: fullActive, hidden: 0 });
+  });
+
+  it('hide → restore is a clean round trip for assemblies (uuid-keyed, no is_seed column)', () => {
+    const db = freshDb();
+    seedDatabase(db, ['water_sewer'], true, 'Co');
+    const seedAsm = (db.prepare('SELECT COUNT(*) AS n FROM assemblies WHERE is_active = 1').get() as any).n;
+    db.prepare("INSERT INTO assemblies (name, unit) VALUES ('My Assembly', 'EA')").run();
+
+    removeSeedCatalog(db);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM assemblies WHERE is_active = 1').get() as any).n).toBe(1); // just mine
+    restoreSeedCatalog(db, true);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM assemblies WHERE is_active = 1').get() as any).n).toBe(seedAsm + 1);
   });
 });
