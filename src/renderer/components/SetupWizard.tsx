@@ -183,8 +183,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             <h2>Cloud Sync (Beta)</h2>
             <p className="setup-desc">
               BidSheet is fully local. Your bids live on this computer, no account needed.
-              Optional cloud sync ($20/mo after a free trial) adds online backup and
-              multi-computer sync. Think you'll ever use it?
+              Optional cloud sync ($20/mo after a free trial) adds end-to-end-encrypted
+              online backup and multi-computer sync — only you hold the key. Think you'll
+              ever use it?
             </p>
             <div className="price-options">
               <div

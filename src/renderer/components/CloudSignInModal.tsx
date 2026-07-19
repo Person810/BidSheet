@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useToastStore } from '../stores/toast-store';
 import { useCloudStore } from '../stores/cloud-store';
+import { E2eeEnrollStep } from './E2eeEnrollment';
 
 /**
  * "Sign In" modal — pops over the app instead of the old inline form in the
@@ -9,8 +10,10 @@ import { useCloudStore } from '../stores/cloud-store';
  *
  * The current step is derived from the shared auth status, not local state, so
  * the modal resumes at the right place when reopened on a half-signed-in
- * session (e.g. signed in but the authenticator was never finished). It closes
- * itself the moment the account reaches full (aal2) access.
+ * session (e.g. signed in but the authenticator was never finished). Once the
+ * account reaches full (aal2) access it closes itself — unless the account has
+ * no encryption key yet (it predates mandatory enrollment, or enrollment was
+ * interrupted), in which case it finishes that enrollment here first.
  */
 export function CloudSignInModal({ onClose }: { onClose: () => void }) {
   const addToast = useToastStore((s) => s.addToast);
@@ -21,15 +24,31 @@ export function CloudSignInModal({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [enroll, setEnroll] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
+  const [needsE2ee, setNeedsE2ee] = useState(false);
 
   const signedIn = !!auth?.signedIn;
   const ready = auth?.aal === 'aal2';
-  const step: 'credentials' | 'totp' = signedIn ? 'totp' : 'credentials';
+  const step: 'credentials' | 'totp' | 'encryption' = needsE2ee
+    ? 'encryption'
+    : signedIn
+      ? 'totp'
+      : 'credentials';
 
-  // Full access means there's nothing left to do here — close so the modal
-  // never lingers on a stale "verify" screen after a successful verify.
+  // Full access: normally nothing is left to do here, so close. But an account
+  // with no key material yet must finish encryption enrollment first — it's
+  // part of the account, not a setting. Locked / pending-approval / offline
+  // states are handled by Settings → Cloud Sync as before.
+  const checkedE2ee = useRef(false);
   useEffect(() => {
-    if (ready) onClose();
+    if (!ready || checkedE2ee.current) return;
+    checkedE2ee.current = true;
+    window.api
+      .cloudE2eeState()
+      .then((st) => {
+        if (st === 'not_setup') setNeedsE2ee(true);
+        else onClose();
+      })
+      .catch(() => onClose());
   }, [ready, onClose]);
 
   const act = async (fn: () => Promise<void>) => {
@@ -136,6 +155,22 @@ export function CloudSignInModal({ onClose }: { onClose: () => void }) {
                 Finish Later
               </button>
             </div>
+          </div>
+        )}
+
+        {step === 'encryption' && (
+          <div>
+            <p style={{ marginBottom: 12 }}>
+              Signed in as <strong>{auth?.email}</strong>.
+            </p>
+            <E2eeEnrollStep
+              onEnrolled={() => {
+                addToast('Encrypted sync is on.', 'success');
+                onClose();
+              }}
+              onAlreadySetup={onClose}
+              onSkip={onClose}
+            />
           </div>
         )}
       </div>
