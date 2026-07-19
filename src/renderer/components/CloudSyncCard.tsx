@@ -3,6 +3,7 @@ import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, initCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
 import { CloudAccountSetupModal } from './CloudAccountSetupModal';
 import { CloudSignInModal } from './CloudSignInModal';
+import { RecoveryKeyModal } from './E2eeEnrollment';
 import { formatBytes, formatDateTime } from '../utils/format';
 
 /**
@@ -304,10 +305,13 @@ export function CloudSyncCard() {
  * Encrypted sync & backup (zero-knowledge). Everything synced — jobs, takeoffs,
  * catalog, plans — and the whole-database backup is encrypted on this computer
  * with a per-account key, unlocked by a single recovery key (NOT the login
- * password). Driven by the E2EE state:
- *   - not_setup → generate the recovery key (shown exactly once)
+ * password). Encryption is part of the account, not a setting — enrollment
+ * happens during account creation, and there is deliberately no way to turn it
+ * off here. Driven by the E2EE state:
+ *   - not_setup → finish enrollment (interrupted signup, or an account from
+ *                 before enrollment became part of account creation)
  *   - locked    → unlock this computer with the recovery key (or restore a backup)
- *   - unlocked  → last-backed-up time, Back Up Now, regenerate key, turn off
+ *   - unlocked  → last-backed-up time, Back Up Now, regenerate key
  */
 function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const addToast = useToastStore((s) => s.addToast);
@@ -470,9 +474,11 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
 
       {e2eeState === 'not_setup' && (
         <div style={{ maxWidth: 480 }}>
-          <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            Turn this on once. You'll get a <strong>recovery key</strong> to save. It's the only way
-            to unlock your data on a new computer, and it is <strong>not</strong> your login password.
+          <p style={{ fontSize: 13, marginBottom: 8 }}>
+            <strong>One step left to finish your account: encryption.</strong> Nothing syncs
+            until it's set up. You'll get a <strong>recovery key</strong> to save — it's the only
+            way to unlock your data on a new computer, and it is <strong>not</strong> your login
+            password.
           </p>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, marginBottom: 10 }}>
             <input
@@ -488,7 +494,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
             </span>
           </label>
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleSetup}>
-            {busy ? 'Setting up…' : 'Turn On Encrypted Sync'}
+            {busy ? 'Setting up…' : 'Finish Encryption Setup'}
           </button>
 
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
@@ -828,76 +834,3 @@ function InviteCodeModal({ token, onClose }: { token: string; onClose: () => voi
   );
 }
 
-/**
- * Shows a freshly generated recovery key exactly once and forces the user to
- * confirm they saved it before continuing. The key is never shown again — the
- * server never has it, so there is no second chance.
- */
-function RecoveryKeyModal({
-  recoveryKey,
-  onSaved,
-}: {
-  recoveryKey: string;
-  onSaved: () => void;
-}) {
-  const addToast = useToastStore((s) => s.addToast);
-  const [confirmed, setConfirmed] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(recoveryKey);
-      addToast('Recovery key copied.', 'success');
-    } catch {
-      addToast('Could not copy. Select the key and copy it manually.', 'error');
-    }
-  };
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal" style={{ width: 520 }} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 8 }}>Save your recovery key</h3>
-        <p className="text-danger" style={{ fontSize: 13, marginBottom: 8 }}>
-          This is the <strong>only</strong> way to unlock your encrypted data on another computer.
-          We can never recover it for you, and it is <strong>not</strong> your login password. Save
-          it in a password manager or print it now. You won't see it again.
-        </p>
-        <div
-          style={{
-            fontFamily: 'var(--mono, monospace)',
-            fontSize: 14,
-            lineHeight: 1.6,
-            padding: 12,
-            background: 'var(--navy, #122240)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            wordBreak: 'break-all',
-            userSelect: 'all',
-            margin: '12px 0',
-          }}>
-          {recoveryKey}
-        </div>
-        <div className="flex gap-8" style={{ marginBottom: 12 }}>
-          <button className="btn btn-sm btn-secondary" onClick={copy}>
-            Copy
-          </button>
-          <button className="btn btn-sm btn-secondary" onClick={() => window.print()}>
-            Print
-          </button>
-        </div>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={confirmed}
-            onChange={(e) => setConfirmed(e.target.checked)}
-          />
-          I've saved my recovery key somewhere safe.
-        </label>
-        <div className="modal-actions">
-          <button className="btn btn-primary" disabled={!confirmed} onClick={onSaved}>
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

@@ -1,21 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
+import { E2eeEnrollStep } from './E2eeEnrollment';
 
 /**
  * "Create Account" wizard — pops over the app instead of inline forms:
- * pricing pitch → email/password → authenticator (TOTP) setup → trial
- * started, with the road to payment at the end. The payment itself happens
- * on Paddle's hosted page in the system browser; this dialog just opens it
- * and waits for the Worker's webhook to flip the account to active.
+ * pricing pitch → email/password → email confirmation (only when Supabase
+ * requires it — signup then returns a user but no session) → authenticator
+ * (TOTP) setup → encryption key (recovery key shown once) → trial started,
+ * with the road to payment at the end. Encryption enrollment is part of
+ * account creation, not a setting — nothing syncs until the account has its
+ * key. The payment itself happens on Paddle's hosted page in the system
+ * browser; this dialog just opens it and waits for the Worker's webhook to
+ * flip the account to active.
  */
 export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   const addToast = useToastStore((s) => s.addToast);
   const refresh = useCloudStore((s) => s.refresh);
 
-  const [step, setStep] = useState<'pitch' | 'credentials' | 'totp' | 'done'>('pitch');
+  const [step, setStep] = useState<
+    'pitch' | 'credentials' | 'confirm-email' | 'totp' | 'encryption' | 'done'
+  >('pitch');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [enroll, setEnroll] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
@@ -39,12 +47,39 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const startTotpEnroll = async () => {
+    const e = await window.api.cloudEnrollTotp();
+    setEnroll(e);
+    setStep('totp');
+  };
+
   const handleCreate = () =>
     act(async () => {
+      const status = await window.api.cloudSignUp(email.trim(), password);
+      if (!status?.signedIn) {
+        // GoTrue created the user but withheld the session: the project
+        // requires email confirmation (it also answers like this for an
+        // already-registered email, to prevent account enumeration).
+        setStep('confirm-email');
+        return;
+      }
+      await startTotpEnroll();
+    });
+
+  // After the user clicks the emailed link, a normal password sign-in yields
+  // the session that signup withheld; then the ladder continues as usual.
+  const handleConfirmedContinue = () =>
+    act(async () => {
+      await window.api.cloudSignIn(email.trim(), password);
+      await startTotpEnroll();
+    });
+
+  // GoTrue re-sends the confirmation email on a repeat signup for an
+  // unconfirmed user (rate-limited; errors surface as toasts).
+  const handleResend = () =>
+    act(async () => {
       await window.api.cloudSignUp(email.trim(), password);
-      const e = await window.api.cloudEnrollTotp();
-      setEnroll(e);
-      setStep('totp');
+      addToast('Confirmation email sent again.', 'info');
     });
 
   const handleVerify = () =>
@@ -54,8 +89,8 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
         setTrialEndsAt(me.account?.trial_ends_at ?? null);
         setBillingEnabled(!!me.billing_enabled);
       }).catch(() => {});
-      window.api.cloudSyncNow().catch(() => {});
-      setStep('done');
+      // No sync yet — nothing can upload until the encryption key exists.
+      setStep('encryption');
     });
 
   // Deliberately not act(): the poll can run minutes and "Maybe Later" must
@@ -94,12 +129,13 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
               <li><strong>Free for 30 days</strong>, no card needed, 10 GB of storage</li>
               <li><strong>$20/month</strong> after that, one price for your whole company</li>
               <li>Unlimited computers and users, 100 GB of storage</li>
+              <li><strong>End-to-end encrypted</strong> — your bids are locked with a key only you hold</li>
               <li>Cancel anytime. Your data stays downloadable.</li>
             </ul>
             <p className="text-muted" style={{ fontSize: 12 }}>
               You'll need an authenticator app (Google Authenticator, Authy, 1Password). Your
-              bids and plans only leave this computer behind two-factor login. BidSheet
-              itself stays free and works fully offline without any of this.
+              bids and plans are encrypted on this computer and only leave it behind two-factor
+              login. BidSheet itself stays free and works fully offline without any of this.
             </p>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -123,11 +159,46 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="12+ characters, mixed case, number, symbol" />
             </div>
+            <div className="form-group">
+              <label>Confirm Password</label>
+              <input type="password" className="form-control" value={password2} autoComplete="new-password"
+                onChange={(e) => setPassword2(e.target.value)}
+                placeholder="Type it again" />
+              {password2.length > 0 && password2 !== password && (
+                <p className="text-danger" style={{ fontSize: 12, marginTop: 4 }}>
+                  Passwords don't match.
+                </p>
+              )}
+            </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" disabled={busy} onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" disabled={busy || !email.trim() || !password}
+              <button className="btn btn-primary"
+                disabled={busy || !email.trim() || !password || password2 !== password}
                 onClick={handleCreate}>
                 {busy ? 'Creating…' : 'Create Account'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'confirm-email' && (
+          <div>
+            <p style={{ marginBottom: 8 }}>
+              <strong>Check your email.</strong> We sent a confirmation link to{' '}
+              <strong>{email.trim()}</strong>. Click it, then come back here and continue.
+            </p>
+            <p className="text-muted mb-16" style={{ fontSize: 12 }}>
+              Nothing arriving? Check your spam folder, or resend it. If you already have a
+              BidSheet account with this email, no email is sent — close this and use{' '}
+              <strong>Sign In</strong> instead.
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" disabled={busy} onClick={onClose}>Cancel</button>
+              <button className="btn btn-secondary" disabled={busy} onClick={handleResend}>
+                Resend Email
+              </button>
+              <button className="btn btn-primary" disabled={busy} onClick={handleConfirmedContinue}>
+                {busy ? 'Checking…' : "I've Confirmed — Continue"}
               </button>
             </div>
           </div>
@@ -163,6 +234,14 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
               </button>
             </div>
           </div>
+        )}
+
+        {step === 'encryption' && (
+          <E2eeEnrollStep
+            onEnrolled={() => setStep('done')}
+            onAlreadySetup={() => setStep('done')}
+            onSkip={onClose}
+          />
         )}
 
         {step === 'done' && (
