@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { FuzzyAutocomplete, materialsToAutocomplete, type AutocompleteItem } from '../../../components/FuzzyAutocomplete';
+import { UnitInput } from '../../../components/UnitInput';
 import type { AreaConfig, AreaType, GradeMode } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import { ftToInches } from './takeoffUtils';
 import { inchesToFeet } from '../../../../shared/constants/units';
+import { fromDisplay, unitLabel } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 
 const AREA_OPTIONS = (Object.keys(AREA_TYPE_LABELS) as AreaType[]).map((value) => ({
   value,
@@ -43,7 +46,14 @@ interface AreaConfigModalProps {
 }
 
 export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaConfig }: AreaConfigModalProps) {
-  const [config, setConfig] = useState<AreaConfig>(initialConfig ?? { ...DEFAULT_CONFIG });
+  const system = useUnitSystem();
+  const [config, setConfig] = useState<AreaConfig>(
+    // Metric default depth is a round 100 mm rather than 4"'s 101.6 mm
+    initialConfig ?? {
+      ...DEFAULT_CONFIG,
+      ...(system === 'metric' ? { depthFt: inchesToFeet(fromDisplay(100, 'in', 'metric')) } : {}),
+    }
+  );
   const [materialId, setMaterialId] = useState<number | string | null>(initialConfig?.materialId ?? null);
   const [assemblyId, setAssemblyId] = useState<number | string | null>(initialConfig?.assemblyId ?? null);
   const [materials, setMaterials] = useState<AutocompleteItem[]>([]);
@@ -81,11 +91,15 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
       set('gradeValueFt', null);
     } else {
       set('gradeMode', value);
-      // Carry the current value across cut<->fill; reset when entering a mode fresh
+      // Carry the current value across cut<->fill; reset when entering a mode
+      // fresh (round metric defaults: 0.5 m depth, 100 m datum elevation)
+      const fallback = system === 'metric'
+        ? fromDisplay(value === 'finished_elev' ? 100 : 0.5, 'ft', 'metric')
+        : DEFAULT_GRADE_VALUE[value];
       setConfig((prev) => ({
         ...prev,
         gradeMode: value,
-        gradeValueFt: prev.gradeValueFt ?? DEFAULT_GRADE_VALUE[value],
+        gradeValueFt: prev.gradeValueFt ?? fallback,
       }));
     }
   };
@@ -114,9 +128,14 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
   };
 
   const depthIn = ftToInches(config.depthFt);
-  const gradeValueLabel = config.gradeMode === 'finished_elev'
-    ? 'Finished elevation (ft)'
-    : config.gradeMode === 'fill_depth' ? 'Fill depth (ft)' : 'Cut depth (ft)';
+  const isElev = config.gradeMode === 'finished_elev';
+  // Cut/fill depths get the m ⇄ mm picker, so their labels carry no unit in
+  // metric; elevations stay metre-only.
+  const gradeValueLabel = isElev
+    ? `Finished elevation (${unitLabel('ft', system)})`
+    : config.gradeMode === 'fill_depth'
+      ? `Fill depth${system === 'metric' ? '' : ' (ft)'}`
+      : `Cut depth${system === 'metric' ? '' : ' (ft)'}`;
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -163,19 +182,21 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
           <>
             <div className="form-group">
               <label className="form-label">{gradeValueLabel}</label>
-              <input
-                type="number"
+              <UnitInput
+                mmToggle={!isElev}
                 className="form-control"
                 value={config.gradeValueFt ?? 0}
-                step={config.gradeMode === 'finished_elev' ? '0.1' : '0.5'}
-                min={config.gradeMode === 'finished_elev' ? undefined : '0'}
-                onChange={(e) => set('gradeValueFt', parseFloat(e.target.value) || 0)}
+                kind="ft"
+                step={isElev ? 0.1 : 0.5}
+                metricStep={0.1}
+                min={isElev ? undefined : 0}
+                onChange={(v) => set('gradeValueFt', v)}
               />
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
               {config.gradeMode === 'finished_elev'
                 ? 'Cut/fill is computed against the existing surface (add spot elevations). Areas above the finished grade cut, below it fill.'
-                : 'Uniform depth below (cut) or above (fill) existing grade — needs no elevation data. Send to Bid totals the volume as CY.'}
+                : `Uniform depth below (cut) or above (fill) existing grade — needs no elevation data. Send to Bid totals the volume as ${unitLabel('cy', system)}.`}
             </div>
           </>
         ) : (
@@ -195,19 +216,20 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
             </select>
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Depth (in)</label>
-            <input
-              type="number"
+            <label className="form-label">Depth ({unitLabel('in', system)})</label>
+            <UnitInput
               className="form-control"
               value={depthIn}
-              step="0.5"
-              min="0"
-              onChange={(e) => set('depthFt', inchesToFeet(parseFloat(e.target.value) || 0))}
+              kind="in"
+              step={0.5}
+              metricStep={10}
+              min={0}
+              onChange={(inches) => set('depthFt', inchesToFeet(inches))}
             />
           </div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: -8, marginBottom: 12 }}>
-          Depth 0 measures area only. Set a depth to also get volume (CY).
+          Depth 0 measures area only. Set a depth to also get volume ({unitLabel('cy', system)}).
         </div>
 
         {/* Assembly */}
@@ -217,10 +239,10 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
             items={assemblies}
             value={assemblyId}
             onSelect={(item) => setAssemblyId(item ? item.id : null)}
-            placeholder="Search assemblies (e.g. asphalt patch per SY)"
+            placeholder={`Search assemblies (e.g. asphalt patch per ${unitLabel('sy', system)})`}
           />
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Send to Bid expands the assembly (materials + labor + equipment) per measured SY.
+            Send to Bid expands the assembly (materials + labor + equipment) per measured {unitLabel('sy', system)}.
           </div>
         </div>
 

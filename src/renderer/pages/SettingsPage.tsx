@@ -5,10 +5,13 @@ import { useToastStore } from '../stores/toast-store';
 import { useWalkthroughStore } from '../stores/walkthrough-store';
 import { CloudSyncCard } from '../components/CloudSyncCard';
 import { nextJobNumber } from '../../shared/jobNumbering';
+import { useUnitsStore } from '../stores/units-store';
+import { parseUnitSystem, type UnitSystem } from '../../shared/unitSystem';
 
 export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
   const openWalkthrough = useWalkthroughStore((s) => s.open);
+  const setUnitSystem = useUnitsStore((s) => s.setUnitSystem);
   const [settings, setSettings] = useState({
     companyName: '',
     companyAddress: '',
@@ -26,14 +29,18 @@ export function SettingsPage() {
     jobNumberAuto: true,
     jobNumberFormat: 'YYYY-NNN',
     jobNumberStart: 1,
+    unitSystem: 'imperial' as UnitSystem,
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
-  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string } | null>(null);
   const [tradeToAdd, setTradeToAdd] = useState('');
   const [addTradePrices, setAddTradePrices] = useState(true);
   const [addingTrade, setAddingTrade] = useState(false);
+  const [seedStatus, setSeedStatus] = useState<{ active: number; hidden: number } | null>(null);
+  const [seedBusy, setSeedBusy] = useState(false);
+  const [restorePrices, setRestorePrices] = useState(true);
 
   useEffect(() => {
     window.api.getSettings().then((s: any) => {
@@ -55,9 +62,11 @@ export function SettingsPage() {
           jobNumberAuto: s.job_number_auto !== 0,
           jobNumberFormat: s.job_number_format || 'YYYY-NNN',
           jobNumberStart: s.job_number_start || 1,
+          unitSystem: parseUnitSystem(s.unit_system),
         });
       }
     }).finally(() => setLoading(false));
+    window.api.seedsStatus().then(setSeedStatus).catch(() => {});
   }, []);
 
   const handleSave = async () => {
@@ -77,7 +86,10 @@ export function SettingsPage() {
       jobNumberAuto: settings.jobNumberAuto,
       jobNumberFormat: settings.jobNumberFormat,
       jobNumberStart: settings.jobNumberStart,
+      unitSystem: settings.unitSystem,
     });
+    // Calculators read the store, so the change applies without a restart
+    setUnitSystem(settings.unitSystem);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -122,6 +134,48 @@ export function SettingsPage() {
       addToast(err?.message || 'Failed to add trade', 'error');
     } finally {
       setAddingTrade(false);
+    }
+  };
+
+  const refreshSeedStatus = () =>
+    window.api.seedsStatus().then(setSeedStatus).catch(() => {});
+
+  const handleHideSeeds = () => {
+    setConfirmState({
+      msg: 'Hide all sample items? Your own items and any bids that already use sample items are unaffected, and you can restore them here anytime.',
+      yesLabel: 'Hide',
+      onYes: async () => {
+        setConfirmState(null);
+        setSeedBusy(true);
+        try {
+          const r = await window.api.seedsRemove();
+          const roles = r.deletedRoles > 0
+            ? ` and removed ${r.deletedRoles} unused sample labor role${r.deletedRoles === 1 ? '' : 's'}`
+            : '';
+          addToast(`Hid ${r.hidden} sample item${r.hidden === 1 ? '' : 's'}${roles}.`, 'success');
+          refreshSeedStatus();
+        } catch (err: any) {
+          addToast(err?.message || 'Failed to hide sample items', 'error');
+        } finally {
+          setSeedBusy(false);
+        }
+      },
+    });
+  };
+
+  const handleRestoreSeeds = async () => {
+    setSeedBusy(true);
+    try {
+      const r = await window.api.seedsRestore(restorePrices);
+      addToast(
+        `Restored ${r.restored} hidden sample item${r.restored === 1 ? '' : 's'} and re-created ${r.readded}.`,
+        'success'
+      );
+      refreshSeedStatus();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to restore sample items', 'error');
+    } finally {
+      setSeedBusy(false);
     }
   };
 
@@ -267,6 +321,26 @@ export function SettingsPage() {
       </div>
 
       <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Measurement Units</h3>
+        <div className="form-group" style={{ maxWidth: 320 }}>
+          <select
+            className="form-control"
+            value={settings.unitSystem}
+            onChange={(e) => update('unitSystem', parseUnitSystem(e.target.value))}
+          >
+            <option value="imperial">Imperial — ft, in, CY</option>
+            <option value="metric">Metric — m, mm, m³</option>
+          </select>
+        </div>
+        <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
+          Metric changes how the calculators display and accept dimensions — type
+          metres, get m³. Your saved data is unaffected and switching back and
+          forth never changes any numbers. Catalog items and prices keep the
+          units they were entered in.
+        </p>
+      </div>
+
+      <div className="card mb-24">
         <h3 style={{ marginBottom: 16 }}>Job Numbering</h3>
         <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <input
@@ -409,7 +483,7 @@ export function SettingsPage() {
 
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} yesLabel="Restore" />
+          onNo={() => setConfirmState(null)} yesLabel={confirmState.yesLabel ?? 'Restore'} />
       )}
 
       <div className="card mb-24">
@@ -487,6 +561,46 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <h4 style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600 }}>Sample catalog</h4>
+          <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            {seedStatus && (
+              <>
+                {seedStatus.active} sample item{seedStatus.active === 1 ? '' : 's'} in your catalog
+                {seedStatus.hidden > 0 ? `, ${seedStatus.hidden} hidden` : ''}.{' '}
+              </>
+            )}
+            Hiding removes sample items from pickers and lists without touching your own
+            items or any bids that use them. Restore brings hidden items back with your
+            edits intact and re-creates deleted ones with fresh sample values.
+          </p>
+          <div className="flex gap-8 items-center" style={{ flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleHideSeeds}
+              disabled={seedBusy || !seedStatus || seedStatus.active === 0}
+            >
+              Hide Sample Items
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleRestoreSeeds}
+              disabled={seedBusy}
+            >
+              Restore Sample Items
+            </button>
+            <label className="flex items-center gap-8" style={{ fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={restorePrices}
+                onChange={(e) => setRestorePrices(e.target.checked)}
+                disabled={seedBusy}
+              />
+              Ballpark prices on re-created items
+            </label>
+          </div>
+        </div>
       </div>
     </div>
   );

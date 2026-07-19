@@ -1,7 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { FuzzyAutocomplete } from '../../../components/FuzzyAutocomplete';
+import { UnitInput } from '../../../components/UnitInput';
 import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from '../useTrenchMaterials';
 import { parsePipeSizeFromName } from '../trenchCalc';
+import { formatPipeSize, fromDisplay } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 import type { RunConfig, UtilityType } from './types';
 
 const UTILITY_OPTIONS: { value: UtilityType; label: string }[] = [
@@ -29,6 +32,18 @@ const DEFAULT_CONFIG: RunConfig = {
   backfillMaterialId: null,
 };
 
+/** Metric defaults: same canonical fields, but round numbers in metres
+ *  (1.2 m deep, 1 m wide, 150 mm bedding) instead of round feet. */
+const METRIC_DEFAULT_CONFIG: RunConfig = {
+  ...DEFAULT_CONFIG,
+  startDepthFt: fromDisplay(1.2, 'ft', 'metric'),
+  trenchWidthFt: fromDisplay(1, 'ft', 'metric'),
+  beddingDepthFt: fromDisplay(0.15, 'ft', 'metric'),
+};
+
+/** Standard nominal pipe sizes offered by the metric DN picker. */
+const STANDARD_PIPE_SIZES_IN = [2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 27, 30, 36, 42, 48];
+
 interface TrenchConfigModalProps {
   onConfirm: (config: RunConfig) => void;
   onCancel: () => void;
@@ -37,7 +52,10 @@ interface TrenchConfigModalProps {
 }
 
 export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunConfig }: TrenchConfigModalProps) {
-  const [config, setConfig] = useState<RunConfig>(initialConfig ?? { ...DEFAULT_CONFIG });
+  const system = useUnitSystem();
+  const [config, setConfig] = useState<RunConfig>(
+    initialConfig ?? { ...(system === 'metric' ? METRIC_DEFAULT_CONFIG : DEFAULT_CONFIG) }
+  );
   const [pipeMaterialId, setPipeMaterialId] = useState<number | string | null>(initialConfig?.pipeMaterialId ?? null);
   const [beddingMaterialId, setBeddingMaterialId] = useState<number | string | null>(initialConfig?.beddingMaterialId ?? null);
   const [backfillMaterialId, setBackfillMaterialId] = useState<number | string | null>(
@@ -133,29 +151,53 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
             )}
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Pipe Size (in)</label>
-            <input
-              type="number"
-              className="form-control"
-              value={config.pipeSizeIn}
-              step="1"
-              min="1"
-              onChange={(e) => set('pipeSizeIn', parseFloat(e.target.value) || 0)}
-            />
+            {system === 'metric' ? (
+              <>
+                {/* Nominal sizes are identities (DN200 ↔ 8"), so metric picks
+                    from the standard DN list rather than typing millimetres. */}
+                <label className="form-label">Pipe Size</label>
+                <select
+                  className="form-control"
+                  value={config.pipeSizeIn}
+                  onChange={(e) => set('pipeSizeIn', parseFloat(e.target.value) || 0)}
+                >
+                  {!STANDARD_PIPE_SIZES_IN.includes(config.pipeSizeIn) && (
+                    <option value={config.pipeSizeIn}>{formatPipeSize(config.pipeSizeIn, system)}</option>
+                  )}
+                  {STANDARD_PIPE_SIZES_IN.map((n) => (
+                    <option key={n} value={n}>{formatPipeSize(n, system)}</option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
+                <label className="form-label">Pipe Size (in)</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={config.pipeSizeIn}
+                  step="1"
+                  min="1"
+                  onChange={(e) => set('pipeSizeIn', parseFloat(e.target.value) || 0)}
+                />
+              </>
+            )}
           </div>
         </div>
 
         {/* Depth + Grade */}
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Starting Depth (ft)</label>
-            <input
-              type="number"
+            <label className="form-label">Starting Depth{system === 'metric' ? '' : ' (ft)'}</label>
+            <UnitInput
+              mmToggle
               className="form-control"
               value={config.startDepthFt}
-              step="0.5"
-              min="0"
-              onChange={(e) => set('startDepthFt', parseFloat(e.target.value) || 0)}
+              kind="ft"
+              step={0.5}
+              metricStep={0.1}
+              min={0}
+              onChange={(v) => set('startDepthFt', v)}
             />
           </div>
           <div className="form-group">
@@ -174,25 +216,29 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
         {/* Trench Width + Bench Width */}
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Trench Width (ft)</label>
-            <input
-              type="number"
+            <label className="form-label">Trench Width{system === 'metric' ? '' : ' (ft)'}</label>
+            <UnitInput
+              mmToggle
               className="form-control"
               value={config.trenchWidthFt}
-              step="0.5"
-              min="0"
-              onChange={(e) => set('trenchWidthFt', parseFloat(e.target.value) || 0)}
+              kind="ft"
+              step={0.5}
+              metricStep={0.1}
+              min={0}
+              onChange={(v) => set('trenchWidthFt', v)}
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Bench Width (ft)</label>
-            <input
-              type="number"
+            <label className="form-label">Bench Width{system === 'metric' ? '' : ' (ft)'}</label>
+            <UnitInput
+              mmToggle
               className="form-control"
               value={config.benchWidthFt}
-              step="0.5"
-              min="0"
-              onChange={(e) => set('benchWidthFt', parseFloat(e.target.value) || 0)}
+              kind="ft"
+              step={0.5}
+              metricStep={0.1}
+              min={0}
+              onChange={(v) => set('benchWidthFt', v)}
             />
           </div>
         </div>
@@ -217,14 +263,16 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
             />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Bedding Depth (ft)</label>
-            <input
-              type="number"
+            <label className="form-label">Bedding Depth{system === 'metric' ? '' : ' (ft)'}</label>
+            <UnitInput
+              mmToggle
               className="form-control"
               value={config.beddingDepthFt}
-              step="0.25"
-              min="0"
-              onChange={(e) => set('beddingDepthFt', parseFloat(e.target.value) || 0)}
+              kind="ft"
+              step={0.25}
+              metricStep={0.05}
+              min={0}
+              onChange={(v) => set('beddingDepthFt', v)}
             />
           </div>
         </div>

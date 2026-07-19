@@ -47,7 +47,8 @@ interface FormItem {
   notes: string;
 }
 
-import { UNITS } from '../../shared/constants/units';
+import { unitOptions } from '../../shared/constants/units';
+import { useUnitSystem } from '../stores/units-store';
 
 const EMPTY_FORM = {
   name: '',
@@ -66,6 +67,7 @@ const EMPTY_FORM = {
 
 export function AssembliesPage() {
   const addToast = useToastStore((s) => s.addToast);
+  const system = useUnitSystem();
   const [assemblies, setAssemblies] = useState<AssemblyRow[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [productionRates, setProductionRates] = useState<any[]>([]);
@@ -425,7 +427,7 @@ export function AssembliesPage() {
                     value={form.unit}
                     onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
                   >
-                    {UNITS.map((u) => (
+                    {unitOptions(system, form.unit).map((u) => (
                       <option key={u} value={u}>{u}</option>
                     ))}
                   </select>

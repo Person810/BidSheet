@@ -4,6 +4,8 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import type { TakeoffRun } from './types';
 import type { GroundSampler } from './profileModel';
+import { formatPipeSize, formatQty } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 import {
   buildRunGeometry,
   prismCorners,
@@ -287,6 +289,8 @@ function LegendSwatch({ color, opacity, label }: { color: string; opacity: numbe
 }
 
 export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }: Trench3DViewProps) {
+  const system = useUnitSystem();
+  const metric = system === 'metric';
   const [resetKey, setResetKey] = useState(0);
 
   const model = useMemo(
@@ -343,9 +347,12 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }:
           backdropFilter: 'blur(4px)',
           pointerEvents: 'none',
         }}>
-          <LegendSwatch color={EARTH} opacity={0.85} label={hasBench ? `Excavation (benched ${benchWidthFt}′ ea side)` : 'Excavation cut'} />
-          <LegendSwatch color={BEDDING} opacity={1} label={`Bedding (${run.beddingDepthFt}′ depth)`} />
-          <LegendSwatch color={run.color} opacity={1} label={`${run.pipeSizeIn}" ${run.pipeMaterial}`} />
+          <LegendSwatch color={EARTH} opacity={0.85} label={hasBench
+            ? `Excavation (benched ${metric ? formatQty(benchWidthFt, 'ft', system) : `${benchWidthFt}′`} ea side)`
+            : 'Excavation cut'} />
+          <LegendSwatch color={BEDDING} opacity={1}
+            label={`Bedding (${metric ? formatQty(run.beddingDepthFt, 'ft', system) : `${run.beddingDepthFt}′`} depth)`} />
+          <LegendSwatch color={run.color} opacity={1} label={`${formatPipeSize(run.pipeSizeIn, system)} ${run.pipeMaterial}`} />
           {model.structures.length > 0 && (
             <LegendSwatch color={STRUCTURE} opacity={1} label="Structures" />
           )}
@@ -372,13 +379,16 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }:
       </div>
 
       <div className="flex gap-8" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-        <span>{model.totalLengthFt.toFixed(1)} LF</span>
+        <span>{metric ? formatQty(model.totalLengthFt, 'lf', system, 1) : `${model.totalLengthFt.toFixed(1)} LF`}</span>
         <span>·</span>
-        <span>trench {model.trenchWidthFt}′ wide</span>
+        <span>trench {metric ? formatQty(model.trenchWidthFt, 'ft', system) : `${model.trenchWidthFt}′`} wide</span>
         {hasBench && (
           <>
             <span>·</span>
-            <span>bench {benchWidthFt}′ each side → {model.totalWidthFt}′ total cut</span>
+            <span>
+              bench {metric ? formatQty(benchWidthFt, 'ft', system) : `${benchWidthFt}′`} each side
+              {' → '}{metric ? formatQty(model.totalWidthFt, 'ft', system) : `${model.totalWidthFt}′`} total cut
+            </span>
           </>
         )}
         <span>·</span>

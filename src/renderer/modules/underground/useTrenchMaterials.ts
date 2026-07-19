@@ -25,9 +25,10 @@ export function useTrenchMaterials() {
           const rows = await window.api.getMaterialsByCategoryName(cat);
           allPipe.push(...rows);
         }
-        // Only include pipe materials with LF unit and name starting with size + quote
+        // Only include pipe materials priced per length whose name starts
+        // with a size — 8" imperial or DN200 metric
         const filtered = allPipe.filter(
-          (m) => m.unit === 'LF' && /^\d+['"]/.test(m.name)
+          (m) => (m.unit === 'LF' || m.unit === 'm') && /^(\d+['"]|DN ?\d+)/i.test(m.name)
         );
         setPipeMaterials(materialsToAutocomplete(filtered));
 

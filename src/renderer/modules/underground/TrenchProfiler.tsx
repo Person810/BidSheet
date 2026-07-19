@@ -9,6 +9,9 @@ import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/Fuzzy
 import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from './useTrenchMaterials';
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from './trenchInputToRun';
 import { DepthZoneTable } from './DepthZoneTable';
+import { UnitInput } from '../../components/UnitInput';
+import { useUnitSystem } from '../../stores/units-store';
+import { unitLabel, formatQty, formatPipeSize, fromDisplay } from '../../../shared/unitSystem';
 
 const Trench3DView = React.lazy(() =>
   import('./plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
@@ -25,8 +28,20 @@ const DEFAULTS: TrenchInput = {
   backfillType: 'Native Material',
 };
 
+/** Metric prefills: round numbers in metres (1.2 m deep, 30 m long, 1 m
+ *  wide, 150 mm bedding) instead of converted feet. */
+const METRIC_DEFAULTS: TrenchInput = {
+  ...DEFAULTS,
+  startDepthFt: fromDisplay(1.2, 'ft', 'metric'),
+  runLengthLF: fromDisplay(30, 'lf', 'metric'),
+  trenchWidthFt: fromDisplay(1, 'ft', 'metric'),
+  beddingDepthFt: fromDisplay(0.15, 'ft', 'metric'),
+};
+
 export function TrenchProfiler() {
-  const [input, setInput] = useState<TrenchInput>({ ...DEFAULTS });
+  const system = useUnitSystem();
+  const defaults = system === 'metric' ? METRIC_DEFAULTS : DEFAULTS;
+  const [input, setInput] = useState<TrenchInput>({ ...defaults });
   const [pipeMaterialId, setPipeMaterialId] = useState<number | string | null>(null);
   const [beddingMaterialId, setBeddingMaterialId] = useState<number | string | null>(null);
   const [backfillMaterialId, setBackfillMaterialId] = useState<number | string | null>('native');
@@ -38,13 +53,13 @@ export function TrenchProfiler() {
 
   const errors = useMemo(() => validateInput(input), [input]);
   const result = useMemo(() => (errors.length === 0 ? calculateTrench(input) : null), [input, errors]);
-  const math = useMemo(() => (result ? explainTrench(input, result) : null), [input, result]);
+  const math = useMemo(() => (result ? explainTrench(input, result, system) : null), [input, result, system]);
   const depthZones = useMemo(() => (result ? depthZoneBreakdown(input) : []), [input, result]);
 
   const hasError = (field: string) => errors.some((e) => e.field === field);
 
   const handleReset = () => {
-    setInput({ ...DEFAULTS });
+    setInput({ ...defaults });
     setPipeMaterialId(null);
     setBeddingMaterialId(null);
     setBackfillMaterialId('native');
@@ -101,10 +116,10 @@ export function TrenchProfiler() {
 
           <div className="form-row">
             <div className="form-group">
-              <label>Starting Invert Depth (ft)</label>
-              <input type="number" className={`form-control ${hasError('startDepthFt') ? 'input-error' : ''}`}
-                value={input.startDepthFt} step="0.5" min="0"
-                onChange={(e) => set('startDepthFt', parseFloat(e.target.value) || 0)} />
+              <label>Starting Invert Depth{system === 'metric' ? '' : ' (ft)'}</label>
+              <UnitInput kind="ft" mmToggle className={`form-control ${hasError('startDepthFt') ? 'input-error' : ''}`}
+                value={input.startDepthFt} step={0.5} metricStep={0.1} min={0}
+                onChange={(v) => set('startDepthFt', v)} />
             </div>
             <div className="form-group">
               <label>Grade / Slope (%)</label>
@@ -115,24 +130,24 @@ export function TrenchProfiler() {
           </div>
 
           <div className="form-group">
-            <label>Horizontal Run Length (LF)</label>
-            <input type="number" className={`form-control ${hasError('runLengthLF') ? 'input-error' : ''}`}
-              value={input.runLengthLF} step="1" min="0"
-              onChange={(e) => set('runLengthLF', parseFloat(e.target.value) || 0)} />
+            <label>Horizontal Run Length ({unitLabel('lf', system)})</label>
+            <UnitInput kind="lf" className={`form-control ${hasError('runLengthLF') ? 'input-error' : ''}`}
+              value={input.runLengthLF} step={1} metricStep={1} min={0}
+              onChange={(v) => set('runLengthLF', v)} />
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label>Trench Width (ft)</label>
-              <input type="number" className={`form-control ${hasError('trenchWidthFt') ? 'input-error' : ''}`}
-                value={input.trenchWidthFt} step="0.5" min="0"
-                onChange={(e) => set('trenchWidthFt', parseFloat(e.target.value) || 0)} />
+              <label>Trench Width{system === 'metric' ? '' : ' (ft)'}</label>
+              <UnitInput kind="ft" mmToggle className={`form-control ${hasError('trenchWidthFt') ? 'input-error' : ''}`}
+                value={input.trenchWidthFt} step={0.5} metricStep={0.1} min={0}
+                onChange={(v) => set('trenchWidthFt', v)} />
             </div>
             <div className="form-group">
-              <label>Bench Width Each Side (ft)</label>
-              <input type="number" className={`form-control ${hasError('benchWidthFt') ? 'input-error' : ''}`}
-                value={input.benchWidthFt} step="0.5" min="0"
-                onChange={(e) => set('benchWidthFt', parseFloat(e.target.value) || 0)} />
+              <label>Bench Width Each Side{system === 'metric' ? '' : ' (ft)'}</label>
+              <UnitInput kind="ft" mmToggle className={`form-control ${hasError('benchWidthFt') ? 'input-error' : ''}`}
+                value={input.benchWidthFt} step={0.5} metricStep={0.1} min={0}
+                onChange={(v) => set('benchWidthFt', v)} />
             </div>
           </div>
 
@@ -158,10 +173,10 @@ export function TrenchProfiler() {
               </div>
             </div>
             <div className="form-group">
-              <label>Bedding Depth (ft)</label>
-              <input type="number" className={`form-control ${hasError('beddingDepthFt') ? 'input-error' : ''}`}
-                value={input.beddingDepthFt} step="0.25" min="0"
-                onChange={(e) => set('beddingDepthFt', parseFloat(e.target.value) || 0)} />
+              <label>Bedding Depth{system === 'metric' ? '' : ' (ft)'}</label>
+              <UnitInput kind="ft" mmToggle className={`form-control ${hasError('beddingDepthFt') ? 'input-error' : ''}`}
+                value={input.beddingDepthFt} step={0.25} metricStep={0.05} min={0}
+                onChange={(v) => set('beddingDepthFt', v)} />
             </div>
           </div>
 
@@ -197,16 +212,19 @@ export function TrenchProfiler() {
           {result ? (
             <table className="data-table" style={{ fontSize: 13 }}>
               <tbody>
-                <Row label="Pipe" value={`${result.pipeLF} LF`}
-                  sub={input.pipeMaterial || `${input.pipeSizeIn}"`} />
-                <Row label="Avg Trench Depth" value={`${result.avgDepthFt} ft`}
-                  sub={`${input.startDepthFt}' start > ${result.endDepthFt}' end`} breakdown={math?.avgDepth} />
-                <Row label="Excavation" value={`${result.excavationCY} CY`} breakdown={math?.excavation} />
-                <Row label="Bedding" value={`${result.beddingCY} CY`}
+                <Row label="Pipe" value={formatQty(result.pipeLF, 'lf', system)}
+                  sub={input.pipeMaterial || formatPipeSize(input.pipeSizeIn, system)} />
+                <Row label="Avg Trench Depth" value={formatQty(result.avgDepthFt, 'ft', system)}
+                  sub={system === 'metric'
+                    ? `${formatQty(input.startDepthFt, 'ft', system)} start > ${formatQty(result.endDepthFt, 'ft', system)} end`
+                    : `${input.startDepthFt}' start > ${result.endDepthFt}' end`}
+                  breakdown={math?.avgDepth} />
+                <Row label="Excavation" value={formatQty(result.excavationCY, 'cy', system)} breakdown={math?.excavation} />
+                <Row label="Bedding" value={formatQty(result.beddingCY, 'cy', system)}
                   sub={selectedBedding ? selectedBedding.label : ''} breakdown={math?.bedding} />
-                <Row label="Backfill" value={`${result.backfillCY} CY`} sub={input.backfillType} breakdown={math?.backfill} />
-                <Row label="Tracer Wire" value={`${result.tracerWireLF} LF`} />
-                <Row label="Warning Tape" value={`${result.warningTapeLF} LF`} />
+                <Row label="Backfill" value={formatQty(result.backfillCY, 'cy', system)} sub={input.backfillType} breakdown={math?.backfill} />
+                <Row label="Tracer Wire" value={formatQty(result.tracerWireLF, 'lf', system)} />
+                <Row label="Warning Tape" value={formatQty(result.warningTapeLF, 'lf', system)} />
               </tbody>
             </table>
           ) : (
@@ -220,7 +238,9 @@ export function TrenchProfiler() {
               <h3 style={{ margin: '16px 0 10px' }}>Depth Summary</h3>
               <DepthZoneTable zones={depthZones} />
               <p className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-                5/10/15 ft bands line up with typical shoring/trench-box trigger depths.
+                {system === 'metric'
+                  ? '1.5/3/4.6 m (5/10/15 ft) bands line up with typical shoring/trench-box trigger depths.'
+                  : '5/10/15 ft bands line up with typical shoring/trench-box trigger depths.'}
               </p>
             </>
           )}

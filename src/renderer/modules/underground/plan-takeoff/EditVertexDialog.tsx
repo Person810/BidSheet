@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { FuzzyAutocomplete } from '../../../components/FuzzyAutocomplete';
 import type { AutocompleteItem } from '../../../components/FuzzyAutocomplete';
+import { fromDisplay, toDisplay, unitLabel } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 import type { TakeoffVertex, TakeoffNode } from './types';
 
 const STRUCTURE_TYPES: AutocompleteItem[] = [
@@ -26,21 +28,29 @@ interface EditVertexDialogProps {
 }
 
 export function EditVertexDialog({ vertex, vertexIndex, runLabel, onSave, onClose, node, connectedRunCount }: EditVertexDialogProps) {
-  const [invertElev, setInvertElev] = useState(vertex.invertElev ?? '');
-  const [rimElev, setRimElev] = useState(vertex.rimElev ?? '');
+  const system = useUnitSystem();
+  // Elevation state holds what the user sees/types (ft or m); stored
+  // elevations are canonical feet, converted at open and save.
+  const [invertElev, setInvertElev] = useState(
+    vertex.invertElev != null ? String(toDisplay(vertex.invertElev, 'ft', system)) : ''
+  );
+  const [rimElev, setRimElev] = useState(
+    vertex.rimElev != null ? String(toDisplay(vertex.rimElev, 'ft', system)) : ''
+  );
   const [structureType, setStructureType] = useState<string | null>(vertex.structureType ?? null);
   const [nodeLabel, setNodeLabel] = useState(node?.label ?? '');
 
   const invertNum = invertElev === '' ? null : Number(invertElev);
   const rimNum = rimElev === '' ? null : Number(rimElev);
+  // Both values are in display units, so their difference already is too
   const depth = invertNum != null && rimNum != null && !isNaN(invertNum) && !isNaN(rimNum)
     ? (rimNum - invertNum).toFixed(2)
     : null;
 
   const handleSave = () => {
     onSave({
-      invertElev: invertElev === '' ? null : Number(invertElev),
-      rimElev: rimElev === '' ? null : Number(rimElev),
+      invertElev: invertElev === '' ? null : fromDisplay(Number(invertElev), 'ft', system),
+      rimElev: rimElev === '' ? null : fromDisplay(Number(rimElev), 'ft', system),
       structureType,
       ...(node ? { label: nodeLabel } : {}),
     });
@@ -82,7 +92,7 @@ export function EditVertexDialog({ vertex, vertexIndex, runLabel, onSave, onClos
 
         <div className="form-group">
           <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
-            Invert Elevation (ft)
+            Invert Elevation ({unitLabel('ft', system)})
           </label>
           <input
             type="number"
@@ -90,14 +100,14 @@ export function EditVertexDialog({ vertex, vertexIndex, runLabel, onSave, onClos
             className="form-control"
             value={invertElev}
             onChange={(e) => setInvertElev(e.target.value === '' ? '' : e.target.value)}
-            placeholder="e.g. 842.35"
+            placeholder={system === 'metric' ? 'e.g. 104.35' : 'e.g. 842.35'}
             autoFocus
           />
         </div>
 
         <div className="form-group">
           <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
-            Rim / Grade Elevation (ft)
+            Rim / Grade Elevation ({unitLabel('ft', system)})
           </label>
           <input
             type="number"
@@ -105,7 +115,7 @@ export function EditVertexDialog({ vertex, vertexIndex, runLabel, onSave, onClos
             className="form-control"
             value={rimElev}
             onChange={(e) => setRimElev(e.target.value === '' ? '' : e.target.value)}
-            placeholder="e.g. 850.00"
+            placeholder={system === 'metric' ? 'e.g. 106.70' : 'e.g. 850.00'}
           />
         </div>
 
@@ -115,7 +125,7 @@ export function EditVertexDialog({ vertex, vertexIndex, runLabel, onSave, onClos
             background: 'var(--bg-primary)', fontSize: 12,
           }}>
             <span style={{ color: 'var(--text-secondary)' }}>Depth: </span>
-            <span style={{ fontWeight: 600 }}>{depth} ft</span>
+            <span style={{ fontWeight: 600 }}>{depth} {unitLabel('ft', system)}</span>
           </div>
         )}
 

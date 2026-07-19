@@ -8,6 +8,8 @@ import {
   computePolygonAreaSF, polygonCentroid,
 } from './takeoffUtils';
 import { squareFeetToYards } from '../../../../shared/constants/units';
+import { formatQty } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 
 interface DrawingOverlayProps {
   pageWidth: number;
@@ -354,6 +356,7 @@ const AreaPolygon = React.memo(function AreaPolygon({
   area, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
   onSelect, onContextMenu, draggable, onVertexMouseDown,
 }: AreaPolygonProps) {
+  const system = useUnitSystem();
   const pts = area.points;
   if (pts.length === 0) return null;
 
@@ -377,9 +380,12 @@ const AreaPolygon = React.memo(function AreaPolygon({
 
   const areaSF = previewPts.length >= 3 ? computePolygonAreaSF(previewPts, scalePxPerFt) : 0;
   const centroid = previewPts.length >= 3 ? polygonCentroid(previewPts) : null;
-  const sfLabel = `${Math.round(areaSF).toLocaleString()} SF`;
-  const syLabel = `${squareFeetToYards(areaSF).toFixed(1)} SY`;
-  const labelWidth = Math.max(sfLabel.length, syLabel.length) * labelSize * 0.55;
+  // Imperial shows the SF/SY pair; metric needs only the one m² line.
+  const sfLabel = system === 'metric'
+    ? formatQty(areaSF, 'sf', system, 0)
+    : `${Math.round(areaSF).toLocaleString()} SF`;
+  const syLabel = system === 'metric' ? null : `${squareFeetToYards(areaSF).toFixed(1)} SY`;
+  const labelWidth = Math.max(sfLabel.length, syLabel?.length ?? 0) * labelSize * 0.55;
 
   return (
     <g style={{ pointerEvents: interactive && !isActive ? 'auto' : 'none' }}>
@@ -422,21 +428,23 @@ const AreaPolygon = React.memo(function AreaPolygon({
           opacity={isActive ? 0.85 : 1}>
           <rect
             x={-labelWidth / 2 - labelSize * 0.3}
-            y={-labelSize * 1.35}
+            y={syLabel ? -labelSize * 1.35 : -labelSize * 0.85}
             width={labelWidth + labelSize * 0.6}
-            height={labelSize * 2.7}
+            height={labelSize * (syLabel ? 2.7 : 1.7)}
             fill="rgba(0,0,0,0.65)" rx={2}
           />
-          <text x={0} y={-labelSize * 0.25} textAnchor="middle" fontSize={labelSize}
+          <text x={0} y={syLabel ? -labelSize * 0.25 : labelSize * 0.35} textAnchor="middle" fontSize={labelSize}
             fill="#fff" fontFamily="system-ui, sans-serif" fontWeight={600}
             style={{ userSelect: 'none' }}>
             {sfLabel}
           </text>
-          <text x={0} y={labelSize * 0.95} textAnchor="middle" fontSize={labelSize * 0.85}
-            fill="#ddd" fontFamily="system-ui, sans-serif"
-            style={{ userSelect: 'none' }}>
-            {syLabel}
-          </text>
+          {syLabel && (
+            <text x={0} y={labelSize * 0.95} textAnchor="middle" fontSize={labelSize * 0.85}
+              fill="#ddd" fontFamily="system-ui, sans-serif"
+              style={{ userSelect: 'none' }}>
+              {syLabel}
+            </text>
+          )}
         </g>
       )}
       {/* Selection glow */}
@@ -483,6 +491,7 @@ const RunLines = React.memo(function RunLines({
   onSelect, onVertexContextMenu, onSegmentContextMenu,
   renderedScale, movingVertexIndex, movePreviewPos, draggable, onVertexMouseDown,
 }: RunLinesProps) {
+  const system = useUnitSystem();
   const pts = run.points;
   const strokeW = isSelected || isActive ? 3 : 2;
   const nodeR = labelSize * 0.3;
@@ -601,7 +610,7 @@ const RunLines = React.memo(function RunLines({
           <text x={0} y={-labelSize * 0.35} textAnchor="middle"
             fontSize={labelSize * 0.7} fill="#fff" fontWeight={700}
             style={{ userSelect: 'none' }}>!</text>
-          <title>Depth exceeds 5 ft, so shoring may be required (OSHA 1926 Subpart P)</title>
+          <title>{`Depth exceeds ${system === 'metric' ? '1.5 m' : '5 ft'}, so shoring may be required (OSHA 1926 Subpart P)`}</title>
         </g>
       )}
 
@@ -668,12 +677,13 @@ function PreviewSegmentLabel({ p1, p2, scalePxPerFt, fontSize, color, opacity = 
   p1: PdfPoint; p2: PdfPoint; scalePxPerFt: number;
   fontSize: number; color: string; opacity?: number;
 }) {
+  const system = useUnitSystem();
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
   const distPx = Math.sqrt(dx * dx + dy * dy);
   if (distPx < 1) return null;
   const distFt = distPx / scalePxPerFt;
-  const label = `${distFt.toFixed(1)}'`;
+  const label = system === 'metric' ? formatQty(distFt, 'ft', system, 1) : `${distFt.toFixed(1)}'`;
 
   const mx = (p1.x + p2.x) / 2;
   const my = (p1.y + p2.y) / 2;

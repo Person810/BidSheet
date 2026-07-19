@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateTrench,
   depthZoneBreakdown,
+  explainTrench,
   parsePipeSizeFromName,
   validateInput,
   NATIVE_BACKFILL_LABEL,
@@ -178,6 +179,15 @@ describe('depthZoneBreakdown', () => {
     expect(depthZoneBreakdown(input({ runLengthLF: 0 }))).toEqual([]);
     expect(depthZoneBreakdown(input({ trenchWidthFt: 0 }))).toEqual([]);
   });
+
+  it('carries numeric band bounds alongside the label (for metric re-labelling)', () => {
+    const zones = depthZoneBreakdown(input({ startDepthFt: 4, gradePct: 2, runLengthLF: 100 }));
+    expect(zones.map((z) => [z.loFt, z.hiFt])).toEqual([[0, 5], [5, 10]]);
+
+    const deep = depthZoneBreakdown(input({ startDepthFt: 18, gradePct: 1, runLengthLF: 500 }));
+    expect(deep[deep.length - 1].loFt).toBe(20);
+    expect(deep[deep.length - 1].hiFt).toBe(Infinity);
+  });
 });
 
 describe('parsePipeSizeFromName', () => {
@@ -201,5 +211,43 @@ describe('parsePipeSizeFromName', () => {
   it('returns 0 when the name has no inch-marked size', () => {
     expect(parsePipeSizeFromName('PVC SDR-35 8 inch')).toBe(0);
     expect(parsePipeSizeFromName('')).toBe(0);
+  });
+
+  it('maps DN designations to their paired nominal inch size (#97)', () => {
+    expect(parsePipeSizeFromName('DN200 PVC')).toBe(8);
+    expect(parsePipeSizeFromName('DN 300 RCP')).toBe(12);
+    expect(parsePipeSizeFromName('PVC DN100 SDR-35')).toBe(4);
+    // non-standard DN has no nominal pairing
+    expect(parsePipeSizeFromName('DN123 Pipe')).toBe(0);
+  });
+});
+
+describe('explainTrench', () => {
+  const inp = input(); // 3 ft wide × 4 ft deep × 100 LF, flat grade
+
+  it('narrates imperial with the CF ÷ 27 step', () => {
+    const math = explainTrench(inp, calculateTrench(inp));
+    expect(math.excavation.formula).toContain('÷ 27');
+    expect(math.excavation.lines.map((l) => l.label)).toContain('Volume');
+    const result = math.excavation.lines.find((l) => l.kind === 'result');
+    // 3 × 4 × 100 = 1200 CF ÷ 27 = 44.44 CY
+    expect(result?.value).toBe('44.44 CY');
+    expect(math.avgDepth.note).toContain('100 LF');
+  });
+
+  it('narrates metric in m/m³ without the ÷ 27 step', () => {
+    const math = explainTrench(inp, calculateTrench(inp), 'metric');
+    expect(math.excavation.formula).not.toContain('÷ 27');
+    expect(math.excavation.lines.map((l) => l.label)).not.toContain('Volume');
+    const result = math.excavation.lines.find((l) => l.kind === 'result');
+    // 44.44 CY × 0.764554857984 = 33.98 m³
+    expect(result?.value).toBe('33.98 m³');
+    const runLength = math.excavation.lines.find((l) => l.label === 'Run length');
+    expect(runLength?.value).toBe('30.48 m');
+    expect(math.avgDepth.note).toContain('30 m');
+    // backfill terms convert CF to m³
+    for (const line of math.backfill.lines.filter((l) => l.kind === 'term')) {
+      expect(line.value).toContain('m³');
+    }
   });
 });

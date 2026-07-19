@@ -8,12 +8,14 @@ import {
 } from '../../components/FuzzyAutocomplete';
 import { formatCurrency } from './helpers';
 import { calcCrewCostPerHour, explainCrewCost } from '../../../shared/crewCost';
-import { effectiveMaterialUnitCost, isCubicYards } from '../../../shared/unitConversion';
+import { effectiveMaterialUnitCost, isCubicMeters, isCubicYards, isMassUnit } from '../../../shared/unitConversion';
 import { roundHours } from '../../../shared/round';
 import { computeLineItemCost } from '../../../shared/lineItemCost';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
 import { isManual, withManual, type OverridableField } from '../../../shared/manualFields';
+import { unitOptions } from '../../../shared/constants/units';
+import { useUnitSystem } from '../../stores/units-store';
 
 interface LineItemModalProps {
   lineForm: any;
@@ -38,6 +40,7 @@ export function LineItemModal({
   onSave,
   onClose,
 }: LineItemModalProps) {
+  const system = useUnitSystem();
   const materialItems = useMemo(() => materialsToAutocomplete(materials), [materials]);
   const crewItems = useMemo(() => crewsToAutocomplete(crews), [crews]);
   const rateItems = useMemo(() => productionRatesToAutocomplete(productionRates), [productionRates]);
@@ -88,21 +91,27 @@ export function LineItemModal({
     });
   };
 
-  // Warn when a CY line uses a TON-priced material with no CY price
+  // Warn when a volume line (CY/m³) uses a mass-priced material (TON/t)
+  // with no volume price
   const selectedMaterial = lineForm.materialId
     ? materials.find((m: any) => m.id === lineForm.materialId)
     : null;
+  const lineIsVolume = isCubicYards(lineForm.unit) || isCubicMeters(lineForm.unit);
   const unitMismatch =
     selectedMaterial &&
-    isCubicYards(lineForm.unit) &&
-    selectedMaterial.unit === 'TON' &&
+    lineIsVolume &&
+    isMassUnit(selectedMaterial.unit) &&
     !effectiveMaterialUnitCost(selectedMaterial, lineForm.unit).converted;
   const conversionApplied =
     selectedMaterial &&
-    isCubicYards(lineForm.unit) &&
-    selectedMaterial.unit === 'TON' &&
+    lineIsVolume &&
+    isMassUnit(selectedMaterial.unit) &&
     effectiveMaterialUnitCost(selectedMaterial, lineForm.unit).converted &&
     lineForm.materialUnitCost === effectiveMaterialUnitCost(selectedMaterial, lineForm.unit).cost;
+  // "CY" / "m³" wording for the line's volume unit and the material's
+  // catalog volume-price field (a t material's field is "Cost per m³")
+  const lineVolLabel = isCubicMeters(lineForm.unit) ? 'm³' : 'CY';
+  const matVolLabel = selectedMaterial?.unit === 't' ? 'm³' : 'CY';
 
   // ---- Crew picker handler ----
   const onCrewSelect = (item: any) => {
@@ -291,7 +300,7 @@ export function LineItemModal({
             <label>Unit</label>
             <select className="form-control" value={lineForm.unit}
               onChange={(e) => onUnitChange(e.target.value)}>
-              {['LF', 'EA', 'CYD', 'CY', 'SY', 'TON', 'VF', 'LS', 'HR', 'SF', 'GAL'].map((u) => (
+              {unitOptions(system, lineForm.unit).map((u) => (
                 <option key={u} value={u}>{u}</option>
               ))}
             </select>
@@ -338,14 +347,15 @@ export function LineItemModal({
           </div>
           {conversionApplied && (
             <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Using {selectedMaterial.name}'s per-CY price ({formatCurrency(lineForm.materialUnitCost)}/CY,
-              catalog {formatCurrency(selectedMaterial.default_unit_cost)}/TON).
+              Using {selectedMaterial.name}'s per-{lineVolLabel} price ({formatCurrency(lineForm.materialUnitCost)}/{lineVolLabel},
+              catalog {formatCurrency(selectedMaterial.default_unit_cost)}/{selectedMaterial.unit}).
             </p>
           )}
           {unitMismatch && (
             <p style={{ fontSize: 12, marginTop: 4, color: 'var(--warning)' }}>
-              {selectedMaterial.name} is priced per TON but this line is measured in cubic yards.
-              Set a "Cost per CY" or density on the material in the catalog, or adjust the unit cost manually.
+              {selectedMaterial.name} is priced per {selectedMaterial.unit} but this line is measured
+              in {isCubicMeters(lineForm.unit) ? 'cubic metres' : 'cubic yards'}.
+              Set a "Cost per {matVolLabel}" or density on the material in the catalog, or adjust the unit cost manually.
             </p>
           )}
         </div>

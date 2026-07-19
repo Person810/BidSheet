@@ -9,6 +9,9 @@ import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from '../../m
 import { buildGroundSampler } from '../../modules/underground/plan-takeoff/surfaceSampler';
 import type { TakeoffRun, TakeoffSurface } from '../../modules/underground/plan-takeoff/types';
 import { DepthZoneTable } from '../../modules/underground/DepthZoneTable';
+import { UnitInput } from '../../components/UnitInput';
+import { useUnitSystem } from '../../stores/units-store';
+import { unitLabel, formatPipeSize } from '../../../shared/unitSystem';
 
 const Trench3DView = React.lazy(() =>
   import('../../modules/underground/plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
@@ -40,6 +43,7 @@ export function TrenchProfileForm({
   form, onChange, onSave, onCancel, errors, pipeMaterials, beddingMaterials,
   takeoffRuns, pageScales, surface,
 }: Props) {
+  const system = useUnitSystem();
   const hasError = (field: string) => errors.some((e) => e.field === field);
   const [linkedRunId, setLinkedRunId] = useState<number | null>(null);
   const linkedRun = takeoffRuns.find((r) => r.id === linkedRunId) ?? null;
@@ -96,10 +100,10 @@ export function TrenchProfileForm({
 
       <div className="form-row">
         <div className="form-group">
-          <label>Start Depth (ft)</label>
-          <input type="number" className={`form-control ${hasError('startDepthFt') ? 'input-error' : ''}`}
-            value={form.startDepthFt} step="0.5" min="0"
-            onChange={(e) => onChange('startDepthFt', parseFloat(e.target.value) || 0)} />
+          <label>Start Depth{system === 'metric' ? '' : ' (ft)'}</label>
+          <UnitInput kind="ft" mmToggle className={`form-control ${hasError('startDepthFt') ? 'input-error' : ''}`}
+            value={form.startDepthFt} step={0.5} metricStep={0.1} min={0}
+            onChange={(v) => onChange('startDepthFt', v)} />
         </div>
         <div className="form-group">
           <label>Grade (%)</label>
@@ -108,25 +112,25 @@ export function TrenchProfileForm({
             onChange={(e) => onChange('gradePct', parseFloat(e.target.value) || 0)} />
         </div>
         <div className="form-group">
-          <label>Run Length (LF)</label>
-          <input type="number" className={`form-control ${hasError('runLengthLF') ? 'input-error' : ''}`}
-            value={form.runLengthLF} step="1" min="0"
-            onChange={(e) => onChange('runLengthLF', parseFloat(e.target.value) || 0)} />
+          <label>Run Length ({unitLabel('lf', system)})</label>
+          <UnitInput kind="lf" className={`form-control ${hasError('runLengthLF') ? 'input-error' : ''}`}
+            value={form.runLengthLF} step={1} metricStep={1} min={0}
+            onChange={(v) => onChange('runLengthLF', v)} />
         </div>
       </div>
 
       <div className="form-row">
         <div className="form-group">
-          <label>Trench Width (ft)</label>
-          <input type="number" className={`form-control ${hasError('trenchWidthFt') ? 'input-error' : ''}`}
-            value={form.trenchWidthFt} step="0.5" min="0"
-            onChange={(e) => onChange('trenchWidthFt', parseFloat(e.target.value) || 0)} />
+          <label>Trench Width{system === 'metric' ? '' : ' (ft)'}</label>
+          <UnitInput kind="ft" mmToggle className={`form-control ${hasError('trenchWidthFt') ? 'input-error' : ''}`}
+            value={form.trenchWidthFt} step={0.5} metricStep={0.1} min={0}
+            onChange={(v) => onChange('trenchWidthFt', v)} />
         </div>
         <div className="form-group">
-          <label>Bench Width (ft)</label>
-          <input type="number" className={`form-control ${hasError('benchWidthFt') ? 'input-error' : ''}`}
-            value={form.benchWidthFt} step="0.5" min="0"
-            onChange={(e) => onChange('benchWidthFt', parseFloat(e.target.value) || 0)} />
+          <label>Bench Width{system === 'metric' ? '' : ' (ft)'}</label>
+          <UnitInput kind="ft" mmToggle className={`form-control ${hasError('benchWidthFt') ? 'input-error' : ''}`}
+            value={form.benchWidthFt} step={0.5} metricStep={0.1} min={0}
+            onChange={(v) => onChange('benchWidthFt', v)} />
         </div>
         <div className="form-group" style={{ flex: 2 }}>
           <label>Bedding Material</label>
@@ -149,10 +153,10 @@ export function TrenchProfileForm({
           </div>
         </div>
         <div className="form-group">
-          <label>Bedding Depth (ft)</label>
-          <input type="number" className={`form-control ${hasError('beddingDepthFt') ? 'input-error' : ''}`}
-            value={form.beddingDepthFt} step="0.25" min="0"
-            onChange={(e) => onChange('beddingDepthFt', parseFloat(e.target.value) || 0)} />
+          <label>Bedding Depth{system === 'metric' ? '' : ' (ft)'}</label>
+          <UnitInput kind="ft" mmToggle className={`form-control ${hasError('beddingDepthFt') ? 'input-error' : ''}`}
+            value={form.beddingDepthFt} step={0.25} metricStep={0.05} min={0}
+            onChange={(v) => onChange('beddingDepthFt', v)} />
         </div>
       </div>
 
@@ -210,7 +214,7 @@ export function TrenchProfileForm({
             <option value="">— synthetic preview from the numbers above —</option>
             {takeoffRuns.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.label || `Run ${r.id}`} · {r.pipeSizeIn}&quot; {r.pipeMaterial || ''}
+                {r.label || `Run ${r.id}`} · {formatPipeSize(r.pipeSizeIn, system)} {r.pipeMaterial || ''}
               </option>
             ))}
           </select>

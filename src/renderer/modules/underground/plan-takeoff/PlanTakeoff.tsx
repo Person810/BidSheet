@@ -21,6 +21,8 @@ import TakeoffToolbar, { type LayerKey } from './TakeoffToolbar';
 import ItemPickerModal from './ItemPickerModal';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { useToastStore } from '../../../stores/toast-store';
+import { useUnitSystem } from '../../../stores/units-store';
+import { fromDisplay, unitLabel } from '../../../../shared/unitSystem';
 import { sendToProfiles } from './sendToProfiles';
 import { sendItemsToBid } from './sendItemsToBid';
 import { sendAreasToBid } from './sendAreasToBid';
@@ -48,6 +50,7 @@ interface PlanTakeoffProps {
 }
 
 export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
+  const system = useUnitSystem();
   const [jobSettings, setJobSettings] = useState<TakeoffJobSettings | null>(null);
 
   // -- PDF state --
@@ -101,6 +104,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     active: calibrating,
     pageWidth: pageSizeRef.current.width,
     pageHeight: pageSizeRef.current.height,
+    system,
     onComplete: async (result: ScaleResult) => {
       try {
         await window.api.savePageScale({
@@ -227,7 +231,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const handleSendAreasToBid = useCallback(async () => {
     setShowSendAreasConfirm(false);
     try {
-      const count = await sendAreasToBid(am.areas, jobId);
+      const count = await sendAreasToBid(am.areas, jobId, system);
       if (count === 0) {
         addToast('No areas on calibrated pages to send.', 'error');
       } else {
@@ -237,12 +241,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       console.error('Send areas to bid failed:', err);
       addToast('Failed to send areas to bid', 'error');
     }
-  }, [jobId, am.areas, addToast]);
+  }, [jobId, am.areas, addToast, system]);
 
   const handleSendWallsToBid = useCallback(async () => {
     setShowSendWallsConfirm(false);
     try {
-      const count = await sendWallsToBid(wm.walls, jobId);
+      const count = await sendWallsToBid(wm.walls, jobId, system);
       if (count === 0) {
         addToast('No walls on calibrated pages to send.', 'error');
       } else {
@@ -252,18 +256,18 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       console.error('Send walls to bid failed:', err);
       addToast('Failed to send walls to bid', 'error');
     }
-  }, [jobId, wm.walls, addToast]);
+  }, [jobId, wm.walls, addToast, system]);
 
   const handleExportCsv = useCallback(async () => {
     try {
-      const csv = await buildTakeoffCsv(jobId, rm.runs, im.items, am.areas);
+      const csv = await buildTakeoffCsv(jobId, rm.runs, im.items, am.areas, system);
       const result = await window.api.exportTakeoffCsv(jobId, csv);
       if (result?.success) addToast(`Takeoff exported to ${result.path}`, 'success');
     } catch (err) {
       console.error('Takeoff CSV export failed:', err);
       addToast('Failed to export takeoff CSV', 'error');
     }
-  }, [jobId, rm.runs, im.items, am.areas, addToast]);
+  }, [jobId, rm.runs, im.items, am.areas, addToast, system]);
 
   // Load settings on mount
   useEffect(() => {
@@ -706,16 +710,18 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const confirmSpotElevation = useCallback(() => {
     if (!pendingElev) return;
-    const z = parseFloat(elevInput);
-    if (!Number.isFinite(z)) { addToast('Enter a valid elevation', 'error'); return; }
+    const typed = parseFloat(elevInput);
+    if (!Number.isFinite(typed)) { addToast('Enter a valid elevation', 'error'); return; }
+    // Typed in the active system's unit; stored elevations are canonical feet
+    const z = fromDisplay(typed, 'ft', system);
     sm.addSpotElevation(pendingElev.point, z, pendingElev.pdfPage);
     setPendingElev(null);
     setElevInput('');
-  }, [pendingElev, elevInput, sm, addToast]);
+  }, [pendingElev, elevInput, sm, addToast, system]);
 
   const handleSendEarthworkToBid = useCallback(async () => {
     try {
-      const count = await sendEarthworkToBid(am.areas, sm.surface ? [sm.surface] : [], jobId);
+      const count = await sendEarthworkToBid(am.areas, sm.surface ? [sm.surface] : [], jobId, system);
       if (count === 0) {
         addToast('No earthwork regions on calibrated pages to send.', 'error');
       } else {
@@ -725,7 +731,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       console.error('Send earthwork to bid failed:', err);
       addToast('Failed to send earthwork to bid', 'error');
     }
-  }, [am.areas, sm.surface, jobId, addToast]);
+  }, [am.areas, sm.surface, jobId, addToast, system]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -1117,7 +1123,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
     };
   }, [totalPages, handleFitToWidth, rm, am, wm, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, finishActiveWall, pendingItemPlacement, contextMenu, captureElev, pendingElev]);
 
-  const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt) : null;
+  const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt, system) : null;
   const anyDrawing = rm.isDrawing || am.isDrawing || wm.isDrawing;
   const toolbarProps = {
     onBack: handleBack,
@@ -1573,7 +1579,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           <div className="modal" style={{ maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Spot Elevation</h3>
             <div className="form-group">
-              <label className="form-label">Existing ground elevation (ft)</label>
+              <label className="form-label">Existing ground elevation ({unitLabel('ft', system)})</label>
               <input
                 className="form-control"
                 type="number"

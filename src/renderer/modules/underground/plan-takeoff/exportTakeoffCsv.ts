@@ -7,6 +7,9 @@ import {
 import { calculateTrench } from '../trenchCalc';
 import { neutralizeCsvFormula } from '../../../../shared/csvSafe';
 import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
+import {
+  DEFAULT_UNIT_SYSTEM, convertQty, formatPipeSize, type UnitSystem,
+} from '../../../../shared/unitSystem';
 
 /**
  * Escape a field for CSV: neutralize spreadsheet formula injection, then quote
@@ -34,8 +37,14 @@ export async function buildTakeoffCsv(
   runs: TakeoffRun[],
   items: TakeoffItem[],
   areas: TakeoffArea[],
+  system: UnitSystem = DEFAULT_UNIT_SYSTEM,
 ): Promise<string> {
   const scaleByPage = await loadPageScaleMap(jobId);
+  const metric = system === 'metric';
+  // Quantities are computed in canonical imperial and converted only when
+  // printed; imperial output is unchanged.
+  const len = (lf: number) => (metric ? convertQty(lf, 'lf', system) : lf).toFixed(1);
+  const vol = (cy: number) => (metric ? convertQty(cy, 'cy', system) : cy).toFixed(1);
 
   const lines: string[] = [];
   // UTF-8 BOM for Excel compatibility
@@ -46,16 +55,22 @@ export async function buildTakeoffCsv(
   const completedRuns = runs.filter((r) => r.points.length >= 2);
   if (completedRuns.length > 0) {
     lines.push('PIPE RUNS');
-    lines.push(row(
-      'Page', 'Label', 'Utility', 'Pipe Material', 'Size (in)', 'Length (LF)',
-      'Excavation (CY)', 'Bedding (CY)', 'Backfill (CY)', 'Tracer Wire (LF)', 'Warning Tape (LF)',
-    ));
+    lines.push(metric
+      ? row(
+          'Page', 'Label', 'Utility', 'Pipe Material', 'Size', 'Length (m)',
+          'Excavation (m³)', 'Bedding (m³)', 'Backfill (m³)', 'Tracer Wire (m)', 'Warning Tape (m)',
+        )
+      : row(
+          'Page', 'Label', 'Utility', 'Pipe Material', 'Size (in)', 'Length (LF)',
+          'Excavation (CY)', 'Bedding (CY)', 'Backfill (CY)', 'Tracer Wire (LF)', 'Warning Tape (LF)',
+        ));
     const totals = { lf: 0, exc: 0, bed: 0, back: 0 };
     for (const run of completedRuns) {
       const scale = scaleByPage.get(run.pdfPage);
       const label = run.label || 'Untitled Run';
+      const sizeCol = metric ? formatPipeSize(run.pipeSizeIn, system) : run.pipeSizeIn;
       if (!scale) {
-        lines.push(row(run.pdfPage, label, run.utilityType, run.pipeMaterial, run.pipeSizeIn,
+        lines.push(row(run.pdfPage, label, run.utilityType, run.pipeMaterial, sizeCol,
           'page not calibrated', '', '', '', '', ''));
         continue;
       }
@@ -71,13 +86,13 @@ export async function buildTakeoffCsv(
       totals.bed += result.beddingCY;
       totals.back += result.backfillCY;
       lines.push(row(
-        run.pdfPage, label, run.utilityType, run.pipeMaterial, run.pipeSizeIn,
-        lf.toFixed(1), result.excavationCY.toFixed(1), result.beddingCY.toFixed(1),
-        result.backfillCY.toFixed(1), result.tracerWireLF.toFixed(1), result.warningTapeLF.toFixed(1),
+        run.pdfPage, label, run.utilityType, run.pipeMaterial, sizeCol,
+        len(lf), vol(result.excavationCY), vol(result.beddingCY),
+        vol(result.backfillCY), len(result.tracerWireLF), len(result.warningTapeLF),
       ));
     }
-    lines.push(row('', 'TOTAL', '', '', '', totals.lf.toFixed(1),
-      totals.exc.toFixed(1), totals.bed.toFixed(1), totals.back.toFixed(1), '', ''));
+    lines.push(row('', 'TOTAL', '', '', '', len(totals.lf),
+      vol(totals.exc), vol(totals.bed), vol(totals.back), '', ''));
     lines.push('');
   }
 
@@ -106,31 +121,43 @@ export async function buildTakeoffCsv(
   const completedAreas = areas.filter((a) => a.points.length >= 3);
   if (completedAreas.length > 0) {
     lines.push('MEASURED AREAS');
-    lines.push(row(
-      'Page', 'Label', 'Surface', 'Depth (in)', 'Area (SF)', 'Area (SY)', 'Volume (CY)', 'Perimeter (LF)',
-    ));
+    // Metric has one area spelling (m²), so the redundant SF/SY pair
+    // collapses to a single column — same as the in-app summary panel.
+    lines.push(metric
+      ? row('Page', 'Label', 'Surface', 'Depth (mm)', 'Area (m²)', 'Volume (m³)', 'Perimeter (m)')
+      : row(
+          'Page', 'Label', 'Surface', 'Depth (in)', 'Area (SF)', 'Area (SY)', 'Volume (CY)', 'Perimeter (LF)',
+        ));
+    const area2 = (sf: number) => (metric ? convertQty(sf, 'sf', system).toFixed(1) : sf.toFixed(0));
     const totals = { sf: 0, cy: 0 };
     for (const area of completedAreas) {
       const scale = scaleByPage.get(area.pdfPage);
       const label = area.label || 'Untitled Area';
       const surface = AREA_TYPE_LABELS[area.areaType] ?? area.areaType;
       const depthIn = ftToInches(area.depthFt);
+      const depthCol = metric ? Math.round(convertQty(depthIn, 'in', system)) : depthIn;
       if (!scale) {
-        lines.push(row(area.pdfPage, label, surface, depthIn, 'page not calibrated', '', '', ''));
+        lines.push(metric
+          ? row(area.pdfPage, label, surface, depthCol, 'page not calibrated', '', '')
+          : row(area.pdfPage, label, surface, depthCol, 'page not calibrated', '', '', ''));
         continue;
       }
       const sf = computePolygonAreaSF(area.points, scale);
       const cy = cubicFeetToYards(sf * area.depthFt);
       totals.sf += sf;
       totals.cy += cy;
-      lines.push(row(
-        area.pdfPage, label, surface, depthIn,
-        sf.toFixed(0), squareFeetToYards(sf).toFixed(1), cy > 0 ? cy.toFixed(1) : '',
-        computePolygonPerimeterLF(area.points, scale).toFixed(1),
-      ));
+      const perim = computePolygonPerimeterLF(area.points, scale);
+      lines.push(metric
+        ? row(area.pdfPage, label, surface, depthCol,
+            area2(sf), cy > 0 ? vol(cy) : '', len(perim))
+        : row(area.pdfPage, label, surface, depthCol,
+            sf.toFixed(0), squareFeetToYards(sf).toFixed(1), cy > 0 ? cy.toFixed(1) : '',
+            perim.toFixed(1)));
     }
-    lines.push(row('', 'TOTAL', '', '', totals.sf.toFixed(0), squareFeetToYards(totals.sf).toFixed(1),
-      totals.cy > 0 ? totals.cy.toFixed(1) : '', ''));
+    lines.push(metric
+      ? row('', 'TOTAL', '', '', area2(totals.sf), totals.cy > 0 ? vol(totals.cy) : '', '')
+      : row('', 'TOTAL', '', '', totals.sf.toFixed(0), squareFeetToYards(totals.sf).toFixed(1),
+          totals.cy > 0 ? totals.cy.toFixed(1) : '', ''));
     lines.push('');
   }
 

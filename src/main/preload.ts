@@ -98,10 +98,13 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- Setup ----
   isSetupComplete: () => invoke('db:setup:is-complete'),
-  runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean) =>
-    invoke('db:setup:run', trades, includeBallparkPrices, companyName, localOnlyMode),
+  runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean) =>
+    invoke('db:setup:run', trades, includeBallparkPrices, companyName, localOnlyMode, includeSampleCatalog),
   addTrade: (trade: string, includeBallparkPrices: boolean) =>
     invoke('db:settings:add-trade', trade, includeBallparkPrices),
+  seedsStatus: () => invoke('db:seeds:status'),
+  seedsRemove: () => invoke('db:seeds:remove'),
+  seedsRestore: (includeBallparkPrices: boolean) => invoke('db:seeds:restore', includeBallparkPrices),
 
   // ---- CSV Import ----
   openCsvFile: () => invoke('db:csv:open'),

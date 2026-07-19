@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToastStore } from '../stores/toast-store';
 import { CsvImportModal } from '../components/CsvImportModal';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
+import { isMassUnit } from '../../shared/unitConversion';
 
 const MATERIAL_SORT_ACCESSORS = {
   name: (m: Material) => m.name,
@@ -56,10 +57,12 @@ const EMPTY_MATERIAL = {
   costPerCy: '',
 };
 
-import { UNITS } from '../../shared/constants/units';
+import { unitOptions } from '../../shared/constants/units';
+import { useUnitSystem } from '../stores/units-store';
 
 export function MaterialsPage() {
   const addToast = useToastStore((s) => s.addToast);
+  const system = useUnitSystem();
   const [categories, setCategories] = useState<Category[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -154,8 +157,8 @@ export function MaterialsPage() {
         aliases: form.aliases || null,
         categoryId: form.categoryId,
         isActive: form.isActive,
-        tonsPerCy: form.unit === 'TON' ? parseFloat(form.tonsPerCy) || null : null,
-        costPerCy: form.unit === 'TON' ? parseFloat(form.costPerCy) || null : null,
+        tonsPerCy: isMassUnit(form.unit) ? parseFloat(form.tonsPerCy) || null : null,
+        costPerCy: isMassUnit(form.unit) ? parseFloat(form.costPerCy) || null : null,
       };
 
       await window.api.saveMaterial(payload);
@@ -402,7 +405,7 @@ export function MaterialsPage() {
                   value={form.unit}
                   onChange={(e) => setForm({ ...form, unit: e.target.value })}
                 >
-                  {UNITS.map((u) => (
+                  {unitOptions(system, form.unit).map((u) => (
                     <option key={u} value={u}>
                       {u}
                     </option>
@@ -421,9 +424,9 @@ export function MaterialsPage() {
                     setForm({
                       ...form,
                       defaultUnitCost: cost,
-                      // A set density links the per-CY price to this one
+                      // A set density links the volume price to this one
                       costPerCy:
-                        form.unit === 'TON' && density > 0
+                        isMassUnit(form.unit) && density > 0
                           ? (cost * density).toFixed(2)
                           : form.costPerCy,
                     });
@@ -433,10 +436,12 @@ export function MaterialsPage() {
                 />
               </div>
             </div>
-            {form.unit === 'TON' && (
+            {/* Mass-priced materials carry an optional volume price: $/CY for
+                TON, $/m³ for tonne (t) — same columns, unit decides meaning. */}
+            {isMassUnit(form.unit) && (
               <div className="form-row">
                 <div className="form-group">
-                  <label>Cost per CY ($, optional)</label>
+                  <label>Cost per {form.unit === 't' ? 'm³' : 'CY'} ($, optional)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -456,14 +461,14 @@ export function MaterialsPage() {
                     }}
                     step="0.01"
                     min="0"
-                    placeholder="e.g. 39.20"
+                    placeholder={form.unit === 't' ? 'e.g. 51.00' : 'e.g. 39.20'}
                   />
                   <span className="text-muted" style={{ fontSize: 12 }}>
-                    Used when a bid line is measured in cubic yards
+                    Used when a bid line is measured in {form.unit === 't' ? 'cubic metres' : 'cubic yards'}
                   </span>
                 </div>
                 <div className="form-group">
-                  <label>Density (tons per CY, optional)</label>
+                  <label>Density ({form.unit === 't' ? 't per m³' : 'tons per CY'}, optional)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -481,10 +486,11 @@ export function MaterialsPage() {
                     }}
                     step="0.05"
                     min="0"
-                    placeholder="e.g. 1.4"
+                    placeholder={form.unit === 't' ? 'e.g. 1.7' : 'e.g. 1.4'}
                   />
                   <span className="text-muted" style={{ fontSize: 12 }}>
-                    Keeps the per-CY price in sync with the per-ton price
+                    Keeps the {form.unit === 't' ? 'per-m³' : 'per-CY'} price in sync with the
+                    {form.unit === 't' ? ' per-tonne' : ' per-ton'} price
                   </span>
                 </div>
               </div>

@@ -83,6 +83,27 @@ describe('computeBidAnalysis', () => {
     expect(out.pipeSizes[1].directPerLF).toBeCloseTo(4000 / 50);
   });
 
+  it('rolls metric pipe lines (m unit, DN name) into the same canonical-LF buckets', () => {
+    const out = computeBidAnalysis(
+      [section(1)],
+      {
+        1: [
+          pipeLine(), // 8", 100 LF, $1800
+          // Metric emission of the same size pipe: DN200, 30.48 m = 100 LF
+          pipeLine({ description: 'DN200 PVC SDR-35', unit: 'm', quantity: 30.48, total_cost: 2200 }),
+          pipeLine({ description: 'DN300 RCP', unit: 'm', quantity: 15.24, total_cost: 4000 }),
+        ],
+      },
+      JOB,
+    );
+    expect(out.pipeSizes.map((p) => p.sizeIn)).toEqual([8, 12]);
+    const eight = out.pipeSizes[0];
+    expect(eight.totalLF).toBeCloseTo(200);
+    expect(eight.directPerLF).toBeCloseTo((1800 + 2200) / 200);
+    expect(out.pipeSizes[1].totalLF).toBeCloseTo(50);
+    expect(out.sections[0].pipeLF).toBeCloseTo(250);
+  });
+
   it('excludes non-LF and unmarked lines from the pipe roll-up', () => {
     const out = computeBidAnalysis(
       [section(1)],
@@ -91,6 +112,7 @@ describe('computeBidAnalysis', () => {
           pipeLine({ description: 'Trench Excavation', unit: 'CY' }),
           pipeLine({ description: 'Bedding Stone 8', unit: 'TON' }),
           pipeLine({ description: 'Dewatering', unit: 'LS' }),
+          pipeLine({ description: 'Silt fence', unit: 'm' }), // metric but unmarked
         ],
       },
       JOB,

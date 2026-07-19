@@ -9,6 +9,10 @@
 import type { CalcBreakdown } from '../../../shared/calcExplain';
 import { fmtNum } from '../../../shared/calcExplain';
 import { cubicFeetToYards, inchesToFeet } from '../../../shared/constants/units';
+import {
+  DEFAULT_UNIT_SYSTEM, METERS_PER_FOOT, convertQty, nominalInchForDN, unitLabel,
+  type UnitSystem,
+} from '../../../shared/unitSystem';
 
 // ---- Input / Output types --------------------------------------------------
 
@@ -160,6 +164,10 @@ function round2(n: number): number {
 
 export interface DepthZone {
   label: string;
+  /** Band bounds in canonical feet (hiFt = Infinity for the open-ended last
+   * band), so display code can re-label the band in other unit systems. */
+  loFt: number;
+  hiFt: number;
   lf: number;
   excavationCY: number;
 }
@@ -206,6 +214,8 @@ export function depthZoneBreakdown(
         const excavationCF = totalWidthFt * startDepthFt * runLengthLF;
         zones.push({
           label: zoneLabel(lo, hi),
+          loFt: lo,
+          hiFt: hi,
           lf: round2(runLengthLF),
           excavationCY: round2(cubicFeetToYards(excavationCF)),
         });
@@ -233,6 +243,8 @@ export function depthZoneBreakdown(
     const excavationCF = totalWidthFt * avgDepth * lf;
     zones.push({
       label: zoneLabel(binLo, binHi),
+      loFt: binLo,
+      hiFt: binHi,
       lf: round2(lf),
       excavationCY: round2(cubicFeetToYards(excavationCF)),
     });
@@ -244,16 +256,26 @@ export function depthZoneBreakdown(
 /**
  * "Show the math" for the trench takeoff (§5). Re-derives the substituted
  * arithmetic for the volumes from the same inputs, so the numbers in the
- * summary table are never a black box.
+ * summary table are never a black box. In metric the narration converts to
+ * m/m³ and drops the "÷ 27" step — metre products are already cubic metres.
  */
-export function explainTrench(input: TrenchInput, output: TrenchOutput): {
+export function explainTrench(
+  input: TrenchInput,
+  output: TrenchOutput,
+  system: UnitSystem = DEFAULT_UNIT_SYSTEM,
+): {
   avgDepth: CalcBreakdown;
   excavation: CalcBreakdown;
   bedding: CalcBreakdown;
   backfill: CalcBreakdown;
 } {
-  const ft = (n: number) => `${fmtNum(n, 2)} ft`;
-  const cy = (n: number) => `${fmtNum(n, 2)} CY`;
+  const metric = system === 'metric';
+  const ft = (n: number) => `${fmtNum(convertQty(n, 'ft', system), 2)} ${unitLabel('ft', system)}`;
+  const cy = (n: number) => `${fmtNum(convertQty(n, 'cy', system), 2)} ${unitLabel('cy', system)}`;
+  const lfQty = (n: number, frac: number) =>
+    `${fmtNum(convertQty(n, 'lf', system), frac)} ${unitLabel('lf', system)}`;
+  const cf = (n: number) =>
+    metric ? `${fmtNum(n * METERS_PER_FOOT ** 3, 1)} m³` : `${fmtNum(n, 1)} CF`;
   const totalWidth = input.trenchWidthFt + input.benchWidthFt * 2;
   const excavationCF = totalWidth * output.avgDepthFt * input.runLengthLF;
   const beddingCF = input.trenchWidthFt * input.beddingDepthFt * input.runLengthLF;
@@ -277,27 +299,33 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
         { label: 'End depth', value: ft(output.endDepthFt), kind: 'term' },
         { label: 'Avg depth', value: ft(output.avgDepthFt), kind: 'result' },
       ],
-      note: `End depth = start + grade (${fmtNum(input.gradePct, 2)}% × ${fmtNum(input.runLengthLF, 0)} LF).`,
+      note: `End depth = start + grade (${fmtNum(input.gradePct, 2)}% × ${lfQty(input.runLengthLF, 0)}).`,
     },
     excavation: {
-      formula: 'Excavation = (width + 2 × bench) × avg depth × length ÷ 27',
+      formula: metric
+        ? 'Excavation = (width + 2 × bench) × avg depth × length'
+        : 'Excavation = (width + 2 × bench) × avg depth × length ÷ 27',
       lines: [
         { label: 'Total width', value: `${ft(input.trenchWidthFt)} + 2 × ${ft(input.benchWidthFt)} = ${ft(totalWidth)}`, kind: 'term' },
         { label: 'Avg depth', value: ft(output.avgDepthFt), kind: 'term' },
-        { label: 'Run length', value: `${fmtNum(input.runLengthLF, 2)} LF`, kind: 'term' },
-        { label: 'Volume', value: `${fmtNum(excavationCF, 1)} CF ÷ 27`, kind: 'term' },
+        { label: 'Run length', value: lfQty(input.runLengthLF, 2), kind: 'term' },
+        ...(metric ? [] : [{ label: 'Volume', value: `${fmtNum(excavationCF, 1)} CF ÷ 27`, kind: 'term' as const }]),
         { label: 'Excavation', value: cy(output.excavationCY), kind: 'result' },
       ],
     },
     bedding: {
-      formula: compactionPct > 0
-        ? 'Bedding = width × bedding depth × length ÷ 27, plus compaction/waste'
-        : 'Bedding = width × bedding depth × length ÷ 27',
+      formula: metric
+        ? (compactionPct > 0
+            ? 'Bedding = width × bedding depth × length, plus compaction/waste'
+            : 'Bedding = width × bedding depth × length')
+        : (compactionPct > 0
+            ? 'Bedding = width × bedding depth × length ÷ 27, plus compaction/waste'
+            : 'Bedding = width × bedding depth × length ÷ 27'),
       lines: [
         { label: 'Trench width', value: ft(input.trenchWidthFt), kind: 'term' },
         { label: 'Bedding depth', value: ft(input.beddingDepthFt), kind: 'term' },
-        { label: 'Run length', value: `${fmtNum(input.runLengthLF, 2)} LF`, kind: 'term' },
-        { label: 'Volume', value: `${fmtNum(beddingCF, 1)} CF ÷ 27`, kind: 'term' },
+        { label: 'Run length', value: lfQty(input.runLengthLF, 2), kind: 'term' },
+        ...(metric ? [] : [{ label: 'Volume', value: `${fmtNum(beddingCF, 1)} CF ÷ 27`, kind: 'term' as const }]),
         ...(compactionPct > 0 ? [compactionLine] : []),
         { label: 'Bedding', value: cy(output.beddingCY), kind: 'result' },
       ],
@@ -307,9 +335,9 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
         ? 'Backfill = (excavation − bedding − pipe), plus compaction/waste'
         : 'Backfill = excavation − bedding − pipe',
       lines: [
-        { label: 'Excavation', value: `${fmtNum(excavationCF, 1)} CF`, kind: 'term' },
-        { label: 'Bedding', value: `${fmtNum(beddingCF, 1)} CF`, kind: 'term' },
-        { label: 'Pipe displacement', value: `${fmtNum(pipeCF, 1)} CF`, kind: 'term' },
+        { label: 'Excavation', value: cf(excavationCF), kind: 'term' },
+        { label: 'Bedding', value: cf(beddingCF), kind: 'term' },
+        { label: 'Pipe displacement', value: cf(pipeCF), kind: 'term' },
         ...(backfillCompacts ? [compactionLine] : []),
         { label: 'Backfill', value: cy(output.backfillCY), kind: 'result' },
       ],
@@ -323,9 +351,13 @@ export function explainTrench(input: TrenchInput, output: TrenchOutput): {
 /**
  * Extract the first inch-marked size from a material name -- '8" PVC SDR-35'
  * and 'PVC 8"' both parse as 8. The digits must be followed by an inch mark,
- * so spec numbers like 'SDR-35' or 'C-900' never match.
+ * so spec numbers like 'SDR-35' or 'C-900' never match. Metric names carry
+ * DN designations ('DN200 PVC'), which map back to their paired nominal
+ * inch size -- the identity the engine computes in.
  */
 export function parsePipeSizeFromName(name: string): number {
+  const dn = name.match(/\bDN\s?(\d+)\b/i);
+  if (dn) return nominalInchForDN(Number(dn[1])) ?? 0;
   const match = name.match(/(\d+(?:\/\d+)?(?:\.\d+)?)\s*['"]/);
   if (!match) return 0;
   const raw = match[1];

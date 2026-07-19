@@ -140,6 +140,19 @@ describe('explainConcrete', () => {
     expect(math.rebar).not.toBeNull();
     expect(math.subbase).not.toBeNull();
   });
+
+  it('narrates metric in m/m²/m³ without the ÷ 27 step', () => {
+    const inp = input({ rebarSpacingIn: 12, subbaseIn: 4, wastePct: 8 });
+    const math = explainConcrete(inp, calculateConcrete(inp), 'metric');
+    expect(math.order.formula).not.toContain('÷ 27');
+    expect(math.order.lines.find((l) => l.kind === 'result')?.value).toContain('m³');
+    expect(math.order.lines.find((l) => l.label === 'Area')?.value).toContain('m²');
+    // 4" thickness narrates as 0.102 m (3 decimals keep mm precision)
+    expect(math.order.lines.find((l) => l.label === 'Thickness')?.value).toBe('0.102 m');
+    // 12" rebar spacing narrates as 305 mm on centers
+    expect(math.rebar?.lines.find((l) => l.label === 'Spacing')?.value).toBe('305 mm o.c. each way');
+    expect(math.forms.lines.find((l) => l.kind === 'result')?.value).toContain('m²');
+  });
 });
 
 describe('DEFAULT_WASTE_PCT', () => {

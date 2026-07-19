@@ -2,12 +2,16 @@ import { dialog, app, BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import type Database from 'better-sqlite3';
-import { getDbPath, isSetupComplete, seedDatabase, addTradeCatalog } from '../database';
+import {
+  getDbPath, isSetupComplete, seedDatabase, addTradeCatalog,
+  seedCatalogStatus, removeSeedCatalog, restoreSeedCatalog,
+} from '../database';
 import { logger } from '../logger';
 import { TradeType, TRADE_SEED_DATA } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
 import { parsePdfTemplate, PdfTemplate } from '../../shared/types/pdf';
+import { parseUnitSystem } from '../../shared/unitSystem';
 
 export function registerSettingsHandlers(db: Database.Database): void {
   // ================================================================
@@ -20,12 +24,39 @@ export function registerSettingsHandlers(db: Database.Database): void {
 
   safeHandle(
     'db:setup:run',
-    (_event, trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean) => {
-      seedDatabase(db, trades as TradeType[], includeBallparkPrices, companyName, localOnlyMode === true);
-      logger.info('setup', `Setup complete: trades=${trades.join(',')}, company=${companyName}, localOnly=${localOnlyMode === true}`);
+    (_event, trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean) => {
+      seedDatabase(
+        db, trades as TradeType[], includeBallparkPrices, companyName,
+        localOnlyMode === true, includeSampleCatalog !== false
+      );
+      logger.info('setup', `Setup complete: trades=${trades.join(',')}, company=${companyName}, localOnly=${localOnlyMode === true}, sampleCatalog=${includeSampleCatalog !== false}`);
       return { success: true };
     }
   );
+
+  // ================================================================
+  // SAMPLE CATALOG (seed items)
+  // ================================================================
+
+  safeHandle('db:seeds:status', () => {
+    return seedCatalogStatus(db);
+  });
+
+  // Hide all sample items (soft delete; labor roles not used by a crew are
+  // removed outright since they have no hidden state). Reversible via restore.
+  safeHandle('db:seeds:remove', () => {
+    const result = removeSeedCatalog(db);
+    logger.info('settings', `Sample catalog hidden: ${result.hidden} items, ${result.deletedRoles} labor roles removed`);
+    return result;
+  });
+
+  // Bring back sample items for the active trades: un-hides hidden ones
+  // (keeping any edits) and re-creates missing ones with seed values.
+  safeHandle('db:seeds:restore', (_event, includeBallparkPrices: boolean) => {
+    const result = restoreSeedCatalog(db, includeBallparkPrices !== false);
+    logger.info('settings', `Sample catalog restored: ${result.restored} un-hidden, ${result.readded} re-created`);
+    return result;
+  });
 
   // Add a trade to an existing setup: seeds its catalog additively and makes
   // its gated module/tools visible. Never deletes or overwrites edited rows.
@@ -212,7 +243,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
           default_overhead_percent = ?, default_profit_percent = ?,
           default_tax_percent = ?, default_bond_percent = ?,
           auto_lock_on_close = ?, local_only_mode = ?,
-          job_number_auto = ?, job_number_format = ?, job_number_start = ?
+          job_number_auto = ?, job_number_format = ?, job_number_start = ?,
+          unit_system = ?
         WHERE id = 1`
       )
       .run(
@@ -224,7 +256,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
         settings.localOnlyMode ? 1 : 0,
         settings.jobNumberAuto ? 1 : 0,
         settings.jobNumberFormat || 'YYYY-NNN',
-        Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1)
+        Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1),
+        parseUnitSystem(settings.unitSystem)
       );
   });
 

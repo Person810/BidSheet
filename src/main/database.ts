@@ -75,10 +75,13 @@ export function seedDatabase(
   trades: TradeType[],
   includeBallparkPrices: boolean,
   companyName: string,
-  localOnlyMode = false
+  localOnlyMode = false,
+  includeSampleCatalog = true
 ): void {
   const seed = db.transaction(() => {
-    seedTradeCatalog(db, trades, includeBallparkPrices);
+    // Trades are always recorded (they gate which modules/tools are visible);
+    // the sample catalog itself is optional.
+    if (includeSampleCatalog) seedTradeCatalog(db, trades, includeBallparkPrices);
 
     // Get current schema version to suppress backup reminder on fresh installs
     const schemaVersion = (db.prepare('SELECT MAX(version) as v FROM schema_version').get() as any)?.v ?? 0;
@@ -265,6 +268,111 @@ export function addTradeCatalog(
   return run();
 }
 
+// ---- Sample-catalog management ---------------------------------------------
+//
+// Seed rows are identified by is_seed = 1 (materials, labor_roles, equipment)
+// or by their deterministic seed uuid (assemblies, which predate the is_seed
+// column and never got one). Rows seeded before v26 are unflagged and are
+// deliberately left alone — name-matching could catch user-curated rows.
+
+/** Deterministic uuids of every seed assembly across all trades. */
+function seedAssemblyUuids(): string[] {
+  const names = new Set<string>();
+  for (const trade of Object.values(TRADE_SEED_DATA)) {
+    for (const asm of trade.assemblies ?? []) names.add(asm.name);
+  }
+  return Array.from(names, (name) => seedUuid('assemblies', name));
+}
+
+export interface SeedCatalogStatus {
+  /** Seed items currently visible in the catalog */
+  active: number;
+  /** Seed items hidden (soft-deleted); restorable */
+  hidden: number;
+}
+
+export function seedCatalogStatus(db: Database.Database): SeedCatalogStatus {
+  const count = (sql: string, ...params: unknown[]) =>
+    (db.prepare(sql).get(...params) as { n: number }).n;
+  const asmUuids = seedAssemblyUuids();
+  const asmCount = (activeFlag: number) => asmUuids.length === 0 ? 0 : count(
+    `SELECT COUNT(*) AS n FROM assemblies WHERE is_active = ${activeFlag} AND uuid IN (${asmUuids.map(() => '?').join(',')})`,
+    ...asmUuids
+  );
+  const active =
+    count('SELECT COUNT(*) AS n FROM materials WHERE is_seed = 1 AND is_active = 1') +
+    count('SELECT COUNT(*) AS n FROM equipment WHERE is_seed = 1 AND is_active = 1') +
+    count('SELECT COUNT(*) AS n FROM labor_roles WHERE is_seed = 1') +
+    asmCount(1);
+  const hidden =
+    count('SELECT COUNT(*) AS n FROM materials WHERE is_seed = 1 AND is_active = 0') +
+    count('SELECT COUNT(*) AS n FROM equipment WHERE is_seed = 1 AND is_active = 0') +
+    asmCount(0);
+  return { active, hidden };
+}
+
+/**
+ * Hide the sample catalog: soft-deletes seed materials, equipment, and
+ * assemblies (is_active = 0 — reversible, and the tombstone syncs), and
+ * hard-deletes seed labor roles not referenced by any crew (labor_roles has
+ * no is_active column). Nothing the user created or referenced is touched;
+ * user-edited seed rows are hidden too, but their data survives and
+ * restoreSeedCatalog brings them back unchanged.
+ */
+export function removeSeedCatalog(db: Database.Database): { hidden: number; deletedRoles: number } {
+  const run = db.transaction(() => {
+    let hidden = 0;
+    hidden += db.prepare('UPDATE materials SET is_active = 0 WHERE is_seed = 1 AND is_active = 1').run().changes;
+    hidden += db.prepare('UPDATE equipment SET is_active = 0 WHERE is_seed = 1 AND is_active = 1').run().changes;
+    const asmUuids = seedAssemblyUuids();
+    if (asmUuids.length > 0) {
+      hidden += db.prepare(
+        `UPDATE assemblies SET is_active = 0 WHERE is_active = 1 AND uuid IN (${asmUuids.map(() => '?').join(',')})`
+      ).run(...asmUuids).changes;
+    }
+    const deletedRoles = db.prepare(
+      'DELETE FROM labor_roles WHERE is_seed = 1 AND id NOT IN (SELECT labor_role_id FROM crew_members)'
+    ).run().changes;
+    return { hidden, deletedRoles };
+  });
+  return run();
+}
+
+/**
+ * Restore the sample catalog for the currently active trades: re-activates
+ * hidden seed rows (they keep whatever values they had — user edits survive)
+ * and re-inserts seed rows that no longer exist (fresh seed values;
+ * `includeBallparkPrices` applies only to those). Existing active rows are
+ * never modified — seedTradeCatalog is INSERT OR IGNORE on the seed uuid.
+ */
+export function restoreSeedCatalog(
+  db: Database.Database,
+  includeBallparkPrices: boolean
+): { restored: number; readded: number } {
+  const run = db.transaction(() => {
+    const row = db.prepare('SELECT trade_types FROM app_settings WHERE id = 1').get() as
+      { trade_types: string | null } | undefined;
+    const trades = (row?.trade_types ?? '')
+      .split(',').map((s) => s.trim()).filter((t): t is TradeType => t in TRADE_SEED_DATA);
+
+    let restored = 0;
+    restored += db.prepare('UPDATE materials SET is_active = 1 WHERE is_seed = 1 AND is_active = 0').run().changes;
+    restored += db.prepare('UPDATE equipment SET is_active = 1 WHERE is_seed = 1 AND is_active = 0').run().changes;
+    const asmUuids = seedAssemblyUuids();
+    if (asmUuids.length > 0) {
+      restored += db.prepare(
+        `UPDATE assemblies SET is_active = 1 WHERE is_active = 0 AND uuid IN (${asmUuids.map(() => '?').join(',')})`
+      ).run(...asmUuids).changes;
+    }
+
+    const before = seedCatalogStatus(db).active;
+    seedTradeCatalog(db, trades, includeBallparkPrices);
+    const readded = seedCatalogStatus(db).active - before;
+    return { restored, readded };
+  });
+  return run();
+}
+
 // Ordered list of migrations; index 0 is v1. Each runs inside its own
 // transaction (below), so a multi-statement migration is all-or-nothing.
 // Exported so tests can run a specific prefix of migrations (e.g. to seed
@@ -290,6 +398,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV42,
   migrateV43,
   migrateV44,
+  migrateV45,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -754,6 +863,18 @@ function migrateV44(db: Database.Database): void {
   }
 
   db.exec('INSERT INTO schema_version (version) VALUES (44);');
+}
+
+// V45: Metric units toggle (#97). Purely presentational — every stored
+// dimension stays canonical imperial (ft/in/CY columns keep their meaning
+// on every machine regardless of this setting); metric users get conversion
+// at the render/input boundary via shared/unitSystem.ts. Syncs with the
+// other company settings so all of an account's machines agree.
+function migrateV45(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN unit_system TEXT NOT NULL DEFAULT 'imperial';
+    INSERT INTO schema_version (version) VALUES (45);
+  `);
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */

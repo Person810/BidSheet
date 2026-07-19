@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import type { SurfacePoint, TakeoffArea } from './types';
 import { buildTin, interpolateZ, bbox, pointInPolygon, type Pt3 } from '../surfaceModel';
+import { convertQty } from '../../../../shared/unitSystem';
+import { useUnitSystem } from '../../../stores/units-store';
 
 interface SurfaceOverlayProps {
   /** Spot elevations for the current page (PDF px + elevation ft). */
@@ -24,6 +26,7 @@ const FILL = '59, 130, 246'; // blue — existing below finished grade
 export default function SurfaceOverlay({
   points, areas, scalePxPerFt, showHeatmap, showPoints,
 }: SurfaceOverlayProps) {
+  const system = useUnitSystem();
   const spp = scalePxPerFt && scalePxPerFt > 0 ? scalePxPerFt : 10;
   const r = spp * 0.35;
   const fs = spp * 0.9;
@@ -67,7 +70,7 @@ export default function SurfaceOverlay({
             strokeWidth={1} vectorEffect="non-scaling-stroke" />
           <text x={p.x + r * 1.4} y={p.y + fs * 0.35} fontSize={fs} fill="#22c55e"
             stroke="#0b1220" strokeWidth={fs * 0.06} paintOrder="stroke">
-            {p.z.toFixed(1)}
+            {convertQty(p.z, 'ft', system).toFixed(system === 'metric' ? 2 : 1)}
           </text>
         </g>
       ))}

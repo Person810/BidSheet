@@ -8,6 +8,8 @@ import { TrenchProfileForm } from './TrenchProfileForm';
 import { useTrenchMaterials } from '../../modules/underground/useTrenchMaterials';
 import { useSurfaceManager } from '../../modules/underground/plan-takeoff/useSurfaceManager';
 import type { TakeoffRun } from '../../modules/underground/plan-takeoff/types';
+import { useUnitSystem } from '../../stores/units-store';
+import { unitLabel, convertQty, formatPipeSize, fromDisplay } from '../../../shared/unitSystem';
 
 export interface ConvertToBidProfile {
   label: string;
@@ -50,6 +52,16 @@ const DEFAULTS = {
   backfillMaterialId: 'native' as number | string | null,
 };
 
+/** Metric prefills: round metres (1.2 m deep, 30 m long, 1 m wide, 150 mm
+ *  bedding) instead of converted feet. */
+const METRIC_DEFAULTS = {
+  ...DEFAULTS,
+  startDepthFt: fromDisplay(1.2, 'ft', 'metric'),
+  runLengthLF: fromDisplay(30, 'lf', 'metric'),
+  trenchWidthFt: fromDisplay(1, 'ft', 'metric'),
+  beddingDepthFt: fromDisplay(0.15, 'ft', 'metric'),
+};
+
 function rowToInput(row: any): TrenchInput {
   return {
     pipeSizeIn: row.pipe_size_in,
@@ -66,9 +78,11 @@ function rowToInput(row: any): TrenchInput {
 }
 
 export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange }: Props) {
+  const system = useUnitSystem();
+  const defaults = system === 'metric' ? METRIC_DEFAULTS : DEFAULTS;
   const [profiles, setProfiles] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ ...DEFAULTS });
+  const [form, setForm] = useState({ ...defaults });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
 
   const { pipeMaterials, beddingMaterials } = useTrenchMaterials();
@@ -139,11 +153,11 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     const maxSort = profiles.reduce((m: number, p: any) => Math.max(m, p.sort_order ?? 0), 0);
     const result = await window.api.saveTrenchProfile({
       jobId,
-      ...DEFAULTS,
+      ...defaults,
       sortOrder: maxSort + 1,
     });
     await loadProfiles();
-    setForm({ ...DEFAULTS });
+    setForm({ ...defaults });
     setEditingId(result.id);
   };
 
@@ -209,14 +223,18 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     });
   };
 
+  // Display-boundary conversion (#97): rows stay canonical; metric mode
+  // converts each rendered number. r2 doubles as the imperial no-op.
   const r2 = (n: number) => Math.round(n * 100) / 100;
+  const lf = (n: number) => r2(convertQty(n, 'lf', system));
+  const cy = (n: number) => r2(convertQty(n, 'cy', system));
 
   const pipeDisplay = (row: any) => {
     if (row.pipe_material_id) {
       const mat = pipeMaterials.find((m) => m.id === row.pipe_material_id);
       if (mat) return mat.label;
     }
-    return `${row.pipe_size_in}" ${row.pipe_material}`;
+    return `${formatPipeSize(row.pipe_size_in, system)} ${row.pipe_material}`;
   };
 
   const hasValidProfiles = computed.some((c) => c !== null);
@@ -264,7 +282,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       <div className="flex justify-between items-center" style={{ padding: '8px 8px 6px' }}>
         <span className="text-muted" style={{ fontSize: 12 }}>
           {profiles.length} profile{profiles.length !== 1 ? 's' : ''}
-          {profiles.length > 0 && <> &middot; {r2(totals.pipeLF)} LF total</>}
+          {profiles.length > 0 && <> &middot; {lf(totals.pipeLF)} {unitLabel('lf', system)} total</>}
         </span>
         <div className="flex gap-8 no-print">
           {hasValidProfiles && onConvertToBid && (
@@ -281,12 +299,12 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           <thead>
             <tr>
               <th>Label</th>
-              <th className="text-right">Pipe (LF)</th>
+              <th className="text-right">Pipe ({unitLabel('lf', system)})</th>
               <th className="text-right">Size/Material</th>
-              <th className="text-right">Avg Depth (ft)</th>
-              <th className="text-right">Excavation (CY)</th>
-              <th className="text-right">Bedding (CY)</th>
-              <th className="text-right">Backfill (CY)</th>
+              <th className="text-right">Avg Depth ({unitLabel('ft', system)})</th>
+              <th className="text-right">Excavation ({unitLabel('cy', system)})</th>
+              <th className="text-right">Bedding ({unitLabel('cy', system)})</th>
+              <th className="text-right">Backfill ({unitLabel('cy', system)})</th>
               <th className="no-print" style={{ width: 100 }}></th>
             </tr>
           </thead>
@@ -302,12 +320,12 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                       </span>
                       <span className="print-only">{row.label || `Run ${idx + 1}`}</span>
                     </td>
-                    <td className="text-right">{out?.pipeLF ?? '--'}</td>
+                    <td className="text-right">{out ? lf(out.pipeLF) : '--'}</td>
                     <td className="text-right">{pipeDisplay(row)}</td>
-                    <td className="text-right">{out?.avgDepthFt ?? '--'}</td>
-                    <td className="text-right">{out?.excavationCY ?? '--'}</td>
-                    <td className="text-right">{out?.beddingCY ?? '--'}</td>
-                    <td className="text-right">{out?.backfillCY ?? '--'}</td>
+                    <td className="text-right">{out ? r2(convertQty(out.avgDepthFt, 'ft', system)) : '--'}</td>
+                    <td className="text-right">{out ? cy(out.excavationCY) : '--'}</td>
+                    <td className="text-right">{out ? cy(out.beddingCY) : '--'}</td>
+                    <td className="text-right">{out ? cy(out.backfillCY) : '--'}</td>
                     <td className="no-print">
                       <div className="flex gap-8">
                         <button className="btn btn-sm btn-secondary" onClick={() => startEdit(row)}>Edit</button>
@@ -328,19 +346,19 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
             })}
             <tr>
               <td style={{ fontWeight: 600 }}>Totals</td>
-              <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.pipeLF)}</td>
+              <td className="text-right" style={{ fontWeight: 600 }}>{lf(totals.pipeLF)}</td>
               <td></td>
               <td></td>
-              <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.excavationCY)}</td>
-              <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.beddingCY)}</td>
-              <td className="text-right" style={{ fontWeight: 600 }}>{r2(totals.backfillCY)}</td>
+              <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.excavationCY)}</td>
+              <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.beddingCY)}</td>
+              <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.backfillCY)}</td>
               <td></td>
             </tr>
           </tbody>
           <tfoot className="bid-grid-footer">
             <tr>
               <td colSpan={8} className="text-muted" style={{ fontSize: 11 }}>
-                Tracer Wire: {r2(totals.tracerWireLF)} LF &middot; Warning Tape: {r2(totals.warningTapeLF)} LF
+                Tracer Wire: {lf(totals.tracerWireLF)} {unitLabel('lf', system)} &middot; Warning Tape: {lf(totals.warningTapeLF)} {unitLabel('lf', system)}
               </td>
             </tr>
           </tfoot>

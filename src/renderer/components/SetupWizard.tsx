@@ -20,7 +20,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [step, setStep] = useState(0);
   const [companyName, setCompanyName] = useState('');
   const [selectedTrades, setSelectedTrades] = useState<string[]>([]);
-  const [includePrices, setIncludePrices] = useState<boolean | null>(null);
+  // Sample catalog: seed with ballpark prices, seed at $0, or skip seeding
+  const [catalogChoice, setCatalogChoice] = useState<'prices' | 'zero' | 'empty' | null>(null);
   const [cloudChoice, setCloudChoice] = useState<'yes' | 'later' | 'never' | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCloudSetup, setShowCloudSetup] = useState(false);
@@ -46,9 +47,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     try {
       await window.api.runSetup(
         selectedTrades,
-        includePrices === true,
+        catalogChoice === 'prices',
         companyName,
-        cloudChoice === 'never'
+        cloudChoice === 'never',
+        catalogChoice !== 'empty'
       );
       onComplete();
     } catch (err) {
@@ -97,8 +99,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="setup-step">
             <h2>What type of work do you do?</h2>
             <p className="setup-desc">
-              Select all that apply. This determines which materials, labor roles, and
-              equipment get loaded into your catalog.
+              Select all that apply. This determines which tools show up and which
+              sample materials, labor roles, and equipment are available for your catalog.
             </p>
             <div className="trade-grid">
               {TRADES.map((trade) => (
@@ -134,18 +136,19 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {step === 2 && (
           <div className="setup-step">
-            <h2>Material Pricing</h2>
+            <h2>Starting Catalog</h2>
             <p className="setup-desc">
-              We can pre-fill rough ballpark prices as a starting point, or leave
-              everything at $0 so you enter your own prices from scratch. Either
-              way, you can edit any price at any time.
+              We can load a sample catalog for your trades — materials, labor roles,
+              equipment, and assemblies — with or without rough ballpark prices, or
+              you can start completely empty. Sample items can be hidden or restored
+              anytime from Settings.
             </p>
             <div className="price-options">
               <div
-                className={`price-option ${includePrices === true ? 'selected' : ''}`}
-                onClick={() => setIncludePrices(true)}
+                className={`price-option ${catalogChoice === 'prices' ? 'selected' : ''}`}
+                onClick={() => setCatalogChoice('prices')}
               >
-                <div className="price-option-title">Include ballpark prices</div>
+                <div className="price-option-title">Sample catalog with ballpark prices</div>
                 <div className="price-option-desc">
                   Pre-fill with rough estimates so you have a starting point.
                   These are NOT accurate quotes -- just a reference to help you
@@ -153,13 +156,23 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 </div>
               </div>
               <div
-                className={`price-option ${includePrices === false ? 'selected' : ''}`}
-                onClick={() => setIncludePrices(false)}
+                className={`price-option ${catalogChoice === 'zero' ? 'selected' : ''}`}
+                onClick={() => setCatalogChoice('zero')}
               >
-                <div className="price-option-title">Start at $0.00</div>
+                <div className="price-option-title">Sample catalog at $0.00</div>
                 <div className="price-option-desc">
-                  All materials start with no price. You'll enter your own
+                  All sample materials start with no price. You'll enter your own
                   supplier pricing from scratch.
+                </div>
+              </div>
+              <div
+                className={`price-option ${catalogChoice === 'empty' ? 'selected' : ''}`}
+                onClick={() => setCatalogChoice('empty')}
+              >
+                <div className="price-option-title">Empty catalog</div>
+                <div className="price-option-desc">
+                  No sample items at all. You'll build your materials, labor,
+                  and equipment catalog yourself.
                 </div>
               </div>
             </div>
@@ -170,7 +183,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <button
                 className="btn btn-primary"
                 onClick={() => setStep(3)}
-                disabled={includePrices === null}
+                disabled={catalogChoice === null}
               >
                 Next
               </button>
