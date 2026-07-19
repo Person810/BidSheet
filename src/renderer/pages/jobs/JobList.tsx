@@ -173,19 +173,38 @@ export function JobList({ onOpenJob }: JobListProps) {
     });
   };
 
-  const [dupState, setDupState] = useState<{ jobId: number; name: string; bidDate: string } | null>(null);
+  const [dupState, setDupState] = useState<{ jobId: number; name: string; bidDate: string; jobNumber: string } | null>(null);
+  const [dupSuggested, setDupSuggested] = useState<string | null>(null);
+  const dupNumberWarning = useJobNumberWarning(dupState?.jobNumber || '');
 
-  const startDuplicate = (job: any) => {
+  const startDuplicate = async (job: any) => {
+    // Copying the source's number would mint a guaranteed duplicate, so
+    // suggest the next number instead when auto-numbering is on.
+    let jobNumber = job.job_number || '';
+    let suggested: string | null = null;
+    try {
+      const res = await window.api.getNextJobNumber();
+      if (res?.enabled && res.suggestion) {
+        jobNumber = res.suggestion;
+        suggested = res.suggestion;
+      }
+    } catch {
+      // Fall back to the source's number; the field stays editable.
+    }
+    setDupSuggested(suggested);
     setDupState({
       jobId: job.id,
       name: job.name + ' (Copy)',
       bidDate: new Date().toISOString().slice(0, 10),
+      jobNumber,
     });
   };
 
   const handleDuplicate = async () => {
     if (!dupState) return;
-    const result = await window.api.duplicateJob(dupState.jobId, dupState.name, dupState.bidDate || null);
+    const result = await window.api.duplicateJob(
+      dupState.jobId, dupState.name, dupState.bidDate || null, dupState.jobNumber.trim() || null
+    );
     setDupState(null);
     if (result?.newJobId) {
       loadJobs();
@@ -363,10 +382,24 @@ export function JobList({ onOpenJob }: JobListProps) {
               <input type="text" className="form-control" value={dupState.name}
                 onChange={(e) => setDupState({ ...dupState, name: e.target.value })} autoFocus />
             </div>
-            <div className="form-group">
-              <label>Bid Date</label>
-              <input type="date" className="form-control" value={dupState.bidDate}
-                onChange={(e) => setDupState({ ...dupState, bidDate: e.target.value })} />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Job Number (optional)</label>
+                <input type="text" className="form-control" value={dupState.jobNumber}
+                  onChange={(e) => setDupState({ ...dupState, jobNumber: e.target.value })} />
+                {dupNumberWarning ? (
+                  <div className="text-warning" style={{ fontSize: 12, marginTop: 4 }}>{dupNumberWarning}</div>
+                ) : dupSuggested && dupState.jobNumber === dupSuggested ? (
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Suggested next number — edit freely
+                  </div>
+                ) : null}
+              </div>
+              <div className="form-group">
+                <label>Bid Date</label>
+                <input type="date" className="form-control" value={dupState.bidDate}
+                  onChange={(e) => setDupState({ ...dupState, bidDate: e.target.value })} />
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setDupState(null)}>Cancel</button>

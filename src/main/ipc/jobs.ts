@@ -108,10 +108,13 @@ export function registerJobHandlers(db: Database.Database): void {
     return result;
   });
 
-  safeHandle('db:jobs:duplicate', (_event, id: number, newName?: string, newBidDate?: string) => {
+  safeHandle('db:jobs:duplicate', (_event, id: number, newName?: string, newBidDate?: string, newJobNumber?: string | null) => {
     const duplicate = db.transaction(() => {
       const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as any;
       if (!job) return null;
+      // undefined = caller didn't offer a number field (keep the source's);
+      // '' / null = deliberately cleared.
+      const jobNumber = newJobNumber === undefined ? job.job_number : newJobNumber || null;
 
       const newJob = db
         .prepare(
@@ -119,7 +122,7 @@ export function registerJobHandlers(db: Database.Database): void {
           VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`
         )
         .run(
-          newName || job.name + ' (Copy)', job.job_number, job.client, job.location,
+          newName || job.name + ' (Copy)', jobNumber, job.client, job.location,
           newBidDate ?? job.bid_date, job.start_date, job.description,
           job.overhead_percent, job.profit_percent, job.bond_percent,
           job.tax_percent, job.escalation_percent ?? 0, job.notes

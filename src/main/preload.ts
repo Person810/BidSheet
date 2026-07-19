@@ -50,7 +50,8 @@ contextBridge.exposeInMainWorld('api', {
   getJob: (id: number) => invoke('db:jobs:get', id),
   saveJob: (job: any) => invoke('db:jobs:save', job),
   deleteJob: (id: number) => invoke('db:jobs:delete', id),
-  duplicateJob: (id: number, newName?: string, newBidDate?: string) => invoke('db:jobs:duplicate', id, newName, newBidDate),
+  duplicateJob: (id: number, newName?: string, newBidDate?: string, newJobNumber?: string | null) =>
+    invoke('db:jobs:duplicate', id, newName, newBidDate, newJobNumber),
   getChangeOrders: (parentJobId: number) => invoke('db:jobs:change-orders', parentJobId),
   createChangeOrder: (parentJobId: number) => invoke('db:jobs:create-change-order', parentJobId),
   getNextJobNumber: () => invoke('db:jobs:next-number'),
