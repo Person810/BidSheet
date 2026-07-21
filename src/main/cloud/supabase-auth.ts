@@ -41,9 +41,24 @@ export interface AuthStatus {
 }
 
 export class CloudAuthError extends Error {
-  constructor(message: string, public code?: string) {
+  constructor(message: string, public code?: string, public status?: number) {
     super(message);
   }
+}
+
+/**
+ * A refresh failure is "transient" when it does not prove the stored token is
+ * invalid — no network (offline launch), a 5xx, a timeout, or a rate-limit. On
+ * those the token may still be good, so the session should be kept and retried
+ * rather than destroyed. Only a definitive auth rejection (a 4xx from GoTrue)
+ * means the refresh token is actually dead. An unrecognised error is treated as
+ * transient: never sign the user out on an error we can't classify.
+ */
+export function isTransientAuthError(err: unknown): boolean {
+  if (!(err instanceof CloudAuthError)) return true;
+  if (err.code === 'network') return true;
+  const status = err.status ?? 0;
+  return status === 0 || status === 408 || status === 429 || status >= 500;
 }
 
 function friendlyAuthMessage(status: number, data: any): string {
@@ -77,10 +92,10 @@ async function gotrue(path: string, body?: unknown, token?: string, method?: str
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (err: any) {
-    throw new CloudAuthError(friendlyAuthMessage(0, null), 'network');
+    throw new CloudAuthError(friendlyAuthMessage(0, null), 'network', 0);
   }
   const data: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw new CloudAuthError(friendlyAuthMessage(res.status, data), data?.error_code);
+  if (!res.ok) throw new CloudAuthError(friendlyAuthMessage(res.status, data), data?.error_code, res.status);
   return data;
 }
 
@@ -203,8 +218,17 @@ export class CloudAuth {
       await this.refresh();
       logger.info('cloud-auth', `Restored cloud session for ${this.email}`);
     } catch (err: any) {
-      logger.warn('cloud-auth', 'Stored cloud session is no longer valid', err.message);
-      this.clear();
+      if (isTransientAuthError(err)) {
+        // Offline launch or a transient server error: the refresh token may
+        // still be valid, so keep it (in memory and on disk). A later
+        // getAccessToken() — or the next launch, once online — can refresh
+        // without forcing a full re-login (password + TOTP) at a no-signal
+        // jobsite. The session just reads as signed-out until then.
+        logger.warn('cloud-auth', 'Could not verify stored cloud session; keeping it to retry', err.message);
+      } else {
+        logger.warn('cloud-auth', 'Stored cloud session is no longer valid', err.message);
+        this.clear();
+      }
     }
     return this.status();
   }
