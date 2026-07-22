@@ -254,6 +254,7 @@ contextBridge.exposeInMainWorld('api', {
   cloudE2eeRegenerateRecovery: (shorter?: boolean) =>
     invoke('cloud:e2ee-regenerate-recovery', shorter),
   cloudOrgMembers: () => invoke('cloud:org-members'),
+  cloudE2eeSafetyCode: () => invoke('cloud:e2ee-safety-code'),
   cloudOrgCreateInvite: (role?: 'member' | 'owner') => invoke('cloud:org-create-invite', role),
   cloudOrgListInvites: () => invoke('cloud:org-list-invites'),
   cloudOrgRevokeInvite: (id: string) => invoke('cloud:org-revoke-invite', id),

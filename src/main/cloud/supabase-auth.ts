@@ -38,6 +38,13 @@ export interface AuthStatus {
   needsEnroll: boolean;
   /** Sign-in succeeded; a TOTP code is needed to reach aal2. */
   needsTotp: boolean;
+  /**
+   * False when the OS keyring is unavailable, meaning cached secrets — the
+   * refresh token AND the E2EE DEK / member private key — fall back to plain
+   * base64 in the local DB (obfuscation, not encryption). Surfaced so the UI
+   * can warn instead of leaving the downgrade log-only.
+   */
+  keyringAvailable: boolean;
 }
 
 export class CloudAuthError extends Error {
@@ -112,9 +119,15 @@ export function encryptToken(token: string): string {
   if (safeStorage.isEncryptionAvailable()) {
     return 'enc:' + safeStorage.encryptString(token).toString('base64');
   }
-  // No OS keyring (some Linux setups). Obfuscation only -- logged so it's
-  // never a silent downgrade.
-  logger.warn('cloud-auth', 'OS keyring unavailable; storing secret base64-encoded only');
+  // No OS keyring (some Linux setups). Obfuscation only — and this path also
+  // carries the E2EE DEK and member private key, not just session tokens, so
+  // local read access defeats the zero-knowledge guarantee for this device.
+  // Logged AND surfaced via AuthStatus.keyringAvailable so it's never a
+  // silent downgrade.
+  logger.warn(
+    'cloud-auth',
+    'OS keyring unavailable; storing secret (may include the sync encryption key) base64-encoded only'
+  );
   return 'b64:' + Buffer.from(token).toString('base64');
 }
 
@@ -157,6 +170,7 @@ export class CloudAuth {
       aal,
       needsEnroll: signedIn && aal === 'aal1' && !this.hasVerifiedTotp,
       needsTotp: signedIn && aal === 'aal1' && this.hasVerifiedTotp,
+      keyringAvailable: safeStorage.isEncryptionAvailable(),
     };
   }
 

@@ -298,10 +298,13 @@ declare global {
           created_at: string;
           key_status: 'pending' | 'active' | null;
           pubkey: string | null;
+          safety_code: string | null;
           has_wrap: number;
         }[];
         me: { user_id: string; role: string };
       }>;
+      /** This device's member-key device code (out-of-band approval check). */
+      cloudE2eeSafetyCode: () => Promise<string | null>;
       cloudOrgCreateInvite: (
         role?: 'member' | 'owner'
       ) => Promise<{ id: string; token: string; role: string }>;
