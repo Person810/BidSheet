@@ -18,6 +18,9 @@ import Foundation
 struct AuthError: LocalizedError {
     let message: String
     let code: String?
+    /// HTTP status behind the failure (0 = never reached the server). Used to
+    /// tell a transient failure from a definitive auth rejection.
+    var status: Int?
     var errorDescription: String? { message }
 
     static func friendly(status: Int, body: [String: Any]?) -> AuthError {
@@ -37,7 +40,19 @@ struct AuthError: LocalizedError {
         default:
             text = msg.isEmpty ? "Sign-in service error (HTTP \(status))." : msg
         }
-        return AuthError(message: text, code: code.isEmpty ? nil : code)
+        return AuthError(message: text, code: code.isEmpty ? nil : code, status: status)
+    }
+
+    /// A refresh failure is "transient" when it does not prove the stored token
+    /// is invalid — no network (offline launch), a timeout, a rate-limit, or a
+    /// 5xx. Only a definitive 4xx auth rejection means the refresh token is
+    /// actually dead. Anything we cannot classify is treated as transient, so we
+    /// never sign the user out — and wipe their cached offline E2EE key — on a
+    /// guess.
+    static func isTransient(_ error: Error) -> Bool {
+        guard let e = error as? AuthError, let status = e.status else { return true }
+        if e.code == "over_request_rate_limit" { return true }
+        return status == 0 || status == 408 || status == 429 || status >= 500
     }
 }
 
@@ -123,7 +138,13 @@ final class SupabaseAuth {
             // A restored aal2 session means a TOTP factor was verified.
             if payload["aal"] as? String == "aal2" { hasVerifiedTotp = true }
         } catch {
-            clear()
+            // Only drop the stored session on a definitive auth rejection. On an
+            // offline launch or a transient server error the token may still be
+            // valid, so keep it — and the cached E2EE key that clear() would
+            // wipe — rather than forcing a full re-login + recovery-key re-entry
+            // at a no-signal jobsite. The session reads as signed-out until the
+            // next successful refresh.
+            if !AuthError.isTransient(error) { clear() }
         }
         return status()
     }
