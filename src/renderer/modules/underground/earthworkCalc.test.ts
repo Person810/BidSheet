@@ -60,6 +60,40 @@ describe('calculateEarthwork', () => {
     expect(Math.abs(out.netCY)).toBeLessThan(1);
   });
 
+  it('finished_elev: a pad small relative to the grid samples near its true area', () => {
+    // Flat existing surface at z=100 well overhanging the pad
+    const existing: Pt3[] = [
+      { x: -10, y: -10, z: 100 }, { x: 22, y: -10, z: 100 },
+      { x: 22, y: 22, z: 100 }, { x: -10, y: 22, z: 100 },
+    ];
+    const region: ProposedRegion = {
+      id: 1, label: 'Small pad', polygon: square(12), mode: 'finished_elev', value: 98,
+    };
+    // Default 10-ft grid: center-only sampling read this 144 SF pad as one
+    // full 100 SF cell. The effective sampled area must land near 144 SF.
+    const out = calculateEarthwork({ regions: [region], existingSurface: existing });
+    const sampledSF = (out.totalCutCY * 27) / 2;
+    expect(sampledSF).toBeGreaterThan(140);
+    expect(sampledSF).toBeLessThan(148);
+    expect(out.regions[0].uncoveredCells).toBe(0);
+  });
+
+  it('finished_elev: a narrow strip between grid rows is not missed', () => {
+    const existing: Pt3[] = [
+      { x: -10, y: -10, z: 100 }, { x: 110, y: -10, z: 100 },
+      { x: 110, y: 40, z: 100 }, { x: -10, y: 40, z: 100 },
+    ];
+    // 8-ft strip whose interior never touches a 10-ft cell center row
+    const region: ProposedRegion = {
+      id: 1, label: 'Strip', mode: 'finished_elev', value: 99,
+      polygon: [{ x: 0, y: 11 }, { x: 100, y: 11 }, { x: 100, y: 19 }, { x: 0, y: 19 }],
+    };
+    const out = calculateEarthwork({ regions: [region], existingSurface: existing });
+    // 100 x 8 x 1 / 27 = 29.6 CY (was 0 with center-only sampling)
+    expect(out.totalCutCY).toBeGreaterThan(28);
+    expect(out.totalCutCY).toBeLessThan(31.5);
+  });
+
   it('flags a missing surface instead of silently returning zero', () => {
     const region: ProposedRegion = {
       id: 1, label: 'Oops', polygon: square(50), mode: 'finished_elev', value: 95,

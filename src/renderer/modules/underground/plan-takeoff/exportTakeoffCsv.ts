@@ -1,10 +1,12 @@
-import type { TakeoffRun, TakeoffItem, TakeoffArea } from './types';
+import type { TakeoffRun, TakeoffItem, TakeoffArea, TakeoffSurface } from './types';
 import { AREA_TYPE_LABELS } from './types';
 import {
   computeRunLengthLF, computePolygonAreaSF, computePolygonPerimeterLF,
   ftToInches, loadPageScaleMap,
 } from './takeoffUtils';
 import { calculateTrench } from '../trenchCalc';
+import { calculateEarthwork, type GradeMode, type ProposedRegion } from '../earthworkCalc';
+import type { Pt3 } from '../surfaceModel';
 import { neutralizeCsvFormula } from '../../../../shared/csvSafe';
 import { cubicFeetToYards, squareFeetToYards } from '../../../../shared/constants/units';
 import {
@@ -27,16 +29,24 @@ function row(...fields: (string | number)[]): string {
   return fields.map(esc).join(',');
 }
 
+const GRADE_MODE_LABELS: Record<GradeMode, string> = {
+  cut_depth: 'Cut to depth',
+  fill_depth: 'Fill to depth',
+  finished_elev: 'Finished elevation',
+};
+
 /**
- * Builds a takeoff quantity report CSV with three blocks: pipe runs (with
- * trench volumes), count items grouped by material, and measured areas.
- * Runs/areas on uncalibrated pages are listed without quantities.
+ * Builds a takeoff quantity report CSV with four blocks: pipe runs (with
+ * trench volumes), count items grouped by material, measured surface areas,
+ * and earthwork regions (cut/fill). Runs/areas on uncalibrated pages are
+ * listed without quantities.
  */
 export async function buildTakeoffCsv(
   jobId: number,
   runs: TakeoffRun[],
   items: TakeoffItem[],
   areas: TakeoffArea[],
+  surfaces: TakeoffSurface[] = [],
   system: UnitSystem = DEFAULT_UNIT_SYSTEM,
 ): Promise<string> {
   const scaleByPage = await loadPageScaleMap(jobId);
@@ -118,7 +128,10 @@ export async function buildTakeoffCsv(
   }
 
   // ---- Measured areas ----
-  const completedAreas = areas.filter((a) => a.points.length >= 3);
+  // Earthwork regions (gradeMode set) are cut/fill, not surface restoration;
+  // listing them under their leftover surface type/depth would inflate the
+  // SF/SY/CY totals. They get their own block below.
+  const completedAreas = areas.filter((a) => a.gradeMode == null && a.points.length >= 3);
   if (completedAreas.length > 0) {
     lines.push('MEASURED AREAS');
     // Metric has one area spelling (m²), so the redundant SF/SY pair
@@ -158,6 +171,70 @@ export async function buildTakeoffCsv(
       ? row('', 'TOTAL', '', '', area2(totals.sf), totals.cy > 0 ? vol(totals.cy) : '', '')
       : row('', 'TOTAL', '', '', totals.sf.toFixed(0), squareFeetToYards(totals.sf).toFixed(1),
           totals.cy > 0 ? totals.cy.toFixed(1) : '', ''));
+    lines.push('');
+  }
+
+  // ---- Earthwork regions (cut/fill) ----
+  // Same per-page computation as sendEarthworkToBid: each page's polygons and
+  // existing-surface points convert with that page's own scale.
+  const earthworkAreas = areas.filter((a) => a.gradeMode != null && a.points.length >= 3);
+  if (earthworkAreas.length > 0) {
+    lines.push('EARTHWORK REGIONS');
+    lines.push(metric
+      ? row('Page', 'Label', 'Grade Mode', 'Grade Value (m)', 'Area (m²)', 'Cut (m³)', 'Fill (m³)', 'Notes')
+      : row('Page', 'Label', 'Grade Mode', 'Grade Value (ft)', 'Area (SF)', 'Area (SY)', 'Cut (CY)', 'Fill (CY)', 'Notes'));
+    const area2 = (sf: number) => (metric ? convertQty(sf, 'sf', system).toFixed(1) : sf.toFixed(0));
+    const gv = (ft: number) => (metric ? convertQty(ft, 'ft', system) : ft).toFixed(2);
+    const existingPoints = surfaces
+      .filter((s) => s.kind === 'existing')
+      .flatMap((s) => s.points);
+    const pages = Array.from(new Set(earthworkAreas.map((a) => a.pdfPage))).sort((a, b) => a - b);
+    const totals = { cut: 0, fill: 0 };
+    for (const page of pages) {
+      const pageAreas = earthworkAreas.filter((a) => a.pdfPage === page);
+      const scale = scaleByPage.get(page);
+      if (!scale) {
+        for (const a of pageAreas) {
+          lines.push(metric
+            ? row(page, a.label || 'Untitled Region', GRADE_MODE_LABELS[a.gradeMode!],
+                gv(a.gradeValueFt ?? a.depthFt), 'page not calibrated', '', '', '')
+            : row(page, a.label || 'Untitled Region', GRADE_MODE_LABELS[a.gradeMode!],
+                gv(a.gradeValueFt ?? a.depthFt), 'page not calibrated', '', '', '', ''));
+        }
+        continue;
+      }
+      const regions: ProposedRegion[] = pageAreas.map((a) => ({
+        id: a.id,
+        label: a.label,
+        polygon: a.points.map((p) => ({ x: p.x / scale, y: p.y / scale })),
+        mode: a.gradeMode!,
+        value: a.gradeValueFt ?? a.depthFt,
+      }));
+      const existingSurface: Pt3[] = existingPoints
+        .filter((p) => p.pdfPage === page)
+        .map((p) => ({ x: p.x / scale, y: p.y / scale, z: p.z }));
+      const out = calculateEarthwork({ regions, existingSurface });
+      for (const r of out.regions) {
+        totals.cut += r.cutCY;
+        totals.fill += r.fillCY;
+        const note = r.uncoveredCells > 0
+          ? `${r.uncoveredCells} grid cell(s) missing existing-grade data — cut/fill understated`
+          : r.uncoveredCells < 0
+            ? 'no existing surface — add spot elevations'
+            : '';
+        const value = regions.find((x) => x.id === r.id)?.value ?? 0;
+        lines.push(metric
+          ? row(page, r.label || 'Untitled Region', GRADE_MODE_LABELS[r.mode], gv(value),
+              area2(r.areaSF), r.cutCY > 0 ? vol(r.cutCY) : '', r.fillCY > 0 ? vol(r.fillCY) : '', note)
+          : row(page, r.label || 'Untitled Region', GRADE_MODE_LABELS[r.mode], gv(value),
+              r.areaSF.toFixed(0), r.areaSY.toFixed(1),
+              r.cutCY > 0 ? r.cutCY.toFixed(1) : '', r.fillCY > 0 ? r.fillCY.toFixed(1) : '', note));
+      }
+    }
+    lines.push(metric
+      ? row('', 'TOTAL', '', '', '', totals.cut > 0 ? vol(totals.cut) : '', totals.fill > 0 ? vol(totals.fill) : '', '')
+      : row('', 'TOTAL', '', '', '', '', totals.cut > 0 ? totals.cut.toFixed(1) : '',
+          totals.fill > 0 ? totals.fill.toFixed(1) : '', ''));
     lines.push('');
   }
 

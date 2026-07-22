@@ -42,6 +42,10 @@ export function PdfViewer({
 
   // The scale the visible canvas was last painted at.
   const [renderedScale, setRenderedScale] = useState(scale);
+  // Bumped when a document finishes loading so the first render fires even
+  // when getDocument outlasts the initial effects (nothing else would
+  // trigger a render until the user zoomed or changed pages).
+  const [docVersion, setDocVersion] = useState(0);
 
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
@@ -66,6 +70,7 @@ export function PdfViewer({
         if (cancelled) { doc.destroy(); return; }
         docRef.current = doc;
         onDocLoaded(doc.numPages);
+        setDocVersion((v) => v + 1);
       } catch (err) {
         console.error('Failed to load PDF:', err);
         onDocLoaded(0); // signal failure
@@ -148,6 +153,15 @@ export function PdfViewer({
     setPanY(0);
     doRender(scale);
   }, [pageNumber]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Document arrival: render the current page. The load effect can't call
+  // doRender itself — doRender's identity changes with page/rotation and
+  // must not retrigger a document load — so it bumps docVersion instead.
+  // This is what paints the first page (and fires onPageSizeKnown) when
+  // getDocument resolves after the initial effects have already run.
+  useEffect(() => {
+    if (docVersion > 0) doRender(scale);
+  }, [docVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // External reset-pan signal (e.g. fit-to-width)
   useEffect(() => {

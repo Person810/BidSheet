@@ -16,15 +16,23 @@ const group: WallGroup = {
 };
 
 describe('measureForUnit', () => {
-  it('picks the imperial measure matching the unit, defaulting to LF', () => {
+  it('picks the imperial measure matching the unit; blank defaults to LF', () => {
     expect(measureForUnit('LF', group)).toBe(100);
     expect(measureForUnit('SF', group)).toBe(450);
     expect(measureForUnit('SY', group)).toBe(50);
     expect(measureForUnit('CY', group)).toBe(12.5);
     expect(measureForUnit('CYD', group)).toBe(12.5);
-    expect(measureForUnit('EA', group)).toBe(100);
     expect(measureForUnit(null, group)).toBe(100);
     expect(measureForUnit(undefined, group)).toBe(100);
+    expect(measureForUnit('  ', group)).toBe(100);
+  });
+
+  it('returns null for units no wall measure maps to (no LF-as-TON billing)', () => {
+    // Billing the LF quantity as TON/EA/GAL would be wildly wrong; callers
+    // skip these lines and warn instead.
+    expect(measureForUnit('TON', group)).toBeNull();
+    expect(measureForUnit('EA', group)).toBeNull();
+    expect(measureForUnit('GAL', group)).toBeNull();
   });
 
   it('converts to the metric measure for metric-priced units (#97)', () => {

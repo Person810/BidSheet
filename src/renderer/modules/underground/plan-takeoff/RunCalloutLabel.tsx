@@ -27,11 +27,14 @@ interface RunCalloutLabelProps {
   color: string;
   segmentIndex: number;
   scale: number;
+  /** User page rotation in degrees (0/90/180/270); drag deltas are mapped
+   *  from the rotated screen frame back into the unrotated page frame. */
+  rotation?: number;
   isActive: boolean;
 }
 
 const RunCalloutLabel = React.memo(function RunCalloutLabel({
-  p1, p2, scalePxPerFt, fontSize, color, segmentIndex, scale, isActive,
+  p1, p2, scalePxPerFt, fontSize, color, segmentIndex, scale, rotation = 0, isActive,
 }: RunCalloutLabelProps) {
   const system = useUnitSystem();
   const distPx = segmentLengthPx(p1, p2);
@@ -140,8 +143,17 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
 
     const handleMouseMove = (ev: MouseEvent) => {
       if (!isDraggingRef.current) return;
-      const dx = (ev.clientX - dragStartRef.current.mouseX) / scale;
-      const dy = (ev.clientY - dragStartRef.current.mouseY) / scale;
+      const sx = (ev.clientX - dragStartRef.current.mouseX) / scale;
+      const sy = (ev.clientY - dragStartRef.current.mouseY) / scale;
+      // The label lives in the unrotated page frame while the mouse moves in
+      // the rotated screen frame, so apply the inverse of the overlay's
+      // rotation transform to the delta (same mapping as screenToPdf).
+      let dx = sx, dy = sy;
+      switch (((rotation % 360) + 360) % 360) {
+        case 90: dx = sy; dy = -sx; break;
+        case 180: dx = -sx; dy = -sy; break;
+        case 270: dx = -sy; dy = sx; break;
+      }
       setDragOffset({
         x: dragStartRef.current.offX + dx,
         y: dragStartRef.current.offY + dy,
@@ -168,7 +180,7 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [isActive, scale, dragOffset, startSnapBack, maxDragRadius]);
+  }, [isActive, scale, rotation, dragOffset, startSnapBack, maxDragRadius]);
 
   /* ---- Render ---- */
 
