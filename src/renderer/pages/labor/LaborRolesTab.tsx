@@ -124,6 +124,10 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
               </td>
               <td className="text-right">
                 <input
+                  // Uncontrolled: key on the value so an external price change
+                  // (e.g. a price import) remounts the field and re-applies
+                  // defaultValue, instead of a stale blur reverting the import.
+                  key={`rate-${role.default_hourly_rate}`}
                   type="number"
                   className="inline-price-input"
                   defaultValue={role.default_hourly_rate}

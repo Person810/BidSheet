@@ -215,12 +215,22 @@ export function FuzzyAutocomplete({
         inputRef.current?.blur();
       }
     } else if (e.key === 'Tab') {
-      if (isOpen && filtered.length > 0) {
-        const idx = Math.max(activeIndex, allowManualEntry ? 1 : 0);
-        const adjustedIndex = allowManualEntry ? idx - 1 : idx;
-        if (adjustedIndex >= 0 && adjustedIndex < filtered.length) {
+      // Mirror Enter's guardrails. The old `Math.max(activeIndex, ...)` meant a
+      // bare Tab with nothing highlighted still resolved to filtered[0] and
+      // committed it — silently overwriting the field's value/unit. Only commit
+      // an explicitly highlighted row, or (like Enter) the top match when the
+      // user has actually typed a query. Don't preventDefault: Tab still moves
+      // focus to the next field.
+      if (!isOpen) return;
+      if (activeIndex >= 0) {
+        const adjustedIndex = allowManualEntry ? activeIndex - 1 : activeIndex;
+        if (adjustedIndex === -1 && allowManualEntry) {
+          selectItem(null);
+        } else if (adjustedIndex >= 0 && adjustedIndex < filtered.length) {
           selectItem(filtered[adjustedIndex]);
         }
+      } else if (inputValue.trim() && filtered.length > 0) {
+        selectItem(filtered[0]);
       }
     }
   };

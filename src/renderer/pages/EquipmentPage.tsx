@@ -271,6 +271,10 @@ export function EquipmentPage() {
                 </td>
                 <td className="text-right">
                   <input
+                    // Uncontrolled: key on the value so an external price change
+                    // (e.g. a price import) remounts the field and re-applies
+                    // defaultValue, instead of a stale blur reverting the import.
+                    key={`hourly-${item.hourly_rate}`}
                     type="number"
                     className="inline-price-input"
                     defaultValue={item.hourly_rate}
@@ -287,6 +291,7 @@ export function EquipmentPage() {
                 </td>
                 <td className="text-right">
                   <input
+                    key={`mob-${item.mobilization_cost}`}
                     type="number"
                     className="inline-price-input"
                     defaultValue={item.mobilization_cost}
