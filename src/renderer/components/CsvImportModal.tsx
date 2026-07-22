@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { formatCurrency } from '../pages/jobs/helpers';
 import {
   autoDetectMapping, availableHeaders as availableHeadersFor, parseCsvPrice, ColumnSelect, CsvDropZone,
@@ -81,6 +81,18 @@ export function CsvImportModal({
   useEffect(() => {
     window.api.getMaterials().then((mats: ExistingMaterial[]) => setAllMaterials(mats));
   }, []);
+
+  // Prices are written the moment `result` lands, so ANY close after that
+  // point (Done button, overlay click, Esc) must run the caller's refresh
+  // exactly once — otherwise the page keeps showing pre-import prices.
+  const completeFired = useRef(false);
+  const handleClose = () => {
+    if (result && !completeFired.current) {
+      completeFired.current = true;
+      onComplete();
+    }
+    onClose();
+  };
 
   const onFileParsed = (parsed: { headers: string[] }) => {
     setError(null);
@@ -235,7 +247,7 @@ export function CsvImportModal({
   // ============================================================
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div
         className="modal"
         onClick={(e) => e.stopPropagation()}
@@ -561,7 +573,7 @@ export function CsvImportModal({
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => { onComplete(); onClose(); }}>
+              <button className="btn btn-primary" onClick={handleClose}>
                 Done
               </button>
             </div>
@@ -571,7 +583,7 @@ export function CsvImportModal({
         {/* Close button for pick/map steps */}
         {(step === 'pick' || step === 'map') && !error && (
           <div className="modal-actions" style={{ marginTop: step === 'pick' ? 0 : undefined }}>
-            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
           </div>
         )}
       </div>

@@ -112,7 +112,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
               <td colSpan={6} style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-muted)' }}>
                 <p style={{ fontSize: 16, marginBottom: 12 }}>No labor roles yet</p>
                 <p style={{ fontSize: 13, marginBottom: 20 }}>Add roles like Operator or Laborer to assign to bids.</p>
-                <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Role</button>
+                <button className="btn btn-primary" onClick={openAdd}>Add Role</button>
               </td>
             </tr>
           ) : roles.map((role) => (

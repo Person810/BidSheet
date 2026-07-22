@@ -205,9 +205,11 @@ export function QuotesTab({ jobId, onSendToBid }: {
                   <span>Low quote: <strong>{formatCurrency(lowest)}</strong></span>
                   {delta != null && delta !== 0 && (
                     <span style={{ color: delta > 0 ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }}>
+                      {/* A $0 divisor (placeholder quotes, empty sections) would
+                          render "Infinity%" — show a dash for the percent instead. */}
                       {delta > 0
-                        ? `Subbing saves ${formatCurrency(delta)} (${((delta / selfCost) * 100).toFixed(0)}%)`
-                        : `Self-perform saves ${formatCurrency(-delta)} (${((-delta / lowest) * 100).toFixed(0)}%)`}
+                        ? `Subbing saves ${formatCurrency(delta)} (${selfCost > 0 ? `${((delta / selfCost) * 100).toFixed(0)}%` : '—'})`
+                        : `Self-perform saves ${formatCurrency(-delta)} (${lowest > 0 ? `${((-delta / lowest) * 100).toFixed(0)}%` : '—'})`}
                     </span>
                   )}
                 </div>

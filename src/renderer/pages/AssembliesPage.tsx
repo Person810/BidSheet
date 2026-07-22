@@ -279,7 +279,7 @@ export function AssembliesPage() {
             <>
               <p style={{ fontSize: 16, marginBottom: 12 }}>No assemblies yet</p>
               <p style={{ fontSize: 13, marginBottom: 20 }}>Create reusable item templates to speed up bid entry.</p>
-              <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create Assembly</button>
+              <button className="btn btn-primary" onClick={openNew}>Create Assembly</button>
             </>
           ) : (
             <p style={{ fontSize: 13 }}>No matches.</p>

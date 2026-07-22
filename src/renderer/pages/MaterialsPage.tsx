@@ -278,7 +278,7 @@ export function MaterialsPage() {
                     <>
                       <p style={{ fontSize: 16, marginBottom: 12 }}>No materials in this category</p>
                       <p style={{ fontSize: 13, marginBottom: 20 }}>Click below to add your first material.</p>
-                      <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Material</button>
+                      <button className="btn btn-primary" onClick={openAdd}>Add Material</button>
                     </>
                   )}
                 </td>

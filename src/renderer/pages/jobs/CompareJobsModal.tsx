@@ -67,7 +67,13 @@ export function CompareJobsModal({ baseJobId, onClose }: {
   useEffect(() => {
     if (otherJobId == null) { setRight(null); return; }
     setLoading(true);
-    loadSide(otherJobId).then(setRight).finally(() => setLoading(false));
+    // Staleness guard: picking another job while a slow load is in flight
+    // must not let the older result land over the newer selection.
+    let stale = false;
+    loadSide(otherJobId)
+      .then((side) => { if (!stale) setRight(side); })
+      .finally(() => { if (!stale) setLoading(false); });
+    return () => { stale = true; };
   }, [otherJobId]);
 
   // Match sections by name (base bid only); unmatched sections show on one side

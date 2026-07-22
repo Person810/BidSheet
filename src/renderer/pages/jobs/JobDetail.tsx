@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Lock, Unlock } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
@@ -110,7 +110,14 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     }
   };
 
+  // loadJob spans many sequential awaits; without a staleness guard, switching
+  // jobs quickly (or overlapping refreshes) can interleave one call's state
+  // commits with another's — one job's header over another's line items. Each
+  // call takes a generation; only the newest is allowed to commit state.
+  const loadGeneration = useRef(0);
   const loadJob = useCallback(async () => {
+    const gen = ++loadGeneration.current;
+    const isCurrent = () => gen === loadGeneration.current;
     try {
       const [j, s, mats, cr, pr, eq, set, asm] = await Promise.all([
         window.api.getJob(jobId),
@@ -122,6 +129,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         window.api.getSettings(),
         window.api.getAssemblies(),
       ]);
+      if (!isCurrent()) return;
       if (!j) {
         addToast('Job not found.', 'error');
         return;
@@ -138,22 +146,26 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       for (const sec of s) {
         items[sec.id] = await window.api.getBidLineItems(sec.id);
       }
+      if (!isCurrent()) return;
       setLineItems(items);
       const sum = await window.api.getBidSummary(jobId);
+      if (!isCurrent()) return;
       setSummary(sum);
       const profs = await window.api.getTrenchProfiles(jobId);
-      setProfileCount(profs.length);
       const docRows = await window.api.listJobDocuments(jobId);
+      if (!isCurrent()) return;
+      setProfileCount(profs.length);
       setDocCount(docRows.length);
 
       // Load change orders if this is a parent job
       if (!j.parent_job_id) {
         const cos = await window.api.getChangeOrders(jobId);
-        setChangeOrders(cos);
         const cosums: Record<number, any> = {};
         for (const co of cos) {
           cosums[co.id] = await window.api.getBidSummary(co.id);
         }
+        if (!isCurrent()) return;
+        setChangeOrders(cos);
         setCoSummaries(cosums);
       } else {
         setChangeOrders([]);
@@ -163,11 +175,13 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       // Load parent job if this is a CO
       if (j.parent_job_id) {
         const p = await window.api.getJob(j.parent_job_id);
+        if (!isCurrent()) return;
         setParentJob(p ?? null);
       } else {
         setParentJob(null);
       }
     } catch (err: any) {
+      if (!isCurrent()) return;
       addToast(err?.message || 'Failed to load job data.', 'error');
     }
   }, [jobId, addToast]);
@@ -272,15 +286,20 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const handleSendQuotesToBid = async (selected: { scope: string; vendor: string; amount: number; notes: string | null }[]) => {
     if (selected.length === 0) return;
     history.record();
-    const sectionResult = await window.api.saveBidSection({
-      jobId,
-      name: 'Subcontractors',
-      sortOrder: sections.length,
-    });
-    let sortOrder = 0;
+    // Reuse an existing "Subcontractors" section — sending twice must append
+    // to it, not create a second section that double-counts the earlier subs.
+    const existing = sections.find((s) => s.name === 'Subcontractors');
+    const sectionId = existing
+      ? existing.id
+      : (await window.api.saveBidSection({
+          jobId,
+          name: 'Subcontractors',
+          sortOrder: sections.length,
+        })).id;
+    let sortOrder = existing ? (lineItems[existing.id] || []).length : 0;
     for (const q of selected) {
       await window.api.saveBidLineItem(buildLineItemPayload({
-        sectionId: sectionResult.id,
+        sectionId,
         jobId,
         description: `${q.scope} (${q.vendor})`,
         quantity: 1,
@@ -455,24 +474,43 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   // Inline cell edit from the bid grid (quantity / material unit price). Builds
   // the full save payload from the existing row so the server recomputes
   // totals, and records a history snapshot first so the edit is undoable.
+  //
+  // Commits can arrive faster than loadJob refreshes the grid (Tab from the
+  // qty cell straight into the price cell), so the row BidGrid hands back may
+  // predate the previous commit — building the payload from it alone would
+  // resurrect the stale field and lose the first edit. Overlay each row's
+  // freshest committed values so rapid sequential edits compose; an entry
+  // clears once every commit for that row has settled (state is fresh again
+  // from the last commit's loadJob by then).
+  const pendingInlineEdits = useRef(
+    new Map<number, { changes: { quantity?: number; materialUnitCost?: number }; inFlight: number }>(),
+  );
   const commitInlineEdit = async (item: any, changes: { quantity?: number; materialUnitCost?: number }) => {
+    const pending = pendingInlineEdits.current.get(item.id) ?? { changes: {}, inFlight: 0 };
+    pending.changes = { ...pending.changes, ...changes };
+    pending.inFlight += 1;
+    pendingInlineEdits.current.set(item.id, pending);
+    const merged = pending.changes;
     try {
       history.record();
       // Typing over the material unit price in the grid is an override; mark it
       // sticky so a later quantity/material change won't recompute it.
-      const manualFields = changes.materialUnitCost != null
+      const manualFields = merged.materialUnitCost != null
         ? withManual(parseManualFields(item.manual_fields), 'materialUnitCost', true)
         : parseManualFields(item.manual_fields);
       await window.api.saveBidLineItem(lineItemRowToPayload(item, {
         jobId,
-        quantity: changes.quantity ?? item.quantity,
-        materialUnitCost: changes.materialUnitCost ?? item.material_unit_cost,
+        quantity: merged.quantity ?? item.quantity,
+        materialUnitCost: merged.materialUnitCost ?? item.material_unit_cost,
         manualFields,
       }));
       await loadJob();
     } catch (err: any) {
       addToast(err?.message || 'Failed to save edit.', 'error');
       await loadJob().catch(() => { /* already reporting the primary error */ });
+    } finally {
+      pending.inFlight -= 1;
+      if (pending.inFlight <= 0) pendingInlineEdits.current.delete(item.id);
     }
   };
 
@@ -1062,7 +1100,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       {showTemplatePicker && (
         <SectionTemplatePickerModal
           jobId={jobId}
-          onInserted={loadJob}
+          onInserted={() => { history.record(); loadJob(); }}
           onClose={() => setShowTemplatePicker(false)}
         />
       )}

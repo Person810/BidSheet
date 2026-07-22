@@ -242,7 +242,7 @@ export function EquipmentPage() {
                   <>
                     <p style={{ fontSize: 16, marginBottom: 12 }}>No equipment yet</p>
                     <p style={{ fontSize: 13, marginBottom: 20 }}>Add your first piece of equipment to start building bids.</p>
-                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Equipment</button>
+                    <button className="btn btn-primary" onClick={openAdd}>Add Equipment</button>
                   </>
                 )}
               </td>

@@ -34,11 +34,23 @@ export function CalcPopover({ breakdown, ariaLabel = 'Show the math' }: {
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    // The panel is fixed-positioned from a rect captured at open, so scrolling
+    // (or resizing) detaches it from its trigger — close instead of tracking,
+    // matching the outside-click dismiss. Capture phase catches scrolls inside
+    // nested containers (the grid, modals), not just the window.
+    const onScroll = (e: Event) => {
+      if (panelRef.current && e.target instanceof Node && panelRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
     };
   }, [open]);
 

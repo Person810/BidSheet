@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   FuzzyAutocomplete,
   materialsToAutocomplete,
@@ -26,9 +26,16 @@ interface LineItemModalProps {
   crews: any[];
   productionRates: any[];
   equipment: any[];
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onClose: () => void;
 }
+
+// min="0" only blocks the spinner arrows — a typed "-5" still parses, flows
+// into computeLineItemCost and reduces totals. Every numeric field here
+// (quantity, costs, hours) is non-negative by definition, so clamp at commit.
+// Credits/deducts are not modeled as negative inputs anywhere in the app (the
+// bid grid's inline editor rejects negatives too).
+const nonNegative = (value: number) => Math.max(0, value);
 
 export function LineItemModal({
   lineForm,
@@ -42,6 +49,18 @@ export function LineItemModal({
   onClose,
 }: LineItemModalProps) {
   const system = useUnitSystem();
+  // Guard against double-click on Save: the first click's IPC round trip is
+  // still in flight when the second lands, inserting a duplicate line item.
+  const [saving, setSaving] = useState(false);
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave();
+    } finally {
+      setSaving(false);
+    }
+  };
   const materialItems = useMemo(() => materialsToAutocomplete(materials), [materials]);
   const crewItems = useMemo(() => crewsToAutocomplete(crews), [crews]);
   const rateItems = useMemo(() => productionRatesToAutocomplete(productionRates), [productionRates]);
@@ -295,7 +314,7 @@ export function LineItemModal({
           <div className="form-group">
             <label>Quantity</label>
             <input type="number" className="form-control" value={lineForm.quantity}
-              onChange={(e) => onQuantityChange(parseNumericInput(e.target.value) || 0)} min="0" />
+              onChange={(e) => onQuantityChange(nonNegative(parseNumericInput(e.target.value) || 0))} min="0" />
           </div>
           <div className="form-group">
             <label>Unit</label>
@@ -338,7 +357,7 @@ export function LineItemModal({
             <div className="form-group">
               <label>Unit Cost ($) {overrideTag('materialUnitCost')}</label>
               <input type="number" className="form-control" value={lineForm.materialUnitCost}
-                onChange={(e) => overrideField('materialUnitCost', parseNumericInput(e.target.value) || 0)}
+                onChange={(e) => overrideField('materialUnitCost', nonNegative(parseNumericInput(e.target.value) || 0))}
                 step="0.01" min="0" />
             </div>
             <div className="form-group">
@@ -395,7 +414,7 @@ export function LineItemModal({
                 {overrideTag('laborHours')}
               </label>
               <input type="number" className="form-control" value={lineForm.laborHours}
-                onChange={(e) => overrideField('laborHours', parseNumericInput(e.target.value) || 0)}
+                onChange={(e) => overrideField('laborHours', nonNegative(parseNumericInput(e.target.value) || 0))}
                 step="0.5" min="0" />
               {lineForm.productionRateId > 0 && !isManual(manualFields, 'laborHours') && (
                 <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
@@ -409,7 +428,7 @@ export function LineItemModal({
                 {overrideTag('laborCostPerHour')}
               </label>
               <input type="number" className="form-control" value={lineForm.laborCostPerHour}
-                onChange={(e) => overrideField('laborCostPerHour', parseNumericInput(e.target.value) || 0)}
+                onChange={(e) => overrideField('laborCostPerHour', nonNegative(parseNumericInput(e.target.value) || 0))}
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
@@ -439,13 +458,13 @@ export function LineItemModal({
             <div className="form-group">
               <label>Equipment Hours</label>
               <input type="number" className="form-control" value={lineForm.equipmentHours}
-                onChange={(e) => setLineForm({ ...lineForm, equipmentHours: parseNumericInput(e.target.value) || 0 })}
+                onChange={(e) => setLineForm({ ...lineForm, equipmentHours: nonNegative(parseNumericInput(e.target.value) || 0) })}
                 step="0.5" min="0" />
             </div>
             <div className="form-group">
               <label>Cost / Hour ($) {overrideTag('equipmentCostPerHour')}</label>
               <input type="number" className="form-control" value={lineForm.equipmentCostPerHour}
-                onChange={(e) => overrideField('equipmentCostPerHour', parseNumericInput(e.target.value) || 0)}
+                onChange={(e) => overrideField('equipmentCostPerHour', nonNegative(parseNumericInput(e.target.value) || 0))}
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
@@ -461,7 +480,7 @@ export function LineItemModal({
             <div className="form-group">
               <label>Subcontractor Cost ($)</label>
               <input type="number" className="form-control" value={lineForm.subcontractorCost}
-                onChange={(e) => setLineForm({ ...lineForm, subcontractorCost: parseNumericInput(e.target.value) || 0 })}
+                onChange={(e) => setLineForm({ ...lineForm, subcontractorCost: nonNegative(parseNumericInput(e.target.value) || 0) })}
                 step="1" min="0" />
             </div>
             <div className="form-group">
@@ -486,8 +505,8 @@ export function LineItemModal({
 
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={onSave} disabled={!lineForm.description.trim()}>
-            {editingLineItem ? 'Save Changes' : 'Add Line Item'}
+          <button className="btn btn-primary" onClick={handleSave} disabled={!lineForm.description.trim() || saving}>
+            {saving ? 'Saving...' : editingLineItem ? 'Save Changes' : 'Add Line Item'}
           </button>
         </div>
       </div>
