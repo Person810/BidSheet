@@ -310,6 +310,12 @@ export function MaterialsPage() {
                   <td>{mat.unit}</td>
                   <td className="text-right">
                     <input
+                      // Uncontrolled input: defaultValue only applies on mount,
+                      // so an external price change (e.g. a price import) would
+                      // leave the stale value in the DOM and a later blur would
+                      // write it back over the import. Keying on the price
+                      // remounts the field when it changes upstream.
+                      key={`price-${mat.default_unit_cost}`}
                       type="number"
                       className="inline-price-input"
                       defaultValue={mat.default_unit_cost}
