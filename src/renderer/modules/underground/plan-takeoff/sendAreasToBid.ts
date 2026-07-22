@@ -31,7 +31,10 @@ export async function sendAreasToBid(
   jobId: number,
   system: UnitSystem = DEFAULT_UNIT_SYSTEM,
 ): Promise<number> {
-  const valid = areas.filter((a) => a.points.length >= 3);
+  // Earthwork regions (gradeMode set) are billed as cut/fill by
+  // sendEarthworkToBid; including them here too would emit a phantom
+  // surface-restoration line for each and double-bill the same polygon.
+  const valid = areas.filter((a) => a.gradeMode == null && a.points.length >= 3);
   if (valid.length === 0) return 0;
 
   // Per-page scales — area math needs each polygon's own page calibration

@@ -5,6 +5,7 @@ import { CalcPopover } from '../../components/CalcPopover';
 import { explainSum, explainQuotient, fmtMoney, fmtQty } from '../../../shared/calcExplain';
 import { explainDirectCost, explainEscalation, explainMarkup, explainGrandTotal } from '../../../shared/bidCalc';
 import { parseManualFields, MANUAL_FIELD_LABELS, type OverridableField } from '../../../shared/manualFields';
+import { parseNumericInput } from '../../../shared/parseNumericInput';
 
 interface BidGridProps {
   sections: any[];
@@ -137,7 +138,9 @@ export function BidGrid({
   const commit = (move: 'next' | 'prev' | 'up' | 'down' | null) => {
     if (!editing) return;
     const item = editableItems.find((i) => i.id === editing.id);
-    const parsed = parseFloat(draft);
+    // parseNumericInput tolerates thousands separators; bare parseFloat("1,250")
+    // returns 1 and would commit a corrupted value past the isFinite check.
+    const parsed = parseNumericInput(draft);
     if (item && Number.isFinite(parsed) && parsed >= 0 && parsed !== fieldValue(item, editing.field)) {
       onCommitInlineEdit(
         item,

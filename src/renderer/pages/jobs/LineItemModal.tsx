@@ -10,6 +10,7 @@ import { formatCurrency } from './helpers';
 import { calcCrewCostPerHour, explainCrewCost } from '../../../shared/crewCost';
 import { effectiveMaterialUnitCost, isCubicMeters, isCubicYards, isMassUnit } from '../../../shared/unitConversion';
 import { roundHours } from '../../../shared/round';
+import { parseNumericInput } from '../../../shared/parseNumericInput';
 import { computeLineItemCost } from '../../../shared/lineItemCost';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
@@ -294,7 +295,7 @@ export function LineItemModal({
           <div className="form-group">
             <label>Quantity</label>
             <input type="number" className="form-control" value={lineForm.quantity}
-              onChange={(e) => onQuantityChange(parseFloat(e.target.value) || 0)} min="0" />
+              onChange={(e) => onQuantityChange(parseNumericInput(e.target.value) || 0)} min="0" />
           </div>
           <div className="form-group">
             <label>Unit</label>
@@ -337,7 +338,7 @@ export function LineItemModal({
             <div className="form-group">
               <label>Unit Cost ($) {overrideTag('materialUnitCost')}</label>
               <input type="number" className="form-control" value={lineForm.materialUnitCost}
-                onChange={(e) => overrideField('materialUnitCost', parseFloat(e.target.value) || 0)}
+                onChange={(e) => overrideField('materialUnitCost', parseNumericInput(e.target.value) || 0)}
                 step="0.01" min="0" />
             </div>
             <div className="form-group">
@@ -394,7 +395,7 @@ export function LineItemModal({
                 {overrideTag('laborHours')}
               </label>
               <input type="number" className="form-control" value={lineForm.laborHours}
-                onChange={(e) => overrideField('laborHours', parseFloat(e.target.value) || 0)}
+                onChange={(e) => overrideField('laborHours', parseNumericInput(e.target.value) || 0)}
                 step="0.5" min="0" />
               {lineForm.productionRateId > 0 && !isManual(manualFields, 'laborHours') && (
                 <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
@@ -408,7 +409,7 @@ export function LineItemModal({
                 {overrideTag('laborCostPerHour')}
               </label>
               <input type="number" className="form-control" value={lineForm.laborCostPerHour}
-                onChange={(e) => overrideField('laborCostPerHour', parseFloat(e.target.value) || 0)}
+                onChange={(e) => overrideField('laborCostPerHour', parseNumericInput(e.target.value) || 0)}
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
@@ -438,13 +439,13 @@ export function LineItemModal({
             <div className="form-group">
               <label>Equipment Hours</label>
               <input type="number" className="form-control" value={lineForm.equipmentHours}
-                onChange={(e) => setLineForm({ ...lineForm, equipmentHours: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => setLineForm({ ...lineForm, equipmentHours: parseNumericInput(e.target.value) || 0 })}
                 step="0.5" min="0" />
             </div>
             <div className="form-group">
               <label>Cost / Hour ($) {overrideTag('equipmentCostPerHour')}</label>
               <input type="number" className="form-control" value={lineForm.equipmentCostPerHour}
-                onChange={(e) => overrideField('equipmentCostPerHour', parseFloat(e.target.value) || 0)}
+                onChange={(e) => overrideField('equipmentCostPerHour', parseNumericInput(e.target.value) || 0)}
                 step="0.50" min="0" />
             </div>
             <div className="form-group">
@@ -460,7 +461,7 @@ export function LineItemModal({
             <div className="form-group">
               <label>Subcontractor Cost ($)</label>
               <input type="number" className="form-control" value={lineForm.subcontractorCost}
-                onChange={(e) => setLineForm({ ...lineForm, subcontractorCost: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => setLineForm({ ...lineForm, subcontractorCost: parseNumericInput(e.target.value) || 0 })}
                 step="1" min="0" />
             </div>
             <div className="form-group">

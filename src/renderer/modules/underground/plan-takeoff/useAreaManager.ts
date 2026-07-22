@@ -52,6 +52,12 @@ function areaToConfig(area: TakeoffArea): AreaConfig {
     depthFt: area.depthFt,
     materialId: area.materialId,
     assemblyId: area.assemblyId,
+    // Carry the earthwork grade fields through — dropping them made the edit
+    // modal open as a non-earthwork area and its confirm path wrote
+    // gradeMode:null over the stored cut/fill, silently converting an
+    // earthwork region to surface restoration on save.
+    gradeMode: area.gradeMode,
+    gradeValueFt: area.gradeValueFt,
   };
 }
 
