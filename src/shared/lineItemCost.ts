@@ -50,13 +50,18 @@ export function rollupLineItemCost(
 /**
  * Full line-item cost from raw inputs: material = quantity × unit cost,
  * labor/equipment = hours × cost/hour, plus the subcontractor lump sum.
+ * Every input is missing-tolerant (undefined/null/NaN → 0), not just the
+ * subcontractor cost: one undefined field otherwise yields a NaN that
+ * propagates through section totals into the whole bid summary.
  */
 export function computeLineItemCost(input: LineItemCostInputs): LineItemCost {
+  const n = (v: number) => (Number.isFinite(v) ? v : 0);
+  const quantity = n(input.quantity);
   const parts: LineItemCostParts = {
-    materialTotal: input.quantity * input.materialUnitCost,
-    laborTotal: input.laborHours * input.laborCostPerHour,
-    equipmentTotal: input.equipmentHours * input.equipmentCostPerHour,
-    subcontractorCost: input.subcontractorCost || 0,
+    materialTotal: quantity * n(input.materialUnitCost),
+    laborTotal: n(input.laborHours) * n(input.laborCostPerHour),
+    equipmentTotal: n(input.equipmentHours) * n(input.equipmentCostPerHour),
+    subcontractorCost: n(input.subcontractorCost),
   };
-  return { ...parts, ...rollupLineItemCost(parts, input.quantity) };
+  return { ...parts, ...rollupLineItemCost(parts, quantity) };
 }

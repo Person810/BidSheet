@@ -16,11 +16,15 @@ struct JobDetailView: View {
     @State private var loadingPlan = false
     @State private var showingCamera = false
     @State private var uploading = false
+    @State private var pendingCount = 0
     @State private var error: String?
 
     private var photos: [ManifestFile] {
         (manifest?.files.filter { $0.type == "photo" } ?? [])
-            .sorted { ($0.taken_at ?? $0.created_at ?? "") > ($1.taken_at ?? $1.created_at ?? "") }
+            .sorted {
+                (WireTimestamp.parse($0.taken_at ?? $0.created_at) ?? .distantPast)
+                    > (WireTimestamp.parse($1.taken_at ?? $1.created_at) ?? .distantPast)
+            }
     }
     private var planFile: ManifestFile? {
         manifest?.files.first { $0.type == "plan" }
@@ -114,6 +118,12 @@ struct JobDetailView: View {
                 }
             }
             .disabled(uploading)
+            if pendingCount > 0 {
+                Label("\(pendingCount) photo\(pendingCount == 1 ? "" : "s") waiting to upload",
+                      systemImage: "clock.arrow.circlepath")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             ForEach(photos) { photo in
                 NavigationLink {
                     PhotoViewerView(jobId: job.id, file: photo)
@@ -159,6 +169,10 @@ struct JobDetailView: View {
 
     private func load() async {
         guard let dek = model.dek, let accountId = model.accountId else { return }
+        // Push any photos captured offline first, so the manifest fetched
+        // below already includes them.
+        pendingCount = model.cache.pendingPhotos(jobId: job.id).count
+        await uploadPendingPhotos()
         do {
             manifest = try await model.api.manifest(jobId: job.id)
 
@@ -228,40 +242,65 @@ struct JobDetailView: View {
     // MARK: - photo upload
 
     private func upload(image: UIImage) async {
-        guard let dek = model.dek, let accountId = model.accountId,
-              let jpeg = image.jpegData(compressionQuality: 0.8)
-        else { return }
+        guard let jpeg = image.jpegData(compressionQuality: 0.8) else { return }
         uploading = true
         defer { uploading = false }
-        do {
-            let takenAt = Date()
-            let location = await LocationProvider().currentLocation()
-            let filename = "\(UUID().uuidString.lowercased()).jpg"
-            // Photos are E2EE like everything else: AAD binds the blob to
-            // this account/job/filename (payload type "photo:<filename>").
-            let encrypted = try SyncCrypto.encryptForSync(
-                jpeg, dek: dek,
-                aad: SyncCrypto.syncAad(accountId: accountId, scope: job.id, payloadType: "photo:\(filename)"))
-            try await model.api.putPhoto(
-                key: "\(accountId)/\(job.id)/photos/\(filename)",
-                body: encrypted,
-                lat: location?.coordinate.latitude,
-                lng: location?.coordinate.longitude,
-                takenAt: takenAt)
-            // Cache the plaintext locally so the new photo views offline.
-            model.cache.save(jpeg, jobId: job.id, name: "photo-\(filename)")
+        let location = await LocationProvider().currentLocation()
+        let meta = PendingPhoto(
+            jobId: job.id,
+            filename: "\(UUID().uuidString.lowercased()).jpg",
+            takenAt: Date(),
+            gpsLat: location?.coordinate.latitude,
+            gpsLng: location?.coordinate.longitude)
+        // Durably persist the capture BEFORE any network attempt, so a dead
+        // signal (or a mid-upload failure) can't lose the shot — it stays
+        // queued and retries on the next load/refresh.
+        model.cache.savePendingPhoto(jpeg, meta: meta)
+        pendingCount = model.cache.pendingPhotos(jobId: job.id).count
+        await uploadPendingPhotos()
+        if pendingCount == 0 {
             error = nil
             await load()
-        } catch {
-            self.error = error.localizedDescription
         }
+    }
+
+    /// Try to push every queued photo for this job; stop at the first
+    /// failure (still offline) and leave the rest queued.
+    private func uploadPendingPhotos() async {
+        guard let dek = model.dek, let accountId = model.accountId else { return }
+        for meta in model.cache.pendingPhotos(jobId: job.id) {
+            guard let jpeg = model.cache.loadPendingPhoto(meta) else {
+                // Orphan metadata (torn write) — drop it.
+                model.cache.removePendingPhoto(meta)
+                continue
+            }
+            do {
+                // Photos are E2EE like everything else: AAD binds the blob to
+                // this account/job/filename (payload type "photo:<filename>").
+                let encrypted = try SyncCrypto.encryptForSync(
+                    jpeg, dek: dek,
+                    aad: SyncCrypto.syncAad(accountId: accountId, scope: meta.jobId, payloadType: "photo:\(meta.filename)"))
+                try await model.api.putPhoto(
+                    key: "\(accountId)/\(meta.jobId)/photos/\(meta.filename)",
+                    body: encrypted,
+                    lat: meta.gpsLat,
+                    lng: meta.gpsLng,
+                    takenAt: meta.takenAt)
+                // Cache the plaintext locally so the new photo views offline,
+                // then clear it from the queue.
+                model.cache.save(jpeg, jobId: meta.jobId, name: "photo-\(meta.filename)")
+                model.cache.removePendingPhoto(meta)
+            } catch {
+                break
+            }
+        }
+        pendingCount = model.cache.pendingPhotos(jobId: job.id).count
     }
 
     // MARK: - formatting
 
     private func photoTitle(_ photo: ManifestFile) -> String {
-        guard let stamp = photo.taken_at ?? photo.created_at else { return photo.filename }
-        return String(stamp.prefix(16)).replacingOccurrences(of: "T", with: " ")
+        WireTimestamp.localLabel(photo.taken_at ?? photo.created_at) ?? photo.filename
     }
 
     private func icon(for type: String) -> String {

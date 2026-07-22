@@ -29,9 +29,8 @@ struct PhotoViewerView: View {
                 Spacer()
             }
             HStack(spacing: 16) {
-                if let taken = file.taken_at {
-                    Label(String(taken.prefix(16)).replacingOccurrences(of: "T", with: " "),
-                          systemImage: "clock")
+                if let taken = WireTimestamp.localLabel(file.taken_at) {
+                    Label(taken, systemImage: "clock")
                 }
                 if let lat = file.gps_lat, let lng = file.gps_lng {
                     Label(String(format: "%.5f, %.5f", lat, lng), systemImage: "location.fill")

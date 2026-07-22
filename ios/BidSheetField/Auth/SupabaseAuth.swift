@@ -90,6 +90,9 @@ final class SupabaseAuth {
     private(set) var userId: String?
     private var hasVerifiedTotp = false
     private var refreshTask: Task<Void, Error>?
+    /// Bumped by clear() so a refresh that was in flight when the user signed
+    /// out can never adopt/persist the rotated credentials afterwards.
+    private var sessionGeneration = 0
 
     // MARK: - session state
 
@@ -181,11 +184,17 @@ final class SupabaseAuth {
         // Single-flight: refresh tokens rotate on use, so concurrent
         // refreshes would invalidate each other.
         if refreshTask == nil {
+            let generation = sessionGeneration
             refreshTask = Task { [weak self] in
                 defer { self?.refreshTask = nil }
                 let session: Session = try await Self.rawGotrue(
                     "/token?grant_type=refresh_token", body: ["refresh_token": refreshToken])
-                self?.adopt(session)
+                // If sign-out ran while the request was in flight, adopting
+                // now would re-persist credentials clearAll() just wiped.
+                guard let self, self.sessionGeneration == generation else {
+                    throw AuthError(message: "Signed out.", code: nil)
+                }
+                self.adopt(session)
             }
         }
         try await refreshTask!.value
@@ -198,7 +207,12 @@ final class SupabaseAuth {
         if Date().timeIntervalSince1970 > exp - 60 {
             try await refresh()
         }
-        return accessToken!
+        // Sign-out during the refresh clears the token — throw rather than
+        // force-unwrap nil.
+        guard let token = accessToken else {
+            throw AuthError(message: "Not signed in.", code: nil)
+        }
+        return token
     }
 
     func signOut() async {
@@ -209,6 +223,7 @@ final class SupabaseAuth {
     }
 
     private func clear() {
+        sessionGeneration += 1
         accessToken = nil
         refreshToken = nil
         hasVerifiedTotp = false

@@ -3,6 +3,7 @@ import { logger } from '../logger';
 import { safeHandle } from './shared';
 import { normalizeDescription } from '../../shared/quoteMatching';
 import { rollupLineItemCost } from '../../shared/lineItemCost';
+import { parseManualFields, isManual } from '../../shared/manualFields';
 
 /**
  * Per-job price import (§1–4). The renderer drives the reconciliation screen
@@ -112,7 +113,7 @@ export function registerPriceImportHandlers(db: Database.Database): void {
     const applyToJobIds = [...new Set(payload?.applyToJobIds ?? [])]
       .filter((id) => id !== jobId && !isLocked.get(id));
     const propagateLines = db.prepare(
-      `SELECT id, quantity, labor_total, equipment_total, subcontractor_cost
+      `SELECT id, quantity, labor_total, equipment_total, subcontractor_cost, manual_fields
        FROM bid_line_items WHERE job_id = ? AND material_id = ?`,
     );
 
@@ -164,6 +165,9 @@ export function registerPriceImportHandlers(db: Database.Database): void {
         propagatedMaterials.add(materialId);
         for (const otherJobId of applyToJobIds) {
           for (const ln of propagateLines.all(otherJobId, materialId) as any[]) {
+            // A hand-typed material price is sticky (§5): never overwrite
+            // it — or its price_state/price_source — from another job's import.
+            if (isManual(parseManualFields(ln.manual_fields), 'materialUnitCost')) continue;
             const matTotal = (ln.quantity || 0) * price;
             const { totalCost, unitCost } = rollupLineItemCost({
               materialTotal: matTotal,

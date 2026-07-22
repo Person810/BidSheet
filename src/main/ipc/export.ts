@@ -8,6 +8,7 @@ import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { fmtMoney } from '../../shared/calcExplain';
 import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
+import { grantPathAccess, isPathReadable } from './file-access';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
 
 export function registerExportHandlers(db: Database.Database): void {
@@ -412,12 +413,16 @@ export function registerExportHandlers(db: Database.Database): void {
       properties: ['openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
+    grantPathAccess(result.filePaths[0]);
     return readAndParseCsv(result.filePaths[0]);
   });
 
+  // Drag-and-drop price sheets arrive as bare paths (the preload resolves
+  // dropped Files via webUtils.getPathForFile, with no main-side record of
+  // the drop), so this can't demand a dialog grant. Ungranted paths must
+  // carry a price-sheet extension and pass the file-access policy (see
+  // file-access.ts).
   safeHandle('db:csv:parse-path', (_event, filePath: string) => {
-    // Resolve to absolute and verify the file actually exists on disk
-    // (prevents path traversal via relative segments like ../)
     const resolved = path.resolve(filePath);
     if (!fs.existsSync(resolved)) {
       return { error: 'File not found.', headers: [], rows: [], fileName: path.basename(resolved) };
@@ -425,6 +430,9 @@ export function registerExportHandlers(db: Database.Database): void {
     const ext = path.extname(resolved).toLowerCase();
     if (!['.csv', '.tsv', '.txt'].includes(ext)) {
       return { error: 'Unsupported file type. Use .csv, .tsv, or .txt files.', headers: [], rows: [], fileName: path.basename(resolved) };
+    }
+    if (!isPathReadable(resolved)) {
+      return { error: 'Files in this location cannot be imported.', headers: [], rows: [], fileName: path.basename(resolved) };
     }
     return readAndParseCsv(resolved);
   });
@@ -522,6 +530,15 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   const { job, settings, sections, lineItemsBySection, totals,
     escalation, indirect, overhead, profit, bond, tax, grandTotal, alternates,
     escalationPct, overheadPct, profitPct, bondPct, taxPct } = data;
+
+  // The template can arrive straight from the renderer (jobs:get-pdf-html,
+  // jobs:export-pdf) and these two values land unescaped inside the <style>
+  // block below — only a hex literal (all the color pickers produce) may
+  // pass; anything else falls back to the default.
+  const cssColor = (value: any, fallback: string): string =>
+    typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : fallback;
+  const accentColor = cssColor(template.accentColor, DEFAULT_PDF_TEMPLATE.accentColor);
+  const headerColor = cssColor(template.headerColor, DEFAULT_PDF_TEMPLATE.headerColor);
 
   const companyName = escHtml(settings?.company_name || '');
   const companyAddress = escHtml(settings?.company_address || '');
@@ -635,7 +652,8 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
     </table>` : '',
 
     terms: template.showTerms ? (() => {
-      const lines = template.termsText.split('\n').map(l => l.trim()).filter(Boolean);
+      const termsText = typeof template.termsText === 'string' ? template.termsText : '';
+      const lines = termsText.split('\n').map(l => l.trim()).filter(Boolean);
       const termsBody = lines.length > 0
         ? `<ul>${lines.map(l => `<li>${escHtml(l)}</li>`).join('')}</ul>`
         : '';
@@ -697,8 +715,8 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
 <meta charset="utf-8"/>
 <style>
   :root {
-    --accent: ${template.accentColor};
-    --header: ${template.headerColor};
+    --accent: ${accentColor};
+    --header: ${headerColor};
   }
   @page { size: Letter; margin: 0.65in 0.65in 0.85in 0.65in; }
   * { margin: 0; padding: 0; box-sizing: border-box; }

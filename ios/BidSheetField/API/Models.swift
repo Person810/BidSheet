@@ -6,6 +6,44 @@
 
 import Foundation
 
+/// Timestamps on the wire come in two shapes, both UTC: ISO-8601 with a "T"
+/// (client-supplied `taken_at`) and D1's "YYYY-MM-DD HH:MM:SS" form
+/// (`created_at`). Parse both to a real Date so sorting is format-agnostic
+/// and display uses the device's local timezone instead of string-slicing
+/// the UTC text.
+enum WireTimestamp {
+    private static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let iso = ISO8601DateFormatter()
+    private static let display: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    static func parse(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        var stamp = raw.replacingOccurrences(of: " ", with: "T")
+        // No explicit zone (D1's form) means UTC — mark it so ISO8601
+        // parsing doesn't reject it.
+        let timePart = stamp.count > 10 ? String(stamp.dropFirst(10)) : ""
+        if !timePart.contains("Z") && !timePart.contains("+") && !timePart.contains("-") {
+            stamp += "Z"
+        }
+        return isoFractional.date(from: stamp) ?? iso.date(from: stamp)
+    }
+
+    /// Local-timezone label for a wire timestamp, or nil if unparseable.
+    static func localLabel(_ raw: String?) -> String? {
+        guard let date = parse(raw) else { return nil }
+        return display.string(from: date)
+    }
+}
+
 struct CloudJob: Codable, Identifiable {
     let id: String
     let account_id: String

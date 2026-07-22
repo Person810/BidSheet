@@ -47,6 +47,26 @@ describe('computeLineItemCost', () => {
     expect(c.totalCost).toBe(10);
     expect(c.unitCost).toBe(10);
   });
+
+  it('treats ANY missing/NaN input as zero instead of poisoning the totals', () => {
+    // A single undefined field used to yield NaN that propagated through
+    // section totals into the whole bid summary.
+    const c = computeLineItemCost({
+      quantity: undefined as unknown as number,
+      materialUnitCost: NaN,
+      laborHours: 2,
+      laborCostPerHour: null as unknown as number,
+      equipmentHours: undefined as unknown as number,
+      equipmentCostPerHour: 50,
+      subcontractorCost: 75,
+    });
+    expect(c.materialTotal).toBe(0);
+    expect(c.laborTotal).toBe(0);
+    expect(c.equipmentTotal).toBe(0);
+    expect(c.totalCost).toBe(75);
+    expect(Number.isFinite(c.totalCost)).toBe(true);
+    expect(c.unitCost).toBe(0); // quantity coerced to 0 → no division
+  });
 });
 
 describe('rollupLineItemCost', () => {

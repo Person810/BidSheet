@@ -74,6 +74,9 @@ private struct TakeoffPageView: View {
 
     @State private var pageImage: UIImage?
     @State private var baseSize: CGSize = .zero  // scale-1 frame, pre-user-rotation
+    /// Bumped per render() call; a stale background render (rapid sheet
+    /// switching) is discarded instead of drawn under the current markup.
+    @State private var renderGeneration = 0
 
     private var userRotation: Int { ((takeoff.rotation(page: page) % 360) + 360) % 360 }
 
@@ -99,6 +102,8 @@ private struct TakeoffPageView: View {
     }
 
     private func render() {
+        renderGeneration += 1
+        let generation = renderGeneration
         pageImage = nil
         let data = planData
         let pageNumber = page
@@ -112,8 +117,12 @@ private struct TakeoffPageView: View {
             let crop = pdfPage.bounds(for: .cropBox).size
             let intrinsicSwap = pdfPage.rotation % 180 != 0
             let base = intrinsicSwap ? CGSize(width: crop.height, height: crop.width) : crop
+            // A degenerate (zero-sized) page can't be rasterized — and would
+            // divide by zero below. Leave the spinner rather than crash.
+            let maxSide = max(base.width, base.height)
+            guard maxSide > 0 else { return }
             // Render at 2.5x for crisp zooming, capped for huge sheets.
-            let renderScale = min(2.5, 4096 / max(base.width, base.height))
+            let renderScale = min(2.5, 4096 / maxSide)
             var image = pdfPage.thumbnail(
                 of: CGSize(width: base.width * renderScale, height: base.height * renderScale),
                 for: .cropBox)
@@ -121,6 +130,9 @@ private struct TakeoffPageView: View {
                 image = image.rotated(byDegrees: CGFloat(rotation))
             }
             DispatchQueue.main.async {
+                // Only the most recent render may publish; a slower earlier
+                // one for another sheet would mismatch the current overlay.
+                guard generation == renderGeneration else { return }
                 baseSize = base
                 pageImage = image
             }

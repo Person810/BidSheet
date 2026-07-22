@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import type Database from 'better-sqlite3';
 import { safeHandle } from './shared';
+import { grantPathAccess, isPathReadable } from './file-access';
 import { logger } from '../logger';
 import {
   descendantIds,
@@ -54,7 +55,7 @@ export function registerDocumentHandlers(db: Database.Database): void {
     const dir = jobFilesDir(jobId);
     fs.mkdirSync(dir, { recursive: true });
 
-    const existingNames = () =>
+    const existingNames =
       (db.prepare('SELECT stored_name FROM job_documents WHERE job_id = ?').all(jobId) as any[])
         .map((r) => r.stored_name);
     const existingHashes = new Set(
@@ -68,10 +69,12 @@ export function registerDocumentHandlers(db: Database.Database): void {
        VALUES (?, ?, ?, 'other', ?, ?, ?)`
     );
 
-    let added = 0;
     let skippedDuplicates = 0;
     const failed: string[] = [];
 
+    // Copy first, insert rows after: a per-file copy failure only skips that
+    // file, and no DB row can exist before its file does.
+    const copied: { filename: string; storedName: string; size: number; sha: string }[] = [];
     for (const sourcePath of sourcePaths) {
       try {
         const stat = fs.statSync(sourcePath);
@@ -86,15 +89,35 @@ export function registerDocumentHandlers(db: Database.Database): void {
           continue;
         }
         const originalName = path.basename(sourcePath);
-        const storedName = uniqueStoredName(originalName, existingNames());
+        const storedName = uniqueStoredName(originalName, existingNames);
         fs.writeFileSync(documentPath(jobId, storedName), data);
-        insert.run(jobId, originalName, storedName, stat.size, sha, folderId);
+        existingNames.push(storedName);
         existingHashes.add(sha);
-        added++;
+        copied.push({ filename: originalName, storedName, size: stat.size, sha });
       } catch (err: any) {
         logger.error('documents:add', `Failed to attach ${sourcePath}`, err.message);
         failed.push(path.basename(sourcePath));
       }
+    }
+
+    // All rows land in one transaction; if it fails, remove the copies so
+    // the store never holds files the DB doesn't know about.
+    let added = 0;
+    try {
+      db.transaction(() => {
+        for (const c of copied) insert.run(jobId, c.filename, c.storedName, c.size, c.sha, folderId);
+      })();
+      added = copied.length;
+    } catch (err: any) {
+      logger.error('documents:add', 'Failed to record attached files', err.message);
+      for (const c of copied) {
+        try {
+          fs.rmSync(documentPath(jobId, c.storedName), { force: true });
+        } catch (rmErr: any) {
+          logger.warn('documents:add', `Could not clean up ${c.storedName}`, rmErr.message);
+        }
+      }
+      failed.push(...copied.map((c) => c.filename));
     }
 
     return { added, skippedDuplicates, failed };
@@ -111,14 +134,19 @@ export function registerDocumentHandlers(db: Database.Database): void {
       properties: ['openFile', 'multiSelections'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
+    grantPathAccess(...result.filePaths);
     return addFiles(jobId, result.filePaths, folderId);
   });
 
   // Drag-and-drop: the renderer resolves dropped Files to absolute paths
-  // via getDroppedFilePath (webUtils) and passes them here.
+  // via getDroppedFilePath (webUtils) and passes them here. Documents are
+  // any file type by design, so there's no extension check — but the paths
+  // come straight from the renderer, so apply the file-access policy.
   safeHandle('db:documents:add-paths', (_event, jobId: number, paths: string[], folderId: number | null) => {
     if (!Array.isArray(paths) || paths.length === 0) return { added: 0, skippedDuplicates: 0, failed: [] };
-    return addFiles(jobId, paths.map((p) => String(p)), folderId);
+    const refused = paths.map((p) => String(p)).filter((p) => !isPathReadable(p));
+    const result = addFiles(jobId, paths.map((p) => String(p)).filter((p) => isPathReadable(p)), folderId);
+    return { ...result, failed: [...result.failed, ...refused.map((p) => path.basename(p))] };
   });
 
   // "New Text File": create an empty text document directly in the store

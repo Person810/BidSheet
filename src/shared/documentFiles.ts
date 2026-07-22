@@ -17,8 +17,14 @@ export function sanitizeFilename(original: string): string {
   const cleaned = base
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    // Windows silently strips trailing dots/spaces, so a name relying on
+    // them would collide with its stripped twin.
+    .replace(/[. ]+$/, '');
   if (!cleaned || /^\.+$/.test(cleaned)) return 'document';
+  // Reserved device names (CON, PRN, COM1…) are unusable on Windows even
+  // with an extension ("CON.txt" is still CON).
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(cleaned)) return `_${cleaned}`;
   return cleaned;
 }
 
@@ -94,7 +100,30 @@ export interface FolderNode {
  */
 export function buildFolderTree(folders: FolderLike[]): FolderNode[] {
   const byId = new Map<number, FolderNode>();
-  for (const f of folders) byId.set(f.id, { id: f.id, name: f.name, parentId: f.parent_id, children: [] });
+  const parentOf = new Map<number, number | null>();
+  for (const f of folders) {
+    byId.set(f.id, { id: f.id, name: f.name, parentId: f.parent_id, children: [] });
+    parentOf.set(f.id, f.parent_id);
+  }
+
+  // Cycle defense: a self-parented folder or a parent loop attaches its
+  // members only to each other, so the whole subtree silently vanishes from
+  // the roots. Promote the folders ON the loop (walking parents re-reaches
+  // the folder itself) to roots; ordinary descendants of a loop stay
+  // attached and render under the promoted root. descendantIds and
+  // folderPath already guard against the same state, so it is anticipated.
+  const inCycle = new Set<number>();
+  for (const f of folders) {
+    let cur = f.parent_id;
+    let steps = 0;
+    while (cur != null && byId.has(cur) && steps++ <= folders.length) {
+      if (cur === f.id) {
+        inCycle.add(f.id);
+        break;
+      }
+      cur = parentOf.get(cur) ?? null;
+    }
+  }
 
   const ordered = [...folders].sort((a, b) =>
     (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name)
@@ -103,7 +132,7 @@ export function buildFolderTree(folders: FolderLike[]): FolderNode[] {
   const roots: FolderNode[] = [];
   for (const f of ordered) {
     const node = byId.get(f.id)!;
-    const parent = f.parent_id != null ? byId.get(f.parent_id) : undefined;
+    const parent = f.parent_id != null && !inCycle.has(f.id) ? byId.get(f.parent_id) : undefined;
     if (parent) parent.children.push(node);
     else roots.push(node);
   }
