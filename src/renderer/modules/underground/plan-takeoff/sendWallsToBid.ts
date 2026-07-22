@@ -23,12 +23,15 @@ export interface WallGroup {
 }
 
 /**
- * Pick the quantity that matches a catalog/assembly unit. Defaults to LF.
- * Metric units map to the same wall measures converted (unit-driven, not
- * system-driven: a material priced per m² bills its m² regardless of the
- * active setting). Exported for tests.
+ * Pick the quantity that matches a catalog/assembly unit. A missing/blank
+ * unit defaults to LF. Metric units map to the same wall measures converted
+ * (unit-driven, not system-driven: a material priced per m² bills its m²
+ * regardless of the active setting). Returns null for units no wall measure
+ * maps to (TON, EA, GAL, ...) — billing the LF quantity as such a unit would
+ * be wildly wrong, so callers must skip those and tell the user.
+ * Exported for tests.
  */
-export function measureForUnit(unit: string | null | undefined, g: WallGroup): number {
+export function measureForUnit(unit: string | null | undefined, g: WallGroup): number | null {
   switch ((unit || '').trim().toUpperCase()) {
     case 'SF': return g.surfaceSF;
     case 'SY': return squareFeetToYards(g.surfaceSF);
@@ -38,8 +41,16 @@ export function measureForUnit(unit: string | null | undefined, g: WallGroup): n
     case 'M²': return convertQty(g.surfaceSF, 'sf', 'metric');
     case 'M³': return convertQty(g.volumeCY, 'cy', 'metric');
     case 'LF':
-    default: return g.totalLF;
+    case '': return g.totalLF;
+    default: return null;
   }
+}
+
+export interface SendWallsResult {
+  /** Line items created. */
+  created: number;
+  /** Non-fatal skips the caller should surface to the user. */
+  warnings: string[];
 }
 
 /**
@@ -48,15 +59,17 @@ export function measureForUnit(unit: string | null | undefined, g: WallGroup): n
  * matching its unit, a linked material bills in its own unit, and an unlinked
  * wall produces a length line (with surface area + volume noted) plus a
  * vertical-members line when a member spacing is set. Walls on uncalibrated
- * pages are skipped. Returns the line-item count.
+ * pages are skipped. Walls linked to a material/assembly in a unit no wall
+ * measure maps to are skipped with a warning instead of mis-billing the LF
+ * quantity as that unit. Returns the line-item count plus any warnings.
  */
 export async function sendWallsToBid(
   walls: TakeoffWall[],
   jobId: number,
   system: UnitSystem = DEFAULT_UNIT_SYSTEM,
-): Promise<number> {
+): Promise<SendWallsResult> {
   const valid = walls.filter((w) => w.points.length >= 2);
-  if (valid.length === 0) return 0;
+  if (valid.length === 0) return { created: 0, warnings: [] };
 
   const scaleByPage = await loadPageScaleMap(jobId);
 
@@ -98,7 +111,7 @@ export async function sendWallsToBid(
       });
     }
   }
-  if (groups.size === 0) return 0;
+  if (groups.size === 0) return { created: 0, warnings: [] };
 
   const needsAssemblies = Array.from(groups.values()).some((g) => g.assemblyId != null);
   const [materials, assemblies, crews] = await Promise.all([
@@ -106,6 +119,29 @@ export async function sendWallsToBid(
     needsAssemblies ? (window.api.getAssemblies() as Promise<any[]>) : Promise.resolve([]),
     needsAssemblies ? (window.api.getCrewTemplates() as Promise<any[]>) : Promise.resolve([]),
   ]);
+
+  // Drop groups whose linked material/assembly is priced in a unit no wall
+  // measure maps to — billing the LF quantity as TON/EA/GAL would be wildly
+  // wrong. Each skip is surfaced so the user can re-link or add the line
+  // manually. Done before creating the section so an all-skip send doesn't
+  // leave an empty "Walls" section behind.
+  const warnings: string[] = [];
+  const sendable: WallGroup[] = [];
+  for (const g of groups.values()) {
+    const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
+    const mat = !assembly && g.materialId ? materials.find((m: any) => m.id === g.materialId) : null;
+    const linked = assembly ?? mat;
+    if (linked && measureForUnit(linked.unit, g) == null) {
+      const what = assembly ? `assembly "${assembly.name}"` : `material "${linked.name}"`;
+      const which = g.labels.length ? ` (${g.labels.join('; ')})` : '';
+      warnings.push(
+        `Skipped wall${which}: ${what} is priced per ${linked.unit}, which has no wall measure (LF/SF/SY/CY). Re-link it or add the line manually.`,
+      );
+      continue;
+    }
+    sendable.push(g);
+  }
+  if (sendable.length === 0) return { created: 0, warnings };
 
   const sections: any[] = await window.api.getBidSections(jobId);
   const sectionResult = await window.api.saveBidSection({
@@ -120,7 +156,7 @@ export async function sendWallsToBid(
   const round1 = (n: number) => Math.round(n * 10) / 10;
 
   const metric = system === 'metric';
-  for (const g of groups.values()) {
+  for (const g of sendable) {
     const dims = metric
       ? `${formatQty(g.heightFt, 'ft', system)} H x ${formatQty(g.thicknessIn, 'in', system, 0)} thk`
       : `${g.heightFt}' H x ${g.thicknessIn}" thk`;
@@ -131,7 +167,8 @@ export async function sendWallsToBid(
     // own wall assembly (concrete, framed, masonry) drives the breakdown.
     const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
     if (assembly) {
-      const qty = round1(measureForUnit(assembly.unit, g));
+      // Non-null: unhandled units were filtered into `warnings` above.
+      const qty = round1(measureForUnit(assembly.unit, g)!);
       const payloads = buildAssemblyLineItems(assembly, qty, crews, labelSuffix);
       for (const payload of payloads) {
         await window.api.saveBidLineItem({ sectionId, jobId, sortOrder: sortOrder++, ...payload });
@@ -156,7 +193,8 @@ export async function sendWallsToBid(
     // Material-linked walls bill in the material's own unit.
     const mat = g.materialId ? materials.find((m: any) => m.id === g.materialId) : null;
     if (mat) {
-      const qty = round1(measureForUnit(mat.unit, g));
+      // Non-null: unhandled units were filtered into `warnings` above.
+      const qty = round1(measureForUnit(mat.unit, g)!);
       await window.api.saveBidLineItem(buildLineItemPayload({
         sectionId,
         jobId,
@@ -201,5 +239,5 @@ export async function sendWallsToBid(
     }
   }
 
-  return createdCount;
+  return { created: createdCount, warnings };
 }

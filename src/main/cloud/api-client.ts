@@ -17,8 +17,6 @@ export interface CloudJob {
   /** Encrypted {name, status} blob (base64) — decrypted client-side. */
   name_enc: string | null;
   status: string | null;
-  lifecycle_state: string;
-  synced: number;
   updated_at: string | null;
   snapshot_hash: string | null;
   created_at: string;
@@ -186,9 +184,30 @@ export class CloudApiClient {
     return Buffer.from(await res.arrayBuffer());
   }
 
+  /** One job's current cloud record, or null if it doesn't exist yet. */
+  async getJob(cloudJobId: string): Promise<CloudJob | null> {
+    try {
+      const data: any = await (await this.request(`/jobs/${encodeURIComponent(cloudJobId)}`)).json();
+      return (data.job as CloudJob) ?? null;
+    } catch (err) {
+      if (err instanceof CloudApiError && err.httpStatus === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * expected_snapshot_hash (when present, null included) makes the Worker
+   * apply the update only if the job's snapshot_hash still matches — a 412
+   * `snapshot_conflict` CloudApiError means another seat pushed first.
+   */
   async putJob(
     cloudJobId: string,
-    body: { name_enc: string; status?: string | null; snapshot_hash: string }
+    body: {
+      name_enc: string;
+      status?: string | null;
+      snapshot_hash: string;
+      expected_snapshot_hash?: string | null;
+    }
   ): Promise<void> {
     await this.request(`/jobs/${encodeURIComponent(cloudJobId)}`, {
       method: 'PUT',

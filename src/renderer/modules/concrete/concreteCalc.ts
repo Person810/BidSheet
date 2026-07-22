@@ -137,7 +137,9 @@ export function calculateConcrete(input: ConcreteInput): ConcreteOutput {
   const rebarLF = rebarGridLF(input.areaSF, input.rebarSpacingIn);
   const meshSF = input.includeMesh ? input.areaSF : 0;
 
-  const subbaseCY = input.subbaseIn > 0
+  // Subbase sits under a slab/footing; a wall has none, and its areaSF is an
+  // elevation (length x height), so multiplying it in would be meaningless.
+  const subbaseCY = input.element !== 'wall' && input.subbaseIn > 0
     ? cubicFeetToYards(input.areaSF * inchesToFeet(input.subbaseIn))
     : 0;
 

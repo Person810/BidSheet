@@ -46,6 +46,7 @@ import {
   wrapWithRecoveryCode,
   unwrapWithRecoveryCode,
   isKdfWrapped,
+  pubkeySafetyCode,
   type RecoveryKdf,
 } from './sync-crypto';
 import crypto from 'crypto';
@@ -112,6 +113,15 @@ export class E2eeManager {
     if (!enc) return null;
     const hex = decryptToken(enc);
     return hex ? Buffer.from(hex, 'hex') : null;
+  }
+
+  /**
+   * This device's member-key device code, for out-of-band approval
+   * verification (the joiner reads it to the owner). Null before joining.
+   */
+  mySafetyCode(): string | null {
+    const pub = this.row()?.member_pub;
+    return pub ? pubkeySafetyCode(Buffer.from(pub, 'base64')) : null;
   }
 
   /** Forget the cached DEK + member key on this device (sign-out / account switch). */
@@ -275,8 +285,20 @@ export class E2eeManager {
    * private key, and register with the account (status pending). Caches the
    * private key locally so the app auto-unlocks once an owner approves. Returns
    * the recovery key to show once.
+   *
+   * `applyJoinReset` (the sync engine's bookkeeping wipe) runs INSIDE the same
+   * SQLite transaction as the account-id switch. Storing the new account id
+   * bypasses requireAccountId's switch detector, so if a crash landed between
+   * the switch and the wipe, the next pass would push the joiner's private solo
+   * jobs into the shared org under their stale cloud ids. Atomically it's
+   * either both (clean join) or neither — and "neither" is recovered by the
+   * switch detector, which sees the old stored id disagree with /me.
    */
-  async joinWithInvite(token: string, shorter = false): Promise<E2eeSetupResult> {
+  async joinWithInvite(
+    token: string,
+    shorter = false,
+    applyJoinReset?: () => void
+  ): Promise<E2eeSetupResult> {
     const userId = this.userId();
     const recoveryKey = generateRecoveryKey({ short: shorter });
     const kdf: RecoveryKdf = shorter ? 'scrypt' : 'direct';
@@ -292,12 +314,14 @@ export class E2eeManager {
     // the old account's cached DEK + member key BEFORE caching the new one, or a
     // stale DEK would make state() report 'unlocked' (line: hasLocalDek short-
     // circuits the pending check) and the sync engine could encrypt org data
-    // under the wrong key. The per-job/backup/catalog bookkeeping wipe is the
-    // caller's job (SyncEngine.resetSyncStateForJoin owns that state).
-    this.lockLocal();
-    // We now belong to the org account; record it and cache the private key.
-    this.auth.setAccountId(result.account_id);
-    this.cacheMemberKey(privRaw, pubRaw, 2);
+    // under the wrong key.
+    this.db.transaction(() => {
+      this.lockLocal();
+      applyJoinReset?.();
+      // We now belong to the org account; record it and cache the private key.
+      this.auth.setAccountId(result.account_id);
+      this.cacheMemberKey(privRaw, pubRaw, 2);
+    })();
     logger.info('cloud-e2ee', `Joined account ${result.account_id} (pending owner approval)`);
     return { recoveryKey };
   }
@@ -346,8 +370,8 @@ export class E2eeManager {
       return { recoveryKey };
     }
 
-    // Format 2: re-wrap only this member's private key under the new recovery
-    // key. The DEK and its seals are untouched — no data is re-encrypted.
+    // Format 2: re-wrap this member's private key under the new recovery key.
+    // The DEK and its member seals are untouched — no data is re-encrypted.
     const priv = this.localPrivateKey();
     if (!priv) {
       throw new E2eeLockedError(
@@ -355,9 +379,82 @@ export class E2eeManager {
       );
     }
     const wrappedPriv = await wrapWithRecoveryCode(priv, recoveryKey, privKeyWrapAad(userId), kdf);
+
+    // For an OWNER the private-key rewrap alone is not enough: the
+    // account-level legacy wrap (e2ee_keys.wrapped_dek, created at setup and
+    // preserved by the format 1->2 upgrade) is wrapped under their ORIGINAL
+    // recovery key and still served by GET /keys. Leaving it means a leaked
+    // recovery key the owner believes revoked can unwrap the DEK offline
+    // forever. Re-wrap it under the new key in the same PUT /keys that also
+    // carries the new wrapped_priv (PUT /keys is owner-only, so members fall
+    // through to the rewrap-only endpoint — the account wrap was never under
+    // their recovery key to begin with).
+    let isOwner = false;
+    try {
+      isOwner = (await this.api.me()).role === 'owner';
+    } catch {
+      // Can't determine the role — fall through to the member path; the next
+      // owner regenerate will rotate the account wrap.
+    }
+    if (isOwner) {
+      const dek = this.dekForRewrap(material, priv, accountId, userId);
+      if (dek) {
+        const pubRaw = this.derivePub(priv);
+        const wrappedDek = await wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId), kdf);
+        const sealedDek = sealDek(dek, pubRaw, sealAad(accountId, userId));
+        await this.api.putKeyMaterial({
+          format: 2,
+          wrapped_dek: wrappedDek.toString('base64'),
+          dek_fingerprint: material.dek_fingerprint,
+          pubkey: pubRaw.toString('base64'),
+          wrapped_priv: wrappedPriv.toString('base64'),
+          sealed_dek: sealedDek.toString('base64'),
+        });
+        logger.info(
+          'cloud-e2ee',
+          'Recovery key regenerated (format 2; private key AND account recovery wrap re-wrapped)'
+        );
+        return { recoveryKey };
+      }
+      logger.warn(
+        'cloud-e2ee',
+        'Owner regenerate could not obtain the DEK; the account-level wrap still uses the old recovery key'
+      );
+    }
+
     await this.api.rewrapPrivateKey(wrappedPriv.toString('base64'));
     logger.info('cloud-e2ee', 'Recovery key regenerated (format 2; private key re-wrapped)');
     return { recoveryKey };
+  }
+
+  /**
+   * The DEK for an owner's recovery-key rotation: the local cache when
+   * unlocked, else opened from this member's sealed wrap. Returns null (never
+   * throws) if neither yields a DEK matching the account fingerprint.
+   */
+  private dekForRewrap(
+    material: { dek_fingerprint: string; my_wrapped_dek?: string | null },
+    priv: Buffer,
+    accountId: string,
+    userId: string
+  ): Buffer | null {
+    try {
+      if (this.hasLocalDek()) {
+        const dek = this.getDek();
+        if (dekFingerprint(dek) === material.dek_fingerprint) return dek;
+      }
+    } catch {
+      // fall through to the sealed wrap
+    }
+    if (material.my_wrapped_dek) {
+      try {
+        const dek = openDek(Buffer.from(material.my_wrapped_dek, 'base64'), priv, sealAad(accountId, userId));
+        if (dekFingerprint(dek) === material.dek_fingerprint) return dek;
+      } catch {
+        // no usable DEK
+      }
+    }
+    return null;
   }
 
   // ---- helpers ----

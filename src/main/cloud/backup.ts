@@ -47,7 +47,9 @@ export class BackupEngine {
     // unlocked on this device. No separate backup passphrase anymore.
     return {
       configured: this.e2ee.hasLocalDek(),
-      lastBackupAt: this.row()?.backup_last_at ?? null,
+      // Sidecar first; the cloud_auth columns only remain as a legacy fallback
+      // for the display timestamp (see backupNow for why they went stale).
+      lastBackupAt: this.readState()?.at ?? this.row()?.backup_last_at ?? null,
     };
   }
 
@@ -61,6 +63,7 @@ export class BackupEngine {
       // Best effort — clearing the local bookkeeping alone still stops backups.
       logger.warn('cloud-backup', 'Could not delete cloud backup copy', err.message);
     });
+    this.clearState();
     this.db
       .prepare(
         `UPDATE cloud_auth SET backup_last_hash = NULL, backup_last_at = NULL WHERE id = 1`
@@ -81,7 +84,12 @@ export class BackupEngine {
     this.db.pragma('wal_checkpoint(TRUNCATE)');
     const plaintext = fs.readFileSync(getDbPath());
     const hash = crypto.createHash('sha256').update(plaintext).digest('hex');
-    if (!force && hash === this.row()?.backup_last_hash) {
+    // The last-uploaded hash must live OUTSIDE the database file: it used to
+    // be stored in cloud_auth, inside the very file being hashed, so writing
+    // it after each upload changed the next hash — the skip was unreachable
+    // and the full DB re-uploaded on every sync pass.
+    const state = this.readState();
+    if (!force && state && state.accountId === accountId && state.hash === hash) {
       return { uploaded: false };
     }
 
@@ -90,12 +98,7 @@ export class BackupEngine {
         ?.version ?? 0;
     const ciphertext = encryptForSync(plaintext, dek, syncAad(accountId, 'account', 'backup'));
     await this.api.putBackup(ciphertext, app.getVersion(), schemaVersion);
-    this.db
-      .prepare(
-        `UPDATE cloud_auth SET backup_last_hash = ?, backup_last_at = datetime('now', 'localtime')
-         WHERE id = 1`
-      )
-      .run(hash);
+    this.writeState(accountId, hash);
     logger.info('cloud-backup', `Uploaded encrypted backup (${plaintext.length} bytes plaintext)`);
     return { uploaded: true };
   }
@@ -184,7 +187,9 @@ export class BackupEngine {
     // device-local state, never document data.
     const liveSession = this.db
       .prepare(
-        'SELECT email, user_id, account_id, refresh_token_enc, dek_enc, dek_fingerprint FROM cloud_auth WHERE id = 1'
+        `SELECT email, user_id, account_id, refresh_token_enc, dek_enc, dek_fingerprint,
+                member_priv_enc, member_pub, e2ee_format
+         FROM cloud_auth WHERE id = 1`
       )
       .get() as Record<string, string | null> | undefined;
     this.db.pragma('wal_checkpoint(TRUNCATE)');
@@ -201,6 +206,18 @@ export class BackupEngine {
     } catch (err: any) {
       logger.error('cloud-backup', 'Restore swap failed; restoring original DB', err.message);
       try { fs.copyFileSync(safetyPath, dbPath); fs.unlinkSync(safetyPath); } catch (_) {}
+      // The relaunch comes up in the OLD database — without this the user has
+      // no idea the restore didn't happen. showErrorBox is synchronous and
+      // safe this late in shutdown.
+      try {
+        const { dialog } = require('electron');
+        dialog.showErrorBox(
+          'Cloud restore failed',
+          'The downloaded backup could not be swapped in, so your previous data was kept. ' +
+            'BidSheet will now restart with your existing data. Please try the restore again.\n\n' +
+            `Details: ${err.message}`
+        );
+      } catch (_) {}
     }
     try { fs.unlinkSync(tmpPath); } catch (_) {}
     app.relaunch();
@@ -213,6 +230,40 @@ export class BackupEngine {
     return this.db
       .prepare('SELECT backup_last_at, backup_last_hash FROM cloud_auth WHERE id = 1')
       .get();
+  }
+
+  // Last-upload bookkeeping sidecar. Deliberately a separate file, not a
+  // cloud_auth column: anything written into the DB is part of the bytes the
+  // next backupNow hashes.
+  private stateFile(): string {
+    return path.join(app.getPath('userData'), 'cloud-backup-state.json');
+  }
+
+  private readState(): { accountId: string; hash: string; at: string } | null {
+    try {
+      const s = JSON.parse(fs.readFileSync(this.stateFile(), 'utf8'));
+      return s && typeof s.accountId === 'string' && typeof s.hash === 'string' ? s : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeState(accountId: string, hash: string): void {
+    try {
+      fs.writeFileSync(
+        this.stateFile(),
+        JSON.stringify({ accountId, hash, at: new Date().toISOString() })
+      );
+    } catch (err: any) {
+      // Worst case the next pass re-uploads once — never fail the backup.
+      logger.warn('cloud-backup', 'Could not persist backup state', err.message);
+    }
+  }
+
+  private clearState(): void {
+    try {
+      fs.unlinkSync(this.stateFile());
+    } catch (_) {}
   }
 
   private async accountId(): Promise<string> {
@@ -243,6 +294,9 @@ export class BackupEngine {
       );
       // A pre-v30 backup lacks dek_enc/dek_fingerprint; migrations add them on
       // the next open, so only carry the columns the restored schema holds now.
+      // member_priv_enc/member_pub/e2ee_format ride along too: without them a
+      // format-2 member who restores can no longer regenerate a recovery key
+      // (localPrivateKey() null) even though state() reports unlocked.
       const fields = [
         'email',
         'user_id',
@@ -250,6 +304,9 @@ export class BackupEngine {
         'refresh_token_enc',
         'dek_enc',
         'dek_fingerprint',
+        'member_priv_enc',
+        'member_pub',
+        'e2ee_format',
       ].filter((c) => cols.has(c));
       restored.prepare('INSERT OR IGNORE INTO cloud_auth (id) VALUES (1)').run();
       restored

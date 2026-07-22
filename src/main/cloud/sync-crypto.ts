@@ -267,6 +267,24 @@ export function dekFingerprint(dek: Buffer): string {
     .slice(0, 16);
 }
 
+/**
+ * Human-comparable device code for a member's X25519 public key, shown to the
+ * joiner and to the owner at approve time. Comparing it out-of-band is what
+ * stops a compromised server from substituting its own public key for a
+ * pending member and receiving a sealed DEK it can open. 48 bits keeps a
+ * brute-forced fingerprint collision out of reach while staying short enough
+ * to read over the phone.
+ */
+export function pubkeySafetyCode(pubRaw: Buffer): string {
+  const hex = crypto
+    .createHash('sha256')
+    .update(Buffer.concat([Buffer.from('BSE1-devcode\0'), pubRaw]))
+    .digest('hex')
+    .slice(0, 12)
+    .toUpperCase();
+  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
+}
+
 // ---- asymmetric key wrapping (multi-member E2EE) ----
 // To share the one account DEK with more than one person while staying
 // zero-knowledge, the DEK is *sealed* to each member's X25519 public key

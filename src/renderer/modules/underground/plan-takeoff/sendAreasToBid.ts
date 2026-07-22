@@ -10,14 +10,34 @@ import { buildAssemblyLineItems } from '../../../../shared/assemblyExpansion';
 import { buildLineItemPayload } from '../../../../shared/lineItemPayload';
 import { formatCurrency } from '../../../utils/format';
 
-interface AreaGroup {
+export interface AreaGroup {
   areaType: TakeoffArea['areaType'];
   depthFt: number;
   materialId: number | null;
   assemblyId: number | null;
+  totalSF: number;
   totalSY: number;
   totalCY: number;
   labels: string[];
+}
+
+/**
+ * Pick the area measure that matches a catalog/assembly unit. Defaults to SY
+ * (the unit this send flow bills in). Mirrors measureForUnit in
+ * sendWallsToBid: unit-driven, not system-driven — a per-SF assembly expands
+ * by SF whatever the active setting is (it used to get the SY quantity, a 9x
+ * underbill). Exported for tests.
+ */
+export function areaMeasureForUnit(unit: string | null | undefined, g: AreaGroup): number {
+  switch ((unit || '').trim().toUpperCase()) {
+    case 'SF': return g.totalSF;
+    case 'CY':
+    case 'CYD': return g.totalCY;
+    case 'M²': return convertQty(g.totalSY, 'sy', 'metric');
+    case 'M³': return convertQty(g.totalCY, 'cy', 'metric');
+    case 'SY':
+    default: return g.totalSY;
+  }
 }
 
 /**
@@ -52,6 +72,7 @@ export async function sendAreasToBid(
     const key = `${area.areaType}|${ftToInches(area.depthFt)}|${area.materialId ?? ''}|${area.assemblyId ?? ''}`;
     const g = groups.get(key);
     if (g) {
+      g.totalSF += sf;
       g.totalSY += squareFeetToYards(sf);
       g.totalCY += cubicFeetToYards(sf * area.depthFt);
       if (area.label) g.labels.push(area.label);
@@ -61,6 +82,7 @@ export async function sendAreasToBid(
         depthFt: area.depthFt,
         materialId: area.materialId,
         assemblyId: area.assemblyId,
+        totalSF: sf,
         totalSY: squareFeetToYards(sf),
         totalCY: cubicFeetToYards(sf * area.depthFt),
         labels: area.label ? [area.label] : [],
@@ -92,13 +114,11 @@ export async function sendAreasToBid(
   for (const g of groups.values()) {
     // Assembly-linked areas expand the full assembly (materials + labor +
     // equipment) scaled by the measured area in the assembly's own unit —
-    // SY normally, m² for a metric-built assembly (unit-driven, not
-    // system-driven: identities don't flip with the setting).
+    // SF, SY, CY of the depth volume, or their metric spellings (unit-driven,
+    // not system-driven: identities don't flip with the setting).
     const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
     if (assembly) {
-      const qty = assembly.unit === 'm²'
-        ? roundTo(convertQty(g.totalSY, 'sy', 'metric'), 1)
-        : Math.round(g.totalSY * 10) / 10;
+      const qty = roundTo(areaMeasureForUnit(assembly.unit, g), 1);
       const noteSuffix = g.labels.length ? ` (${g.labels.join('; ')})` : ' (from plan takeoff)';
       const payloads = buildAssemblyLineItems(assembly, qty, crews, noteSuffix);
       for (const payload of payloads) {

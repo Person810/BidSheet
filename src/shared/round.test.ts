@@ -19,4 +19,12 @@ describe('roundHours', () => {
     expect(roundHours(1.234567)).toBe(1.2346);
     expect(roundHours(2)).toBe(2);
   });
+
+  it('rounds negative halves symmetrically with positive ones (deduct lines)', () => {
+    // Bare Math.round sends -0.00005 up to -0, but 0.00005 up to 0.0001 —
+    // a credit line would round differently from the add it offsets.
+    expect(roundHours(0.00005)).toBe(0.0001);
+    expect(roundHours(-0.00005)).toBe(-0.0001);
+    expect(roundHours(-1.234567)).toBe(-1.2346);
+  });
 });

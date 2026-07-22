@@ -75,6 +75,27 @@ describe('bidCalc explainers', () => {
     expect(explainMarkup('overhead', s, false).note).toBeUndefined();
   });
 
+  it('includes the indirect pool in the markup base so the shown rate is the configured one', () => {
+    // 10% overhead on 18,000 direct + 2,000 indirects = 2,000. Dividing by
+    // direct alone displayed 11.111% — a rate the user never configured.
+    const withIndirects: FullBidSummary = {
+      ...s,
+      indirect_total: 2000,
+      overhead: 2000,
+      profit: 2000,
+      grandTotal: 24200 + 2000 + 200 + 200,
+    };
+    const bd = explainMarkup('overhead', withIndirects, false);
+    expect(bd.lines.find((l) => l.label === 'Direct cost + escalation + indirects')?.value).toBe(
+      '$20,000.00',
+    );
+    expect(bd.lines.find((l) => l.label === 'Rate')?.value).toBe('10%');
+    // Without indirects the base label is unchanged.
+    expect(
+      explainMarkup('overhead', s, false).lines.find((l) => l.label === 'Direct cost + escalation'),
+    ).toBeTruthy();
+  });
+
   it('grand total sums direct cost, escalation, and markups', () => {
     expect(explainGrandTotal(s).lines.at(-1)?.value).toBe('$24,200.00');
   });

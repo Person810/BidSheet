@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { formatCurrency } from './helpers';
 import {
   autoDetectMapping, availableHeaders, parseCsvPrice, ColumnSelect, CsvDropZone,
@@ -76,6 +76,19 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const [result, setResult] = useState<PriceImportCommitResult | null>(null);
+
+  // The import is written the moment `result` lands, so ANY close after that
+  // point (Done button, overlay click, Esc) must run the caller's onDone work
+  // — refresh + history snapshot — exactly once. Otherwise the grid keeps
+  // pre-import prices and a later undo silently wipes the import.
+  const doneFired = useRef(false);
+  const handleClose = () => {
+    if (result && !doneFired.current) {
+      doneFired.current = true;
+      onDone();
+    }
+    onClose();
+  };
 
   // Line lookup for rendering old prices / units against the chosen target.
   const lineById = useMemo(() => {
@@ -206,7 +219,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
 
   const wide = step === 'reconcile';
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}
         style={{ width: wide ? 1000 : 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
         <h3 style={{ marginBottom: 4 }}>
@@ -238,7 +251,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
                 Ask the rep for an Excel quote, save as CSV. Nothing is written until you confirm.
               </div>} />
             <div className="modal-actions" style={{ marginTop: 20 }}>
-              <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+              <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
             </div>
           </div>
         )}
@@ -438,7 +451,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
               catalog price change was logged to price history.
             </div>
             <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => { onDone(); onClose(); }}>Done</button>
+              <button className="btn btn-primary" onClick={handleClose}>Done</button>
             </div>
           </div>
         )}

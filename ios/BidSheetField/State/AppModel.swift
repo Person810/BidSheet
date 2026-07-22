@@ -148,27 +148,36 @@ final class AppModel: ObservableObject {
         guard let dek, let accountId else { return }
         do {
             let fetched = try await api.listJobs()
-            var names: [String: JobMeta] = [:]
-            for job in fetched {
-                if let enc = job.name_enc, let blob = Data(base64Encoded: enc),
-                   let plain = try? SyncCrypto.decryptForSync(
-                       blob, dek: dek,
-                       aad: SyncCrypto.syncAad(accountId: accountId, scope: job.id, payloadType: "name")),
-                   let meta = try? JSONDecoder().decode(JobMeta.self, from: plain) {
-                    names[job.id] = meta
-                }
-            }
             jobs = fetched
-            jobNames = names
+            jobNames = decryptNames(for: fetched, dek: dek, accountId: accountId)
             lastError = nil
             cache.saveJobList(fetched)
         } catch {
-            // Offline: show the cached list rather than an empty screen.
+            // Offline: show the cached list rather than an empty screen. The
+            // DEK is local, so cached names decrypt the same way the online
+            // path's do (a failure just leaves the server placeholder).
             if jobs.isEmpty, let cached = cache.loadJobList() {
                 jobs = cached
+                jobNames = decryptNames(for: cached, dek: dek, accountId: accountId)
             }
             lastError = error.localizedDescription
         }
+    }
+
+    /// Decrypt each job's name_enc blob; jobs that fail to decrypt are left
+    /// out and fall back to the server placeholder via displayName(for:).
+    private func decryptNames(for jobs: [CloudJob], dek: Data, accountId: String) -> [String: JobMeta] {
+        var names: [String: JobMeta] = [:]
+        for job in jobs {
+            if let enc = job.name_enc, let blob = Data(base64Encoded: enc),
+               let plain = try? SyncCrypto.decryptForSync(
+                   blob, dek: dek,
+                   aad: SyncCrypto.syncAad(accountId: accountId, scope: job.id, payloadType: "name")),
+               let meta = try? JSONDecoder().decode(JobMeta.self, from: plain) {
+                names[job.id] = meta
+            }
+        }
+        return names
     }
 
     func displayName(for job: CloudJob) -> String {

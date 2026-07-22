@@ -116,6 +116,10 @@ describe('calculateConcrete — mesh & subbase', () => {
   it('no subbase volume when depth is zero', () => {
     expect(calculateConcrete(input({ subbaseIn: 0 })).subbaseCY).toBe(0);
   });
+
+  it('walls never report subbase, even with a leftover depth', () => {
+    expect(calculateConcrete(input({ element: 'wall', subbaseIn: 6 })).subbaseCY).toBe(0);
+  });
 });
 
 describe('explainConcrete', () => {

@@ -279,6 +279,7 @@ export function DrawingOverlay({
           onVertexContextMenu={onVertexContextMenu}
           onSegmentContextMenu={handleSegmentCtx}
           renderedScale={renderedScale}
+          rotation={rotation}
           movingVertexIndex={movingVertex?.runId === run.id ? movingVertex.vertexIndex : null}
           movePreviewPos={movingVertex?.runId === run.id ? movePreviewPos : null}
           draggable={dragEnabled}
@@ -479,6 +480,8 @@ interface RunLinesProps {
   /** Used by RunCalloutLabel for drag delta conversion. renderedScale is stable
    *  during zoom gestures, so it won't bust memo. */
   renderedScale: number;
+  /** Page rotation, so RunCalloutLabel can inverse-rotate drag deltas. */
+  rotation?: number;
   movingVertexIndex?: number | null;
   movePreviewPos?: PdfPoint | null;
   /** Vertices can be dragged when no tool is active */
@@ -489,7 +492,7 @@ interface RunLinesProps {
 const RunLines = React.memo(function RunLines({
   run, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
   onSelect, onVertexContextMenu, onSegmentContextMenu,
-  renderedScale, movingVertexIndex, movePreviewPos, draggable, onVertexMouseDown,
+  renderedScale, rotation = 0, movingVertexIndex, movePreviewPos, draggable, onVertexMouseDown,
 }: RunLinesProps) {
   const system = useUnitSystem();
   const pts = run.points;
@@ -545,7 +548,8 @@ const RunLines = React.memo(function RunLines({
             <RunCalloutLabel
               p1={prev} p2={p} scalePxPerFt={scalePxPerFt}
               fontSize={labelSize} color={run.color}
-              segmentIndex={segIdx} scale={renderedScale} isActive={isActive}
+              segmentIndex={segIdx} scale={renderedScale} rotation={rotation}
+              isActive={isActive}
             />
           </g>
         );

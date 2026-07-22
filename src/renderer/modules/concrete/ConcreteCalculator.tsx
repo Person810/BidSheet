@@ -147,14 +147,17 @@ export function ConcreteCalculator() {
                 onChange={(e) => set('wastePct', parseFloat(e.target.value) || 0)}
               />
             </div>
-            <div className="form-group" style={{ flex: 1 }}>
-              <label>Subbase depth ({unitLabel('in', system)})</label>
-              <UnitInput
-                kind="in" className={`form-control ${hasError('subbaseIn') ? 'input-error' : ''}`}
-                value={input.subbaseIn} min={0} step={1} metricStep={25}
-                onChange={(v) => set('subbaseIn', v)}
-              />
-            </div>
+            {/* Walls have no subbase — the calc ignores it, so hide the input */}
+            {!isWall && (
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Subbase depth ({unitLabel('in', system)})</label>
+                <UnitInput
+                  kind="in" className={`form-control ${hasError('subbaseIn') ? 'input-error' : ''}`}
+                  value={input.subbaseIn} min={0} step={1} metricStep={25}
+                  onChange={(v) => set('subbaseIn', v)}
+                />
+              </div>
+            )}
           </div>
 
           <h3 style={{ margin: '18px 0 14px' }}>Reinforcement</h3>

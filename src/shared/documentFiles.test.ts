@@ -30,6 +30,21 @@ describe('sanitizeFilename', () => {
     expect(sanitizeFilename('...')).toBe('document');
     expect(sanitizeFilename('///')).toBe('document');
   });
+
+  it('defuses Windows reserved device names, even with an extension', () => {
+    expect(sanitizeFilename('CON')).toBe('_CON');
+    expect(sanitizeFilename('con.txt')).toBe('_con.txt');
+    expect(sanitizeFilename('COM1.pdf')).toBe('_COM1.pdf');
+    expect(sanitizeFilename('lpt9')).toBe('_lpt9');
+    // Not reserved: only the exact device stems are.
+    expect(sanitizeFilename('CONTRACT.pdf')).toBe('CONTRACT.pdf');
+    expect(sanitizeFilename('com10.pdf')).toBe('com10.pdf');
+  });
+
+  it('strips trailing dots and spaces Windows would silently drop', () => {
+    expect(sanitizeFilename('report.pdf.')).toBe('report.pdf');
+    expect(sanitizeFilename('notes ')).toBe('notes');
+  });
 });
 
 describe('uniqueStoredName', () => {
@@ -121,6 +136,29 @@ describe('buildFolderTree', () => {
 
   it('returns an empty tree for no folders', () => {
     expect(buildFolderTree([])).toEqual([]);
+  });
+
+  it('promotes a self-parented folder to a root instead of dropping it', () => {
+    const selfParent: FolderLike[] = [
+      { id: 1, parent_id: 1, name: 'Loop', sort_order: 0 },
+      { id: 2, parent_id: 1, name: 'Child', sort_order: 0 },
+    ];
+    const tree = buildFolderTree(selfParent);
+    expect(tree.map((n) => n.name)).toEqual(['Loop']);
+    expect(tree[0].children.map((c) => c.name)).toEqual(['Child']);
+  });
+
+  it('breaks a two-folder parent cycle instead of vanishing the subtree', () => {
+    const cycle: FolderLike[] = [
+      { id: 1, parent_id: 2, name: 'A', sort_order: 0 },
+      { id: 2, parent_id: 1, name: 'B', sort_order: 0 },
+      { id: 3, parent_id: 2, name: 'Nested', sort_order: 0 },
+    ];
+    const tree = buildFolderTree(cycle);
+    // Both cycle members surface as roots; the ordinary child stays nested.
+    expect(tree.map((n) => n.name).sort()).toEqual(['A', 'B']);
+    const b = tree.find((n) => n.name === 'B')!;
+    expect(b.children.map((c) => c.name)).toEqual(['Nested']);
   });
 });
 

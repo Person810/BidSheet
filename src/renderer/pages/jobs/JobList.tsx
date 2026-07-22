@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
@@ -54,17 +54,25 @@ export function JobList({ onOpenJob }: JobListProps) {
     }
   };
 
+  // Staleness guard: switching the status filter quickly can leave a slow
+  // earlier load finishing after a newer one — only the latest call may
+  // commit its list, or the newer filter's results get overwritten.
+  const loadGeneration = useRef(0);
   const loadJobs = useCallback(async () => {
+    const gen = ++loadGeneration.current;
     try {
       const j = filter ? await window.api.getJobs(filter) : await window.api.getJobs();
+      if (gen !== loadGeneration.current) return;
       setJobs(j);
       const coMap: Record<number, any[]> = {};
       for (const job of j) {
         const cos = await window.api.getChangeOrders(job.id);
         if (cos.length > 0) coMap[job.id] = cos;
       }
+      if (gen !== loadGeneration.current) return;
       setJobCOs(coMap);
     } catch (err: any) {
+      if (gen !== loadGeneration.current) return;
       addToast(err?.message || 'Failed to load jobs.', 'error');
     }
   }, [filter, addToast]);

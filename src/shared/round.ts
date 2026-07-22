@@ -11,5 +11,7 @@
  * round labor/equipment hours the same way and always agree on cost.
  */
 export function roundHours(n: number): number {
-  return Math.round(n * 10000) / 10000;
+  // Half-away-from-zero on both signs (Math.round alone sends negative
+  // halves toward +∞), so deduct lines round symmetrically with adds.
+  return Math.sign(n) * Math.round(Math.abs(n) * 10000) / 10000;
 }

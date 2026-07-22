@@ -20,8 +20,11 @@
  * Trade abbreviations expanded before scoring so "8\" DIP CL52 MJ" and
  * "8 inch ductile iron pipe class 52 mechanical joint" score as the same
  * thing. Keys are matched token-by-token (after punctuation is split out).
+ * Null prototype: tokens come from arbitrary quote text, and on a plain
+ * object literal a token like "constructor" resolves to an inherited
+ * function, passes the !== undefined check, and crashes the match pass.
  */
-export const TRADE_ABBREVIATIONS: Record<string, string> = {
+export const TRADE_ABBREVIATIONS: Record<string, string> = Object.assign(Object.create(null), {
   dip: 'ductile iron pipe',
   di: 'ductile iron',
   cl: 'class',
@@ -51,7 +54,7 @@ export const TRADE_ABBREVIATIONS: Record<string, string> = {
   std: 'standard',
   galv: 'galvanized',
   ss: 'stainless steel',
-};
+});
 
 /** A bid line a quote row can be matched against. */
 export interface MatchCandidate {
@@ -121,6 +124,9 @@ export function normalizeTokens(raw: string): string[] {
     // inch marks and "inch"/"in." all become a plain " in " token
     .replace(/["”]/g, ' in ')
     .replace(/\bin\.?\b/g, ' in ')
+    // "C-900"/"C 900" join back up BEFORE punctuation is stripped, or the
+    // split "c","900" tokens never hit the keep-whole c900/c905 entries.
+    .replace(/\bc[\s-]?(90[05])\b/g, 'c$1')
     // drop anything that isn't a letter or digit; keep word boundaries
     .replace(/[^a-z0-9]+/g, ' ');
 
@@ -178,9 +184,15 @@ export function buildAliasIndex(aliases: AliasEntry[]): Map<string, AliasEntry> 
   return index;
 }
 
-/** Stable key for the alias index. Supplier is matched case-insensitively. */
+/**
+ * Stable key for the alias index. Supplier is matched case-insensitively.
+ * NUL separator: a space join collides ("acme co"|"x y" == "acme"|"co x y")
+ * and can serve a learned alias to the wrong supplier. The key is only ever
+ * built here and compared in-memory, never persisted, so the format is free
+ * to be unambiguous.
+ */
 export function aliasKey(supplier: string, normalizedDescription: string): string {
-  return `${(supplier || '').trim().toLowerCase()} ${normalizedDescription}`;
+  return `${(supplier || '').trim().toLowerCase()}\u0000${normalizedDescription}`;
 }
 
 /**

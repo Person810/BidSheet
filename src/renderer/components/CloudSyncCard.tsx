@@ -328,6 +328,8 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const [unlockKey, setUnlockKey] = useState('');
   const [joinToken, setJoinToken] = useState('');
   const [justJoined, setJustJoined] = useState(false);
+  // This device's member-key code, read to the owner before they approve.
+  const [myCode, setMyCode] = useState<string | null>(null);
   // Opt-in: a shorter (80-bit) recovery key, easier to write down. Still safe
   // offline because the short key is stretched with scrypt before it wraps
   // anything (see sync-crypto.ts). The full 256-bit key stays the default.
@@ -340,6 +342,9 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     ]);
     setE2eeState(st);
     setStatus(bk);
+    if (st === 'pending_approval') {
+      setMyCode(await window.api.cloudE2eeSafetyCode().catch(() => null));
+    }
   };
   // Re-check after every sync pass — state and lastBackupAt move with it.
   useEffect(() => {
@@ -528,6 +533,12 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
             You've joined the team. An owner needs to <strong>approve your access</strong> before you
             can see the shared jobs and catalog. Only they can hand your device the encryption key.
           </p>
+          {myCode && (
+            <p style={{ fontSize: 13, marginBottom: 8 }}>
+              When they approve you, they'll ask for your <strong>device code</strong>. Read them:{' '}
+              <strong style={{ fontFamily: 'monospace' }}>{myCode}</strong>
+            </p>
+          )}
           <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
             This unlocks automatically once they approve you. Keep the recovery key you just saved.
             It's how you'd unlock a different computer.
@@ -628,6 +639,7 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       email: string | null;
       key_status: 'pending' | 'active' | null;
       pubkey: string | null;
+      safety_code: string | null;
     }[];
     me: { user_id: string; role: string };
   } | null>(null);
@@ -670,11 +682,20 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       setNewInvite(token);
     }, 'Could not create an invite.');
 
-  const handleApprove = (userId: string) =>
-    run(async () => {
+  const handleApprove = (userId: string, memberLabel: string, safetyCode: string | null) => {
+    // Out-of-band key verification: approving seals the account's encryption
+    // key to whatever public key the server presented for this member. Having
+    // the owner confirm the code the teammate reads off their own screen is
+    // what keeps a tampered server from substituting its own key.
+    const prompt = safetyCode
+      ? `Approve ${memberLabel}?\n\nBefore approving, ask them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
+      : `Approve ${memberLabel}? They have no encryption key registered yet.`;
+    if (!confirm(prompt)) return;
+    return run(async () => {
       await window.api.cloudOrgApproveMember(userId);
       addToast('Teammate approved. They can now decrypt the shared data.', 'success');
     }, 'Could not approve that member.');
+  };
 
   const handleRemove = (userId: string, label: string) => {
     if (!confirm(`Remove ${label} from this account? They'll lose access to synced data.`)) return;
@@ -721,11 +742,19 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
               key={m.user_id}
               className="flex gap-8"
               style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 13 }}>{label(m)}</span>
+              <span style={{ fontSize: 13 }}>
+                {label(m)}
+                {m.safety_code && (
+                  <span className="text-muted" style={{ fontFamily: 'monospace' }}>
+                    {' '}
+                    · {m.safety_code}
+                  </span>
+                )}
+              </span>
               <button
                 className="btn btn-sm btn-primary"
                 disabled={busy}
-                onClick={() => handleApprove(m.user_id)}>
+                onClick={() => handleApprove(m.user_id, label(m), m.safety_code)}>
                 Approve
               </button>
             </div>

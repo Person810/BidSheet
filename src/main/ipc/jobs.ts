@@ -273,19 +273,56 @@ export function registerJobHandlers(db: Database.Database): void {
       // Copy takeoff areas and their points
       const takeoffAreas = db.prepare('SELECT * FROM takeoff_areas WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
       const insertTakeoffArea = db.prepare(
-        `INSERT INTO takeoff_areas (job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO takeoff_areas (job_id, label, area_type, depth_ft, material_id, assembly_id, color, sort_order, pdf_page, grade_mode, grade_value_ft)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const insertAreaPt = db.prepare(
         'INSERT INTO takeoff_area_points (area_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
       );
       for (const ta of takeoffAreas) {
         const newAreaId = Number(insertTakeoffArea.run(
-          newJobId, ta.label, ta.area_type, ta.depth_ft, ta.material_id, ta.assembly_id, ta.color, ta.sort_order, ta.pdf_page
+          newJobId, ta.label, ta.area_type, ta.depth_ft, ta.material_id, ta.assembly_id, ta.color, ta.sort_order, ta.pdf_page,
+          ta.grade_mode ?? null, ta.grade_value_ft ?? null
         ).lastInsertRowid);
         const areaPoints = db.prepare('SELECT * FROM takeoff_area_points WHERE area_id = ? ORDER BY sort_order').all(ta.id) as any[];
         for (const pt of areaPoints) {
           insertAreaPt.run(newAreaId, pt.x_px, pt.y_px, pt.sort_order);
+        }
+      }
+
+      // Copy takeoff walls and their points
+      const takeoffWalls = db.prepare('SELECT * FROM takeoff_walls WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
+      const insertTakeoffWall = db.prepare(
+        `INSERT INTO takeoff_walls (job_id, label, height_ft, thickness_in, faces, member_spacing_in, material_id, assembly_id, color, sort_order, pdf_page)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const insertWallPt = db.prepare(
+        'INSERT INTO takeoff_wall_points (wall_id, x_px, y_px, sort_order) VALUES (?, ?, ?, ?)'
+      );
+      for (const tw of takeoffWalls) {
+        const newWallId = Number(insertTakeoffWall.run(
+          newJobId, tw.label, tw.height_ft, tw.thickness_in, tw.faces, tw.member_spacing_in,
+          tw.material_id, tw.assembly_id, tw.color, tw.sort_order, tw.pdf_page
+        ).lastInsertRowid);
+        const wallPoints = db.prepare('SELECT * FROM takeoff_wall_points WHERE wall_id = ? ORDER BY sort_order').all(tw.id) as any[];
+        for (const pt of wallPoints) {
+          insertWallPt.run(newWallId, pt.x_px, pt.y_px, pt.sort_order);
+        }
+      }
+
+      // Copy takeoff surfaces (earthwork elevation sets) and their points
+      const takeoffSurfaces = db.prepare('SELECT * FROM takeoff_surfaces WHERE job_id = ? ORDER BY id').all(id) as any[];
+      const insertTakeoffSurface = db.prepare(
+        'INSERT INTO takeoff_surfaces (job_id, kind, name) VALUES (?, ?, ?)'
+      );
+      const insertSurfacePt = db.prepare(
+        'INSERT INTO takeoff_surface_points (surface_id, x, y, z_ft, pdf_page, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+      );
+      for (const ts of takeoffSurfaces) {
+        const newSurfaceId = Number(insertTakeoffSurface.run(newJobId, ts.kind, ts.name).lastInsertRowid);
+        const surfacePoints = db.prepare('SELECT * FROM takeoff_surface_points WHERE surface_id = ? ORDER BY sort_order').all(ts.id) as any[];
+        for (const pt of surfacePoints) {
+          insertSurfacePt.run(newSurfaceId, pt.x, pt.y, pt.z_ft, pt.pdf_page, pt.sort_order);
         }
       }
 

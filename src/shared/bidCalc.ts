@@ -107,10 +107,14 @@ export function explainEscalation(s: SummaryAmounts, escalationPct: number): Cal
 }
 
 /**
- * Markup breakdown. Overhead/profit/bond apply to (direct cost + escalation);
- * sales tax applies to (material + escalation). When sections override the job
- * markups the displayed rate is blended (derived from base and result), with a
- * note — so the popover never claims a single rate that isn't the truth.
+ * Markup breakdown. Overhead/profit/bond apply to (direct cost + escalation
+ * + the indirect pool); sales tax applies to (material + escalation). When
+ * sections override the job markups the displayed rate is blended (derived
+ * from base and result), with a note — so the popover never claims a single
+ * rate that isn't the truth. The indirect pool must be in the base for the
+ * same reason: computeBidSummaryFromSections folds its markup into the
+ * dollar amounts, so dividing by direct+escalation alone shows an inflated
+ * rate the user never configured whenever indirects > 0.
  */
 export function explainMarkup(
   kind: 'overhead' | 'profit' | 'bond' | 'tax', s: SummaryAmounts, hasOverrides: boolean,
@@ -120,7 +124,9 @@ export function explainMarkup(
   }
   const label = kind === 'overhead' ? 'Overhead' : kind === 'profit' ? 'Profit' : 'Bond';
   const note = hasOverrides ? 'Blended rate — some sections override the job markups.' : undefined;
-  return explainPercentOf(label, 'Direct cost + escalation', s.direct_cost_total + s.escalation, s[kind], note);
+  const indirect = s.indirect_total || 0;
+  const baseLabel = indirect > 0 ? 'Direct cost + escalation + indirects' : 'Direct cost + escalation';
+  return explainPercentOf(label, baseLabel, s.direct_cost_total + s.escalation + indirect, s[kind], note);
 }
 
 /** Bid total = direct cost + escalation + overhead + profit + bond + tax. */

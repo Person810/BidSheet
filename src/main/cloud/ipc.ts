@@ -12,6 +12,7 @@ import { CloudApiClient } from './api-client';
 import { SyncEngine } from './sync-engine';
 import { BackupEngine } from './backup';
 import { E2eeManager } from './e2ee';
+import { pubkeySafetyCode } from './sync-crypto';
 
 function handle(channel: string, fn: (...args: any[]) => any): void {
   ipcMain.handle(channel, async (_event, ...args) => {
@@ -168,7 +169,21 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   // join (pending), then an unlocked owner approves them by sealing the DEK to
   // their key. redeem/approve route through E2eeManager because they involve
   // key material; the rest are thin pass-throughs to the Worker.
-  handle('cloud:org-members', () => api.listMembers());
+  // Members carry a device code derived from their registered pubkey. The
+  // owner compares it with what the joiner's screen shows before approving —
+  // the out-of-band check that stops a tampered server from swapping in its
+  // own key and receiving a sealed DEK it can open.
+  handle('cloud:org-members', async () => {
+    const res = await api.listMembers();
+    return {
+      ...res,
+      members: res.members.map((m) => ({
+        ...m,
+        safety_code: m.pubkey ? pubkeySafetyCode(Buffer.from(m.pubkey, 'base64')) : null,
+      })),
+    };
+  });
+  handle('cloud:e2ee-safety-code', () => e2ee.mySafetyCode());
   handle('cloud:org-create-invite', (role?: 'member' | 'owner') => {
     logger.info('cloud:org-create-invite', `Creating ${role ?? 'member'} invite`);
     return api.createInvite(role);
@@ -177,12 +192,12 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   handle('cloud:org-revoke-invite', (id: string) => api.revokeInvite(id));
   handle('cloud:org-redeem-invite', async (token: string, shorter?: boolean) => {
     logger.info('cloud:org-redeem-invite', 'Redeeming invite and joining account');
-    const res = await e2ee.joinWithInvite(token, !!shorter);
-    // Joining moved us to the org account, bypassing the sync engine's
-    // account-switch detector (joinWithInvite pre-set the new account id). Wipe
-    // the stale per-job cloud ids + backup/catalog hashes from our old account
-    // so the next pass doesn't push our private jobs into the shared org.
-    engine.resetSyncStateForJoin();
+    // The sync-state wipe rides inside joinWithInvite's transaction: switching
+    // the stored account id bypasses the engine's account-switch detector, so
+    // wiping the stale cloud ids afterwards (as this handler used to) left a
+    // crash window where the next pass pushed private solo jobs into the org.
+    const res = await e2ee.joinWithInvite(token, !!shorter, () => engine.resetSyncStateForJoin());
+    engine.refreshRenderer();
     return res;
   });
   handle('cloud:org-approve-member', async (userId: string) => {

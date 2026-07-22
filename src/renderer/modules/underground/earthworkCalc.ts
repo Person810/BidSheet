@@ -64,9 +64,9 @@ export interface RegionResult {
   cutCY: number;   // bank
   fillCY: number;  // compacted in place
   /**
-   * finished_elev only: grid cells inside the footprint with no existing-
-   * surface coverage (outside the TIN hull). -1 means the surface itself was
-   * missing, so the region couldn't be computed at all.
+   * finished_elev only: grid cells inside the footprint with missing
+   * existing-surface coverage (some part outside the TIN hull). -1 means the
+   * surface itself was missing, so the region couldn't be computed at all.
    */
   uncoveredCells: number;
 }
@@ -144,16 +144,42 @@ export function calculateEarthwork(input: EarthworkInput): EarthworkOutput {
     } else if (tin) {
       // finished_elev: integrate (existing - finished) over a grid clipped
       // to the polygon. Positive delta is cut, negative is fill.
+      //
+      // Each cell is subsampled (sub x sub points) so a cell only partially
+      // inside the footprint contributes its inside fraction — center-only
+      // sampling at full cellArea grossly mis-measures regions small or
+      // narrow relative to the grid (a 12x12 pad on the 10-ft grid read as
+      // one full 100 SF cell; an 8-ft strip between rows read as nothing).
+      // The cell also shrinks for footprints small relative to the grid so
+      // every region gets at least a few cells per axis. Deterministic:
+      // cells anchor at the bbox corner, subpoints at fixed offsets.
       const box = bbox(r.polygon);
-      const cellArea = grid * grid;
-      for (let x = box.minX + grid / 2; x <= box.maxX; x += grid) {
-        for (let y = box.minY + grid / 2; y <= box.maxY; y += grid) {
-          if (!pointInPolygon(x, y, r.polygon)) continue;
-          const z = interpolateZ(tin, x, y);
-          if (z == null) { uncovered++; continue; }
-          const dz = z - r.value;
-          if (dz > 0) cutCF += dz * cellArea;
-          else fillCF += -dz * cellArea;
+      const spanX = box.maxX - box.minX;
+      const spanY = box.maxY - box.minY;
+      const cell = Math.max(0.5, Math.min(grid, spanX / 4, spanY / 4));
+      const cellCount = Math.ceil(spanX / cell) * Math.ceil(spanY / cell);
+      // Small regions are dominated by edge cells, so subsample densely;
+      // for large ones edge cells are a small fraction of the total, so 2x2
+      // keeps the sample count (and TIN lookups) bounded.
+      const sub = cellCount > 2500 ? 2 : 4;
+      const subStep = cell / sub;
+      const subArea = subStep * subStep;
+      for (let x0 = box.minX; x0 < box.maxX; x0 += cell) {
+        for (let y0 = box.minY; y0 < box.maxY; y0 += cell) {
+          let uncoveredHere = 0;
+          for (let i = 0; i < sub; i++) {
+            for (let j = 0; j < sub; j++) {
+              const x = x0 + (i + 0.5) * subStep;
+              const y = y0 + (j + 0.5) * subStep;
+              if (!pointInPolygon(x, y, r.polygon)) continue;
+              const z = interpolateZ(tin, x, y);
+              if (z == null) { uncoveredHere++; continue; }
+              const dz = z - r.value;
+              if (dz > 0) cutCF += dz * subArea;
+              else fillCF += -dz * subArea;
+            }
+          }
+          if (uncoveredHere > 0) uncovered++;
         }
       }
     } else {

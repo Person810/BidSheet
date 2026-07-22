@@ -209,8 +209,9 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const handleSendToProfiles = useCallback(async () => {
     setShowSendConfirm(false);
     try {
-      const count = await sendToProfiles(rm.runs, jobId);
-      addToast(`Created ${count} trench profiles. View them on the job page.`, 'success');
+      const { created, warnings } = await sendToProfiles(rm.runs, jobId);
+      for (const w of warnings) addToast(w, 'warn');
+      addToast(`Created ${created} trench profiles. View them on the job page.`, 'success');
     } catch (err) {
       console.error('Send to trench profiles failed:', err);
       addToast('Failed to create trench profiles', 'error');
@@ -246,11 +247,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const handleSendWallsToBid = useCallback(async () => {
     setShowSendWallsConfirm(false);
     try {
-      const count = await sendWallsToBid(wm.walls, jobId, system);
-      if (count === 0) {
-        addToast('No walls on calibrated pages to send.', 'error');
+      const { created, warnings } = await sendWallsToBid(wm.walls, jobId, system);
+      for (const w of warnings) addToast(w, 'warn');
+      if (created === 0) {
+        if (warnings.length === 0) addToast('No walls on calibrated pages to send.', 'error');
       } else {
-        addToast(`Created ${count} line items in "Walls" section.`, 'success');
+        addToast(`Created ${created} line items in "Walls" section.`, 'success');
       }
     } catch (err) {
       console.error('Send walls to bid failed:', err);
@@ -260,14 +262,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const handleExportCsv = useCallback(async () => {
     try {
-      const csv = await buildTakeoffCsv(jobId, rm.runs, im.items, am.areas, system);
+      const csv = await buildTakeoffCsv(jobId, rm.runs, im.items, am.areas, sm.surface ? [sm.surface] : [], system);
       const result = await window.api.exportTakeoffCsv(jobId, csv);
       if (result?.success) addToast(`Takeoff exported to ${result.path}`, 'success');
     } catch (err) {
       console.error('Takeoff CSV export failed:', err);
       addToast('Failed to export takeoff CSV', 'error');
     }
-  }, [jobId, rm.runs, im.items, am.areas, addToast, system]);
+  }, [jobId, rm.runs, im.items, am.areas, sm.surface, addToast, system]);
 
   // Load settings on mount
   useEffect(() => {
@@ -721,11 +723,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
   const handleSendEarthworkToBid = useCallback(async () => {
     try {
-      const count = await sendEarthworkToBid(am.areas, sm.surface ? [sm.surface] : [], jobId, system);
-      if (count === 0) {
-        addToast('No earthwork regions on calibrated pages to send.', 'error');
+      const { created, warnings } = await sendEarthworkToBid(am.areas, sm.surface ? [sm.surface] : [], jobId, system);
+      for (const w of warnings) addToast(w, 'warn');
+      if (created === 0) {
+        if (warnings.length === 0) addToast('No earthwork regions on calibrated pages to send.', 'error');
       } else {
-        addToast(`Created ${count} line items in "Earthwork" section.`, 'success');
+        addToast(`Created ${created} line items in "Earthwork" section.`, 'success');
       }
     } catch (err) {
       console.error('Send earthwork to bid failed:', err);

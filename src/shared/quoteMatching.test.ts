@@ -121,6 +121,31 @@ describe('matchQuoteRow', () => {
   });
 
   it('builds a supplier-scoped alias key', () => {
-    expect(aliasKey('Core & Main', 'x')).toBe('core & main x');
+    expect(aliasKey('Core & Main', 'x')).toBe('core & main\u0000x');
+  });
+
+  it('alias keys cannot collide across the supplier/description boundary', () => {
+    // With a space join these two were the same key, so a learned alias
+    // could serve the wrong supplier.
+    expect(aliasKey('acme co', 'x y')).not.toBe(aliasKey('acme', 'co x y'));
+  });
+
+  it('survives a description containing "constructor" (prototype pollution lookup)', () => {
+    // On a plain object literal TRADE_ABBREVIATIONS["constructor"] resolved
+    // to Object.prototype.constructor and crashed the whole match pass.
+    expect(() =>
+      matchQuoteRow(
+        { description: 'pipe constructor joint', unit: 'LF' },
+        'Acme', candidates, new Map(),
+      ),
+    ).not.toThrow();
+    expect(normalizeTokens('constructor toString valueOf')).toEqual([
+      'constructor', 'tostring', 'valueof',
+    ]);
+  });
+
+  it('matches punctuated C-900 against C900 at full token weight', () => {
+    expect(normalizeTokens('8" C-900 PVC')).toEqual(normalizeTokens('8 in C900 PVC'));
+    expect(normalizeTokens('C 905 DR18')).toContain('c905');
   });
 });

@@ -23,7 +23,7 @@ import { app, BrowserWindow } from 'electron';
 import type Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { CloudAuth } from './supabase-auth';
-import { CloudApiClient, CloudJob, CloudCatalogMeta } from './api-client';
+import { CloudApiClient, CloudApiError, CloudJob, CloudCatalogMeta } from './api-client';
 import {
   exportJob,
   importJob,
@@ -146,7 +146,7 @@ export class SyncEngine {
     this.notifyRenderer();
   }
 
-  async pushJob(jobId: number): Promise<void> {
+  async pushJob(jobId: number, opts: { force?: boolean } = {}): Promise<void> {
     const accountId = await this.requireAccountId();
     const dek = this.e2ee.getDek(); // throws cleanly if encrypted sync is locked
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
@@ -156,8 +156,37 @@ export class SyncEngine {
     try {
       const snapshot = exportJob(this.db, jobId);
       const state = this.getState(jobId);
+      const expectedRemote: string | null = state?.last_hash_remote ?? null;
 
-      // Plan PDF: content-addressed so unchanged plans never re-upload.
+      // Lost-update guard: checkAll compares against the job list snapshot
+      // taken at PASS START, so seat B (which read the list before seat A's
+      // push landed) would compute remoteChanged=false and overwrite A's
+      // snapshot with no conflict flagged. Re-check the job's CURRENT hash
+      // right before uploading any bytes, and (below) push the commit marker
+      // with a compare-and-swap so even a push racing into that last window
+      // turns into a visible conflict instead of a silent overwrite. `force`
+      // (conflict resolved as keep-local) skips both.
+      if (!opts.force) {
+        let remote: CloudJob | null | undefined;
+        try {
+          remote = await this.api.getJob(cloudId);
+        } catch {
+          remote = undefined; // couldn't check — the CAS on putJob still guards the commit
+        }
+        if (remote && (remote.snapshot_hash ?? null) !== expectedRemote) {
+          this.saveState(jobId, {
+            status: 'conflict',
+            error: 'Changed both here and in the cloud since the last sync.',
+          });
+          return;
+        }
+      }
+
+      // Plan PDF: content-addressed so unchanged plans never re-upload. The
+      // dedup key includes the FILENAME as well as the bytes: a rename of the
+      // same bytes changes the R2 key other seats fetch, so skipping the
+      // upload on hash alone would point snapshot.plan.filename at an object
+      // that was never uploaded (every pull/restore of the job then 404s).
       const settings = this.db
         .prepare('SELECT pdf_path FROM takeoff_job_settings WHERE job_id = ?')
         .get(jobId) as any;
@@ -167,7 +196,7 @@ export class SyncEngine {
         const sha = crypto.createHash('sha256').update(bytes).digest('hex');
         const filename = path.basename(settings.pdf_path);
         snapshot.plan = { filename, sha256: sha, size_bytes: bytes.length };
-        if (sha !== planHash) {
+        if (this.planKey(sha, filename) !== planHash) {
           // Same R2 key as the (pre-E2EE) plaintext plan, so the ciphertext
           // overwrites it in place — no plaintext copy left behind. The
           // plaintext sha is folded into the AAD so a stale plan ciphertext
@@ -178,7 +207,7 @@ export class SyncEngine {
             encryptForSync(bytes, dek, syncAad(accountId, cloudId, `plan:${sha}`)),
             'application/octet-stream'
           );
-          planHash = sha;
+          planHash = this.planKey(sha, filename);
         }
       }
 
@@ -211,7 +240,14 @@ export class SyncEngine {
         dek,
         syncAad(accountId, cloudId, 'name')
       ).toString('base64');
-      await this.api.putJob(cloudId, { name_enc: nameEnc, snapshot_hash: remoteHash });
+      // The commit marker is compare-and-swapped against the hash this seat
+      // last synced; the Worker answers 412 snapshot_conflict if another seat
+      // committed in between.
+      await this.api.putJob(cloudId, {
+        name_enc: nameEnc,
+        snapshot_hash: remoteHash,
+        ...(opts.force ? {} : { expected_snapshot_hash: expectedRemote }),
+      });
 
       this.saveState(jobId, {
         last_hash_local: hash,
@@ -222,6 +258,13 @@ export class SyncEngine {
       });
       logger.info('cloud-sync', `Pushed job ${jobId} (${snapshot.job.name})`);
     } catch (err: any) {
+      if (err instanceof CloudApiError && err.code === 'snapshot_conflict') {
+        this.saveState(jobId, {
+          status: 'conflict',
+          error: 'Changed both here and in the cloud since the last sync.',
+        });
+        return;
+      }
       this.saveState(jobId, { status: 'error', error: err.message });
       throw err;
     } finally {
@@ -287,7 +330,7 @@ export class SyncEngine {
       // Recompute over this machine's rows — ids changed on import.
       last_hash_local: snapshotHash(this.withPlan(exportJob(this.db, result.jobId), snapshot.plan)),
       last_hash_remote: remoteHash,
-      plan_hash: snapshot.plan?.sha256 ?? null,
+      plan_hash: snapshot.plan ? this.planKey(snapshot.plan.sha256, snapshot.plan.filename) : null,
       status: 'synced',
       error: null,
     });
@@ -478,7 +521,9 @@ export class SyncEngine {
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job?.cloud_id) throw new Error('Job has no cloud id.');
     if (keep === 'local') {
-      await this.pushJob(jobId);
+      // Deliberate overwrite: skip the lost-update guards or the push would
+      // just re-flag the very conflict the user resolved.
+      await this.pushJob(jobId, { force: true });
     } else {
       await this.pullJob(job.cloud_id);
     }
@@ -558,6 +603,14 @@ export class SyncEngine {
       }
       this.cloudOnly = [];
     }
+  }
+
+  /**
+   * cloud_sync_state.plan_hash dedup key: bytes AND name. Older rows hold a
+   * bare sha, which simply mismatches once and re-uploads — self-healing.
+   */
+  private planKey(sha256: string, filename: string): string {
+    return `${sha256}:${filename}`;
   }
 
   private withPlan(snapshot: JobSnapshot, plan: JobSnapshot['plan']): JobSnapshot {
@@ -674,9 +727,18 @@ export class SyncEngine {
    * org. The cached DEK/member key is handled by joinWithInvite itself (it clears
    * the old DEK before caching the new member key), so this only wipes the
    * per-job/backup/catalog bookkeeping.
+   *
+   * Passed INTO joinWithInvite as its applyJoinReset callback so the wipe
+   * commits in the same SQLite transaction as the account-id switch (pure DB
+   * writes only — no renderer notification here; the IPC layer notifies after
+   * the join settles).
    */
   resetSyncStateForJoin(): void {
     this.resetSyncBookkeeping();
+  }
+
+  /** Renderer refresh for flows (like the org join) that mutate state outside a sync pass. */
+  refreshRenderer(): void {
     this.notifyRenderer();
   }
 

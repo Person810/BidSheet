@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
+import { grantPathAccess, isPathReadable } from './file-access';
 
 export function registerTakeoffHandlers(db: Database.Database): void {
   // ================================================================
@@ -85,6 +86,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
     if (result.canceled || result.filePaths.length === 0) return null;
 
     const filePath = result.filePaths[0];
+    grantPathAccess(filePath);
     try {
       // Read the PDF into a buffer so the renderer can pass it directly
       // to pdf.js.  This avoids file:// CORS issues in dev mode.
@@ -96,11 +98,19 @@ export function registerTakeoffHandlers(db: Database.Database): void {
     }
   });
 
+  // Reopens the plan stored in takeoff_job_settings.pdf_path — chosen via
+  // the open-pdf dialog, possibly in an earlier session, so this can't
+  // demand a same-session dialog grant. Ungranted paths must look like a
+  // plan PDF and pass the file-access policy (see file-access.ts).
   safeHandle('db:takeoff:read-pdf', (_event, filePath: string) => {
     const resolved = path.resolve(filePath);
     const ext = path.extname(resolved).toLowerCase();
     if (ext !== '.pdf') {
       logger.warn('takeoff:read-pdf', `Rejected non-PDF file: ${resolved}`);
+      return null;
+    }
+    if (!isPathReadable(resolved)) {
+      logger.warn('takeoff:read-pdf', `Rejected read in sensitive location: ${resolved}`);
       return null;
     }
     if (!fs.existsSync(resolved)) {

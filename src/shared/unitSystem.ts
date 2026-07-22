@@ -98,10 +98,15 @@ export function toDisplay(canonical: number, kind: QuantityKind, system: UnitSys
   return roundTo(convertQty(canonical, kind, system), 6);
 }
 
-/** Round to `decimals` places, dropping the trailing zeros String() would. */
+/**
+ * Round to `decimals` places, dropping the trailing zeros String() would.
+ * Half-away-from-zero on both signs: bare Math.round sends negative halves
+ * toward +∞, so a credit/deduct quantity would round asymmetrically against
+ * the equivalent positive one.
+ */
 export function roundTo(n: number, decimals: number): number {
   const f = 10 ** decimals;
-  return Math.round(n * f) / f;
+  return Math.sign(n) * Math.round(Math.abs(n) * f) / f;
 }
 
 /**

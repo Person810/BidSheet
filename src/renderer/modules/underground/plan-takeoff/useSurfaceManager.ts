@@ -48,7 +48,11 @@ export function useSurfaceManager({ jobId }: UseSurfaceManagerOptions): SurfaceM
           setSurface((cur) => cur ? { ...cur, id: result.id } : cur);
           const latest = surfaceRef.current;
           if (latest && latest.id <= 0) {
-            window.api.saveTakeoffSurface({ ...latest, id: result.id })
+            const swapped = { ...latest, id: result.id };
+            // Keep the ref in step with the swap so an edit landing before
+            // the next render doesn't re-create the surface.
+            surfaceRef.current = swapped;
+            window.api.saveTakeoffSurface(swapped)
               .catch(reportSaveError('surface'));
           }
         }
@@ -56,32 +60,35 @@ export function useSurfaceManager({ jobId }: UseSurfaceManagerOptions): SurfaceM
       .catch((err) => { creatingRef.current = false; reportSaveError('surface')(err); });
   }, []);
 
+  // Derive the next state from surfaceRef (kept current below for rapid
+  // successive edits) instead of inside the setSurface updater: updaters must
+  // be pure — StrictMode/concurrent React may invoke them twice, which
+  // double-fired the save IPC (and double-decremented the temp id) when
+  // persist() lived inside them.
   const addSpotElevation = useCallback((point: PdfPoint, z: number, pdfPage: number) => {
     if (!jobId) return;
     const newPoint: SurfacePoint = { x: point.x, y: point.y, z, pdfPage };
-    setSurface((cur) => {
-      const base: TakeoffSurface = cur ?? {
-        id: nextLocalId--, jobId, kind: 'existing', name: 'Existing Grade', points: [],
-      };
-      const next = { ...base, points: [...base.points, newPoint] };
-      // Persist after state derive so the ref/closure sees the new shape.
-      if (next.id <= 0 && creatingRef.current) {
-        // create still in flight — local state updates; persist rides the swap
-      } else {
-        if (next.id <= 0) creatingRef.current = true;
-        persist(next);
-      }
-      return next;
-    });
+    const base: TakeoffSurface = surfaceRef.current ?? {
+      id: nextLocalId--, jobId, kind: 'existing', name: 'Existing Grade', points: [],
+    };
+    const next = { ...base, points: [...base.points, newPoint] };
+    surfaceRef.current = next;
+    setSurface(next);
+    if (next.id <= 0 && creatingRef.current) {
+      // create still in flight — local state updates; persist rides the swap
+    } else {
+      if (next.id <= 0) creatingRef.current = true;
+      persist(next);
+    }
   }, [jobId, persist]);
 
   const removePoint = useCallback((index: number) => {
-    setSurface((cur) => {
-      if (!cur) return cur;
-      const next = { ...cur, points: cur.points.filter((_p, i) => i !== index) };
-      if (next.id > 0) persist(next);
-      return next;
-    });
+    const cur = surfaceRef.current;
+    if (!cur) return;
+    const next = { ...cur, points: cur.points.filter((_p, i) => i !== index) };
+    surfaceRef.current = next;
+    setSurface(next);
+    if (next.id > 0) persist(next);
   }, [persist]);
 
   return {
