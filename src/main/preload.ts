@@ -112,8 +112,8 @@ contextBridge.exposeInMainWorld('api', {
   // Electron 32+ removed File.path; webUtils.getPathForFile is the supported
   // way to resolve a drag-and-dropped file to its real filesystem path.
   getDroppedFilePath: (file: File): string => webUtils.getPathForFile(file),
-  importPriceSheet: (updates: any[], source: string) =>
-    invoke('db:materials:import-prices', updates, source),
+  importPriceSheet: (request: any) =>
+    invoke('db:materials:import-prices', request),
 
   // ---- Per-job price import (reconciliation) ----
   priceImportContext: (jobId: number) => invoke('db:price-import:context', jobId),

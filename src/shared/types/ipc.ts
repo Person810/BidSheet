@@ -546,6 +546,56 @@ export interface PriceImportResult {
   error?: string;
 }
 
+export interface MaterialPriceImportCommonAction {
+  rowIndex: number;
+  name: string;
+  unitCost: number | null;
+  unit: string;
+  supplier: string | null;
+  partNumber: string | null;
+  description: string | null;
+  categoryText: string | null;
+}
+
+export interface MaterialPriceImportUpdateAction
+  extends MaterialPriceImportCommonAction {
+  action: 'update';
+  targetMaterialId: number;
+  acknowledgeUnitMismatch: boolean;
+}
+
+export interface MaterialPriceImportCreateAction
+  extends MaterialPriceImportCommonAction {
+  action: 'create';
+  categoryId: number | null;
+}
+
+export interface MaterialPriceImportIgnoreAction
+  extends MaterialPriceImportCommonAction {
+  action: 'ignore';
+  reason: 'user' | 'invalid';
+}
+
+export type MaterialPriceImportAction =
+  | MaterialPriceImportUpdateAction
+  | MaterialPriceImportCreateAction
+  | MaterialPriceImportIgnoreAction;
+
+export interface MaterialPriceImportRequest {
+  source: string;
+  rows: MaterialPriceImportAction[];
+}
+
+export interface MaterialPriceImportResult {
+  total: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  ignored: number;
+  invalid: number;
+  error?: string;
+}
+
 // ================================================================
 // Per-job price import (§1–4)
 // ================================================================

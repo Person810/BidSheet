@@ -1,12 +1,26 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { formatCurrency } from '../pages/jobs/helpers';
+import React, { useEffect, useState } from 'react';
+import type {
+  MaterialCategoryRow,
+  MaterialPriceImportResult,
+  MaterialRow,
+} from '../../shared/types/ipc';
 import {
-  autoDetectMapping, availableHeaders as availableHeadersFor, parseCsvPrice, ColumnSelect, CsvDropZone,
+  buildMaterialPriceImportReview,
+  type MaterialPriceImportReviewRow,
+  type MaterialPriceImportSourceRow,
+} from '../../shared/materialPriceImport';
+import {
+  createMaterialPriceImportState,
+  type MaterialPriceImportState,
+} from './materialPriceImportState';
+import { MaterialPriceImportReview } from './MaterialPriceImportReview';
+import { buildMaterialPriceImportRequest } from './materialPriceImportCommit';
+import {
+  autoDetectMapping,
+  availableHeaders as availableHeadersFor,
+  ColumnSelect,
+  CsvDropZone,
 } from './csvImport';
-
-// ============================================================
-// Types
-// ============================================================
 
 interface CsvRow {
   [key: string]: string;
@@ -18,572 +32,392 @@ interface ParsedCsv {
   fileName: string;
 }
 
-interface ExistingMaterial {
-  id: number;
-  name: string;
-  default_unit_cost: number;
-  supplier: string | null;
-  part_number: string | null;
-  unit: string;
-  category_id: number;
-}
+type ImportStep = 'pick' | 'map' | 'review' | 'done';
 
-// A row ready for preview after column mapping + matching
-interface PreviewRow {
-  csvIndex: number;
-  csvName: string;           // raw name from CSV
-  csvUnitCost: number | null;
-  csvSupplier: string;
-  csvPartNumber: string;
-  matchedMaterial: ExistingMaterial | null;
-  matchMethod: 'name' | 'part_number' | null;
-  priceChanged: boolean;
-  included: boolean;         // user can uncheck rows
-}
-
-type ImportStep = 'pick' | 'map' | 'preview' | 'done';
-
-// Well-known header aliases for auto-mapping
 const HEADER_ALIASES: Record<string, string[]> = {
-  name: ['name', 'material', 'item', 'description', 'product', 'material name', 'item name', 'product name'],
-  unitCost: ['unit cost', 'unit price', 'price', 'cost', 'rate', 'unit_cost', 'unit_price', 'unitcost', 'unitprice', 'amount'],
-  supplier: ['supplier', 'vendor', 'source', 'manufacturer', 'mfg', 'distributor'],
-  partNumber: ['part number', 'part #', 'part#', 'part_number', 'partnumber', 'sku', 'item #', 'item#', 'catalog #', 'catalog#', 'model', 'item number'],
+  name: [
+    'name', 'material', 'item', 'product', 'material name', 'item name',
+    'product name',
+  ],
+  unitCost: [
+    'unit cost', 'unit price', 'price', 'cost', 'rate', 'unit_cost',
+    'unit_price', 'unitcost', 'unitprice', 'amount',
+  ],
+  unit: ['unit', 'uom', 'unit of measure', 'units'],
+  supplier: [
+    'supplier', 'vendor', 'source', 'manufacturer', 'mfg', 'distributor',
+  ],
+  partNumber: [
+    'part number', 'part #', 'part#', 'part_number', 'partnumber', 'sku',
+    'item #', 'item#', 'catalog #', 'catalog#', 'model', 'item number',
+  ],
+  description: ['description', 'details', 'product description', 'notes'],
+  category: ['category', 'material category', 'group', 'type'],
 };
 
-// ============================================================
-// Component
-// ============================================================
+const EMPTY_MAPPING: Record<string, string> = {
+  name: '',
+  unitCost: '',
+  unit: '',
+  supplier: '',
+  partNumber: '',
+  description: '',
+  category: '',
+};
+
+function field(row: CsvRow, mapping: Record<string, string>, key: string): string {
+  return mapping[key] ? row[mapping[key]] ?? '' : '';
+}
+
+function classification(
+  value: MaterialPriceImportReviewRow['classification'],
+): 'matched' | 'review' | 'unmatched' | 'invalid' {
+  return value === 'ambiguous' ? 'review' : value;
+}
+
+function MappingFields({
+  csv,
+  mapping,
+  onChange,
+}: {
+  csv: ParsedCsv;
+  mapping: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  const fields = [
+    ['name', 'Material Name', true],
+    ['unitCost', 'Unit Cost', true],
+    ['unit', 'Unit', false],
+    ['supplier', 'Supplier', false],
+    ['partNumber', 'Part #', false],
+    ['description', 'Description', false],
+    ['category', 'Category', false],
+  ] as const;
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 16,
+    }}>
+      {fields.map(([key, label, required]) => (
+        <ColumnSelect
+          key={key}
+          label={label}
+          required={required}
+          value={mapping[key]}
+          options={availableHeadersFor(csv.headers, mapping, key)}
+          onChange={(value) => onChange({ ...mapping, [key]: value })}
+        />
+      ))}
+    </div>
+  );
+}
 
 export function CsvImportModal({
   onComplete,
   onClose,
 }: {
-  onComplete: () => void;
+  onComplete: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<ImportStep>('pick');
   const [csv, setCsv] = useState<ParsedCsv | null>(null);
-  const [allMaterials, setAllMaterials] = useState<ExistingMaterial[]>([]);
-  const [mapping, setMapping] = useState<Record<string, string>>({
-    name: '',
-    unitCost: '',
-    supplier: '',
-    partNumber: '',
-  });
-  const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
+  const [materials, setMaterials] = useState<MaterialRow[]>([]);
+  const [categories, setCategories] = useState<MaterialCategoryRow[]>([]);
+  const [mapping, setMapping] = useState(EMPTY_MAPPING);
+  const [reviewRows, setReviewRows] = useState<MaterialPriceImportReviewRow[]>([]);
+  const [reviewState, setReviewState] = useState<MaterialPriceImportState | null>(null);
+  const [result, setResult] = useState<MaterialPriceImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [postCommitWarning, setPostCommitWarning] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ updated: number; skipped: number; unmatched: number } | null>(null);
-  const [showUnmatchedOnly, setShowUnmatchedOnly] = useState(false);
 
-  // Load ALL materials on mount (ignores category filter from parent)
   useEffect(() => {
-    window.api.getMaterials().then((mats: ExistingMaterial[]) => setAllMaterials(mats));
+    Promise.all([
+      window.api.getMaterials(),
+      window.api.getMaterialCategories(),
+    ]).then(([loadedMaterials, loadedCategories]) => {
+      setMaterials(loadedMaterials);
+      setCategories(loadedCategories);
+    }).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : 'Could not load the catalogue.');
+    });
   }, []);
 
-  // Prices are written the moment `result` lands, so ANY close after that
-  // point (Done button, overlay click, Esc) must run the caller's refresh
-  // exactly once — otherwise the page keeps showing pre-import prices.
-  const completeFired = useRef(false);
-  const handleClose = () => {
-    if (result && !completeFired.current) {
-      completeFired.current = true;
-      onComplete();
-    }
-    onClose();
-  };
-
   const onFileParsed = (parsed: { headers: string[] }) => {
+    const loaded = parsed as ParsedCsv;
     setError(null);
-    setCsv(parsed as ParsedCsv);
-    setMapping(autoDetectMapping(parsed.headers, HEADER_ALIASES));
+    setCsv(loaded);
+    setMapping({ ...EMPTY_MAPPING, ...autoDetectMapping(loaded.headers, HEADER_ALIASES) });
     setStep('map');
   };
 
-  // ---- Step 2: Column mapping ----
-  const canProceedToPreview = !!mapping.name && !!mapping.unitCost;
-
-  const buildPreview = () => {
+  const buildReview = () => {
     if (!csv) return;
-
-    // Build lookup indices for matching
-    const byName = new Map<string, ExistingMaterial>();
-    const byPartNumber = new Map<string, ExistingMaterial>();
-    for (const mat of allMaterials) {
-      byName.set(mat.name.toLowerCase().trim(), mat);
-      if (mat.part_number) {
-        byPartNumber.set(mat.part_number.toLowerCase().trim(), mat);
-      }
+    try {
+      const sourceRows: MaterialPriceImportSourceRow[] = csv.rows.map((row, index) => ({
+        rowIndex: index,
+        nameText: field(row, mapping, 'name'),
+        unitCostText: field(row, mapping, 'unitCost'),
+        unitText: field(row, mapping, 'unit'),
+        supplierText: field(row, mapping, 'supplier'),
+        partNumberText: field(row, mapping, 'partNumber'),
+        descriptionText: field(row, mapping, 'description'),
+        categoryText: field(row, mapping, 'category'),
+      }));
+      const categoryNames = new Map(categories.map(({ id, name }) => [id, name]));
+      const built = buildMaterialPriceImportReview(
+        sourceRows,
+        materials.map((material) => ({
+          id: material.id,
+          name: material.name,
+          categoryId: material.category_id,
+          categoryName: categoryNames.get(material.category_id) ?? '',
+          unit: material.unit,
+          defaultUnitCost: material.default_unit_cost,
+          supplier: material.supplier,
+          partNumber: material.part_number,
+          description: material.description,
+        })),
+        categories,
+      );
+      setReviewRows(built.rows);
+      setReviewState(createMaterialPriceImportState(
+        built.rows.map((row) => ({
+          id: row.rowIndex,
+          description: row.createDraft.name || `Row ${row.rowIndex + 1}`,
+          price: row.unitCost,
+          unit: row.importedUnit || row.createDraft.unit,
+          classification: classification(row.classification),
+          proposedMaterialId:
+            row.classification === 'matched' ? row.targetMaterialId : null,
+          defaultCreateCategoryId: row.createDraft.categoryId,
+        })),
+        materials.map((material) => ({
+          id: material.id,
+          name: material.name,
+          unit: material.unit,
+          categoryId: material.category_id,
+          defaultUnitCost: material.default_unit_cost,
+        })),
+      ));
+      setError(null);
+      setStep('review');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not review this file.');
     }
-
-    const rows: PreviewRow[] = csv.rows.map((row, i) => {
-      const csvName = (row[mapping.name] || '').trim();
-      const csvUnitCost = parseCsvPrice(row[mapping.unitCost]);
-      const csvSupplier = mapping.supplier ? (row[mapping.supplier] || '').trim() : '';
-      const csvPartNumber = mapping.partNumber ? (row[mapping.partNumber] || '').trim() : '';
-
-      // Try matching: name first, then part number
-      let matched: ExistingMaterial | null = null;
-      let matchMethod: 'name' | 'part_number' | null = null;
-
-      if (csvName) {
-        const nameMatch = byName.get(csvName.toLowerCase());
-        if (nameMatch) {
-          matched = nameMatch;
-          matchMethod = 'name';
-        }
-      }
-
-      if (!matched && csvPartNumber) {
-        const pnMatch = byPartNumber.get(csvPartNumber.toLowerCase());
-        if (pnMatch) {
-          matched = pnMatch;
-          matchMethod = 'part_number';
-        }
-      }
-
-      const priceChanged = matched !== null &&
-        csvUnitCost !== null &&
-        !isNaN(csvUnitCost) &&
-        csvUnitCost !== matched.default_unit_cost;
-
-      return {
-        csvIndex: i,
-        csvName,
-        csvUnitCost,
-        csvSupplier,
-        csvPartNumber,
-        matchedMaterial: matched,
-        matchMethod,
-        priceChanged,
-        included: matched !== null && csvUnitCost !== null && !isNaN(csvUnitCost),
-      };
-    });
-
-    setPreviewRows(rows);
-    setStep('preview');
   };
-
-  // ---- Step 3: Preview + Commit ----
-  const toggleRow = (csvIndex: number) => {
-    setPreviewRows((prev) =>
-      prev.map((r) => (r.csvIndex === csvIndex ? { ...r, included: !r.included } : r))
-    );
-  };
-
-  const toggleAll = (checked: boolean) => {
-    setPreviewRows((prev) =>
-      prev.map((r) => {
-        if (r.matchedMaterial && r.csvUnitCost !== null && !isNaN(r.csvUnitCost)) {
-          return { ...r, included: checked };
-        }
-        return r;
-      })
-    );
-  };
-
-  const stats = useMemo(() => {
-    const matched = previewRows.filter((r) => r.matchedMaterial);
-    const unmatched = previewRows.filter((r) => !r.matchedMaterial);
-    const priceChanges = previewRows.filter((r) => r.priceChanged);
-    const included = previewRows.filter((r) => r.included);
-    // Rows that *can* be included: a NaN/empty-price match can never be checked,
-    // so the header "select all" must compare against these, not all matches.
-    const selectable = previewRows.filter(
-      (r) => r.matchedMaterial && r.csvUnitCost !== null && !isNaN(r.csvUnitCost),
-    );
-    return {
-      matched: matched.length, unmatched: unmatched.length,
-      priceChanges: priceChanges.length, included: included.length,
-      selectable: selectable.length,
-    };
-  }, [previewRows]);
 
   const handleCommit = async () => {
-    const rowsToImport = previewRows
-      .filter((r) => r.included && r.matchedMaterial && r.csvUnitCost !== null)
-      .map((r) => ({
-        materialId: r.matchedMaterial!.id,
-        newPrice: r.csvUnitCost!,
-        supplier: r.csvSupplier || undefined,
-        partNumber: r.csvPartNumber || undefined,
-      }));
-
-    if (rowsToImport.length === 0) return;
-
+    if (!csv || !reviewState) return;
     setImporting(true);
     setError(null);
-
+    setPostCommitWarning(null);
     try {
-      const source = csv?.fileName ? `CSV Import: ${csv.fileName}` : 'CSV Import';
-      const res = await window.api.importPriceSheet(rowsToImport, source);
-      if (res.error) {
-        setError(res.error);
-        setImporting(false);
-        return;
-      }
-      setResult({
-        updated: res.updated,
-        skipped: res.skipped,
-        unmatched: stats.unmatched,
-      });
+      const request = buildMaterialPriceImportRequest(
+        csv.fileName || 'CSV Import',
+        reviewState,
+        reviewRows,
+      );
+      const committed = await window.api.importPriceSheet(request);
+      if (committed.error) throw new Error(committed.error);
+      setResult(committed);
       setStep('done');
-    } catch (err: any) {
-      setError(err.message || 'Import failed.');
+      try {
+        await onComplete();
+      } catch {
+        setPostCommitWarning(
+          'Import completed successfully, but the catalogue could not refresh. '
+          + 'Reopen Materials to see the imported records.',
+        );
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Import failed.');
     } finally {
       setImporting(false);
     }
   };
 
-  // ---- Filtered rows for display ----
-  const displayRows = showUnmatchedOnly
-    ? previewRows.filter((r) => !r.matchedMaterial)
-    : previewRows;
+  const updateDraft = (
+    id: number,
+    patch: Partial<MaterialPriceImportReviewRow['createDraft']>,
+  ) => {
+    setReviewRows((current) => current.map((row) => (
+      row.rowIndex === id
+        ? { ...row, createDraft: { ...row.createDraft, ...patch } }
+        : row
+    )));
+    setReviewState((current) => current ? {
+      ...current,
+      rows: current.rows.map((row) => row.id === id ? {
+        ...row,
+        description: patch.name ?? row.description,
+        unit: patch.unit ?? row.unit,
+        sourceUnit: patch.unit ?? row.sourceUnit,
+      } : row),
+    } : current);
+  };
 
+  const requestClose = () => {
+    if (!importing) onClose();
+  };
 
-  // ============================================================
-  // Render
-  // ============================================================
+  const title = step === 'pick'
+    ? 'Import Prices from CSV'
+    : step === 'map'
+      ? 'Map Columns'
+      : step === 'review'
+        ? 'Review Import'
+        : 'Import Complete';
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
+    <div className="modal-overlay" onClick={requestClose}>
       <div
         className="modal"
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: step === 'preview' ? 900 : 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: step === 'review' ? 1060 : 620,
+          maxHeight: '88vh',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
       >
-        {/* Header */}
-        <h3 style={{ marginBottom: 4 }}>
-          {step === 'pick' && 'Import Prices from CSV'}
-          {step === 'map' && 'Map Columns'}
-          {step === 'preview' && 'Preview Import'}
-          {step === 'done' && 'Import Complete'}
-        </h3>
-
-        {step !== 'done' && (
-          <div className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>
-            {step === 'pick' && 'Select a CSV file with material names and updated prices.'}
-            {step === 'map' && `${csv?.rows.length} rows from ${csv?.fileName}. Map the CSV columns to the right fields.`}
-            {step === 'preview' && 'Review changes before committing. Uncheck rows to skip them.'}
-          </div>
-        )}
-
+        <h3 style={{ marginBottom: 12 }}>{title}</h3>
         {error && (
-          <div style={{
+          <div role="alert" style={{
             background: 'rgba(239, 68, 68, 0.15)',
             border: '1px solid var(--danger)',
             borderRadius: 6,
             padding: '10px 14px',
             marginBottom: 16,
-            fontSize: 13,
-            color: '#fca5a5',
           }}>
             {error}
           </div>
         )}
-
-        {/* ---- STEP: Pick file ---- */}
-        {step === 'pick' && (
-          <div style={{ padding: '20px 0' }}>
-            <CsvDropZone onParsed={onFileParsed} onError={setError}
-              hint={
-                <div style={{ marginTop: 20, fontSize: 12, color: 'var(--text-muted)' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Expected format:</div>
-                  <div style={{ fontFamily: 'monospace', background: 'var(--bg-tertiary)', borderRadius: 6, padding: '10px 14px', lineHeight: 1.8 }}>
-                    Name, Unit Cost, Supplier, Part #<br/>
-                    8" PVC SDR-35, 12.50, Ferguson, PVC0835<br/>
-                    4" DI Gate Valve, 285.00, HD Supply, GV-4DI
-                  </div>
-                  <div style={{ marginTop: 8 }}>Column order does not matter. You will map columns in the next step.</div>
-                </div>
-              } />
+        {postCommitWarning && (
+          <div role="alert" style={{
+            background: 'rgba(245, 158, 11, 0.15)',
+            border: '1px solid var(--warning)',
+            borderRadius: 6,
+            padding: '10px 14px',
+            marginBottom: 16,
+          }}>
+            {postCommitWarning}
           </div>
         )}
 
-        {/* ---- STEP: Map columns ---- */}
+        {step === 'pick' && (
+          <>
+            <div style={{
+              background: 'var(--bg-tertiary)',
+              borderRadius: 8,
+              padding: 14,
+              marginBottom: 16,
+            }}>
+              <p style={{ marginTop: 0 }}>
+                A header row is required. Required fields: <strong>Material Name</strong>
+                {' '}and <strong>Unit Cost</strong>.
+              </p>
+              <p>
+                Optional fields: Unit, Supplier, Part Number, Description and Category.
+                Header names may vary; columns are mapped on the next step.
+              </p>
+              <p>
+                CSV, TSV and TXT files may use comma or tab separation, with up to
+                {' '}10,000 data rows. A missing Unit defaults to EA; a missing or
+                unknown Category defaults to Uncategorised.
+              </p>
+              <details>
+                <summary style={{ cursor: 'pointer' }}>Show a valid example</summary>
+                <pre style={{
+                  marginBottom: 0,
+                  overflowX: 'auto',
+                  overflowWrap: 'anywhere',
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {`Material Name,Unit Cost,Unit,Supplier,Part Number,Description,Category\nCisco Catalyst 9600 Chassis,16488.18,EA,ITNest,C9606R,"Core network chassis",IT Equipment`}
+                </pre>
+              </details>
+            </div>
+            <CsvDropZone
+              onParsed={onFileParsed}
+              onError={setError}
+              hint={<p className="text-muted">CSV, TSV or text; up to 10,000 rows.</p>}
+            />
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            </div>
+          </>
+        )}
+
         {step === 'map' && csv && (
-          <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <ColumnSelect label="Material Name" required value={mapping.name}
-                options={availableHeadersFor(csv.headers, mapping, 'name')}
-                onChange={(v) => setMapping({ ...mapping, name: v })} />
-              <ColumnSelect label="Unit Cost" required value={mapping.unitCost}
-                options={availableHeadersFor(csv.headers, mapping, 'unitCost')}
-                onChange={(v) => setMapping({ ...mapping, unitCost: v })} />
-              <ColumnSelect label="Supplier" value={mapping.supplier}
-                options={availableHeadersFor(csv.headers, mapping, 'supplier')}
-                onChange={(v) => setMapping({ ...mapping, supplier: v })} />
-              <ColumnSelect label="Part #" value={mapping.partNumber}
-                options={availableHeadersFor(csv.headers, mapping, 'partNumber')}
-                onChange={(v) => setMapping({ ...mapping, partNumber: v })} />
-            </div>
-
-            {/* Sample preview */}
-            <div style={{ marginTop: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)' }}>
-                First 3 rows with current mapping:
-              </div>
-              <table className="data-table" style={{ fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th className="text-right">Unit Cost</th>
-                    <th>Supplier</th>
-                    <th>Part #</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {csv.rows.slice(0, 3).map((row, i) => (
-                    <tr key={i}>
-                      <td>{mapping.name ? row[mapping.name] || '--' : '--'}</td>
-                      <td className="text-right">{mapping.unitCost ? row[mapping.unitCost] || '--' : '--'}</td>
-                      <td>{mapping.supplier ? row[mapping.supplier] || '--' : '--'}</td>
-                      <td>{mapping.partNumber ? row[mapping.partNumber] || '--' : '--'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
+          <>
+            <p className="text-muted">
+              {csv.rows.length} rows from {csv.fileName}. Map the available fields.
+              New materials use EA and Uncategorised when those fields are absent.
+            </p>
+            <MappingFields csv={csv} mapping={mapping} onChange={setMapping} />
             <div className="modal-actions" style={{ marginTop: 24 }}>
               <button className="btn btn-secondary" onClick={() => setStep('pick')}>Back</button>
               <button
                 className="btn btn-primary"
-                onClick={buildPreview}
-                disabled={!canProceedToPreview}
+                onClick={buildReview}
+                disabled={!mapping.name || !mapping.unitCost}
               >
-                Preview Import
+                Review all rows
               </button>
             </div>
-          </div>
+          </>
         )}
 
-        {/* ---- STEP: Preview ---- */}
-        {step === 'preview' && (
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-            {/* Stats bar */}
-            <div style={{
-              display: 'flex',
-              gap: 16,
-              marginBottom: 16,
-              fontSize: 13,
-            }}>
-              <div style={{
-                padding: '6px 12px',
-                borderRadius: 6,
-                background: 'rgba(34, 197, 94, 0.12)',
-                color: 'var(--success)',
-              }}>
-                {stats.matched} matched
-              </div>
-              <div style={{
-                padding: '6px 12px',
-                borderRadius: 6,
-                background: 'rgba(245, 158, 11, 0.12)',
-                color: 'var(--warning)',
-              }}>
-                {stats.unmatched} unrecognized
-              </div>
-              <div style={{
-                padding: '6px 12px',
-                borderRadius: 6,
-                background: 'rgba(59, 130, 246, 0.12)',
-                color: 'var(--accent)',
-              }}>
-                {stats.priceChanges} price change{stats.priceChanges !== 1 ? 's' : ''}
-              </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input
-                  type="checkbox"
-                  id="showUnmatched"
-                  checked={showUnmatchedOnly}
-                  onChange={(e) => setShowUnmatchedOnly(e.target.checked)}
-                />
-                <label htmlFor="showUnmatched" style={{ fontSize: 12, cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  Show unrecognized only
-                </label>
-              </div>
-            </div>
-
-            {/* Preview table */}
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              <table className="data-table" style={{ fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 36 }}>
-                      <input
-                        type="checkbox"
-                        checked={stats.included === stats.selectable && stats.selectable > 0}
-                        onChange={(e) => toggleAll(e.target.checked)}
-                        title="Select all matched rows"
-                      />
-                    </th>
-                    <th>CSV Name</th>
-                    <th>Matched To</th>
-                    <th>Match</th>
-                    <th className="text-right">Current Price</th>
-                    <th className="text-right">New Price</th>
-                    <th className="text-right">Change</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayRows.map((row) => {
-                    const mat = row.matchedMaterial;
-                    const diff = mat && row.csvUnitCost !== null
-                      ? row.csvUnitCost - mat.default_unit_cost
-                      : null;
-                    const pctChange = mat && mat.default_unit_cost > 0 && diff !== null
-                      ? (diff / mat.default_unit_cost) * 100
-                      : null;
-
-                    return (
-                      <tr
-                        key={row.csvIndex}
-                        style={{
-                          opacity: !mat ? 0.6 : 1,
-                          background: !mat
-                            ? 'rgba(245, 158, 11, 0.05)'
-                            : row.included
-                            ? undefined
-                            : 'rgba(255,255,255,0.02)',
-                        }}
-                      >
-                        <td>
-                          {mat && row.csvUnitCost !== null && !isNaN(row.csvUnitCost) ? (
-                            <input
-                              type="checkbox"
-                              checked={row.included}
-                              onChange={() => toggleRow(row.csvIndex)}
-                            />
-                          ) : (
-                            <span className="text-muted">--</span>
-                          )}
-                        </td>
-                        <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {row.csvName || <span className="text-muted">(empty)</span>}
-                        </td>
-                        <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {mat ? mat.name : <span style={{ color: 'var(--warning)' }}>No match</span>}
-                        </td>
-                        <td>
-                          {row.matchMethod === 'name' && (
-                            <span style={{ fontSize: 11, color: 'var(--success)' }}>Name</span>
-                          )}
-                          {row.matchMethod === 'part_number' && (
-                            <span style={{ fontSize: 11, color: 'var(--accent)' }}>Part #</span>
-                          )}
-                          {!row.matchMethod && (
-                            <span style={{ fontSize: 11, color: 'var(--warning)' }}>--</span>
-                          )}
-                        </td>
-                        <td className="text-right">
-                          {mat ? formatCurrency(mat.default_unit_cost) : '--'}
-                        </td>
-                        <td className="text-right">
-                          {row.csvUnitCost !== null && !isNaN(row.csvUnitCost)
-                            ? formatCurrency(row.csvUnitCost)
-                            : <span style={{ color: 'var(--warning)' }}>Invalid</span>
-                          }
-                        </td>
-                        <td className="text-right">
-                          {diff !== null && !isNaN(diff) ? (
-                            <span style={{
-                              color: diff > 0 ? 'var(--danger)' : diff < 0 ? 'var(--success)' : 'var(--text-muted)',
-                              fontWeight: diff !== 0 ? 600 : 400,
-                            }}>
-                              {diff > 0 ? '+' : ''}{formatCurrency(diff)}
-                              {pctChange !== null && (
-                                <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 400 }}>
-                                  ({diff > 0 ? '+' : ''}{pctChange.toFixed(1)}%)
-                                </span>
-                              )}
-                            </span>
-                          ) : '--'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="modal-actions" style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <button className="btn btn-secondary" onClick={() => setStep('map')}>Back</button>
-              <div style={{ flex: 1 }} />
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginRight: 8, alignSelf: 'center' }}>
-                {stats.included} price{stats.included !== 1 ? 's' : ''} will be updated
-              </div>
-              <button
-                className="btn btn-primary"
-                onClick={handleCommit}
-                disabled={importing || stats.included === 0}
-              >
-                {importing ? 'Importing...' : `Update ${stats.included} Price${stats.included !== 1 ? 's' : ''}`}
-              </button>
-            </div>
-          </div>
+        {step === 'review' && reviewState && (
+          <MaterialPriceImportReview
+            state={reviewState}
+            drafts={reviewRows}
+            categories={categories}
+            importing={importing}
+            onStateChange={setReviewState}
+            onDraftChange={updateDraft}
+            onBack={() => setStep('map')}
+            onConfirm={handleCommit}
+          />
         )}
 
-        {/* ---- STEP: Done ---- */}
         {step === 'done' && result && (
-          <div style={{ padding: '24px 0' }}>
-            <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ fontSize: 40, marginBottom: 8 }}>&#10003;</div>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Import Complete</div>
-            </div>
-
+          <div aria-live="polite">
+            <p>Import completed atomically. Every changed price has provenance.</p>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr',
+              gridTemplateColumns: 'repeat(3, 1fr)',
               gap: 12,
-              marginBottom: 24,
             }}>
-              <div style={{
-                background: 'var(--bg-tertiary)',
-                borderRadius: 8,
-                padding: '16px',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--success)' }}>{result.updated}</div>
-                <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>Prices Updated</div>
-              </div>
-              <div style={{
-                background: 'var(--bg-tertiary)',
-                borderRadius: 8,
-                padding: '16px',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-muted)' }}>{result.skipped}</div>
-                <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>Unchanged</div>
-              </div>
-              <div style={{
-                background: 'var(--bg-tertiary)',
-                borderRadius: 8,
-                padding: '16px',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--warning)' }}>{result.unmatched}</div>
-                <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>Unrecognized</div>
-              </div>
+              {[
+                ['Updated', result.updated],
+                ['Created', result.created],
+                ['Unchanged', result.unchanged],
+                ['Ignored', result.ignored],
+                ['Invalid', result.invalid],
+                ['Total', result.total],
+              ].map(([label, value]) => (
+                <div key={label} style={{
+                  background: 'var(--bg-tertiary)',
+                  borderRadius: 8,
+                  padding: 14,
+                  textAlign: 'center',
+                }}>
+                  <strong style={{ fontSize: 22 }}>{value}</strong>
+                  <div className="text-muted">{label}</div>
+                </div>
+              ))}
             </div>
-
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
-              Every price change has been logged to price history for audit.
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={handleClose}>
+            <div className="modal-actions" style={{ marginTop: 20 }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => onClose()}
+              >
                 Done
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Close button for pick/map steps */}
-        {(step === 'pick' || step === 'map') && !error && (
-          <div className="modal-actions" style={{ marginTop: step === 'pick' ? 0 : undefined }}>
-            <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
           </div>
         )}
       </div>

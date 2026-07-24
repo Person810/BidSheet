@@ -25,6 +25,8 @@ import type {
   PriceImportCommitResult,
   PriceImportContext,
   PriceImportResult,
+  MaterialPriceImportRequest,
+  MaterialPriceImportResult,
   PriceImportUpdate,
   ProductionRateRow,
   QuoteRow,
@@ -161,7 +163,7 @@ declare global {
       parseCsvPath: (filePath: string) => Promise<CsvParseResult>;
       /** Resolve a drag-and-dropped File to its on-disk path (Electron webUtils). */
       getDroppedFilePath: (file: File) => string;
-      importPriceSheet: (updates: PriceImportUpdate[], source: string) => Promise<PriceImportResult>;
+      importPriceSheet: (request: MaterialPriceImportRequest) => Promise<MaterialPriceImportResult>;
       priceImportContext: (jobId: number) => Promise<PriceImportContext>;
       priceImportCommit: (jobId: number, payload: PriceImportCommitPayload) => Promise<PriceImportCommitResult>;
 
