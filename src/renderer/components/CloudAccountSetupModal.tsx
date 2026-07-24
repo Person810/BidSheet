@@ -18,7 +18,9 @@ import { E2eeEnrollStep, RecoveryKeyPanel, ShortCodeCheckbox } from './E2eeEnrol
  * credentials/TOTP ladder, but instead of enrolling a solo encryption key it
  * redeems the invite code (which generates this member's keypair + personal
  * recovery key) and ends waiting on an owner's approval — no trial pitch, no
- * subscribe button, since the team shares one subscription. Redeeming before
+ * subscribe button, since the team shares one subscription. That last screen
+ * shows this device's safety code, because approving is gated on the owner
+ * reading it back out of band (see CloudSyncCard's TeamSection). Redeeming before
  * the fresh account ever gets a key or data is deliberate: the server can
  * then reclaim the empty auto-provisioned stub (it refuses when the stub
  * holds real data). The iOS app follows this same server flow — sign up,
@@ -44,8 +46,15 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   // steps with 'create' but swaps the encryption + trial tail for redeem.
   const [mode, setMode] = useState<'create' | 'join'>('create');
   const [inviteCode, setInviteCode] = useState('');
+  // The code is collected once, on 'join-code'. The redeem screen only puts
+  // the field back when the server rejected it (or the user asks), so the
+  // happy path isn't asked to paste the same code twice.
+  const [editCode, setEditCode] = useState(false);
   const [shortCode, setShortCode] = useState(false);
   const [joinRecoveryKey, setJoinRecoveryKey] = useState<string | null>(null);
+  // This device's member-key code; the owner is prompted to verify it out of
+  // band before approving, so the joiner has to leave here knowing it.
+  const [joinSafetyCode, setJoinSafetyCode] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
@@ -126,11 +135,21 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
 
   // Redeem the invite: generates this member's keypair + personal recovery key
   // and joins the team account (pending an owner's approval). On a bad/expired
-  // code the error toasts and the code field stays on screen to correct.
+  // code the error toasts and the code field comes back so it can be fixed.
   const handleJoin = () =>
     act(async () => {
-      const res = await window.api.cloudOrgRedeemInvite(inviteCode.trim(), shortCode);
+      let res;
+      try {
+        res = await window.api.cloudOrgRedeemInvite(inviteCode.trim(), shortCode);
+      } catch (err) {
+        setEditCode(true);
+        throw err; // act() turns it into the toast
+      }
       setJoinRecoveryKey(res.recoveryKey);
+      // Redeem cached this device's keypair locally, so the code is readable
+      // straight away. Best-effort: a missing code costs the joiner a trip to
+      // Settings, it must not strand them mid-wizard.
+      setJoinSafetyCode(await window.api.cloudE2eeSafetyCode().catch(() => null));
     });
 
   // Deliberately not act(): the poll can run minutes and "Maybe Later" must
@@ -357,16 +376,30 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
                 encrypted data on another computer, and it is <strong>not</strong> your login
                 password.
               </p>
-              <div className="form-group">
-                <label>Invite code</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={inviteCode}
-                  placeholder="Paste the code your teammate sent you"
-                  onChange={(e) => setInviteCode(e.target.value)}
-                />
-              </div>
+              {editCode || !inviteCode.trim() ? (
+                <div className="form-group">
+                  <label>Invite code</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={inviteCode}
+                    autoFocus
+                    placeholder="Paste the code your teammate sent you"
+                    onChange={(e) => setInviteCode(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <p className="text-muted" style={{ fontSize: 12, marginBottom: 10 }}>
+                  Using invite code <strong style={{ fontFamily: 'monospace' }}>{inviteCode.trim()}</strong>.{' '}
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    style={{ fontSize: 11, padding: '1px 8px' }}
+                    onClick={() => setEditCode(true)}>
+                    Use a different code
+                  </button>
+                </p>
+              )}
               <ShortCodeCheckbox checked={shortCode} onChange={setShortCode} />
               <div className="modal-actions">
                 <button className="btn btn-secondary" disabled={busy} onClick={onClose}>
@@ -388,10 +421,16 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
               <strong>You've joined the team.</strong> An owner now needs to approve your
               access — only they can hand this computer the key that unlocks the shared data.
             </p>
+            {joinSafetyCode && (
+              <p style={{ fontSize: 13, marginBottom: 8 }}>
+                When they approve you, they'll ask for your <strong>device code</strong>. Read
+                them: <strong style={{ fontFamily: 'monospace' }}>{joinSafetyCode}</strong>
+              </p>
+            )}
             <p className="text-muted mb-16">
               Ask them to open Settings → Cloud Sync → Team and approve you. The shared jobs
               and catalog appear automatically after that; Settings → Cloud Sync shows where
-              things stand in the meantime.
+              things stand — including this code — in the meantime.
             </p>
             <div className="modal-actions">
               <button className="btn btn-primary" onClick={onClose}>Done</button>
