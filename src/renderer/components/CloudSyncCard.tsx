@@ -3,7 +3,7 @@ import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, initCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
 import { CloudAccountSetupModal } from './CloudAccountSetupModal';
 import { CloudSignInModal } from './CloudSignInModal';
-import { RecoveryKeyModal } from './E2eeEnrollment';
+import { RecoveryKeyModal, ShortCodeCheckbox } from './E2eeEnrollment';
 import { formatBytes, formatDateTime } from '../utils/format';
 
 /**
@@ -149,6 +149,8 @@ export function CloudSyncCard() {
           </div>
           <p className="text-muted" style={{ fontSize: 13, marginTop: 12 }}>
             New to BidSheet Cloud? First 30 days free, then $20/month for your whole company.
+            Got an invite code from a teammate? Hit <strong>Create Account</strong> — you'll
+            join their subscription instead of starting your own.
           </p>
         </div>
       ) : !ready ? (
@@ -397,7 +399,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const handleJoin = async () => {
     setBusy(true);
     try {
-      const res = await window.api.cloudOrgRedeemInvite(joinToken.trim());
+      const res = await window.api.cloudOrgRedeemInvite(joinToken.trim(), shortCode);
       setJoinToken('');
       setJustJoined(true);
       setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
@@ -485,19 +487,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
             way to unlock your data on a new computer, and it is <strong>not</strong> your login
             password.
           </p>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, marginBottom: 10 }}>
-            <input
-              type="checkbox"
-              checked={shortCode}
-              onChange={(e) => setShortCode(e.target.checked)}
-              style={{ marginTop: 2 }}
-            />
-            <span>
-              Use a <strong>shorter recovery key</strong> (16 characters instead of ~52). Easier to
-              write down, and still safe to store offline. Recommended only if you'll be typing it by
-              hand rather than saving it in a password manager.
-            </span>
-          </label>
+          <ShortCodeCheckbox checked={shortCode} onChange={setShortCode} />
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleSetup}>
             {busy ? 'Setting up…' : 'Finish Encryption Setup'}
           </button>
