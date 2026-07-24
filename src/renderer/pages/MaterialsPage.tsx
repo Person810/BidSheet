@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { MaterialCategoryManager } from '../components/MaterialCategoryManager';
 import {
   FuzzyAutocomplete,
   categoriesToAutocomplete,
@@ -74,6 +75,7 @@ export function MaterialsPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   const loadCategories = useCallback(async () => {
     const cats = await window.api.getMaterialCategories();
@@ -203,6 +205,8 @@ export function MaterialsPage() {
       <div className="materials-sidebar">
         <div className="materials-sidebar-header">
           <h3>Categories</h3>
+          <button className="btn btn-sm btn-secondary" onClick={() => setShowCategoryManager(true)}
+            style={{ fontSize: 11, padding: '2px 8px' }}>Manage</button>
         </div>
         <div
           className={`cat-item ${selectedCategory === null ? 'active' : ''}`}
@@ -371,6 +375,12 @@ export function MaterialsPage() {
           onClose={() => setShowImportModal(false)}
         />
       )}
+
+      <MaterialCategoryManager
+        open={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
+        onChanged={() => { loadCategories(); loadMaterials(); }}
+      />
 
       {/* Add/Edit Modal */}
       {showModal && (

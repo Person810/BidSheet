@@ -16,7 +16,11 @@ import type {
   JobDocumentRow,
   JobRow,
   SaveIndirectCostPayload,
+  DeleteMaterialCategoryPayload,
+  DeleteMaterialCategoryResult,
+  MaterialCategoryManagementRow,
   MaterialCategoryRow,
+  MaterialCategoryUsage,
   MaterialRow,
   MaterialWithCategoryRow,
   PageScaleListEntry,
@@ -36,6 +40,7 @@ import type {
   SaveEquipmentPayload,
   SaveJobPayload,
   SaveLaborRolePayload,
+  SaveMaterialCategoryPayload,
   SaveMaterialPayload,
   SavePageScalePayload,
   SaveProductionRatePayload,
@@ -70,6 +75,11 @@ declare global {
     api: {
       // Materials
       getMaterialCategories: () => Promise<MaterialCategoryRow[]>;
+      getMaterialCategoryManagement: () => Promise<MaterialCategoryManagementRow[]>;
+      saveMaterialCategory: (payload: SaveMaterialCategoryPayload) => Promise<MaterialCategoryRow>;
+      getMaterialCategoryUsage: (categoryId: number) => Promise<MaterialCategoryUsage>;
+      deleteMaterialCategory: (payload: DeleteMaterialCategoryPayload) => Promise<DeleteMaterialCategoryResult>;
+      reassignMaterialsCategory: (materialIds: number[], targetCategoryId: number) => Promise<SqlRunResult>;
       getMaterials: (categoryId?: number, includeInactive?: boolean) => Promise<MaterialRow[]>;
       getMaterial: (id: number) => Promise<MaterialRow | undefined>;
       saveMaterial: (material: SaveMaterialPayload) => Promise<SqlRunResult>;

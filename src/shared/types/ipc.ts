@@ -30,6 +30,33 @@ export interface MaterialCategoryRow {
   description: string | null;
 }
 
+export interface SaveMaterialCategoryPayload {
+  id?: number;
+  name: string;
+  description?: string | null;
+}
+
+export interface MaterialCategoryUsage {
+  categoryId: number;
+  materialCount: number;
+}
+
+export interface MaterialCategoryManagementRow extends MaterialCategoryRow {
+  materialCount: number;
+}
+
+export interface DeleteMaterialCategoryPayload {
+  categoryId: number;
+  replacementCategoryId: number | null;
+  expectedMaterialCount: number;
+}
+
+export interface DeleteMaterialCategoryResult {
+  deletedCategoryId: number;
+  replacementCategoryId: number | null;
+  reassignedMaterialCount: number;
+}
+
 export interface MaterialRow {
   id: number;
   category_id: number;
