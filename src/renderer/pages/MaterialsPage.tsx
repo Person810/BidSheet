@@ -98,6 +98,12 @@ export function MaterialsPage() {
     loadMaterials();
   }, [loadMaterials]);
 
+  const handleMaterialImportComplete = useCallback(async () => {
+    await Promise.all([loadCategories(), loadMaterials()]);
+    setSearchTerm('');
+    setSelectedCategory(null);
+  }, [loadCategories, loadMaterials]);
+
   // While a search is active it spans the whole catalog, not just the
   // selected category -- otherwise "gasket" finds nothing when you
   // happen to be sitting in Bedding & Backfill.
@@ -367,7 +373,7 @@ export function MaterialsPage() {
 
       {showImportModal && (
         <CsvImportModal
-          onComplete={loadMaterials}
+          onComplete={handleMaterialImportComplete}
           onClose={() => setShowImportModal(false)}
         />
       )}
