@@ -413,6 +413,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV45,
   migrateV46,
   migrateV47,
+  migrateV48,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -921,6 +922,19 @@ function migrateV47(db: Database.Database): void {
     INSERT INTO schema_version (version) VALUES (47);
   `);
 }
+
+function migrateV48(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN hdd_rates_json TEXT;
+    ALTER TABLE trench_profiles ADD COLUMN method TEXT DEFAULT 'open_cut';
+    ALTER TABLE trench_profiles ADD COLUMN hdd_location TEXT;
+    ALTER TABLE trench_profiles ADD COLUMN hdd_include_slurry INTEGER DEFAULT 1;
+    ALTER TABLE trench_profiles ADD COLUMN hdd_include_pits INTEGER DEFAULT 1;
+    ALTER TABLE trench_profiles ADD COLUMN hdd_margin_pct REAL DEFAULT 15.0;
+    INSERT INTO schema_version (version) VALUES (48);
+  `);
+}
+
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */
 const SQL_RANDOM_UUID = `lower(

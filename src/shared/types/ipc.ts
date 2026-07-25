@@ -404,6 +404,11 @@ export interface TrenchProfileRow {
   bedding_depth_ft: number;
   created_at: string;
   updated_at: string;
+  method?: string; // 'open_cut' | 'hdd'
+  hdd_location?: string | null;
+  hdd_include_slurry?: number | null;
+  hdd_include_pits?: number | null;
+  hdd_margin_pct?: number | null;
 }
 
 export interface SaveTrenchProfilePayload {
@@ -427,6 +432,11 @@ export interface SaveTrenchProfilePayload {
   beddingDepthFt?: number;
   /** Extra loose material % on imported bedding/backfill (0 = off) */
   compactionPct?: number;
+  method?: string; // 'open_cut' | 'hdd'
+  hddLocation?: string | null;
+  hddIncludeSlurry?: boolean | null;
+  hddIncludePits?: boolean | null;
+  hddMarginPct?: number | null;
 }
 
 // ================================================================
@@ -509,6 +519,7 @@ export interface AppSettingsRow {
   enabled_tools: string | null;
   /** Free-text trades with no seed catalog (comma-separated); null = none. */
   custom_trades: string | null;
+  hdd_rates_json?: string | null;
 }
 
 export interface SaveSettingsPayload {
@@ -532,6 +543,7 @@ export interface SaveSettingsPayload {
   enabledTools?: string | null;
   /** Comma-separated free-text trade names, null for none. */
   customTrades?: string | null;
+  hddRatesJson?: string | null;
 }
 
 /** Setup-wizard answers that don't affect which catalog gets seeded. */

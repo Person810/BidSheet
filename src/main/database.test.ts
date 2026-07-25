@@ -270,3 +270,17 @@ describe('sample-catalog management', () => {
     expect((db.prepare('SELECT COUNT(*) AS n FROM assemblies WHERE is_active = 1').get() as any).n).toBe(seedAsm + 1);
   });
 });
+
+describe('migration v48 — HDD columns and rates', () => {
+  it('adds hdd_rates_json to app_settings, and hdd columns to trench_profiles', () => {
+    const db = dbAtVersion(48);
+    const settingsCols = (db.prepare('PRAGMA table_info(app_settings)').all() as any[]).map((c) => c.name);
+    expect(settingsCols).toContain('hdd_rates_json');
+
+    const profileCols = (db.prepare('PRAGMA table_info(trench_profiles)').all() as any[]).map((c) => c.name);
+    expect(profileCols).toEqual(
+      expect.arrayContaining(['method', 'hdd_location', 'hdd_include_slurry', 'hdd_include_pits', 'hdd_margin_pct'])
+    );
+  });
+});
+

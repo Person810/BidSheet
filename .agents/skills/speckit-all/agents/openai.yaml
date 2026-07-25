@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spec Kit All"
+  short_description: "Run the complete gated Spec Kit workflow"
+  default_prompt: "Use $speckit-all to take this feature through specification, clarification, planning, tasks, and analysis with parallel subagent research where safe."

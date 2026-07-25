@@ -28,7 +28,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
           grade_pct = ?, run_length_lf = ?, trench_width_ft = ?, bench_width_ft = ?,
           bedding_type = ?, backfill_type = ?, sort_order = ?,
           pipe_material_id = ?, bedding_material_id = ?, backfill_material_id = ?, bedding_depth_ft = ?,
-          compaction_pct = ?,
+          compaction_pct = ?, method = ?, hdd_location = ?, hdd_include_slurry = ?, hdd_include_pits = ?, hdd_margin_pct = ?,
           updated_at = datetime('now', 'localtime')
         WHERE id = ?`
       ).run(
@@ -38,6 +38,11 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         intOrNull(profile.pipeMaterialId), intOrNull(profile.beddingMaterialId),
         intOrNull(profile.backfillMaterialId), profile.beddingDepthFt ?? 0.5,
         profile.compactionPct ?? 0,
+        profile.method ?? 'open_cut',
+        profile.hddLocation ?? null,
+        profile.hddIncludeSlurry === undefined ? null : (profile.hddIncludeSlurry ? 1 : 0),
+        profile.hddIncludePits === undefined ? null : (profile.hddIncludePits ? 1 : 0),
+        profile.hddMarginPct ?? null,
         profile.id
       );
       return { id: profile.id };
@@ -45,15 +50,21 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       const result = db.prepare(
         `INSERT INTO trench_profiles (job_id, label, pipe_size_in, pipe_material, start_depth_ft,
           grade_pct, run_length_lf, trench_width_ft, bench_width_ft, bedding_type, backfill_type, sort_order,
-          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft, compaction_pct)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft, compaction_pct,
+          method, hdd_location, hdd_include_slurry, hdd_include_pits, hdd_margin_pct)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         profile.jobId, profile.label ?? '', profile.pipeSizeIn, profile.pipeMaterial ?? '', profile.startDepthFt,
         profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
         profile.beddingType ?? '', profile.backfillType ?? '', profile.sortOrder ?? 0,
         intOrNull(profile.pipeMaterialId), intOrNull(profile.beddingMaterialId),
         intOrNull(profile.backfillMaterialId), profile.beddingDepthFt ?? 0.5,
-        profile.compactionPct ?? 0
+        profile.compactionPct ?? 0,
+        profile.method ?? 'open_cut',
+        profile.hddLocation ?? null,
+        profile.hddIncludeSlurry === undefined ? null : (profile.hddIncludeSlurry ? 1 : 0),
+        profile.hddIncludePits === undefined ? null : (profile.hddIncludePits ? 1 : 0),
+        profile.hddMarginPct ?? null
       );
       return { id: Number(result.lastInsertRowid) };
     }
