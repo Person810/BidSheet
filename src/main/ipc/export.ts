@@ -10,6 +10,7 @@ import { fmtMoney } from '../../shared/calcExplain';
 import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
 import { grantPathAccess, isPathReadable } from './file-access';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
+import { commitMaterialPriceImport } from './export/material-price-import-service';
 
 export function registerExportHandlers(db: Database.Database): void {
   // ================================================================
@@ -439,57 +440,12 @@ export function registerExportHandlers(db: Database.Database): void {
 
   safeHandle(
     'db:materials:import-prices',
-    (
-      _event,
-      updates: { materialId: number; newPrice: number; supplier?: string; partNumber?: string }[],
-      source: string
-    ) => {
+    (_event, request: any) => {
       try {
-        let updated = 0;
-        let skipped = 0;
-
-        const importAll = db.transaction(() => {
-          const getMat = db.prepare('SELECT id, default_unit_cost FROM materials WHERE id = ?');
-          const logPrice = db.prepare(
-            'INSERT INTO price_updates (material_id, old_price, new_price, source) VALUES (?, ?, ?, ?)'
-          );
-          const updateMat = db.prepare(
-            `UPDATE materials SET default_unit_cost = ?, last_price_update = datetime('now', 'localtime'),
-              supplier = COALESCE(?, supplier), part_number = COALESCE(?, part_number),
-              cost_per_cy = CASE WHEN tons_per_cy > 0 THEN round(? * tons_per_cy, 2) ELSE cost_per_cy END
-            WHERE id = ?`
-          );
-
-          for (const u of updates) {
-            const existing = getMat.get(u.materialId) as any;
-            if (!existing) {
-              skipped++;
-              continue;
-            }
-
-            if (existing.default_unit_cost === u.newPrice) {
-              skipped++;
-              continue;
-            }
-
-            logPrice.run(u.materialId, existing.default_unit_cost, u.newPrice, source);
-            updateMat.run(
-              u.newPrice,
-              u.supplier || null,
-              u.partNumber || null,
-              u.newPrice,
-              u.materialId
-            );
-            updated++;
-          }
-        });
-
-        importAll();
-        logger.info('csv:import', `Price import from "${source}": ${updated} updated, ${skipped} skipped`);
-        return { updated, skipped };
+        return commitMaterialPriceImport(db, request);
       } catch (err: any) {
         logger.error('csv:import', 'Price import failed', err.stack || err.message);
-        return { error: err.message, updated: 0, skipped: 0 };
+        return { error: err.message, total: 0, created: 0, updated: 0, unchanged: 0, ignored: 0, invalid: 0 };
       }
     }
   );

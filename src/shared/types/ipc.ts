@@ -532,6 +532,10 @@ export interface AppSettingsRow {
   job_number_format: string;
   job_number_start: number;
   unit_system: string;
+  /** Hand-picked sidebar tools (comma-separated ids); null = follow trades. */
+  enabled_tools: string | null;
+  /** Free-text trades with no seed catalog (comma-separated); null = none. */
+  custom_trades: string | null;
 }
 
 export interface SaveSettingsPayload {
@@ -551,6 +555,18 @@ export interface SaveSettingsPayload {
   jobNumberFormat?: string;
   jobNumberStart?: number;
   unitSystem?: 'imperial' | 'metric';
+  /** Comma-separated tool ids, '' for none, null to go back to trades. */
+  enabledTools?: string | null;
+  /** Comma-separated free-text trade names, null for none. */
+  customTrades?: string | null;
+}
+
+/** Setup-wizard answers that don't affect which catalog gets seeded. */
+export interface SetupExtras {
+  /** Comma-separated tool ids, '' for none, null to follow the trades. */
+  enabledTools?: string | null;
+  /** Comma-separated free-text trade names, null for none. */
+  customTrades?: string | null;
 }
 
 export interface CsvParseResult {
@@ -570,6 +586,56 @@ export interface PriceImportUpdate {
 export interface PriceImportResult {
   updated: number;
   skipped: number;
+  error?: string;
+}
+
+export interface MaterialPriceImportCommonAction {
+  rowIndex: number;
+  name: string;
+  unitCost: number | null;
+  unit: string;
+  supplier: string | null;
+  partNumber: string | null;
+  description: string | null;
+  categoryText: string | null;
+}
+
+export interface MaterialPriceImportUpdateAction
+  extends MaterialPriceImportCommonAction {
+  action: 'update';
+  targetMaterialId: number;
+  acknowledgeUnitMismatch: boolean;
+}
+
+export interface MaterialPriceImportCreateAction
+  extends MaterialPriceImportCommonAction {
+  action: 'create';
+  categoryId: number | null;
+}
+
+export interface MaterialPriceImportIgnoreAction
+  extends MaterialPriceImportCommonAction {
+  action: 'ignore';
+  reason: 'user' | 'invalid';
+}
+
+export type MaterialPriceImportAction =
+  | MaterialPriceImportUpdateAction
+  | MaterialPriceImportCreateAction
+  | MaterialPriceImportIgnoreAction;
+
+export interface MaterialPriceImportRequest {
+  source: string;
+  rows: MaterialPriceImportAction[];
+}
+
+export interface MaterialPriceImportResult {
+  total: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  ignored: number;
+  invalid: number;
   error?: string;
 }
 

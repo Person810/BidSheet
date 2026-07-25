@@ -8,6 +8,7 @@ struct PhotoViewerView: View {
     let file: ManifestFile
 
     @State private var image: UIImage?
+    @State private var meta: FileMeta?
     @State private var error: String?
 
     var body: some View {
@@ -29,11 +30,8 @@ struct PhotoViewerView: View {
                 Spacer()
             }
             HStack(spacing: 16) {
-                if let taken = WireTimestamp.localLabel(file.taken_at) {
+                if let taken = WireTimestamp.localLabel(meta?.takenAt ?? file.created_at) {
                     Label(taken, systemImage: "clock")
-                }
-                if let lat = file.gps_lat, let lng = file.gps_lng {
-                    Label(String(format: "%.5f, %.5f", lat, lng), systemImage: "location.fill")
                 }
             }
             .font(.caption)
@@ -47,7 +45,12 @@ struct PhotoViewerView: View {
 
     private func load() async {
         guard let dek = model.dek, let accountId = model.accountId else { return }
-        let cacheName = "photo-\(file.filename)"
+        // Capture time and name live in the encrypted metadata blob — the
+        // server stores neither. Decrypt it once, here, rather than on every
+        // body evaluation.
+        let meta = file.meta(dek: dek, accountId: accountId)
+        self.meta = meta
+        let cacheName = "photo-\(meta?.name ?? file.id)"
         if let cached = model.cache.load(jobId: jobId, name: cacheName), let ui = UIImage(data: cached) {
             image = ui
             return
@@ -55,13 +58,18 @@ struct PhotoViewerView: View {
         do {
             let blob = try await model.api.getFile(key: file.r2_key)
             // Field-app photos are BSE1-encrypted; tolerate a plaintext blob
-            // in case an older/other client ever uploaded one.
+            // in case an older/other client ever uploaded one. The photo's own
+            // AAD names the file, which only its metadata blob knows.
             let bytes: Data
             if SyncCrypto.isEncryptedPayload(blob) {
+                guard let name = meta?.name else {
+                    error = "This photo's details couldn't be read on this device."
+                    return
+                }
                 bytes = try SyncCrypto.decryptForSync(
                     blob, dek: dek,
                     aad: SyncCrypto.syncAad(accountId: accountId, scope: jobId,
-                                            payloadType: "photo:\(file.filename)"))
+                                            payloadType: "photo:\(name)"))
             } else {
                 bytes = blob
             }

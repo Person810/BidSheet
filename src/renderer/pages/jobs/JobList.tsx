@@ -16,6 +16,10 @@ const JOB_SORT_ACCESSORS = {
   updated_at: (j: any) => j.updated_at,
 };
 
+const EMPTY_JOB_FORM = {
+  name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
+};
+
 interface JobListProps {
   onOpenJob: (id: number) => void;
 }
@@ -26,9 +30,7 @@ export function JobList({ onOpenJob }: JobListProps) {
   const [jobCOs, setJobCOs] = useState<Record<number, any[]>>({});
   const [filter, setFilter] = useState<string>('');
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({
-    name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
-  });
+  const [form, setForm] = useState({ ...EMPTY_JOB_FORM });
   // The auto-suggested number currently sitting in the field (so the hint
   // disappears as soon as the user types their own).
   const [suggestedNumber, setSuggestedNumber] = useState<string | null>(null);
@@ -42,7 +44,8 @@ export function JobList({ onOpenJob }: JobListProps) {
       const res = await window.api.getNextJobNumber();
       if (res?.enabled && res.suggestion) {
         const suggestion = res.suggestion;
-        // Only pre-fill an empty field — a number typed before a cancel wins.
+        // Only pre-fill an empty field — a number typed while the suggestion
+        // was still in flight wins.
         setForm((f) => {
           if (f.jobNumber) return f;
           setSuggestedNumber(suggestion);
@@ -52,6 +55,17 @@ export function JobList({ onOpenJob }: JobListProps) {
     } catch {
       // Suggestion is a convenience — the modal works without one.
     }
+  };
+
+  // Closing the modal abandons the whole draft (#111). A left-over client
+  // details draft is the dangerous part: reopening New Job would show the
+  // abandoned client's address/contact and, on save, write them onto
+  // whatever client name the next job uses.
+  const closeCreate = () => {
+    setShowCreate(false);
+    setForm({ ...EMPTY_JOB_FORM });
+    setSuggestedNumber(null);
+    setClientDetails(null);
   };
 
   // Staleness guard: switching the status filter quickly can leave a slow
@@ -93,10 +107,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       bondPercent: settings?.default_bond_percent || 0,
       taxPercent: settings?.default_tax_percent || 0, notes: null,
     });
-    setShowCreate(false);
-    setForm({ name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '' });
-    setSuggestedNumber(null);
-    setClientDetails(null);
+    closeCreate();
     // Drop the user straight into the job they just created
     if (result?.lastInsertRowid) {
       onOpenJob(Number(result.lastInsertRowid));
@@ -425,7 +436,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+        <div className="modal-overlay" onClick={closeCreate}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>New Job</h3>
             <div className="form-row">
@@ -473,7 +484,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                 onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
+              <button className="btn btn-secondary" onClick={closeCreate}>Cancel</button>
               <button className="btn btn-primary" onClick={handleCreate} disabled={!form.name.trim()}>Create Job</button>
             </div>
           </div>

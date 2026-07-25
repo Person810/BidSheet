@@ -39,5 +39,15 @@ jobs:
       # Production dependencies only — the app ships these. Dev-tree
       # advisories (electron-builder etc.) don't reach users and would
       # make the gate cry wolf.
+      #
+      # Gated at high because the moderate tier has no reachable fix here:
+      # react-router's two moderates cover 6.0.0–7.17.0, and 7.12.0+ carries
+      # a *high* of its own, so the first clean version is react-router 8 —
+      # which needs React >= 19.2.7 and Node >= 22. Neither moderate can fire
+      # in this app anyway: one is SSR-hydration only (this is a HashRouter
+      # SPA in Electron, no server) and the other is an open redirect through
+      # a user-controlled `to`, while every route here is a hardcoded literal
+      # or comes from the trade-module registry. Revisit if react-router
+      # backports a fix, or when React 19 lands.
       - name: Audit production dependencies
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --audit-level=high

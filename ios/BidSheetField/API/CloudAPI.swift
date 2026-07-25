@@ -1,8 +1,10 @@
 /**
  * Thin client for the BidSheet Worker API — the field-app subset of the
  * desktop's api-client.ts. Every call carries a fresh aal2 JWT from
- * SupabaseAuth. R2 keys follow accountId/jobId/<photos|plans|markup|job>/
- * <filename>; the Worker enforces that accountId matches the token's account.
+ * SupabaseAuth. R2 keys are accountId/jobId/<objectId>, the object id being
+ * an HMAC of the file's logical name under the DEK (SyncCrypto.fileObjectKey)
+ * — no filename ever reaches the server. The Worker enforces that accountId
+ * matches the token's account.
  */
 
 import Foundation
@@ -51,17 +53,19 @@ final class CloudAPI {
         try await requestData(path: "/files/\(encodeKey(key))")
     }
 
-    /// Upload a photo (already encrypted) with its capture metadata. The GPS
-    /// coordinates and timestamp ride as query params the Worker stores in D1.
-    func putPhoto(key: String, body: Data, lat: Double?, lng: Double?, takenAt: Date?) async throws {
-        var params: [String] = []
-        if let lat { params.append("gps_lat=\(lat)") }
-        if let lng { params.append("gps_lng=\(lng)") }
-        if let takenAt {
-            let stamp = ISO8601DateFormatter().string(from: takenAt)
-            params.append("taken_at=\(stamp.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? stamp)")
+    /// Upload an already-encrypted file. `metaEnc` is the encrypted metadata
+    /// blob (name, kind, capture time) the Worker stores and returns verbatim;
+    /// it is the only place a filename or timestamp exists cloud-side. Capture
+    /// GPS is deliberately not sent at all — it used to ride as plaintext query
+    /// params the Worker stored in D1, which told the server exactly where the
+    /// user was working.
+    func putFile(key: String, body: Data, metaEnc: String?) async throws {
+        var query = ""
+        if let metaEnc {
+            let escaped = metaEnc.addingPercentEncoding(
+                withAllowedCharacters: .alphanumerics) ?? metaEnc
+            query = "?meta_enc=\(escaped)"
         }
-        let query = params.isEmpty ? "" : "?" + params.joined(separator: "&")
         _ = try await requestData(
             path: "/files/\(encodeKey(key))\(query)",
             method: "PUT", body: body, contentType: "application/octet-stream")

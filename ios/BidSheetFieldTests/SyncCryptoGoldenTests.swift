@@ -126,6 +126,28 @@ final class SyncCryptoGoldenTests: XCTestCase {
         XCTAssertEqual(try SyncCrypto.decryptForSync(blob, dek: dek, aad: jobAad), plaintext)
         XCTAssertThrowsError(try SyncCrypto.decryptForSync(blob, dek: dek, aad: wrapAad))
     }
+
+    /// Object ids are derived, never stored, so the two platforms must agree
+    /// character for character or a phone silently can't find the desktop's
+    /// uploads. Same frozen vectors as the desktop's
+    /// sync-crypto.golden.test.ts — never "fix" one to match new output.
+    func testFileObjectKeysMatchTheDesktop() {
+        let jobId = "job-golden-1"
+        XCTAssertEqual(
+            SyncCrypto.fileObjectKey(dek: dek, jobId: jobId, logicalName: "job"),
+            "Sca7cpe4ro3kKaCTJmWD5e")
+        XCTAssertEqual(
+            SyncCrypto.fileObjectKey(dek: dek, jobId: jobId, logicalName: "markup"),
+            "w4aj708OzoB8AzHY5ti4mG")
+        XCTAssertEqual(
+            SyncCrypto.fileObjectKey(dek: dek, jobId: jobId, logicalName: "plan:Site Plan.pdf"),
+            "5GsOGOfL9P99VRkW9ynR5I")
+        XCTAssertEqual(
+            SyncCrypto.fileObjectKey(
+                dek: dek, jobId: jobId,
+                logicalName: "photo:11111111-2222-3333-4444-555555555555"),
+            "82-zHPodMA1UiwvE-h96OX")
+    }
 }
 
 extension Data {

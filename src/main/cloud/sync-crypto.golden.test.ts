@@ -8,6 +8,7 @@ import {
   privKeyWrapAad,
   dekFingerprint,
   syncContentMac,
+  fileObjectKey,
   isKdfWrapped,
   recoveryKeyToBytes,
   SyncDecryptError,
@@ -141,5 +142,25 @@ describe('golden: recovery-code robustness against the stored blobs', () => {
     await expect(
       unwrapWithRecoveryCode(Buffer.from(V.wrappedDekScryptB64, 'base64'), V.shortCode, otherAcct)
     ).rejects.toThrow(SyncDecryptError);
+  });
+});
+
+/**
+ * Object ids are how a client finds its own files: the key is derived, never
+ * stored. Desktop and iOS must derive identically forever — a drift here
+ * doesn't fail loudly, it makes a phone quietly unable to find a plan set the
+ * desktop uploaded (and vice versa). Vectors below are frozen; the iOS suite
+ * (BidSheetFieldTests/SyncCryptoGoldenTests.swift) asserts the same strings.
+ */
+describe('golden: file object keys are frozen across platforms', () => {
+  const dek = Buffer.from(V.dekHex, 'hex');
+  const jobId = 'job-golden-1';
+
+  it('derives the frozen ids for each kind of file', () => {
+    expect(fileObjectKey(dek, jobId, 'job')).toBe('Sca7cpe4ro3kKaCTJmWD5e');
+    expect(fileObjectKey(dek, jobId, 'markup')).toBe('w4aj708OzoB8AzHY5ti4mG');
+    expect(fileObjectKey(dek, jobId, 'plan:Site Plan.pdf')).toBe('5GsOGOfL9P99VRkW9ynR5I');
+    expect(fileObjectKey(dek, jobId, 'photo:11111111-2222-3333-4444-555555555555'))
+      .toBe('82-zHPodMA1UiwvE-h96OX');
   });
 });

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { SetupExtras } from '../shared/types/ipc';
 
 // Electron prefixes errors crossing IPC with
 // "Error invoking remote method 'channel': Error: ..." -- strip that
@@ -103,8 +104,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- Setup ----
   isSetupComplete: () => invoke('db:setup:is-complete'),
-  runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean) =>
-    invoke('db:setup:run', trades, includeBallparkPrices, companyName, localOnlyMode, includeSampleCatalog),
+  runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean, extras?: SetupExtras) =>
+    invoke('db:setup:run', trades, includeBallparkPrices, companyName, localOnlyMode, includeSampleCatalog, extras),
   addTrade: (trade: string, includeBallparkPrices: boolean) =>
     invoke('db:settings:add-trade', trade, includeBallparkPrices),
   seedsStatus: () => invoke('db:seeds:status'),
@@ -117,8 +118,8 @@ contextBridge.exposeInMainWorld('api', {
   // Electron 32+ removed File.path; webUtils.getPathForFile is the supported
   // way to resolve a drag-and-dropped file to its real filesystem path.
   getDroppedFilePath: (file: File): string => webUtils.getPathForFile(file),
-  importPriceSheet: (updates: any[], source: string) =>
-    invoke('db:materials:import-prices', updates, source),
+  importPriceSheet: (request: any) =>
+    invoke('db:materials:import-prices', request),
 
   // ---- Per-job price import (reconciliation) ----
   priceImportContext: (jobId: number) => invoke('db:price-import:context', jobId),

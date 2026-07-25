@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
-import { E2eeEnrollStep } from './E2eeEnrollment';
+import { E2eeEnrollStep, RecoveryKeyPanel, ShortCodeCheckbox } from './E2eeEnrollment';
 
 /**
  * "Create Account" wizard — pops over the app instead of inline forms:
@@ -13,14 +13,48 @@ import { E2eeEnrollStep } from './E2eeEnrollment';
  * key. The payment itself happens on Paddle's hosted page in the system
  * browser; this dialog just opens it and waits for the Worker's webhook to
  * flip the account to active.
+ *
+ * The wizard forks on the first screen for invited teammates: same
+ * credentials/TOTP ladder, but instead of enrolling a solo encryption key it
+ * redeems the invite code (which generates this member's keypair + personal
+ * recovery key) and ends waiting on an owner's approval — no trial pitch, no
+ * subscribe button, since the team shares one subscription. That last screen
+ * shows this device's safety code, because approving is gated on the owner
+ * reading it back out of band (see CloudSyncCard's TeamSection). Redeeming before
+ * the fresh account ever gets a key or data is deliberate: the server can
+ * then reclaim the empty auto-provisioned stub (it refuses when the stub
+ * holds real data). The iOS app follows this same server flow — sign up,
+ * TOTP, then POST /invites/redeem — so keep the ladder's ordering in step
+ * with it.
  */
 export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   const addToast = useToastStore((s) => s.addToast);
   const refresh = useCloudStore((s) => s.refresh);
 
   const [step, setStep] = useState<
-    'pitch' | 'credentials' | 'confirm-email' | 'totp' | 'encryption' | 'done'
+    | 'pitch'
+    | 'credentials'
+    | 'confirm-email'
+    | 'totp'
+    | 'encryption'
+    | 'done'
+    | 'join-code'
+    | 'join-redeem'
+    | 'join-done'
   >('pitch');
+  // 'join' = arrived with a teammate's invite code; shares credentials/TOTP
+  // steps with 'create' but swaps the encryption + trial tail for redeem.
+  const [mode, setMode] = useState<'create' | 'join'>('create');
+  const [inviteCode, setInviteCode] = useState('');
+  // The code is collected once, on 'join-code'. The redeem screen only puts
+  // the field back when the server rejected it (or the user asks), so the
+  // happy path isn't asked to paste the same code twice.
+  const [editCode, setEditCode] = useState(false);
+  const [shortCode, setShortCode] = useState(false);
+  const [joinRecoveryKey, setJoinRecoveryKey] = useState<string | null>(null);
+  // This device's member-key code; the owner is prompted to verify it out of
+  // band before approving, so the joiner has to leave here knowing it.
+  const [joinSafetyCode, setJoinSafetyCode] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
@@ -85,12 +119,37 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   const handleVerify = () =>
     act(async () => {
       await window.api.cloudVerifyTotp(code, enroll?.factorId);
+      if (mode === 'join') {
+        // No /me fetch: the trial on the about-to-be-reclaimed stub account is
+        // irrelevant — billing belongs to the team account they're joining.
+        setStep('join-redeem');
+        return;
+      }
       window.api.cloudMe().then((me) => {
         setTrialEndsAt(me.account?.trial_ends_at ?? null);
         setBillingEnabled(!!me.billing_enabled);
       }).catch(() => {});
       // No sync yet — nothing can upload until the encryption key exists.
       setStep('encryption');
+    });
+
+  // Redeem the invite: generates this member's keypair + personal recovery key
+  // and joins the team account (pending an owner's approval). On a bad/expired
+  // code the error toasts and the code field comes back so it can be fixed.
+  const handleJoin = () =>
+    act(async () => {
+      let res;
+      try {
+        res = await window.api.cloudOrgRedeemInvite(inviteCode.trim(), shortCode);
+      } catch (err) {
+        setEditCode(true);
+        throw err; // act() turns it into the toast
+      }
+      setJoinRecoveryKey(res.recoveryKey);
+      // Redeem cached this device's keypair locally, so the code is readable
+      // straight away. Best-effort: a missing code costs the joiner a trip to
+      // Settings, it must not strand them mid-wizard.
+      setJoinSafetyCode(await window.api.cloudE2eeSafetyCode().catch(() => null));
     });
 
   // Deliberately not act(): the poll can run minutes and "Maybe Later" must
@@ -117,7 +176,7 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-overlay">
       <div className="modal" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
-        <h3>Set Up Cloud Sync</h3>
+        <h3>{mode === 'join' ? 'Join Your Team' : 'Set Up Cloud Sync'}</h3>
 
         {step === 'pitch' && (
           <div>
@@ -141,6 +200,62 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
               <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
               <button className="btn btn-primary" onClick={() => setStep('credentials')}>
                 Start Free Trial
+              </button>
+            </div>
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                <strong>Joining your company's team?</strong> If a teammate sent you an invite
+                code, you'll share their account — one subscription for everyone, no trial of
+                your own needed.
+              </p>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setMode('join');
+                  setStep('join-code');
+                }}>
+                I Have an Invite Code
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'join-code' && (
+          <div>
+            <p style={{ marginBottom: 8 }}>
+              <strong>Join your company's account.</strong> You'll create your own login and
+              authenticator — everyone on the team has their own — then the invite code
+              connects you to the shared jobs and catalog.
+            </p>
+            <div className="form-group">
+              <label>Invite code</label>
+              <input
+                type="text"
+                className="form-control"
+                value={inviteCode}
+                autoFocus
+                placeholder="Paste the code your teammate sent you"
+                onChange={(e) => setInviteCode(e.target.value)}
+              />
+            </div>
+            <p className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+              Codes are single-use and expire after 48 hours. Any account owner can make one
+              from Settings → Cloud Sync → Team.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setMode('create');
+                  setStep('pitch');
+                }}>
+                Back
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!inviteCode.trim()}
+                onClick={() => setStep('credentials')}>
+                Continue
               </button>
             </div>
           </div>
@@ -242,6 +357,85 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
             onAlreadySetup={() => setStep('done')}
             onSkip={onClose}
           />
+        )}
+
+        {step === 'join-redeem' &&
+          (joinRecoveryKey ? (
+            <div>
+              <h4 style={{ marginBottom: 8 }}>Save your recovery key</h4>
+              <RecoveryKeyPanel
+                recoveryKey={joinRecoveryKey}
+                onSaved={() => setStep('join-done')}
+              />
+            </div>
+          ) : (
+            <div>
+              <p style={{ marginBottom: 8 }}>
+                <strong>Last step: join the team.</strong> Your login is ready. Joining creates
+                your personal <strong>recovery key</strong> — the only way to unlock the team's
+                encrypted data on another computer, and it is <strong>not</strong> your login
+                password.
+              </p>
+              {editCode || !inviteCode.trim() ? (
+                <div className="form-group">
+                  <label>Invite code</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={inviteCode}
+                    autoFocus
+                    placeholder="Paste the code your teammate sent you"
+                    onChange={(e) => setInviteCode(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <p className="text-muted" style={{ fontSize: 12, marginBottom: 10 }}>
+                  Using invite code <strong style={{ fontFamily: 'monospace' }}>{inviteCode.trim()}</strong>.{' '}
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    style={{ fontSize: 11, padding: '1px 8px' }}
+                    onClick={() => setEditCode(true)}>
+                    Use a different code
+                  </button>
+                </p>
+              )}
+              <ShortCodeCheckbox checked={shortCode} onChange={setShortCode} />
+              <div className="modal-actions">
+                <button className="btn btn-secondary" disabled={busy} onClick={onClose}>
+                  Finish Later
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={busy || !inviteCode.trim()}
+                  onClick={handleJoin}>
+                  {busy ? 'Joining…' : 'Join Team'}
+                </button>
+              </div>
+            </div>
+          ))}
+
+        {step === 'join-done' && (
+          <div>
+            <p style={{ marginBottom: 8 }}>
+              <strong>You've joined the team.</strong> An owner now needs to approve your
+              access — only they can hand this computer the key that unlocks the shared data.
+            </p>
+            {joinSafetyCode && (
+              <p style={{ fontSize: 13, marginBottom: 8 }}>
+                When they approve you, they'll ask for your <strong>device code</strong>. Read
+                them: <strong style={{ fontFamily: 'monospace' }}>{joinSafetyCode}</strong>
+              </p>
+            )}
+            <p className="text-muted mb-16">
+              Ask them to open Settings → Cloud Sync → Team and approve you. The shared jobs
+              and catalog appear automatically after that; Settings → Cloud Sync shows where
+              things stand — including this code — in the meantime.
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={onClose}>Done</button>
+            </div>
+          </div>
         )}
 
         {step === 'done' && (
