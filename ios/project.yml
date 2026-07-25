@@ -41,9 +41,6 @@ targets:
         NSCameraUsageDescription: >-
           BidSheet Field uses the camera to take jobsite photos that sync back
           to your bids on the office computer.
-        NSLocationWhenInUseUsageDescription: >-
-          Location tags jobsite photos with where they were taken, so the
-          office can see which part of the run each photo shows.
         NSPhotoLibraryAddUsageDescription: >-
           Lets you save copies of jobsite photos to your photo library.
 

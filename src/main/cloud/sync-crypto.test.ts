@@ -6,6 +6,7 @@ import {
   isEncryptedPayload,
   syncAad,
   syncContentMac,
+  fileObjectKey,
   SyncDecryptError,
   generateRecoveryKey,
   recoveryKeyToBytes,
@@ -310,5 +311,37 @@ describe('member keypair + sealed DEK (multi-member E2EE)', () => {
     // fresh device: recover privkey from recovery key, then open the DEK
     const recoveredPriv = unwrapPrivateKey(wrappedPriv, kek, privKeyWrapAad('m'));
     expect(openDek(sealed, recoveredPriv, sealAad(accountId, 'm')).equals(realDek)).toBe(true);
+  });
+});
+
+describe('file object keys', () => {
+  const dek = crypto.randomBytes(32);
+  const other = crypto.randomBytes(32);
+
+  it('is deterministic, so both sides derive the same key without storing one', () => {
+    expect(fileObjectKey(dek, 'job-1', 'plan:Site Plan.pdf'))
+      .toBe(fileObjectKey(dek, 'job-1', 'plan:Site Plan.pdf'));
+  });
+
+  it('fits the opaque id the server accepts', () => {
+    expect(fileObjectKey(dek, 'job-1', 'job')).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  });
+
+  it('leaks nothing about the file: a rename is unrecognisable', () => {
+    const before = fileObjectKey(dek, 'job-1', 'plan:Smith-WaterMain.pdf');
+    const after = fileObjectKey(dek, 'job-1', 'plan:Smith-WaterMain-Rev2.pdf');
+    expect(after).not.toBe(before);
+    expect(after).not.toContain('Smith');
+  });
+
+  it('gives every kind of file the same shape', () => {
+    const ids = ['job', 'markup', 'plan:a.pdf'].map((n) => fileObjectKey(dek, 'job-1', n));
+    expect(new Set(ids).size).toBe(3);
+    for (const id of ids) expect(id).toHaveLength(22);
+  });
+
+  it('separates jobs and accounts: same name, different key', () => {
+    expect(fileObjectKey(dek, 'job-1', 'markup')).not.toBe(fileObjectKey(dek, 'job-2', 'markup'));
+    expect(fileObjectKey(dek, 'job-1', 'markup')).not.toBe(fileObjectKey(other, 'job-1', 'markup'));
   });
 });

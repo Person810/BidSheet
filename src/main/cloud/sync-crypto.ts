@@ -41,8 +41,8 @@ export class SyncDecryptError extends Error {}
  * The additional-authenticated-data string that binds a ciphertext to its
  * place. scope is the cloudId for per-job payloads or the literal "account"
  * for account-wide blobs (catalog, backup, DEK wrap). payloadType distinguishes
- * job/markup/catalog/backup/name/plan:<sha>/dek-wrap so one payload can never
- * be passed off as another.
+ * job/markup/catalog/backup/name/plan:<sha>/filemeta:<objectId>/dek-wrap so one
+ * payload can never be passed off as another.
  */
 export function syncAad(accountId: string, scope: string, payloadType: string): Buffer {
   return Buffer.from(`BSE1\0${accountId}\0${scope}\0${payloadType}\0${AAD_VERSION}`, 'utf8');
@@ -96,6 +96,29 @@ export function decryptForSync(blob: Buffer, dek: Buffer, aad: Buffer): Buffer {
  */
 export function syncContentMac(plaintext: Buffer, dek: Buffer): string {
   return crypto.createHmac('sha256', dek).update(plaintext).digest('hex');
+}
+
+/**
+ * The object id an uploaded file gets in the cloud: `accountId/jobId/<this>`.
+ *
+ * Keys used to end in the real filename, so a plan set arrived at the server
+ * as ".../plans/Smith-WaterMain-Ph2.pdf" — client and project names in
+ * plaintext, readable by anyone who could list the bucket. This is an HMAC of
+ * the file's logical name under the DEK instead: derivable by any client
+ * holding the key, meaningless without it, and the same shape whether it names
+ * a plan, a photo, the markup, or the bid snapshot, so the server can't tell
+ * those apart either.
+ *
+ * Deterministic on purpose — the sync engine re-derives a key from the logical
+ * name rather than storing a mapping, and an overwrite of the same logical file
+ * lands on the same object. 128 bits is ample for a per-job namespace.
+ */
+export function fileObjectKey(dek: Buffer, jobId: string, logicalName: string): string {
+  return crypto
+    .createHmac('sha256', dek)
+    .update(`file:${jobId}:${logicalName}`, 'utf8')
+    .digest('base64url')
+    .slice(0, 22);
 }
 
 // ---- recovery key (the single E2EE unlock secret) ----
