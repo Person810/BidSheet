@@ -7,7 +7,15 @@ import { CloudSyncCard } from '../components/CloudSyncCard';
 import { nextJobNumber } from '../../shared/jobNumbering';
 import { useUnitsStore } from '../stores/units-store';
 import { parseUnitSystem, type UnitSystem } from '../../shared/unitSystem';
-import { getAllTools, currentToolSelection } from '../modules';
+import { getAllTools, currentToolSelection, normalizeToolSelection } from '../modules';
+import {
+  MAX_CUSTOM_TRADES,
+  MAX_CUSTOM_TRADE_NAME,
+  addCustomTrades,
+  parseCustomTrades,
+  removeCustomTrade,
+  serializeCustomTrades,
+} from '../../shared/customTrades';
 
 export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
@@ -33,6 +41,8 @@ export function SettingsPage() {
     unitSystem: 'imperial' as UnitSystem,
     // null = follow the trades; a string (even '') = the user's own picks.
     enabledTools: null as string | null,
+    // Free-text trades with no seed catalog, named at setup.
+    customTrades: [] as string[],
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -44,6 +54,7 @@ export function SettingsPage() {
   const [seedStatus, setSeedStatus] = useState<{ active: number; hidden: number } | null>(null);
   const [seedBusy, setSeedBusy] = useState(false);
   const [restorePrices, setRestorePrices] = useState(true);
+  const [customTradeInput, setCustomTradeInput] = useState('');
 
   useEffect(() => {
     window.api.getSettings().then((s: any) => {
@@ -67,6 +78,7 @@ export function SettingsPage() {
           jobNumberStart: s.job_number_start || 1,
           unitSystem: parseUnitSystem(s.unit_system),
           enabledTools: s.enabled_tools ?? null,
+          customTrades: parseCustomTrades(s.custom_trades),
         });
       }
     }).finally(() => setLoading(false));
@@ -92,6 +104,7 @@ export function SettingsPage() {
       jobNumberStart: settings.jobNumberStart,
       unitSystem: settings.unitSystem,
       enabledTools: settings.enabledTools,
+      customTrades: serializeCustomTrades(settings.customTrades),
     });
     // Calculators read the store, so the change applies without a restart
     setUnitSystem(settings.unitSystem);
@@ -137,11 +150,21 @@ export function SettingsPage() {
     if (next.has(toolId)) next.delete(toolId);
     else next.add(toolId);
     // Preserve registry order rather than click order, so the saved string
-    // is stable and diffs don't churn.
+    // is stable and diffs don't churn. Landing back on exactly what the
+    // trades give normalizes to null — ticking a box and unticking it should
+    // leave you where you started, not quietly pinned.
     const ordered = allTools
       .map((entry) => entry.tool.id)
       .filter((id) => next.has(id));
-    setSettings((prev) => ({ ...prev, enabledTools: ordered.join(',') }));
+    setSettings((prev) => ({
+      ...prev,
+      enabledTools: normalizeToolSelection(prev.tradeTypes, ordered.join(',')),
+    }));
+  };
+
+  const addCustomTrade = () => {
+    update('customTrades', addCustomTrades(settings.customTrades, customTradeInput));
+    setCustomTradeInput('');
   };
 
   const activeTrades = settings.tradeTypes.split(',').map((t) => t.trim()).filter(Boolean);
@@ -591,6 +614,72 @@ export function SettingsPage() {
                 </span>
               ))
             : <span className="text-muted">No trades configured</span>}
+        </div>
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <h4 style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600 }}>Custom trades</h4>
+          <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            Work BidSheet has no sample catalog for. These are labels — they change
+            nothing on their own; the Tools card above is where you choose what you
+            actually work with.
+          </p>
+          {settings.customTrades.length > 0 && (
+            <div className="flex gap-8" style={{ flexWrap: 'wrap', marginBottom: 12 }}>
+              {settings.customTrades.map((name) => (
+                <span
+                  key={name.toLowerCase()}
+                  className="badge badge-submitted"
+                  style={{ fontSize: 12, padding: '4px 8px 4px 12px' }}
+                >
+                  {name}
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    title={`Remove ${name}`}
+                    style={{ padding: '0 4px', fontSize: 12 }}
+                    onClick={() =>
+                      update('customTrades', removeCustomTrade(settings.customTrades, name))
+                    }
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-8 items-center" style={{ flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              className="form-control"
+              style={{ maxWidth: 260 }}
+              placeholder="e.g. Directional Drilling"
+              maxLength={MAX_CUSTOM_TRADE_NAME}
+              value={customTradeInput}
+              onChange={(e) => setCustomTradeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addCustomTrade();
+                }
+              }}
+              disabled={settings.customTrades.length >= MAX_CUSTOM_TRADES}
+            />
+            <button
+              className="btn btn-secondary btn-sm"
+              type="button"
+              onClick={addCustomTrade}
+              disabled={
+                !customTradeInput.trim() || settings.customTrades.length >= MAX_CUSTOM_TRADES
+              }
+            >
+              Add
+            </button>
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              {settings.customTrades.length >= MAX_CUSTOM_TRADES
+                ? `${MAX_CUSTOM_TRADES}-trade limit reached.`
+                : 'Save to apply.'}
+            </span>
+          </div>
         </div>
 
         {availableTrades.length > 0 && (

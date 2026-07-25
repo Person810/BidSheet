@@ -45,6 +45,7 @@ import type {
   SaveSettingsPayload,
   SaveTakeoffAreaPayload,
   SaveTakeoffWallPayload,
+  SetupExtras,
   TakeoffWallDTO,
   SaveTakeoffRunPayload,
   SaveTakeoffSettingsPayload,
@@ -151,7 +152,7 @@ declare global {
 
       // Setup
       isSetupComplete: () => Promise<boolean>;
-      runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean) => Promise<{ success: boolean }>;
+      runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean, extras?: SetupExtras) => Promise<{ success: boolean }>;
       addTrade: (trade: string, includeBallparkPrices: boolean) => Promise<{ success: boolean; tradeTypes: string }>;
       /** Sample-catalog (seed item) management */
       seedsStatus: () => Promise<{ active: number; hidden: number }>;
