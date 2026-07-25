@@ -3,6 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { app } from 'electron';
 import { TRADE_SEED_DATA, TradeType, SeedAssembly } from '../shared/constants/seed-data';
+import { SetupExtras } from '../shared/types/ipc';
+import { serializeCustomTrades, parseCustomTrades } from '../shared/customTrades';
 
 /**
  * Tables that get a stable `uuid` column in migration v28. Catalog rows sync
@@ -76,7 +78,11 @@ export function seedDatabase(
   includeBallparkPrices: boolean,
   companyName: string,
   localOnlyMode = false,
-  includeSampleCatalog = true
+  includeSampleCatalog = true,
+  // Wizard answers that aren't part of the catalog seed. Both default to null:
+  // the sidebar follows the trades (see modules/registry.ts) and there are no
+  // custom trades unless the user typed some.
+  extras: SetupExtras = {}
 ): void {
   const seed = db.transaction(() => {
     // Trades are always recorded (they gate which modules/tools are visible);
@@ -87,8 +93,14 @@ export function seedDatabase(
     const schemaVersion = (db.prepare('SELECT MAX(version) as v FROM schema_version').get() as any)?.v ?? 0;
 
     db.prepare(
-      'UPDATE app_settings SET setup_complete = 1, company_name = ?, trade_types = ?, last_backup_schema_version = ?, local_only_mode = ? WHERE id = 1'
-    ).run(companyName, trades.join(','), schemaVersion, localOnlyMode ? 1 : 0);
+      'UPDATE app_settings SET setup_complete = 1, company_name = ?, trade_types = ?, last_backup_schema_version = ?, local_only_mode = ?, enabled_tools = ?, custom_trades = ? WHERE id = 1'
+    ).run(
+      companyName, trades.join(','), schemaVersion, localOnlyMode ? 1 : 0,
+      extras.enabledTools ?? null,
+      // Re-cleaned here rather than trusted: the column's comma separator is
+      // the one thing a name may never contain.
+      serializeCustomTrades(parseCustomTrades(extras.customTrades))
+    );
   });
 
   seed();
@@ -400,6 +412,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV44,
   migrateV45,
   migrateV46,
+  migrateV47,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -893,6 +906,19 @@ function migrateV46(db: Database.Database): void {
   db.exec(`
     ALTER TABLE app_settings ADD COLUMN enabled_tools TEXT;
     INSERT INTO schema_version (version) VALUES (46);
+  `);
+}
+
+// V47: Trades we have no seed catalog for, typed by the user at setup
+// ("Directional Drilling", "Demolition"). They can't live in trade_types —
+// that column is a controlled vocabulary that drives catalog seeding and
+// module lookup, and a free-text name would either be silently ignored there
+// or, worse, have to be guarded against at every read. Kept separate, it is
+// what it is: a label, with the tools chosen independently (see v46).
+function migrateV47(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN custom_trades TEXT;
+    INSERT INTO schema_version (version) VALUES (47);
   `);
 }
 

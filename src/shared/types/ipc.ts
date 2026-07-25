@@ -507,6 +507,8 @@ export interface AppSettingsRow {
   unit_system: string;
   /** Hand-picked sidebar tools (comma-separated ids); null = follow trades. */
   enabled_tools: string | null;
+  /** Free-text trades with no seed catalog (comma-separated); null = none. */
+  custom_trades: string | null;
 }
 
 export interface SaveSettingsPayload {
@@ -528,6 +530,16 @@ export interface SaveSettingsPayload {
   unitSystem?: 'imperial' | 'metric';
   /** Comma-separated tool ids, '' for none, null to go back to trades. */
   enabledTools?: string | null;
+  /** Comma-separated free-text trade names, null for none. */
+  customTrades?: string | null;
+}
+
+/** Setup-wizard answers that don't affect which catalog gets seeded. */
+export interface SetupExtras {
+  /** Comma-separated tool ids, '' for none, null to follow the trades. */
+  enabledTools?: string | null;
+  /** Comma-separated free-text trade names, null for none. */
+  customTrades?: string | null;
 }
 
 export interface CsvParseResult {

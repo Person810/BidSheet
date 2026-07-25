@@ -12,6 +12,8 @@ import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
 import { parsePdfTemplate, PdfTemplate } from '../../shared/types/pdf';
 import { parseUnitSystem } from '../../shared/unitSystem';
+import { SetupExtras } from '../../shared/types/ipc';
+import { parseCustomTrades, serializeCustomTrades } from '../../shared/customTrades';
 
 export function registerSettingsHandlers(db: Database.Database): void {
   // ================================================================
@@ -24,12 +26,13 @@ export function registerSettingsHandlers(db: Database.Database): void {
 
   safeHandle(
     'db:setup:run',
-    (_event, trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean) => {
+    (_event, trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean, extras?: SetupExtras) => {
       seedDatabase(
         db, trades as TradeType[], includeBallparkPrices, companyName,
-        localOnlyMode === true, includeSampleCatalog !== false
+        localOnlyMode === true, includeSampleCatalog !== false,
+        extras ?? {}
       );
-      logger.info('setup', `Setup complete: trades=${trades.join(',')}, company=${companyName}, localOnly=${localOnlyMode === true}, sampleCatalog=${includeSampleCatalog !== false}`);
+      logger.info('setup', `Setup complete: trades=${trades.join(',')}, company=${companyName}, localOnly=${localOnlyMode === true}, sampleCatalog=${includeSampleCatalog !== false}, tools=${extras?.enabledTools ?? 'follow trades'}, customTrades=${extras?.customTrades ?? 'none'}`);
       return { success: true };
     }
   );
@@ -248,7 +251,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
           -- Left alone unless the caller actually sent a value: null ("follow
           -- my trades") and '' ("no tools") are both meaningful, so an
           -- omitted field must not silently reset someone's picks.
-          enabled_tools = CASE WHEN ? THEN ? ELSE enabled_tools END
+          enabled_tools = CASE WHEN ? THEN ? ELSE enabled_tools END,
+          custom_trades = CASE WHEN ? THEN ? ELSE custom_trades END
         WHERE id = 1`
       )
       .run(
@@ -263,7 +267,9 @@ export function registerSettingsHandlers(db: Database.Database): void {
         Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1),
         parseUnitSystem(settings.unitSystem),
         'enabledTools' in (settings ?? {}) ? 1 : 0,
-        settings.enabledTools ?? null
+        settings.enabledTools ?? null,
+        'customTrades' in (settings ?? {}) ? 1 : 0,
+        serializeCustomTrades(parseCustomTrades(settings.customTrades))
       );
   });
 

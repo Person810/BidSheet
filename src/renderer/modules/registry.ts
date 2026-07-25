@@ -90,7 +90,7 @@ export function resolveToolGroups(
 }
 
 /**
- * The ids to tick in the settings picker. A hand-picked selection speaks for
+ * The ids to tick in the tool picker. A hand-picked selection speaks for
  * itself; otherwise it mirrors what the trades are currently showing, so the
  * picker opens on what's already on screen rather than on nothing.
  */
@@ -105,4 +105,31 @@ export function currentToolSelection(
   return getActiveModules(tradeTypes || '').flatMap((mod) =>
     mod.tools.map((tool) => tool.id)
   );
+}
+
+/**
+ * What to store for a picked set.
+ *
+ * Both pickers open pre-ticked with the trade-derived tools, so a selection
+ * that still matches the trades is not a choice at all — it's the default
+ * left alone. That case stores null ("follow my trades"), which keeps a trade
+ * added later free to bring its tools along. Anything else is stored in
+ * registry order with stale ids dropped, so the saved string is stable.
+ */
+export function normalizeToolSelection(
+  tradeTypes: string | null | undefined,
+  enabledTools: string | null | undefined
+): string | null {
+  if (enabledTools == null) return null;
+
+  const wanted = new Set(parseIds(enabledTools));
+  const ordered = getAllTools()
+    .map((entry) => entry.tool.id)
+    .filter((id) => wanted.has(id));
+
+  const fromTrades = currentToolSelection(tradeTypes, null);
+  const matchesTrades =
+    ordered.length === fromTrades.length && fromTrades.every((id) => wanted.has(id));
+
+  return matchesTrades ? null : ordered.join(',');
 }

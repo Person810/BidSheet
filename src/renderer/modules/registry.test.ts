@@ -3,6 +3,7 @@ import {
   currentToolSelection,
   getActiveModules,
   getAllTools,
+  normalizeToolSelection,
   resolveToolGroups,
 } from './registry';
 
@@ -85,5 +86,38 @@ describe('currentToolSelection', () => {
 
   it('filters out stale ids so the picker never ticks a missing tool', () => {
     expect(currentToolSelection('', `retired-tool,${CONCRETE}`)).toEqual([CONCRETE]);
+  });
+});
+
+describe('normalizeToolSelection', () => {
+  it('stores nothing when the picks still match the trades', () => {
+    // The setup wizard pre-ticks these, so leaving them alone must not pin
+    // the sidebar — a trade added later should still bring its tools.
+    expect(normalizeToolSelection('water_sewer', TRENCH)).toBeNull();
+    expect(normalizeToolSelection('water_sewer,concrete', `${TRENCH},${CONCRETE}`)).toBeNull();
+  });
+
+  it('ignores the order the ids arrived in when comparing', () => {
+    expect(normalizeToolSelection('water_sewer,concrete', `${CONCRETE},${TRENCH}`)).toBeNull();
+  });
+
+  it('stores a real deviation in registry order', () => {
+    expect(normalizeToolSelection('water_sewer', CONCRETE)).toBe(CONCRETE);
+    expect(normalizeToolSelection('concrete', `${TRENCH},${CONCRETE}`))
+      .toBe(`${CONCRETE},${TRENCH}`);
+  });
+
+  it('keeps an empty pick when the trades would have shown something', () => {
+    expect(normalizeToolSelection('water_sewer', '')).toBe('');
+  });
+
+  it('passes null straight through', () => {
+    expect(normalizeToolSelection('water_sewer', null)).toBeNull();
+    expect(normalizeToolSelection('water_sewer', undefined)).toBeNull();
+  });
+
+  it('drops stale ids before deciding whether anything changed', () => {
+    expect(normalizeToolSelection('water_sewer', `${TRENCH},retired-tool`)).toBeNull();
+    expect(normalizeToolSelection('water_sewer', 'retired-tool')).toBe('');
   });
 });
