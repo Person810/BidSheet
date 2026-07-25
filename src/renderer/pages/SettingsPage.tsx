@@ -7,6 +7,7 @@ import { CloudSyncCard } from '../components/CloudSyncCard';
 import { nextJobNumber } from '../../shared/jobNumbering';
 import { useUnitsStore } from '../stores/units-store';
 import { parseUnitSystem, type UnitSystem } from '../../shared/unitSystem';
+import { getAllTools, currentToolSelection } from '../modules';
 
 export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
@@ -30,6 +31,8 @@ export function SettingsPage() {
     jobNumberFormat: 'YYYY-NNN',
     jobNumberStart: 1,
     unitSystem: 'imperial' as UnitSystem,
+    // null = follow the trades; a string (even '') = the user's own picks.
+    enabledTools: null as string | null,
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -63,6 +66,7 @@ export function SettingsPage() {
           jobNumberFormat: s.job_number_format || 'YYYY-NNN',
           jobNumberStart: s.job_number_start || 1,
           unitSystem: parseUnitSystem(s.unit_system),
+          enabledTools: s.enabled_tools ?? null,
         });
       }
     }).finally(() => setLoading(false));
@@ -87,9 +91,13 @@ export function SettingsPage() {
       jobNumberFormat: settings.jobNumberFormat,
       jobNumberStart: settings.jobNumberStart,
       unitSystem: settings.unitSystem,
+      enabledTools: settings.enabledTools,
     });
     // Calculators read the store, so the change applies without a restart
     setUnitSystem(settings.unitSystem);
+    // Same listener the Add Trade path uses — repaints the sidebar's tool
+    // list without a restart.
+    window.dispatchEvent(new Event('bidsheet:trades-changed'));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -115,6 +123,25 @@ export function SettingsPage() {
     electrical: 'Electrical / Conduit',
     telecom: 'Telecommunications / Fiber',
     concrete: 'Concrete',
+  };
+
+  // Tool picker: which tools appear in the sidebar, independent of which
+  // trade catalogs were seeded. Ticking anything switches out of "follow my
+  // trades" mode and pins the selection.
+  const allTools = getAllTools();
+  const picked = new Set(currentToolSelection(settings.tradeTypes, settings.enabledTools));
+  const followingTrades = settings.enabledTools == null;
+
+  const toggleTool = (toolId: string) => {
+    const next = new Set(picked);
+    if (next.has(toolId)) next.delete(toolId);
+    else next.add(toolId);
+    // Preserve registry order rather than click order, so the saved string
+    // is stable and diffs don't churn.
+    const ordered = allTools
+      .map((entry) => entry.tool.id)
+      .filter((id) => next.has(id));
+    setSettings((prev) => ({ ...prev, enabledTools: ordered.join(',') }));
   };
 
   const activeTrades = settings.tradeTypes.split(',').map((t) => t.trim()).filter(Boolean);
@@ -503,6 +530,51 @@ export function SettingsPage() {
         <button className="btn btn-secondary" onClick={openWalkthrough}>
           Replay Walkthrough
         </button>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginBottom: 16 }}>Tools</h3>
+        <p className="text-muted mb-16">
+          Which tools show in the sidebar. Pick whatever you actually use — this
+          only changes the sidebar, never your catalog, so you can take the
+          concrete calculator without taking concrete materials with it.
+        </p>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {allTools.map(({ tool, moduleName }) => (
+            <label key={tool.id} className="flex items-center gap-8" style={{ fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={picked.has(tool.id)}
+                onChange={() => toggleTool(tool.id)}
+              />
+              <span>
+                {tool.name}
+                <span className="text-muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                  {moduleName}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <p className="text-muted" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+          {followingTrades ? (
+            <>Currently following your trades — the tools above are the ones they
+            bring. Tick or untick any of them to choose for yourself.</>
+          ) : (
+            <>
+              You&apos;re choosing these yourself, so adding a trade won&apos;t change
+              the list.{' '}
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '0 4px', fontSize: 12 }}
+                onClick={() => setSettings((prev) => ({ ...prev, enabledTools: null }))}
+              >
+                Go back to following my trades
+              </button>
+            </>
+          )}
+          {' '}Save to apply.
+        </p>
       </div>
 
       <div className="card">

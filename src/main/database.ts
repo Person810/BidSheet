@@ -399,6 +399,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV43,
   migrateV44,
   migrateV45,
+  migrateV46,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -874,6 +875,24 @@ function migrateV45(db: Database.Database): void {
   db.exec(`
     ALTER TABLE app_settings ADD COLUMN unit_system TEXT NOT NULL DEFAULT 'imperial';
     INSERT INTO schema_version (version) VALUES (45);
+  `);
+}
+
+// V46: Hand-picked sidebar tools. trade_types decides two unrelated things —
+// which catalog gets seeded, and which trade tools appear — so the only way
+// to get the concrete calculator was to add the concrete trade and live with
+// its materials in your catalog forever (seeding is additive and never
+// removed). enabled_tools breaks that tie: a comma-separated list of tool
+// ids that replaces the trade-derived set.
+//
+// NULL means "follow my trades", which is every existing install — the
+// column is deliberately not backfilled, so nobody's sidebar moves until
+// they choose to pick tools themselves. An empty string is a real choice
+// ("show me no tools"), which is why NULL and '' aren't the same thing here.
+function migrateV46(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN enabled_tools TEXT;
+    INSERT INTO schema_version (version) VALUES (46);
   `);
 }
 

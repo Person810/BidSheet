@@ -505,6 +505,8 @@ export interface AppSettingsRow {
   job_number_format: string;
   job_number_start: number;
   unit_system: string;
+  /** Hand-picked sidebar tools (comma-separated ids); null = follow trades. */
+  enabled_tools: string | null;
 }
 
 export interface SaveSettingsPayload {
@@ -524,6 +526,8 @@ export interface SaveSettingsPayload {
   jobNumberFormat?: string;
   jobNumberStart?: number;
   unitSystem?: 'imperial' | 'metric';
+  /** Comma-separated tool ids, '' for none, null to go back to trades. */
+  enabledTools?: string | null;
 }
 
 export interface CsvParseResult {
