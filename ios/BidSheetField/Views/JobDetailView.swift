@@ -2,9 +2,11 @@ import SwiftUI
 
 /// One job in the field: the plan set and takeoff markup (cached for
 /// offline), every file synced for the job, and the camera button that sends
-/// geotagged jobsite photos back to the office. Everything downloaded is
-/// decrypted on-device; everything uploaded is encrypted before it leaves
-/// the phone.
+/// jobsite photos back to the office. Everything downloaded is decrypted
+/// on-device; everything uploaded is encrypted before it leaves the phone —
+/// including each file's name and capture time, which is why the file list
+/// reads its labels out of decrypted metadata rather than the server's
+/// response.
 struct JobDetailView: View {
     @EnvironmentObject private var model: AppModel
     let job: CloudJob
@@ -17,17 +19,35 @@ struct JobDetailView: View {
     @State private var showingCamera = false
     @State private var uploading = false
     @State private var pendingCount = 0
+    @State private var fileMetas: [String: FileMeta] = [:]
     @State private var error: String?
 
+    /// What a file is only exists inside its encrypted metadata blob — the
+    /// server knows nothing but the size and the job. Decrypted once per
+    /// manifest load (see refreshFileMeta); these lookups run on every body
+    /// evaluation and must not open AES-GCM blobs each time.
+    private func fileMeta(_ file: ManifestFile) -> FileMeta? {
+        fileMetas[file.id]
+    }
+
+    private func refreshFileMeta() {
+        guard let dek = model.dek, let accountId = model.accountId else { return }
+        var decoded: [String: FileMeta] = [:]
+        for file in manifest?.files ?? [] {
+            decoded[file.id] = file.meta(dek: dek, accountId: accountId)
+        }
+        fileMetas = decoded
+    }
+
     private var photos: [ManifestFile] {
-        (manifest?.files.filter { $0.type == "photo" } ?? [])
+        (manifest?.files.filter { fileMeta($0)?.kind == "photo" } ?? [])
             .sorted {
-                (WireTimestamp.parse($0.taken_at ?? $0.created_at) ?? .distantPast)
-                    > (WireTimestamp.parse($1.taken_at ?? $1.created_at) ?? .distantPast)
+                (WireTimestamp.parse(fileMeta($0)?.takenAt ?? $0.created_at) ?? .distantPast)
+                    > (WireTimestamp.parse(fileMeta($1)?.takenAt ?? $1.created_at) ?? .distantPast)
             }
     }
     private var planFile: ManifestFile? {
-        manifest?.files.first { $0.type == "plan" }
+        manifest?.files.first { fileMeta($0)?.kind == "plan" }
     }
 
     var body: some View {
@@ -133,11 +153,6 @@ struct JobDetailView: View {
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(photoTitle(photo)).font(.subheadline)
-                            if photo.gps_lat != nil {
-                                Label("Geotagged", systemImage: "location.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
                         }
                     }
                 }
@@ -150,12 +165,12 @@ struct JobDetailView: View {
             Section("All Files (\(files.count))") {
                 ForEach(files) { file in
                     HStack {
-                        Image(systemName: icon(for: file.type))
+                        Image(systemName: icon(for: fileMeta(file)?.kind))
                             .foregroundStyle(.secondary)
                             .frame(width: 24)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(file.filename).font(.subheadline).lineLimit(1)
-                            Text("\(file.type.capitalized) • \(byteString(file.size_bytes))\(dateSuffix(file))")
+                            Text(displayName(file)).font(.subheadline).lineLimit(1)
+                            Text("\(kindLabel(file)) • \(byteString(file.size_bytes))\(dateSuffix(file))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -175,10 +190,11 @@ struct JobDetailView: View {
         await uploadPendingPhotos()
         do {
             manifest = try await model.api.manifest(jobId: job.id)
+            refreshFileMeta()
 
             // job.json carries the snapshot (incl. the plan's sha256, which
             // is part of the plan blob's AAD).
-            let jobBlob = try await model.api.getFile(key: "\(accountId)/\(job.id)/job/job.json")
+            let jobBlob = try await model.api.getFile(key: objectKey(accountId, "job", dek))
             let plain = try SyncCrypto.decryptForSync(
                 jobBlob, dek: dek,
                 aad: SyncCrypto.syncAad(accountId: accountId, scope: job.id, payloadType: "job"))
@@ -206,7 +222,7 @@ struct JobDetailView: View {
     private func loadMarkup() async {
         guard let dek = model.dek, let accountId = model.accountId else { return }
         do {
-            let blob = try await model.api.getFile(key: "\(accountId)/\(job.id)/markup/takeoff.json")
+            let blob = try await model.api.getFile(key: objectKey(accountId, "markup", dek))
             let plain = try SyncCrypto.decryptForSync(
                 blob, dek: dek,
                 aad: SyncCrypto.syncAad(accountId: accountId, scope: job.id, payloadType: "markup"))
@@ -227,7 +243,8 @@ struct JobDetailView: View {
         loadingPlan = true
         defer { loadingPlan = false }
         do {
-            let blob = try await model.api.getFile(key: "\(accountId)/\(job.id)/plans/\(plan.filename)")
+            let blob = try await model.api.getFile(
+                key: objectKey(accountId, "plan:\(plan.filename)", dek))
             let bytes = try SyncCrypto.decryptForSync(
                 blob, dek: dek,
                 aad: SyncCrypto.syncAad(accountId: accountId, scope: job.id, payloadType: "plan:\(plan.sha256)"))
@@ -245,13 +262,13 @@ struct JobDetailView: View {
         guard let jpeg = image.jpegData(compressionQuality: 0.8) else { return }
         uploading = true
         defer { uploading = false }
-        let location = await LocationProvider().currentLocation()
+        // No GPS: a coordinate the server could read is a jobsite address in
+        // the clear. Locating a photo against its plan is the useful version
+        // of that, and it lives in the encrypted job data.
         let meta = PendingPhoto(
             jobId: job.id,
             filename: "\(UUID().uuidString.lowercased()).jpg",
-            takenAt: Date(),
-            gpsLat: location?.coordinate.latitude,
-            gpsLng: location?.coordinate.longitude)
+            takenAt: Date())
         // Durably persist the capture BEFORE any network attempt, so a dead
         // signal (or a mid-upload failure) can't lose the shot — it stays
         // queued and retries on the next load/refresh.
@@ -280,12 +297,26 @@ struct JobDetailView: View {
                 let encrypted = try SyncCrypto.encryptForSync(
                     jpeg, dek: dek,
                     aad: SyncCrypto.syncAad(accountId: accountId, scope: meta.jobId, payloadType: "photo:\(meta.filename)"))
-                try await model.api.putPhoto(
-                    key: "\(accountId)/\(meta.jobId)/photos/\(meta.filename)",
+                // Name and capture time go up encrypted; the key itself is an
+                // HMAC, so the server learns neither. Encoded through FileMeta
+                // so the writer and the reader can't drift apart.
+                let objectId = SyncCrypto.fileObjectKey(
+                    dek: dek, jobId: meta.jobId, logicalName: "photo:\(meta.filename)")
+                let metaJson = try JSONEncoder().encode(
+                    FileMeta(
+                        kind: "photo",
+                        name: meta.filename,
+                        takenAt: ISO8601DateFormatter().string(from: meta.takenAt)))
+                let metaEnc = try SyncCrypto.encryptForSync(
+                    metaJson, dek: dek,
+                    aad: SyncCrypto.syncAad(
+                        accountId: accountId, scope: meta.jobId,
+                        payloadType: "filemeta:\(objectId)")
+                ).base64EncodedString()
+                try await model.api.putFile(
+                    key: "\(accountId)/\(meta.jobId)/\(objectId)",
                     body: encrypted,
-                    lat: meta.gpsLat,
-                    lng: meta.gpsLng,
-                    takenAt: meta.takenAt)
+                    metaEnc: metaEnc)
                 // Cache the plaintext locally so the new photo views offline,
                 // then clear it from the queue.
                 model.cache.save(jpeg, jobId: meta.jobId, name: "photo-\(meta.filename)")
@@ -299,12 +330,30 @@ struct JobDetailView: View {
 
     // MARK: - formatting
 
-    private func photoTitle(_ photo: ManifestFile) -> String {
-        WireTimestamp.localLabel(photo.taken_at ?? photo.created_at) ?? photo.filename
+    /// Where a file lives in the cloud. Both sides derive this from the
+    /// logical name; nothing maps names to keys anywhere.
+    private func objectKey(_ accountId: String, _ logicalName: String, _ dek: Data) -> String {
+        "\(accountId)/\(job.id)/"
+            + SyncCrypto.fileObjectKey(dek: dek, jobId: job.id, logicalName: logicalName)
     }
 
-    private func icon(for type: String) -> String {
-        switch type {
+    private func photoTitle(_ photo: ManifestFile) -> String {
+        WireTimestamp.localLabel(fileMeta(photo)?.takenAt ?? photo.created_at)
+            ?? displayName(photo)
+    }
+
+    /// Falls back rather than failing: a file whose metadata won't open is
+    /// still a file, and its bytes may still be readable.
+    private func displayName(_ file: ManifestFile) -> String {
+        fileMeta(file)?.name ?? "Untitled file"
+    }
+
+    private func kindLabel(_ file: ManifestFile) -> String {
+        (fileMeta(file)?.kind ?? "file").capitalized
+    }
+
+    private func icon(for kind: String?) -> String {
+        switch kind {
         case "photo": return "photo"
         case "plan": return "doc.richtext"
         case "markup": return "scribble.variable"

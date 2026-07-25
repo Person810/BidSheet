@@ -12,7 +12,7 @@ account recovery key, and get:
 - **Takeoff viewing** — the estimator's markup drawn over the plan sheet:
   pipe runs, structures, count items, restoration areas, and annotations,
   with computed LF/SF quantities and a per-sheet quantities summary
-- **Jobsite photos** — camera capture with GPS + timestamp, encrypted on the
+- **Jobsite photos** — camera capture with timestamp, encrypted on the
   phone and uploaded into the job's cloud folder; synced photos view (and
   cache) on the phone with their capture metadata
 
@@ -31,7 +31,7 @@ None of this needs a paid Apple Developer account or App Store approval:
 - The $99/year account only becomes necessary for TestFlight betas and the
   App Store itself, both of which can come whenever the app is ready.
 
-The whole backend (auth, manifest endpoint, GPS photo metadata, E2EE key
+The whole backend (auth, manifest endpoint, encrypted file metadata, E2EE key
 distribution) was built with this client in mind, so building now is mostly
 UI + the crypto port — and the crypto port is pinned by golden tests.
 
@@ -74,7 +74,7 @@ BidSheetField/
   State/AppModel.swift      signedOut → needsTotp → locked → ready
   State/FileCache.swift     offline cache (job list, job.json, plan PDFs)
   Views/                    SwiftUI screens
-  Support/                  config, Keychain, one-shot GPS
+  Support/                  config, Keychain, colour helpers
 BidSheetFieldTests/         golden-vector crypto tests
 project.yml                 XcodeGen spec (generates the .xcodeproj)
 ```
