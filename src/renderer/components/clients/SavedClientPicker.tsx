@@ -34,7 +34,7 @@ export function SavedClientPicker({
   value,
   onChange,
   onSelectClient,
-  label = 'Saved client',
+  label,
   placeholder = 'Search saved clients…',
   disabled = false,
   className = '',
@@ -106,7 +106,7 @@ export function SavedClientPicker({
 
   return (
     <div className={`client-picker fuzzy-autocomplete ${className}`.trim()}>
-      <label htmlFor={inputId}>{label}</label>
+      {label && <label htmlFor={inputId}>{label}</label>}
       <div className="fuzzy-input-wrap">
         <input
           id={inputId}
