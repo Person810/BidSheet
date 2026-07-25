@@ -108,7 +108,15 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     logger.info('cloud:verify-totp', `Verify result: aal=${status.aal}`);
     return status;
   });
-  handle('cloud:sign-out', () => auth.signOut());
+  handle('cloud:sign-out', () => {
+    // Drop the cached DEK + member private key first, so the encrypted cloud
+    // corpus can't be pulled and decrypted after sign-out (a shared-computer
+    // exposure). Locking before the logout call means the keys go even if the
+    // network round-trip fails. The next sign-in re-unlocks with the recovery
+    // key, as a fresh device would.
+    e2ee.lockLocal();
+    return auth.signOut();
+  });
   handle('cloud:me', () => api.me());
 
   // ---- billing ----
