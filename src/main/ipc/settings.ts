@@ -244,7 +244,11 @@ export function registerSettingsHandlers(db: Database.Database): void {
           default_tax_percent = ?, default_bond_percent = ?,
           auto_lock_on_close = ?, local_only_mode = ?,
           job_number_auto = ?, job_number_format = ?, job_number_start = ?,
-          unit_system = ?
+          unit_system = ?,
+          -- Left alone unless the caller actually sent a value: null ("follow
+          -- my trades") and '' ("no tools") are both meaningful, so an
+          -- omitted field must not silently reset someone's picks.
+          enabled_tools = CASE WHEN ? THEN ? ELSE enabled_tools END
         WHERE id = 1`
       )
       .run(
@@ -257,7 +261,9 @@ export function registerSettingsHandlers(db: Database.Database): void {
         settings.jobNumberAuto ? 1 : 0,
         settings.jobNumberFormat || 'YYYY-NNN',
         Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1),
-        parseUnitSystem(settings.unitSystem)
+        parseUnitSystem(settings.unitSystem),
+        'enabledTools' in (settings ?? {}) ? 1 : 0,
+        settings.enabledTools ?? null
       );
   });
 

@@ -124,6 +124,29 @@ describe('migration v44 — client records backfill', () => {
   });
 });
 
+describe('migration v46 — hand-picked sidebar tools', () => {
+  it('adds enabled_tools and leaves every existing install following its trades', () => {
+    const db = dbAtVersion(45);
+    db.prepare("UPDATE app_settings SET trade_types = 'water_sewer' WHERE id = 1").run();
+
+    db.transaction(() => MIGRATIONS[45](db))();
+
+    const cols = (db.prepare('PRAGMA table_info(app_settings)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('enabled_tools');
+    const row = db.prepare('SELECT trade_types, enabled_tools FROM app_settings WHERE id = 1').get() as any;
+    // NULL, not '' — the sidebar keeps following the trades until the user
+    // picks for themselves, so nobody's tools move on upgrade.
+    expect(row.enabled_tools).toBeNull();
+    expect(row.trade_types).toBe('water_sewer');
+  });
+
+  it('stores an explicit empty selection distinctly from "never picked"', () => {
+    const db = dbAtVersion(MIGRATIONS.length);
+    db.prepare("UPDATE app_settings SET enabled_tools = '' WHERE id = 1").run();
+    expect((db.prepare('SELECT enabled_tools FROM app_settings WHERE id = 1').get() as any).enabled_tools).toBe('');
+  });
+});
+
 describe('sample-catalog management', () => {
   const freshDb = () => dbAtVersion(MIGRATIONS.length);
 
