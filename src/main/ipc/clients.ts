@@ -47,9 +47,13 @@ export function registerClientHandlers(db: Database.Database): void {
 
   safeHandle('db:clients:search', (_event, query: string, limit?: number) => {
     const q = String(query ?? '').trim();
-    if (!q) return [];
-    const pattern = `%${q}%`;
     const cap = Math.min(Math.max(limit ?? 20, 1), 50);
+    if (!q) {
+      return db
+        .prepare('SELECT * FROM clients WHERE is_active = 1 ORDER BY name COLLATE NOCASE LIMIT ?')
+        .all(cap);
+    }
+    const pattern = `%${q}%`;
     return db
       .prepare(
         `SELECT * FROM clients

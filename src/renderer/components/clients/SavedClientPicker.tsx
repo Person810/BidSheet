@@ -129,6 +129,12 @@ export function SavedClientPicker({
             search(nextQuery);
           }}
           onFocus={() => search(query)}
+          onClick={() => { if (!state.open) search(query); }}
+          onBlur={() => {
+            setTimeout(() => {
+              setState((current) => ({ ...current, open: false }));
+            }, 200);
+          }}
           onKeyDown={handleKeyDown}
         />
         {value && !disabled && (
