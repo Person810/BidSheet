@@ -10,6 +10,7 @@ import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { Walkthrough } from './components/Walkthrough';
 import { useToastStore } from './stores/toast-store';
 import { useUnitsStore } from './stores/units-store';
+import { useLocaleStore } from './stores/locale-store';
 import { useWalkthroughStore, hasSeenWalkthrough } from './stores/walkthrough-store';
 import { parseUnitSystem } from '../shared/unitSystem';
 import { Dashboard } from './pages/Dashboard';
@@ -24,6 +25,7 @@ import { getActiveModules } from './modules';
 import type { TradeModule } from './modules';
 import { TrenchProfiler } from './modules/underground';
 import { ConcreteCalculator } from './modules/concrete';
+import { DateFormatProvider } from './contexts/DateFormatContext';
 
 // Maps tool route paths to their components.
 // Add new entries here as tools are built.
@@ -85,6 +87,7 @@ export function App() {
   const [companyLogo, setCompanyLogo] = useState('');
   const addToast = useToastStore((s) => s.addToast);
   const openWalkthrough = useWalkthroughStore((s) => s.open);
+  const loadLocale = useLocaleStore((s) => s.loadLocale);
 
   // Global safety net: catch any unhandled IPC rejections and show a toast
   // so errors never vanish silently. Pages can still catch their own errors
@@ -116,7 +119,7 @@ export function App() {
       setCompanyLogo(s?.company_logo || '');
       useUnitsStore.getState().setUnitSystem(parseUnitSystem(s?.unit_system));
       setLoading(false);
-    });
+    }).then(() => loadLocale());
 
   // Esc closes the topmost open dialog, matching what the shortcuts
   // overlay promises. Every modal already closes on backdrop click, so
@@ -200,6 +203,7 @@ export function App() {
   const modulesWithTools = activeModules.filter((mod) => mod.tools.length > 0);
 
   return (
+    <DateFormatProvider>
     <HashRouter>
       <div className="app-layout">
         <nav className="sidebar">
@@ -317,5 +321,6 @@ export function App() {
         <Walkthrough />
       </div>
     </HashRouter>
+    </DateFormatProvider>
   );
 }

@@ -1,6 +1,8 @@
 import React from 'react';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
 import { ClientField, type ClientDetailsDraft } from '../../components/ClientField';
+import { useLocaleStore } from '../../stores/locale-store';
+import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 
 export interface EditJobForm {
   name: string;
@@ -33,8 +35,9 @@ export function EditJobModal({
   form, setForm, onSave, onClose, jobId, clientDetails, onClientDetailsChange,
 }: EditJobModalProps) {
   const numberWarning = useJobNumberWarning(form.jobNumber, jobId);
+  const { profile } = useLocaleStore();
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Edit Job</h3>
         <div className="form-row">
@@ -56,10 +59,9 @@ export function EditJobModal({
         </div>
         <div className="form-row">
           <div className="form-group">
-            <label>Client / GC</label>
-            <ClientField value={form.client}
-              onChange={(client) => setForm({ ...form, client })}
-              details={clientDetails} onDetailsChange={onClientDetailsChange} />
+            <label>{profile.gcLabel}</label>
+            <SavedClientPicker value={form.client}
+              onChange={(client) => setForm({ ...form, client })} />
           </div>
           <div className="form-group">
             <label>Bid Date</label>
@@ -95,7 +97,7 @@ export function EditJobModal({
               onChange={(e) => setForm({ ...form, bondPercent: parseFloat(e.target.value) || 0 })} />
           </div>
           <div className="form-group">
-            <label>Tax %</label>
+            <label>{profile.taxLabel} %</label>
             <input type="number" className="form-control" value={form.taxPercent} step="0.1"
               onChange={(e) => setForm({ ...form, taxPercent: parseFloat(e.target.value) || 0 })} />
           </div>

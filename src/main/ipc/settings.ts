@@ -197,6 +197,11 @@ export function registerSettingsHandlers(db: Database.Database): void {
     return logger.getLogDir();
   });
 
+  safeHandle('app:system-locale', async () => {
+    const { readSystemLocale } = await import('../system-locale');
+    return readSystemLocale();
+  });
+
   safeHandle('db:settings:backup-reminder-needed', () => {
     const settings = db.prepare('SELECT last_backup_schema_version FROM app_settings WHERE id = 1').get() as any;
     const currentVersion = (db.prepare('SELECT MAX(version) as version FROM schema_version').get() as any)?.version ?? 0;

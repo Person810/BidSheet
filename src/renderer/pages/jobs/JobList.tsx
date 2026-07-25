@@ -5,6 +5,7 @@ import { useToastStore } from '../../stores/toast-store';
 import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
 import { ClientField, commitClientDetails, type ClientDetailsDraft } from '../../components/ClientField';
+import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 import { formatDateLocal, statusBadge } from './helpers';
 
 const JOB_SORT_ACCESSORS = {
@@ -34,8 +35,6 @@ export function JobList({ onOpenJob }: JobListProps) {
   // The auto-suggested number currently sitting in the field (so the hint
   // disappears as soon as the user types their own).
   const [suggestedNumber, setSuggestedNumber] = useState<string | null>(null);
-  // Client details draft, when the user opens "Add/Edit details" (#94).
-  const [clientDetails, setClientDetails] = useState<ClientDetailsDraft | null>(null);
   const numberWarning = useJobNumberWarning(showCreate ? form.jobNumber : '');
 
   const openCreate = async () => {
@@ -65,7 +64,6 @@ export function JobList({ onOpenJob }: JobListProps) {
     setShowCreate(false);
     setForm({ ...EMPTY_JOB_FORM });
     setSuggestedNumber(null);
-    setClientDetails(null);
   };
 
   // Staleness guard: switching the status filter quickly can leave a slow
@@ -95,9 +93,6 @@ export function JobList({ onOpenJob }: JobListProps) {
 
   const handleCreate = async () => {
     const settings = await window.api.getSettings();
-    // Any edited client details go to the client record first; saveJob then
-    // links the job to that record by name.
-    await commitClientDetails(form.client, clientDetails);
     const result = await window.api.saveJob({
       name: form.name, jobNumber: form.jobNumber || null, client: form.client,
       location: form.location || null, bidDate: form.bidDate || null, startDate: null,
@@ -108,7 +103,6 @@ export function JobList({ onOpenJob }: JobListProps) {
       taxPercent: settings?.default_tax_percent || 0, notes: null,
     });
     closeCreate();
-    // Drop the user straight into the job they just created
     if (result?.lastInsertRowid) {
       onOpenJob(Number(result.lastInsertRowid));
     } else {
@@ -436,7 +430,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {showCreate && (
-        <div className="modal-overlay" onClick={closeCreate}>
+        <div className="modal-overlay">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>New Job</h3>
             <div className="form-row">
@@ -462,10 +456,16 @@ export function JobList({ onOpenJob }: JobListProps) {
             <div className="form-row">
               <div className="form-group">
                 <label>Client / GC</label>
-                <ClientField value={form.client}
-                  onChange={(client) => setForm({ ...form, client })}
-                  details={clientDetails} onDetailsChange={setClientDetails}
-                  placeholder="General contractor or owner" />
+                <SavedClientPicker
+                  value={form.client}
+                  onChange={(name) => setForm({ ...form, client: name })}
+                  onSelectClient={(client) => {
+                    setForm((f) => ({
+                      ...f,
+                      client: client.name,
+                    }));
+                  }}
+                />
               </div>
               <div className="form-group">
                 <label>Bid Date</label>

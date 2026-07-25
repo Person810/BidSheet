@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('api', {
   // ---- Clients ----
   getClients: (includeInactive?: boolean) => invoke('db:clients:list', includeInactive),
   getClient: (id: number) => invoke('db:clients:get', id),
+  searchClients: (query: string, limit?: number) => invoke('db:clients:search', query, limit),
   saveClient: (client: any) => invoke('db:clients:save', client),
   deleteClient: (id: number) => invoke('db:clients:delete', id),
   restoreClient: (id: number) => invoke('db:clients:restore', id),
@@ -217,6 +218,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- App Info ----
   getLogDir: () => invoke('app:log-dir'),
+  getSystemLocale: () => invoke('app:system-locale'),
 
   // ---- Updates ----
   checkForUpdate: () => invoke('updater:check'),
