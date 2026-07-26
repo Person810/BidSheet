@@ -987,8 +987,12 @@ body {
   inset: 0;
   background: var(--bg-primary);
   display: flex;
-  align-items: center;
   justify-content: center;
+  /* A step can outgrow a short window (trades + custom trades + tools all on
+     one screen), so the overlay scrolls. Centring is done with margin:auto on
+     the wizard rather than align-items:center: a centred flex item taller than
+     its container has its top overflow clipped out of reach of the scrollbar. */
+  overflow-y: auto;
   z-index: 1000;
 }
 
@@ -996,6 +1000,7 @@ body {
   width: 100%;
   max-width: 640px;
   padding: 40px;
+  margin: auto;
 }
 
 .setup-progress {

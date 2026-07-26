@@ -15,8 +15,6 @@ struct PendingPhoto: Codable {
     let jobId: String
     let filename: String
     let takenAt: Date
-    let gpsLat: Double?
-    let gpsLng: Double?
 }
 
 final class FileCache {

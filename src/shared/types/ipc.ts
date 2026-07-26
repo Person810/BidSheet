@@ -30,6 +30,33 @@ export interface MaterialCategoryRow {
   description: string | null;
 }
 
+export interface SaveMaterialCategoryPayload {
+  id?: number;
+  name: string;
+  description?: string | null;
+}
+
+export interface MaterialCategoryUsage {
+  categoryId: number;
+  materialCount: number;
+}
+
+export interface MaterialCategoryManagementRow extends MaterialCategoryRow {
+  materialCount: number;
+}
+
+export interface DeleteMaterialCategoryPayload {
+  categoryId: number;
+  replacementCategoryId: number | null;
+  expectedMaterialCount: number;
+}
+
+export interface DeleteMaterialCategoryResult {
+  deletedCategoryId: number;
+  replacementCategoryId: number | null;
+  reassignedMaterialCount: number;
+}
+
 export interface MaterialRow {
   id: number;
   category_id: number;
@@ -505,6 +532,10 @@ export interface AppSettingsRow {
   job_number_format: string;
   job_number_start: number;
   unit_system: string;
+  /** Hand-picked sidebar tools (comma-separated ids); null = follow trades. */
+  enabled_tools: string | null;
+  /** Free-text trades with no seed catalog (comma-separated); null = none. */
+  custom_trades: string | null;
 }
 
 export interface SaveSettingsPayload {
@@ -524,6 +555,18 @@ export interface SaveSettingsPayload {
   jobNumberFormat?: string;
   jobNumberStart?: number;
   unitSystem?: 'imperial' | 'metric';
+  /** Comma-separated tool ids, '' for none, null to go back to trades. */
+  enabledTools?: string | null;
+  /** Comma-separated free-text trade names, null for none. */
+  customTrades?: string | null;
+}
+
+/** Setup-wizard answers that don't affect which catalog gets seeded. */
+export interface SetupExtras {
+  /** Comma-separated tool ids, '' for none, null to follow the trades. */
+  enabledTools?: string | null;
+  /** Comma-separated free-text trade names, null for none. */
+  customTrades?: string | null;
 }
 
 export interface CsvParseResult {

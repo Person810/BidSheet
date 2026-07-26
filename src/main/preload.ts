@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { SetupExtras } from '../shared/types/ipc';
 
 // Electron prefixes errors crossing IPC with
 // "Error invoking remote method 'channel': Error: ..." -- strip that
@@ -18,6 +19,10 @@ function invoke(channel: string, ...args: any[]): Promise<any> {
 contextBridge.exposeInMainWorld('api', {
   // ---- Materials ----
   getMaterialCategories: () => invoke('db:material-categories:list'),
+  getMaterialCategoryManagement: () => invoke('db:material-categories:management'),
+  saveMaterialCategory: (payload: any) => invoke('db:material-categories:save', payload),
+  getMaterialCategoryUsage: (categoryId: number) => invoke('db:material-categories:usage', categoryId),
+  deleteMaterialCategory: (payload: any) => invoke('db:material-categories:delete', payload),
   getMaterials: (categoryId?: number, includeInactive?: boolean) => invoke('db:materials:list', categoryId, includeInactive),
   getMaterial: (id: number) => invoke('db:materials:get', id),
   saveMaterial: (material: any) => invoke('db:materials:save', material),
@@ -99,8 +104,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- Setup ----
   isSetupComplete: () => invoke('db:setup:is-complete'),
-  runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean) =>
-    invoke('db:setup:run', trades, includeBallparkPrices, companyName, localOnlyMode, includeSampleCatalog),
+  runSetup: (trades: string[], includeBallparkPrices: boolean, companyName: string, localOnlyMode?: boolean, includeSampleCatalog?: boolean, extras?: SetupExtras) =>
+    invoke('db:setup:run', trades, includeBallparkPrices, companyName, localOnlyMode, includeSampleCatalog, extras),
   addTrade: (trade: string, includeBallparkPrices: boolean) =>
     invoke('db:settings:add-trade', trade, includeBallparkPrices),
   seedsStatus: () => invoke('db:seeds:status'),

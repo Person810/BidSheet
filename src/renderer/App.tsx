@@ -21,8 +21,7 @@ import { JobsPage } from './pages/JobsPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AssembliesPage } from './pages/AssembliesPage';
-import { getActiveModules } from './modules';
-import type { TradeModule } from './modules';
+import { resolveToolGroups, type ToolGroup } from './modules';
 import { TrenchProfiler } from './modules/underground';
 import { ConcreteCalculator } from './modules/concrete';
 import { DateFormatProvider } from './contexts/DateFormatContext';
@@ -82,7 +81,7 @@ class ErrorBoundary extends React.Component<
 export function App() {
   const [loading, setLoading] = useState(true);
   const [setupComplete, setSetupComplete] = useState(false);
-  const [activeModules, setActiveModules] = useState<TradeModule[]>([]);
+  const [toolGroups, setToolGroups] = useState<ToolGroup[]>([]);
   const [companyName, setCompanyName] = useState('');
   const [companyLogo, setCompanyLogo] = useState('');
   const addToast = useToastStore((s) => s.addToast);
@@ -105,12 +104,11 @@ export function App() {
     return () => window.removeEventListener('unhandledrejection', handler);
   }, [addToast]);
 
-  // Load trade_types to determine which modules are active
+  // Which tools the sidebar shows: the user's own picks when they have made
+  // any, otherwise whatever their trades imply (see modules/registry.ts).
   const loadSettings = () =>
     window.api.getSettings().then((s: any) => {
-      if (s?.trade_types) {
-        setActiveModules(getActiveModules(s.trade_types));
-      }
+      setToolGroups(resolveToolGroups(s?.trade_types, s?.enabled_tools));
       if (s?.company_name) {
         setCompanyName(s.company_name);
       }
@@ -194,13 +192,11 @@ export function App() {
     );
   }
 
-  // Collect all tool routes from active modules (empty for now, ready for trench profiler etc.)
-  const moduleToolRoutes = activeModules.flatMap((mod) =>
-    mod.tools.map((tool) => ({ key: `${mod.id}-${tool.id}`, path: tool.path, tool }))
+  // Routes exist only for the tools on show, so a tool you've switched off
+  // isn't reachable by URL either.
+  const moduleToolRoutes = toolGroups.flatMap((group) =>
+    group.tools.map((tool) => ({ key: `${group.id}-${tool.id}`, path: tool.path, tool }))
   );
-
-  // Collect sidebar tool entries grouped by module (only modules with tools show up)
-  const modulesWithTools = activeModules.filter((mod) => mod.tools.length > 0);
 
   return (
     <DateFormatProvider>
@@ -260,12 +256,13 @@ export function App() {
               </NavLink>
             </li>
 
-            {/* Trade module tools -- only renders when modules have tools registered */}
-            {modulesWithTools.map((mod) => (
-              <li key={mod.id} data-tour={`tools-${mod.id}`}>
-                <div className="nav-section-label">{mod.name}</div>
+            {/* Trade tools: one group per trade, or a single "Tools" group
+                once the user has picked their own (modules/registry.ts). */}
+            {toolGroups.map((group) => (
+              <li key={group.id} data-tour={`tools-${group.id}`}>
+                <div className="nav-section-label">{group.name}</div>
                 <ul className="nav-links-nested">
-                  {mod.tools.map((tool) => (
+                  {group.tools.map((tool) => (
                     <li key={tool.id}>
                       <NavLink to={tool.path}>
                         <span className="nav-icon">{ToolIcons[tool.path]}</span>

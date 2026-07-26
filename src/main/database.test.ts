@@ -124,6 +124,44 @@ describe('migration v44 — client records backfill', () => {
   });
 });
 
+describe('migration v46 — hand-picked sidebar tools', () => {
+  it('adds enabled_tools and leaves every existing install following its trades', () => {
+    const db = dbAtVersion(45);
+    db.prepare("UPDATE app_settings SET trade_types = 'water_sewer' WHERE id = 1").run();
+
+    db.transaction(() => MIGRATIONS[45](db))();
+
+    const cols = (db.prepare('PRAGMA table_info(app_settings)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('enabled_tools');
+    const row = db.prepare('SELECT trade_types, enabled_tools FROM app_settings WHERE id = 1').get() as any;
+    // NULL, not '' — the sidebar keeps following the trades until the user
+    // picks for themselves, so nobody's tools move on upgrade.
+    expect(row.enabled_tools).toBeNull();
+    expect(row.trade_types).toBe('water_sewer');
+  });
+
+  it('stores an explicit empty selection distinctly from "never picked"', () => {
+    const db = dbAtVersion(MIGRATIONS.length);
+    db.prepare("UPDATE app_settings SET enabled_tools = '' WHERE id = 1").run();
+    expect((db.prepare('SELECT enabled_tools FROM app_settings WHERE id = 1').get() as any).enabled_tools).toBe('');
+  });
+});
+
+describe('migration v47 — custom trades', () => {
+  it('adds custom_trades without disturbing the trade types that seed catalogs', () => {
+    const db = dbAtVersion(46);
+    db.prepare("UPDATE app_settings SET trade_types = 'water_sewer' WHERE id = 1").run();
+
+    db.transaction(() => MIGRATIONS[46](db))();
+
+    const cols = (db.prepare('PRAGMA table_info(app_settings)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('custom_trades');
+    const row = db.prepare('SELECT trade_types, custom_trades FROM app_settings WHERE id = 1').get() as any;
+    expect(row.custom_trades).toBeNull();
+    expect(row.trade_types).toBe('water_sewer');
+  });
+});
+
 describe('sample-catalog management', () => {
   const freshDb = () => dbAtVersion(MIGRATIONS.length);
 
@@ -137,6 +175,45 @@ describe('sample-catalog management', () => {
     expect(s.setup_complete).toBe(1);
     expect(s.trade_types).toBe('water_sewer');
     expect(seedCatalogStatus(db)).toEqual({ active: 0, hidden: 0 });
+  });
+
+  it('setup leaves the sidebar following the trades unless tools were picked', () => {
+    const db = freshDb();
+    seedDatabase(db, ['water_sewer'], true, 'Co');
+    const row = db.prepare('SELECT enabled_tools, custom_trades FROM app_settings WHERE id = 1').get() as any;
+    expect(row.enabled_tools).toBeNull();
+    expect(row.custom_trades).toBeNull();
+  });
+
+  it('setup records the tools and custom trades entered in the wizard', () => {
+    const db = freshDb();
+    seedDatabase(db, ['water_sewer'], true, 'Co', false, true, {
+      enabledTools: 'concrete-calculator',
+      customTrades: 'Directional Drilling,Demolition',
+    });
+    const row = db.prepare('SELECT enabled_tools, custom_trades FROM app_settings WHERE id = 1').get() as any;
+    expect(row.enabled_tools).toBe('concrete-calculator');
+    expect(row.custom_trades).toBe('Directional Drilling,Demolition');
+  });
+
+  it('setup re-cleans custom trades rather than trusting the renderer', () => {
+    const db = freshDb();
+    seedDatabase(db, ['water_sewer'], true, 'Co', false, true, {
+      customTrades: '  Boring  ,, boring ,   ',
+    });
+    // Blanks and case-duplicates gone, so nothing round-trips as a junk chip.
+    expect((db.prepare('SELECT custom_trades FROM app_settings WHERE id = 1').get() as any).custom_trades)
+      .toBe('Boring');
+  });
+
+  it('setup with only custom trades seeds nothing and records no trade types', () => {
+    const db = freshDb();
+    seedDatabase(db, [], true, 'Co', false, false, { customTrades: 'Directional Drilling' });
+    expect((db.prepare('SELECT COUNT(*) AS n FROM materials').get() as any).n).toBe(0);
+    const row = db.prepare('SELECT setup_complete, trade_types, custom_trades FROM app_settings WHERE id = 1').get() as any;
+    expect(row.setup_complete).toBe(1);
+    expect(row.trade_types).toBe('');
+    expect(row.custom_trades).toBe('Directional Drilling');
   });
 
   it('hide spares user items and crew-referenced seed labor roles', () => {

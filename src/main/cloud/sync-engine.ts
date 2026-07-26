@@ -34,7 +34,13 @@ import {
 import { validateSnapshot } from './validate-snapshot';
 import { exportCatalog, importCatalog, catalogHash, CatalogSnapshot } from './catalog-sync';
 import { E2eeManager } from './e2ee';
-import { encryptForSync, decryptForSync, syncAad, syncContentMac } from './sync-crypto';
+import {
+  encryptForSync,
+  decryptForSync,
+  syncAad,
+  syncContentMac,
+  fileObjectKey,
+} from './sync-crypto';
 
 /** Back-to-back window focuses don't re-sync; Sync Now always does. */
 const FOREGROUND_SYNC_THROTTLE_MS = 2 * 60 * 1000;
@@ -197,15 +203,20 @@ export class SyncEngine {
         const filename = path.basename(settings.pdf_path);
         snapshot.plan = { filename, sha256: sha, size_bytes: bytes.length };
         if (this.planKey(sha, filename) !== planHash) {
-          // Same R2 key as the (pre-E2EE) plaintext plan, so the ciphertext
-          // overwrites it in place — no plaintext copy left behind. The
-          // plaintext sha is folded into the AAD so a stale plan ciphertext
-          // can't be substituted for the current one without also forging the
-          // snapshot's plan.sha256.
+          // The plaintext sha is folded into the AAD so a stale plan
+          // ciphertext can't be substituted for the current one without also
+          // forging the snapshot's plan.sha256. (This key no longer collides
+          // with the pre-E2EE plaintext layout, which used the filename — any
+          // object still sitting under an old key has to be deleted from R2,
+          // not overwritten. See cloud migration 0013.)
           await this.api.putFile(
-            `${accountId}/${cloudId}/plans/${filename}`,
+            this.objectKey(accountId, cloudId, dek, `plan:${filename}`),
             encryptForSync(bytes, dek, syncAad(accountId, cloudId, `plan:${sha}`)),
-            'application/octet-stream'
+            'application/octet-stream',
+            this.fileMeta(accountId, cloudId, dek, `plan:${filename}`, {
+              kind: 'plan',
+              name: filename,
+            })
           );
           planHash = this.planKey(sha, filename);
         }
@@ -220,18 +231,20 @@ export class SyncEngine {
       snapshot.app_version = app.getVersion();
 
       await this.api.putFile(
-        `${accountId}/${cloudId}/markup/takeoff.json`,
+        this.objectKey(accountId, cloudId, dek, 'markup'),
         encryptForSync(
           Buffer.from(JSON.stringify(buildMarkupDoc(snapshot))),
           dek,
           syncAad(accountId, cloudId, 'markup')
         ),
-        'application/octet-stream'
+        'application/octet-stream',
+        this.fileMeta(accountId, cloudId, dek, 'markup', { kind: 'markup' })
       );
       await this.api.putFile(
-        `${accountId}/${cloudId}/job/job.json`,
+        this.objectKey(accountId, cloudId, dek, 'job'),
         encryptForSync(Buffer.from(JSON.stringify(snapshot)), dek, syncAad(accountId, cloudId, 'job')),
-        'application/octet-stream'
+        'application/octet-stream',
+        this.fileMeta(accountId, cloudId, dek, 'job', { kind: 'job' })
       );
       // Name (and status) are content → encrypted into one blob; the cloud
       // stores only ciphertext + the HMAC commit marker.
@@ -280,7 +293,7 @@ export class SyncEngine {
     // (a member device could push a malicious payload), and plan.filename below
     // touches the filesystem. Decryption also authenticates the ciphertext's
     // account/job binding via the AAD before we parse anything.
-    const jobBlob = await this.api.getFile(`${accountId}/${cloudId}/job/job.json`);
+    const jobBlob = await this.api.getFile(this.objectKey(accountId, cloudId, dek, 'job'));
     const jobPlain = decryptForSync(jobBlob, dek, syncAad(accountId, cloudId, 'job'));
     const snapshot = validateSnapshot(JSON.parse(jobPlain.toString('utf8')));
     // The HMAC the cloud advertises for this job (matches what the pusher sent).
@@ -301,7 +314,9 @@ export class SyncEngine {
         crypto.createHash('sha256').update(fs.readFileSync(existing.pdf_path)).digest('hex') ===
           snapshot.plan.sha256;
       if (!localMatches) {
-        const blob = await this.api.getFile(`${accountId}/${cloudId}/plans/${snapshot.plan.filename}`);
+        const blob = await this.api.getFile(
+          this.objectKey(accountId, cloudId, dek, `plan:${snapshot.plan.filename}`)
+        );
         const bytes = decryptForSync(blob, dek, syncAad(accountId, cloudId, `plan:${snapshot.plan.sha256}`));
         const dir = path.join(app.getPath('userData'), 'cloud-plans', cloudId);
         fs.mkdirSync(dir, { recursive: true });
@@ -611,6 +626,39 @@ export class SyncEngine {
    */
   private planKey(sha256: string, filename: string): string {
     return `${sha256}:${filename}`;
+  }
+
+  /**
+   * Where a job's files live: `accountId/cloudJobId/<opaque id>`. The id is an
+   * HMAC of the logical name under the DEK, so nothing about the file — its
+   * name, or even whether it's a plan, the markup, or the bid snapshot — is
+   * legible to the server. Both sides re-derive it from the logical name; no
+   * mapping is stored anywhere.
+   */
+  private objectKey(accountId: string, cloudId: string, dek: Buffer, logical: string): string {
+    return `${accountId}/${cloudId}/${fileObjectKey(dek, cloudId, logical)}`;
+  }
+
+  /**
+   * The encrypted metadata that travels with an upload. Every kind of file
+   * sends one — a blob only on plans would itself say "this is a plan".
+   */
+  private fileMeta(
+    accountId: string,
+    cloudId: string,
+    dek: Buffer,
+    logical: string,
+    meta: { kind: 'plan' | 'markup' | 'job'; name?: string }
+  ): string {
+    // The AAD names the object the blob belongs to, so a server that shuffles
+    // meta_enc between two files in the same job produces blobs that no longer
+    // open instead of quietly relabelling them.
+    const objectId = fileObjectKey(dek, cloudId, logical);
+    return encryptForSync(
+      Buffer.from(JSON.stringify(meta)),
+      dek,
+      syncAad(accountId, cloudId, `filemeta:${objectId}`)
+    ).toString('base64');
   }
 
   private withPlan(snapshot: JobSnapshot, plan: JobSnapshot['plan']): JobSnapshot {

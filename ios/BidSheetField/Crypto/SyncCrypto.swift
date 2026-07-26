@@ -145,6 +145,28 @@ enum SyncCrypto {
         return mac.map { String(format: "%02x", $0) }.joined()
     }
 
+    /// The object id a file gets in the cloud: `accountId/jobId/<this>`.
+    ///
+    /// Keys used to end in the real filename, which put client and project
+    /// names in plaintext object keys. This is an HMAC of the file's logical
+    /// name under the DEK: the desktop derives the same id from the same name
+    /// (`fileObjectKey` in src/main/cloud/sync-crypto.ts), and every kind of
+    /// file — plan, photo, markup, snapshot — comes out the same shape, so the
+    /// server can't tell them apart either.
+    static func fileObjectKey(dek: Data, jobId: String, logicalName: String) -> String {
+        let mac = HMAC<SHA256>.authenticationCode(
+            for: Data("file:\(jobId):\(logicalName)".utf8),
+            using: SymmetricKey(data: dek)
+        )
+        // base64url, unpadded — the same alphabet Node's digest('base64url')
+        // produces, so the two implementations agree character for character.
+        let encoded = Data(mac).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return String(encoded.prefix(22))
+    }
+
     // MARK: - recovery key (Crockford base32, "BSK1-XXXX-…")
 
     private static let crockford = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")

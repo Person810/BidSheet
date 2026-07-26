@@ -2,6 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { CloudAccountSetupModal } from './CloudAccountSetupModal';
 import { CloudSignInModal } from './CloudSignInModal';
 import { useCloudStore, initCloudStore } from '../stores/cloud-store';
+import { getAllTools, currentToolSelection, normalizeToolSelection } from '../modules';
+import {
+  MAX_CUSTOM_TRADES,
+  MAX_CUSTOM_TRADE_NAME,
+  addCustomTrades,
+  removeCustomTrade,
+  serializeCustomTrades,
+} from '@shared/customTrades';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -20,6 +28,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [step, setStep] = useState(0);
   const [companyName, setCompanyName] = useState('');
   const [selectedTrades, setSelectedTrades] = useState<string[]>([]);
+  // Trades we ship no catalog for, typed by the user. Purely a label — what
+  // makes them usable is the tool picker below.
+  const [customTrades, setCustomTrades] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+  // null = "follow my trades": the tool list keeps tracking the trade
+  // selection above it. Ticking anything pins the list instead.
+  const [enabledTools, setEnabledTools] = useState<string | null>(null);
   // Sample catalog: seed with ballpark prices, seed at $0, or skip seeding
   const [catalogChoice, setCatalogChoice] = useState<'prices' | 'zero' | 'empty' | null>(null);
   const [cloudChoice, setCloudChoice] = useState<'yes' | 'later' | 'never' | null>(null);
@@ -42,6 +58,36 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     );
   };
 
+  const addCustom = () => {
+    setCustomTrades((prev) => addCustomTrades(prev, customInput));
+    setCustomInput('');
+  };
+
+  // A custom trade seeds nothing, so with only custom trades chosen all three
+  // catalog options would load the same empty catalog. Say so instead of
+  // offering a choice that isn't one.
+  const noSeedCatalog = selectedTrades.length === 0;
+  const hasAnyTrade = selectedTrades.length > 0 || customTrades.length > 0;
+
+  // The tools a trade brings are its own selling point, but they're also the
+  // only reason some people add a trade at all — you shouldn't have to take
+  // concrete materials into your catalog to get the concrete calculator. So
+  // the list below starts as whatever the chosen trades give and can be
+  // changed independently of them.
+  const tradeTypes = selectedTrades.join(',');
+  const allTools = getAllTools();
+  const pickedTools = new Set(currentToolSelection(tradeTypes, enabledTools));
+  const followingTrades = enabledTools === null;
+
+  const toggleTool = (toolId: string) => {
+    const next = new Set(pickedTools);
+    if (next.has(toolId)) next.delete(toolId);
+    else next.add(toolId);
+    // Registry order, not click order, so the stored string is stable.
+    const ordered = allTools.map((entry) => entry.tool.id).filter((id) => next.has(id));
+    setEnabledTools(ordered.join(','));
+  };
+
   const handleFinish = async () => {
     setLoading(true);
     try {
@@ -50,7 +96,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         catalogChoice === 'prices',
         companyName,
         cloudChoice === 'never',
-        catalogChoice !== 'empty'
+        !noSeedCatalog && catalogChoice !== 'empty',
+        {
+          enabledTools: normalizeToolSelection(tradeTypes, enabledTools),
+          customTrades: serializeCustomTrades(customTrades),
+        }
       );
       onComplete();
     } catch (err) {
@@ -99,8 +149,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="setup-step">
             <h2>What type of work do you do?</h2>
             <p className="setup-desc">
-              Select all that apply. This determines which tools show up and which
-              sample materials, labor roles, and equipment are available for your catalog.
+              Select all that apply. This determines which sample materials, labor
+              roles, and equipment are available for your catalog, and which tools
+              you start with.
             </p>
             <div className="trade-grid">
               {TRADES.map((trade) => (
@@ -118,7 +169,139 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   </div>
                 </div>
               ))}
+              <div
+                className={`trade-card ${customTrades.length > 0 ? 'selected' : ''}`}
+                onClick={() => setShowCustom(true)}
+              >
+                <div className="trade-check">{customTrades.length > 0 ? '✓' : ''}</div>
+                <div>
+                  <div className="trade-label">Custom</div>
+                  <div className="trade-desc">
+                    Something else — name it yourself and pick the tools you use
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {(showCustom || customTrades.length > 0) && (
+              <div style={{ marginTop: 16, textAlign: 'left', maxWidth: 520 }}>
+                <div className="form-group" style={{ marginBottom: 8 }}>
+                  <label>Your trade</label>
+                  <div className="flex gap-8">
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. Directional Drilling"
+                      maxLength={MAX_CUSTOM_TRADE_NAME}
+                      value={customInput}
+                      onChange={(e) => setCustomInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        // Enter here means "add this one", not "submit the wizard".
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addCustom();
+                        }
+                      }}
+                      disabled={customTrades.length >= MAX_CUSTOM_TRADES}
+                      autoFocus
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={addCustom}
+                      disabled={!customInput.trim() || customTrades.length >= MAX_CUSTOM_TRADES}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+                {customTrades.length > 0 && (
+                  <div className="flex gap-8" style={{ flexWrap: 'wrap', marginBottom: 8 }}>
+                    {customTrades.map((name) => (
+                      <span
+                        key={name.toLowerCase()}
+                        className="badge badge-submitted"
+                        style={{ fontSize: 12, padding: '4px 8px 4px 12px' }}
+                      >
+                        {name}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          title={`Remove ${name}`}
+                          style={{ padding: '0 4px', fontSize: 12 }}
+                          onClick={() => setCustomTrades((prev) => removeCustomTrade(prev, name))}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>
+                  {customTrades.length >= MAX_CUSTOM_TRADES
+                    ? `That's the ${MAX_CUSTOM_TRADES}-trade limit. Remove one to add another.`
+                    : 'A custom trade is a label — it brings no sample catalog, so pick your tools below and build your own materials list.'}
+                </p>
+              </div>
+            )}
+
+            {hasAnyTrade && (
+              <div
+                style={{
+                  marginTop: 20,
+                  paddingTop: 16,
+                  borderTop: '1px solid var(--border)',
+                  textAlign: 'left',
+                  maxWidth: 520,
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Your tools</div>
+                <p className="setup-desc" style={{ marginBottom: 12 }}>
+                  {noSeedCatalog
+                    ? 'A custom trade brings no tools of its own, so take whichever of these you’ll actually use.'
+                    : 'These come with the trades you picked. Take any others you want — tools are just calculators, so adding one leaves your catalog alone.'}
+                </p>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {allTools.map(({ tool, moduleName }) => (
+                    <label
+                      key={tool.id}
+                      className="flex items-center gap-8"
+                      style={{ fontSize: 13 }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={pickedTools.has(tool.id)}
+                        onChange={() => toggleTool(tool.id)}
+                      />
+                      <span>
+                        {tool.name}
+                        <span className="text-muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                          {moduleName}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {!followingTrades && (
+                  <p className="text-muted" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+                    You&apos;re choosing these yourself, so changing the trades above
+                    won&apos;t change the list.{' '}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      style={{ padding: '0 4px', fontSize: 12 }}
+                      onClick={() => setEnabledTools(null)}
+                    >
+                      Go back to following my trades
+                    </button>
+                  </p>
+                )}
+                <p className="text-muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+                  You can change this any time in Settings.
+                </p>
+              </div>
+            )}
+
             <div className="setup-nav">
               <button className="btn btn-secondary" onClick={() => setStep(0)}>
                 Back
@@ -126,7 +309,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <button
                 className="btn btn-primary"
                 onClick={() => setStep(2)}
-                disabled={selectedTrades.length === 0}
+                disabled={!hasAnyTrade}
               >
                 Next
               </button>
@@ -137,6 +320,22 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         {step === 2 && (
           <div className="setup-step">
             <h2>Starting Catalog</h2>
+            {noSeedCatalog ? (
+              <>
+                <p className="setup-desc">
+                  BidSheet ships sample catalogs per trade, and there isn&apos;t one
+                  for {customTrades.length > 1 ? 'the trades' : 'the trade'} you
+                  named — so you&apos;ll start with an empty catalog and add your own
+                  materials, labor roles, and equipment as you bid.
+                </p>
+                <p className="setup-desc">
+                  If you also do one of the listed trades, go back and tick it: its
+                  sample catalog is a faster start, and every item can be edited or
+                  hidden later.
+                </p>
+              </>
+            ) : (
+            <>
             <p className="setup-desc">
               We can load a sample catalog for your trades — materials, labor roles,
               equipment, and assemblies — with or without rough ballpark prices, or
@@ -176,6 +375,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 </div>
               </div>
             </div>
+            </>
+            )}
             <div className="setup-nav">
               <button className="btn btn-secondary" onClick={() => setStep(1)}>
                 Back
@@ -183,7 +384,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <button
                 className="btn btn-primary"
                 onClick={() => setStep(3)}
-                disabled={catalogChoice === null}
+                disabled={!noSeedCatalog && catalogChoice === null}
               >
                 Next
               </button>

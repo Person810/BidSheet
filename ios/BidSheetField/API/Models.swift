@@ -83,21 +83,44 @@ struct MeResponse: Decodable {
     let role: String?
 }
 
+/// What a file actually is. Encrypted client-side and stored opaquely by the
+/// server, because the alternative — a filename in the R2 key and the kind in
+/// a D1 column — told anyone with bucket access the client and project names.
+struct FileMeta: Codable {
+    /// photo | plan | markup | job
+    let kind: String
+    let name: String?
+    let takenAt: String?
+}
+
 struct ManifestFile: Decodable, Identifiable {
     let id: String
     let job_id: String
+    /// accountId/jobId/<opaque id>. The last segment is an HMAC, not a name.
     let r2_key: String
-    /// photo | plan | markup | job
-    let type: String
     let size_bytes: Int
-    let content_type: String?
-    let gps_lat: Double?
-    let gps_lng: Double?
-    let taken_at: String?
+    let meta_enc: String?
     let uploaded_by: String?
     let created_at: String?
+}
 
-    var filename: String {
+extension ManifestFile {
+    /// Decrypt this file's metadata. Returns nil when the blob is missing or
+    /// doesn't open — an unreadable blob is displayed as an unnamed file
+    /// rather than treated as an error.
+    func meta(dek: Data, accountId: String) -> FileMeta? {
+        guard let meta_enc, let blob = Data(base64Encoded: meta_enc) else { return nil }
+        // The AAD names this exact object, so a server that moves one file's
+        // metadata onto another produces a blob that won't open instead of a
+        // quietly relabelled file.
+        let aad = SyncCrypto.syncAad(
+            accountId: accountId, scope: job_id, payloadType: "filemeta:\(objectId)")
+        guard let plain = try? SyncCrypto.decryptForSync(blob, dek: dek, aad: aad) else { return nil }
+        return try? JSONDecoder().decode(FileMeta.self, from: plain)
+    }
+
+    /// The opaque last segment of the key — what the metadata AAD is bound to.
+    var objectId: String {
         r2_key.split(separator: "/").last.map(String.init) ?? r2_key
     }
 }

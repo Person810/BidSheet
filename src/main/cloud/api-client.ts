@@ -2,7 +2,8 @@
  * Thin client for the BidSheet Worker API (Phase 3).
  *
  * Every call carries a fresh aal2 JWT from CloudAuth. R2 keys follow
- * accountId/jobId/<plans|markup|job>/<filename>; the Worker enforces that
+ * accountId/jobId/<objectId>, the object id being an HMAC of the file's
+ * logical name under the DEK (see sync-crypto fileObjectKey); the Worker enforces that
  * accountId matches the token's account.
  */
 
@@ -216,8 +217,19 @@ export class CloudApiClient {
     });
   }
 
-  async putFile(key: string, body: Buffer | string, contentType: string): Promise<void> {
-    await this.request(`/files/${encodeKey(key)}`, {
+  /**
+   * `metaEnc` is the encrypted metadata blob (name, kind, timestamps) the
+   * server stores and hands back verbatim — the only place a filename exists
+   * cloud-side. Omitting it on an overwrite leaves the stored blob alone.
+   */
+  async putFile(
+    key: string,
+    body: Buffer | string,
+    contentType: string,
+    metaEnc?: string
+  ): Promise<void> {
+    const query = metaEnc ? `?meta_enc=${encodeURIComponent(metaEnc)}` : '';
+    await this.request(`/files/${encodeKey(key)}${query}`, {
       method: 'PUT',
       body,
       contentType,

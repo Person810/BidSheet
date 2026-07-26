@@ -8,6 +8,8 @@ import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
 
+import { createMaterialCategory, updateMaterialCategory, getMaterialCategoryUsage, listMaterialCategoriesWithUsage, deleteMaterialCategory } from './material-categories';
+
 export function registerCatalogHandlers(db: Database.Database): void {
   // ================================================================
   // MATERIAL CATEGORIES
@@ -16,6 +18,26 @@ export function registerCatalogHandlers(db: Database.Database): void {
   safeHandle('db:material-categories:list', () => {
     return db.prepare('SELECT * FROM material_categories ORDER BY name').all();
   });
+
+  safeHandle('db:material-categories:management', () => {
+    return listMaterialCategoriesWithUsage(db);
+  });
+
+  safeHandle('db:material-categories:save', (_event, payload: any) => {
+    if (payload.id) {
+      return updateMaterialCategory(db, payload);
+    }
+    return createMaterialCategory(db, payload);
+  });
+
+  safeHandle('db:material-categories:usage', (_event, categoryId: number) => {
+    return getMaterialCategoryUsage(db, categoryId);
+  });
+
+  safeHandle('db:material-categories:delete', (_event, payload: any) => {
+    return deleteMaterialCategory(db, payload);
+  });
+
 
   // ================================================================
   // MATERIALS
