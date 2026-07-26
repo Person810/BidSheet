@@ -60,7 +60,28 @@ export function CloudSyncCard() {
     }
   };
 
-  const handleSignOut = () => act(() => window.api.cloudSignOut());
+  // Signing out drops this computer's encryption keys, so getting back in takes
+  // the recovery key, not just the password. For a team member that's worse
+  // than an inconvenience: their key material on the server is wrapped under
+  // their own recovery key, so if they've lost it no owner can let them back in
+  // — they have to be removed and re-invited. Far too much to hang on one
+  // misclick of a button sitting next to Sync Now.
+  const handleSignOut = async () => {
+    let warnAboutKeys = false;
+    try {
+      const state = await window.api.cloudE2eeState();
+      warnAboutKeys = state === 'unlocked' || state === 'locked' || state === 'pending_approval';
+    } catch {
+      // Can't tell (offline, or the state call failed) — warn anyway. A
+      // needless caution costs a click; a silent sign-out can cost the data.
+      warnAboutKeys = true;
+    }
+    const prompt = warnAboutKeys
+      ? 'Sign out of cloud sync?\n\nThis computer will forget your encryption keys. To use cloud sync here again you will need your recovery key — your password alone will not unlock it.'
+      : 'Sign out of cloud sync?';
+    if (!confirm(prompt)) return;
+    return act(() => window.api.cloudSignOut());
+  };
 
   const usedFrac =
     account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;

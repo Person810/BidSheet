@@ -241,7 +241,7 @@ export class CloudAuth {
         logger.warn('cloud-auth', 'Could not verify stored cloud session; keeping it to retry', err.message);
       } else {
         logger.warn('cloud-auth', 'Stored cloud session is no longer valid', err.message);
-        this.clear();
+        this.clearLocalSession();
       }
     }
     return this.status();
@@ -355,19 +355,27 @@ export class CloudAuth {
     return this.accessToken!;
   }
 
-  async signOut(): Promise<void> {
+  /**
+   * Best-effort server-side revoke. Never throws — a dead network must not be
+   * able to block a sign-out the user asked for.
+   */
+  async revokeRemoteSession(): Promise<void> {
     if (this.accessToken) {
       await gotrue('/logout', {}, this.accessToken).catch(() => {});
     }
-    this.clear();
   }
 
-  private clear(): void {
-    this.accessToken = null;
-    this.refreshToken = null;
-    this.email = null;
-    this.userId = null;
-    this.hasVerifiedTotp = false;
+  /**
+   * Forget this device's session. Callers that also drop other local state
+   * (the sign-out handler drops the E2EE keys) should wrap this in a single
+   * db.transaction() so the writes cannot land half-applied.
+   *
+   * The row UPDATE runs before the in-memory fields are nulled: if the write
+   * throws (SQLITE_BUSY, read-only DB), nothing has changed and the user stays
+   * signed in with a visible error, rather than being signed out in memory
+   * only to have the session reappear at the next launch.
+   */
+  clearLocalSession(): void {
     // Drop the token but keep the row — account_id stays as a record of which
     // account this machine's cloud_ids belong to, so the sync engine can
     // detect a sign-in to a *different* account and reset its bookkeeping.
@@ -376,6 +384,11 @@ export class CloudAuth {
         `UPDATE cloud_auth SET refresh_token_enc = NULL, updated_at = datetime('now', 'localtime') WHERE id = 1`
       )
       .run();
+    this.accessToken = null;
+    this.refreshToken = null;
+    this.email = null;
+    this.userId = null;
+    this.hasVerifiedTotp = false;
   }
 
   private requireSession(): void {

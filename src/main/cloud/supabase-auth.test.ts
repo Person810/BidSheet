@@ -24,6 +24,41 @@ function storedToken(db: Database.Database): string | null {
   return row?.refresh_token_enc ?? null;
 }
 
+function storedDek(db: Database.Database): string | null {
+  const row = db.prepare('SELECT dek_enc FROM cloud_auth WHERE id = 1').get() as any;
+  return row?.dek_enc ?? null;
+}
+
+/** A structurally-valid JWT so decodeJwtPayload can read `aal` off it. */
+function fakeJwt(payload: Record<string, unknown>): string {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `header.${body}.signature`;
+}
+
+/** A CloudAuth with a live in-memory session, signed in through a stubbed GoTrue. */
+async function signedInAuth(db: Database.Database): Promise<CloudAuth> {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          access_token: fakeJwt({ aal: 'aal2', exp: Math.floor(Date.now() / 1000) + 3600 }),
+          refresh_token: 'refresh-live',
+          user: {
+            id: 'user-1',
+            email: 'e@example.com',
+            factors: [{ id: 'f1', factor_type: 'totp', status: 'verified' }],
+          },
+        }),
+        { status: 200 }
+      )
+    )
+  );
+  const auth = new CloudAuth(db);
+  await auth.signIn('e@example.com', 'pw');
+  return auth;
+}
+
 let db: Database.Database;
 beforeEach(() => {
   db = initializeDatabase(':memory:');
@@ -90,6 +125,52 @@ describe('CloudAuth.restore — offline / transient resilience', () => {
 
     expect(status.signedIn).toBe(false);
     expect(storedToken(db)).toBeNull();
+  });
+});
+
+describe('CloudAuth.clearLocalSession — sign-out must not land half-applied', () => {
+  it('clears both the stored token and the in-memory session', async () => {
+    const auth = await signedInAuth(db);
+    expect(auth.status().signedIn).toBe(true);
+
+    auth.clearLocalSession();
+
+    expect(auth.status().signedIn).toBe(false);
+    expect(storedToken(db)).toBeNull();
+  });
+
+  it('leaves the session fully intact when the row write fails', async () => {
+    // The DB write must come before the in-memory nulls. Reversed, a failed
+    // write signs the user out in memory while the token survives on disk —
+    // the app looks signed out, then the session reappears at the next launch.
+    const auth = await signedInAuth(db);
+    db.exec('DROP TABLE cloud_auth');
+
+    expect(() => auth.clearLocalSession()).toThrow();
+
+    expect(auth.status().signedIn).toBe(true);
+    expect(auth.status().email).toBe('e@example.com');
+  });
+
+  it('rolls back the dropped E2EE keys when the session write fails in the same transaction', async () => {
+    // What the sign-out handler wraps: dropping the keys and clearing the
+    // session are one unit. Half-applied, the keys go but the refresh token
+    // stays on disk, and the next launch silently restores the session on the
+    // shared computer this is meant to protect.
+    const auth = await signedInAuth(db);
+    db.prepare(`UPDATE cloud_auth SET dek_enc = 'cached-dek' WHERE id = 1`).run();
+    // Make the session write — and only that write — fail mid-transaction.
+    db.exec(`CREATE TRIGGER fail_session_clear BEFORE UPDATE OF refresh_token_enc ON cloud_auth
+             BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END`);
+
+    const signOutLocally = db.transaction(() => {
+      db.prepare(`UPDATE cloud_auth SET dek_enc = NULL WHERE id = 1`).run(); // stands in for e2ee.lockLocal()
+      auth.clearLocalSession();
+    });
+
+    expect(() => signOutLocally()).toThrow();
+    expect(storedDek(db)).toBe('cached-dek'); // key drop rolled back with it
+    expect(storedToken(db)).not.toBeNull();
   });
 });
 
