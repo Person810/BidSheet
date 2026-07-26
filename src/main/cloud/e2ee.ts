@@ -45,9 +45,8 @@ import {
   privKeyWrapAad,
   wrapWithRecoveryCode,
   unwrapWithRecoveryCode,
-  isKdfWrapped,
   pubkeySafetyCode,
-  type RecoveryKdf,
+  ShortRecoveryKeyRetiredError,
 } from './sync-crypto';
 import crypto from 'crypto';
 
@@ -172,7 +171,7 @@ export class E2eeManager {
 
   // ---- first enable (writes format 2) ----
 
-  async setup(shorter = false): Promise<E2eeSetupResult> {
+  async setup(): Promise<E2eeSetupResult> {
     const accountId = await this.accountId();
     const userId = this.userId();
     // Race guard: never generate a second DEK over an existing one (would
@@ -183,14 +182,13 @@ export class E2eeManager {
       );
     }
     const dek = crypto.randomBytes(DEK_LENGTH);
-    const recoveryKey = generateRecoveryKey({ short: shorter });
-    const kdf: RecoveryKdf = shorter ? 'scrypt' : 'direct';
+    const recoveryKey = generateRecoveryKey();
     const fingerprint = dekFingerprint(dek);
     const { pubRaw, privRaw } = generateMemberKeypair();
 
     // Account-level recovery wrap (legacy field) + this owner's member material.
-    const wrappedDek = await wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId), kdf);
-    const wrappedPriv = await wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId), kdf);
+    const wrappedDek = wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId));
+    const wrappedPriv = wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId));
     const sealedDek = sealDek(dek, pubRaw, sealAad(accountId, userId));
 
     try {
@@ -243,7 +241,7 @@ export class E2eeManager {
     }
     let priv: Buffer;
     try {
-      priv = await unwrapWithRecoveryCode(
+      priv = unwrapWithRecoveryCode(
         Buffer.from(material.my_wrapped_priv, 'base64'),
         recoveryKey,
         privKeyWrapAad(userId)
@@ -251,7 +249,11 @@ export class E2eeManager {
       if (priv.length !== DEK_LENGTH) {
         throw new E2eeUnlockError('Unwrapped private key has the wrong length.');
       }
-    } catch {
+    } catch (err) {
+      // A wrap in the retired short-key format is not a typo. Pass its own
+      // message through instead of sending the user off to re-check a recovery
+      // key that is very likely correct.
+      if (err instanceof ShortRecoveryKeyRetiredError) throw new E2eeUnlockError(err.message);
       throw new E2eeUnlockError('That recovery key did not match. Check it and try again.');
     }
     if (!material.my_wrapped_dek) {
@@ -294,16 +296,11 @@ export class E2eeManager {
    * either both (clean join) or neither — and "neither" is recovered by the
    * switch detector, which sees the old stored id disagree with /me.
    */
-  async joinWithInvite(
-    token: string,
-    shorter = false,
-    applyJoinReset?: () => void
-  ): Promise<E2eeSetupResult> {
+  async joinWithInvite(token: string, applyJoinReset?: () => void): Promise<E2eeSetupResult> {
     const userId = this.userId();
-    const recoveryKey = generateRecoveryKey({ short: shorter });
-    const kdf: RecoveryKdf = shorter ? 'scrypt' : 'direct';
+    const recoveryKey = generateRecoveryKey();
     const { pubRaw, privRaw } = generateMemberKeypair();
-    const wrappedPriv = await wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId), kdf);
+    const wrappedPriv = wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId));
 
     const result = await this.api.redeemInvite({
       token,
@@ -348,19 +345,18 @@ export class E2eeManager {
 
   // ---- regenerate recovery key ----
 
-  async regenerateRecoveryKey(shorter = false): Promise<E2eeSetupResult> {
+  async regenerateRecoveryKey(): Promise<E2eeSetupResult> {
     const accountId = await this.accountId();
     const userId = this.userId();
     const material = await this.api.getKeyMaterial();
     if (!material) throw new E2eeUnlockError('Encrypted sync is not set up for this account yet.');
 
-    const recoveryKey = generateRecoveryKey({ short: shorter });
-    const kdf: RecoveryKdf = shorter ? 'scrypt' : 'direct';
+    const recoveryKey = generateRecoveryKey();
 
     if (!(material.format >= 2)) {
       // Legacy: re-wrap the DEK (same DEK, new recovery key).
       const dek = this.getDek();
-      const wrapped = await wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId), kdf);
+      const wrapped = wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId));
       await this.api.putKeyMaterial({
         format: 1,
         wrapped_dek: wrapped.toString('base64'),
@@ -378,7 +374,7 @@ export class E2eeManager {
         'Unlock encrypted sync on this computer before regenerating your recovery key.'
       );
     }
-    const wrappedPriv = await wrapWithRecoveryCode(priv, recoveryKey, privKeyWrapAad(userId), kdf);
+    const wrappedPriv = wrapWithRecoveryCode(priv, recoveryKey, privKeyWrapAad(userId));
 
     // For an OWNER the private-key rewrap alone is not enough: the
     // account-level legacy wrap (e2ee_keys.wrapped_dek, created at setup and
@@ -400,7 +396,7 @@ export class E2eeManager {
       const dek = this.dekForRewrap(material, priv, accountId, userId);
       if (dek) {
         const pubRaw = this.derivePub(priv);
-        const wrappedDek = await wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId), kdf);
+        const wrappedDek = wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId));
         const sealedDek = sealDek(dek, pubRaw, sealAad(accountId, userId));
         await this.api.putKeyMaterial({
           format: 2,
@@ -467,8 +463,9 @@ export class E2eeManager {
   ): Promise<Buffer> {
     let dek: Buffer;
     try {
-      dek = await unwrapWithRecoveryCode(Buffer.from(wrappedDek, 'base64'), recoveryKey, this.wrapAad(accountId));
-    } catch {
+      dek = unwrapWithRecoveryCode(Buffer.from(wrappedDek, 'base64'), recoveryKey, this.wrapAad(accountId));
+    } catch (err) {
+      if (err instanceof ShortRecoveryKeyRetiredError) throw new E2eeUnlockError(err.message);
       throw new E2eeUnlockError('That recovery key did not match. Check it and try again.');
     }
     if (dekFingerprint(dek) !== fingerprint) {
@@ -488,11 +485,8 @@ export class E2eeManager {
     legacyWrappedDek: string
   ): Promise<void> {
     try {
-      // Keep the new member wrap on the same KDF the account's legacy wrap uses,
-      // so a short-code account stays short-code after the upgrade.
-      const kdf: RecoveryKdf = isKdfWrapped(Buffer.from(legacyWrappedDek, 'base64')) ? 'scrypt' : 'direct';
       const { pubRaw, privRaw } = generateMemberKeypair();
-      const wrappedPriv = await wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId), kdf);
+      const wrappedPriv = wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId));
       const sealedDek = sealDek(dek, pubRaw, sealAad(accountId, userId));
       await this.api.putKeyMaterial({
         format: 2,

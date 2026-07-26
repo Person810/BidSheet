@@ -2,8 +2,8 @@
 
 BidSheet is desktop estimating software that stores your catalog, bids, and
 plans in a local SQLite database. The optional cloud sync encrypts your data on
-your computer with a passphrase only you know before it is uploaded, so the
-server only ever stores opaque ciphertext. Security reports are taken seriously.
+your computer, under a key only you hold, before it is uploaded — so the server
+only ever stores opaque ciphertext. Security reports are taken seriously.
 
 ## Supported Versions
 

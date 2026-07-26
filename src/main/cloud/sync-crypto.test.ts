@@ -23,6 +23,7 @@ import {
   wrapWithRecoveryCode,
   unwrapWithRecoveryCode,
   isKdfWrapped,
+  ShortRecoveryKeyRetiredError,
 } from './sync-crypto';
 
 const dek = crypto.randomBytes(32);
@@ -152,72 +153,56 @@ describe('recovery key', () => {
   });
 });
 
-describe('short recovery key + scrypt wrapping', () => {
+describe('recovery-code wrapping', () => {
   const wrapAad = syncAad('acct-1', 'account', 'dek-wrap');
 
-  it('generates an 80-bit (16-char) short key vs the 256-bit default', () => {
-    const short = generateRecoveryKey({ short: true });
-    const full = generateRecoveryKey();
-    expect(normalizeRecoveryCode(short)).toHaveLength(16); // 80 bits / 5 bits per char
-    expect(normalizeRecoveryCode(full)).toHaveLength(52); // 256 bits / 5, rounded up
+  it('generates exactly one shape: 256 bits, 52 base32 chars', () => {
+    expect(normalizeRecoveryCode(generateRecoveryKey())).toHaveLength(52); // 256/5, rounded up
   });
 
-  it('round-trips the DEK through a scrypt (BSKD) wrap with a short key', async () => {
-    const realDek = crypto.randomBytes(32);
-    const code = generateRecoveryKey({ short: true });
-    const blob = await wrapWithRecoveryCode(realDek, code, wrapAad, 'scrypt');
-    expect(isKdfWrapped(blob)).toBe(true);
-    expect(blob.includes(realDek)).toBe(false); // ciphertext, not the raw key
-    expect((await unwrapWithRecoveryCode(blob, code, wrapAad)).equals(realDek)).toBe(true);
-  });
-
-  it('round-trips through a direct (BSE1) wrap with a full key', async () => {
+  it('round-trips a secret through the wrap', () => {
     const realDek = crypto.randomBytes(32);
     const code = generateRecoveryKey();
-    const blob = await wrapWithRecoveryCode(realDek, code, wrapAad, 'direct');
+    const blob = wrapWithRecoveryCode(realDek, code, wrapAad);
     expect(isKdfWrapped(blob)).toBe(false);
-    expect((await unwrapWithRecoveryCode(blob, code, wrapAad)).equals(realDek)).toBe(true);
+    expect(blob.includes(realDek)).toBe(false); // ciphertext, not the raw key
+    expect(unwrapWithRecoveryCode(blob, code, wrapAad).equals(realDek)).toBe(true);
   });
 
-  it('uses a fresh salt per scrypt wrap (same input -> different blob)', async () => {
-    const realDek = crypto.randomBytes(32);
-    const code = generateRecoveryKey({ short: true });
-    const a = await wrapWithRecoveryCode(realDek, code, wrapAad, 'scrypt');
-    const b = await wrapWithRecoveryCode(realDek, code, wrapAad, 'scrypt');
-    expect(a.equals(b)).toBe(false);
-    // both still decrypt to the same DEK
-    expect((await unwrapWithRecoveryCode(a, code, wrapAad)).equals(realDek)).toBe(true);
-    expect((await unwrapWithRecoveryCode(b, code, wrapAad)).equals(realDek)).toBe(true);
+  it('rejects the wrong recovery code', () => {
+    const blob = wrapWithRecoveryCode(crypto.randomBytes(32), generateRecoveryKey(), wrapAad);
+    expect(() => unwrapWithRecoveryCode(blob, generateRecoveryKey(), wrapAad)).toThrow(
+      SyncDecryptError
+    );
   });
 
-  it('rejects the wrong short code', async () => {
-    const blob = await wrapWithRecoveryCode(crypto.randomBytes(32), generateRecoveryKey({ short: true }), wrapAad, 'scrypt');
-    await expect(
-      unwrapWithRecoveryCode(blob, generateRecoveryKey({ short: true }), wrapAad)
-    ).rejects.toThrow(SyncDecryptError);
-  });
-
-  it('rejects an AAD mismatch on a scrypt wrap', async () => {
-    const code = generateRecoveryKey({ short: true });
-    const blob = await wrapWithRecoveryCode(crypto.randomBytes(32), code, wrapAad, 'scrypt');
-    await expect(
+  it('rejects an AAD mismatch (wrap moved to another account)', () => {
+    const code = generateRecoveryKey();
+    const blob = wrapWithRecoveryCode(crypto.randomBytes(32), code, wrapAad);
+    expect(() =>
       unwrapWithRecoveryCode(blob, code, syncAad('acct-2', 'account', 'dek-wrap'))
-    ).rejects.toThrow(SyncDecryptError);
+    ).toThrow(SyncDecryptError);
   });
 
-  it('detects tampering with the salt header (wrong key -> auth-tag failure)', async () => {
-    const code = generateRecoveryKey({ short: true });
-    const blob = await wrapWithRecoveryCode(crypto.randomBytes(32), code, wrapAad, 'scrypt');
-    blob[10] ^= 0xff; // flip a salt byte
-    await expect(unwrapWithRecoveryCode(blob, code, wrapAad)).rejects.toThrow(SyncDecryptError);
-  });
-
-  it('tolerates a hand-typed short code (lowercase, spaces, ambiguous chars)', async () => {
+  it('tolerates a hand-typed code (lowercase, spaces, no prefix)', () => {
     const realDek = crypto.randomBytes(32);
-    const code = generateRecoveryKey({ short: true });
-    const blob = await wrapWithRecoveryCode(realDek, code, wrapAad, 'scrypt');
+    const code = generateRecoveryKey();
+    const blob = wrapWithRecoveryCode(realDek, code, wrapAad);
     const messy = code.replace(/^BSK1-/, '').replace(/-/g, ' ').toLowerCase();
-    expect((await unwrapWithRecoveryCode(blob, messy, wrapAad)).equals(realDek)).toBe(true);
+    expect(unwrapWithRecoveryCode(blob, messy, wrapAad).equals(realDek)).toBe(true);
+  });
+
+  // Short 80-bit keys and their scrypt (BSKD) envelope are gone. Nothing writes
+  // one now, but v0.3.3 and earlier could, so a blob that does turn up has to
+  // say what it is instead of reading as corrupt data — and it has to stay its
+  // own error type, or e2ee.ts collapses it into "that recovery key did not
+  // match" and sends the user off to re-check a key that is probably correct.
+  it('reports a retired short-key (BSKD) blob distinctly, not as a bad key', () => {
+    const bskd = Buffer.concat([Buffer.from('BSKD'), Buffer.alloc(64, 7)]);
+    expect(isKdfWrapped(bskd)).toBe(true);
+    const attempt = () => unwrapWithRecoveryCode(bskd, generateRecoveryKey(), wrapAad);
+    expect(attempt).toThrow(ShortRecoveryKeyRetiredError);
+    expect(attempt).toThrow(/short recovery key/i);
   });
 });
 

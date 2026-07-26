@@ -158,12 +158,9 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   // and the backup. setup/regenerate return the recovery key to show exactly
   // once; the renderer forces the user to confirm they saved it.
   handle('cloud:e2ee-state', () => e2ee.state());
-  handle('cloud:e2ee-setup', async (shorter?: boolean) => {
-    logger.info(
-      'cloud:e2ee-setup',
-      `Enabling encrypted sync (generating DEK + ${shorter ? 'short' : 'full'} recovery key)`
-    );
-    const res = await e2ee.setup(!!shorter);
+  handle('cloud:e2ee-setup', async () => {
+    logger.info('cloud:e2ee-setup', 'Enabling encrypted sync (generating DEK + recovery key)');
+    const res = await e2ee.setup();
     // Re-encrypt anything a pre-E2EE client already pushed: the next sync pass
     // (kicked off after the user saves the recovery key) re-uploads every job,
     // the catalog, and the backup as ciphertext, overwriting the plaintext.
@@ -174,9 +171,9 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     logger.info('cloud:e2ee-unlock', 'Unlocking encrypted sync on this device');
     await e2ee.unlock(recoveryKey);
   });
-  handle('cloud:e2ee-regenerate-recovery', async (shorter?: boolean) => {
+  handle('cloud:e2ee-regenerate-recovery', async () => {
     logger.info('cloud:e2ee-regenerate-recovery', 'Regenerating recovery key (re-wrapping DEK)');
-    return e2ee.regenerateRecoveryKey(!!shorter);
+    return e2ee.regenerateRecoveryKey();
   });
 
   // ---- organizations / multi-user ----
@@ -205,13 +202,13 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   });
   handle('cloud:org-list-invites', () => api.listInvites());
   handle('cloud:org-revoke-invite', (id: string) => api.revokeInvite(id));
-  handle('cloud:org-redeem-invite', async (token: string, shorter?: boolean) => {
+  handle('cloud:org-redeem-invite', async (token: string) => {
     logger.info('cloud:org-redeem-invite', 'Redeeming invite and joining account');
     // The sync-state wipe rides inside joinWithInvite's transaction: switching
     // the stored account id bypasses the engine's account-switch detector, so
     // wiping the stale cloud ids afterwards (as this handler used to) left a
     // crash window where the next pass pushed private solo jobs into the org.
-    const res = await e2ee.joinWithInvite(token, !!shorter, () => engine.resetSyncStateForJoin());
+    const res = await e2ee.joinWithInvite(token, () => engine.resetSyncStateForJoin());
     engine.refreshRenderer();
     return res;
   });
