@@ -548,7 +548,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                   )}
                 </div>
                 {editingClient && (
-                  <div className="modal-overlay" onClick={() => setEditingClient(false)} style={{ zIndex: 1100 }}>
+                  <div className="modal-overlay" onClick={dismissOnEscOnly(() => setEditingClient(false))} style={{ zIndex: 1100 }}>
                     <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
                       <h3>{selectedClientRow ? 'Edit Client' : 'Add Client'}</h3>
                       <ClientForm

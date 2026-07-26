@@ -1,3 +1,5 @@
+import type { ClientRow, SaveClientPayload } from '../../../shared/types/ipc';
+
 export interface ClientFormValues {
   id: number | undefined;
   name: string;
