@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { MaterialCategoryManagementRow, SaveMaterialCategoryPayload, DeleteMaterialCategoryPayload } from '../../shared/types/ipc';
+import { dismissOnEscOnly } from './modalDismiss';
 import {
   createEmptyCategoryForm,
   createCategoryEditForm,
@@ -106,7 +107,7 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
   const replacementOptions = deleteTarget ? getReplacementCategories(categories, deleteTarget.id) : [];
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { onClose(); resetForm(); setDeleteTarget(null); } }}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(() => { onClose(); resetForm(); setDeleteTarget(null); })}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, maxHeight: '80vh', overflow: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>Manage Categories</h3>

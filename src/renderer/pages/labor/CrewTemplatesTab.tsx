@@ -6,6 +6,7 @@ import {
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toast-store';
 import type { LaborRole, CrewMember, CrewTemplate } from '../../../shared/types/labor';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface CrewTemplatesTabProps {
   crews: CrewTemplate[];
@@ -148,7 +149,7 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
       </div>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? 'Edit Crew Template' : 'Add Crew Template'}</h3>
             <div className="form-row">

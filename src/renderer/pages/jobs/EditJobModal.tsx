@@ -1,6 +1,7 @@
 import React from 'react';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
 import { ClientField, type ClientDetailsDraft } from '../../components/ClientField';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 export interface EditJobForm {
   name: string;
@@ -34,7 +35,7 @@ export function EditJobModal({
 }: EditJobModalProps) {
   const numberWarning = useJobNumberWarning(form.jobNumber, jobId);
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Edit Job</h3>
         <div className="form-row">

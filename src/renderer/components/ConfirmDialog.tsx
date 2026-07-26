@@ -1,4 +1,5 @@
 import React from 'react';
+import { dismissOnEscOnly } from './modalDismiss';
 
 // In-app confirm dialog — replaces native confirm() which steals
 // focus from Electron's renderer and leaves inputs unresponsive.
@@ -14,7 +15,7 @@ export function ConfirmDialog({ message, onYes, onNo, yesLabel = 'Delete', varia
     : {};
 
   return (
-    <div className="modal-overlay" onClick={onNo} style={{ zIndex: 10000 }}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onNo)} style={{ zIndex: 10000 }}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}
         role="dialog" aria-label="Confirm">
         <h3>Confirm</h3>

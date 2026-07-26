@@ -38,6 +38,7 @@ import { ContextMenu, getMenuItems } from './ContextMenu';
 import { EditVertexDialog } from './EditVertexDialog';
 import { RunProfileView } from './RunProfileView';
 import type { TakeoffJobSettings, PdfPoint, ContextMenuState } from './types';
+import { dismissOnEscOnly } from '../../../components/modalDismiss';
 
 // three.js / R3F is heavy and only needed when the 3D toggle is used, so it's
 // code-split out of the main takeoff bundle and loaded on first 3D view.
@@ -1460,7 +1461,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
 
       {/* Annotation text modal */}
       {showAnnotationTextModal && (
-        <div className="modal-overlay" onClick={handleAnnotationTextCancel}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(handleAnnotationTextCancel)}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginBottom: 12 }}>{editingAnnotationId != null ? 'Edit Note' : 'Add Note'}</h3>
             <div className="form-group">
@@ -1578,7 +1579,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       })()}
 
       {pendingElev && (
-        <div className="modal-overlay" onClick={() => setPendingElev(null)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setPendingElev(null))}>
           <div className="modal" style={{ maxWidth: 360 }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Spot Elevation</h3>
             <div className="form-group">
@@ -1607,7 +1608,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         if (!run) return null;
         const groundSampler = buildGroundSampler(sm.surface, run.pdfPage);
         return (
-          <div className="modal-overlay" onClick={() => setProfileRunId(null)}>
+          <div className="modal-overlay" onClick={dismissOnEscOnly(() => setProfileRunId(null))}>
             <div className="modal" style={{ maxWidth: 960, width: '92vw' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
                 <h3 style={{ margin: 0 }}>

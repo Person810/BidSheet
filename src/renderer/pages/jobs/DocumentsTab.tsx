@@ -6,6 +6,7 @@ import { useToastStore } from '../../stores/toast-store';
 import { buildFolderTree, descendantIds, folderPath, formatBytes, type FolderLike } from '../../../shared/documentFiles';
 import type { AddDocumentsResult, JobDocumentFolderDTO, JobDocumentRow } from '../../../shared/types/ipc';
 import { DOC_DRAG_TYPE, FolderTree } from './FolderTree';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 /**
  * What was right-clicked. 'root' = the tree's "Documents" header (targets the
@@ -536,7 +537,7 @@ function NamePromptModal({ title, placeholder, initial, submitLabel, onSubmit, o
   const commit = () => { const trimmed = name.trim(); if (trimmed) onSubmit(trimmed); };
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onCancel)}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 380 }} role="dialog" aria-label={title}>
         <h3>{title}</h3>
         <input
@@ -570,7 +571,7 @@ function MoveModal({ title, targets, onMove, onCancel }: {
   const [choice, setChoice] = useState<string>('');
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onCancel)}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 420 }} role="dialog" aria-label={title}>
         <h3>{title}</h3>
         <select className="form-control" autoFocus value={choice} onChange={(e) => setChoice(e.target.value)}>

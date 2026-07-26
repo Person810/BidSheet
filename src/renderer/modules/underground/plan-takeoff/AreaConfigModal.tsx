@@ -7,6 +7,7 @@ import { ftToInches } from './takeoffUtils';
 import { inchesToFeet } from '../../../../shared/constants/units';
 import { fromDisplay, unitLabel } from '../../../../shared/unitSystem';
 import { useUnitSystem } from '../../../stores/units-store';
+import { dismissOnEscOnly } from '../../../components/modalDismiss';
 
 const AREA_OPTIONS = (Object.keys(AREA_TYPE_LABELS) as AreaType[]).map((value) => ({
   value,
@@ -138,7 +139,7 @@ export function AreaConfigModal({ onConfirm, onCancel, initialConfig, lastAreaCo
       : `Cut depth${system === 'metric' ? '' : ' (ft)'}`;
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onCancel)}>
       <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>

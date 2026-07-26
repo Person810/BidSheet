@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { formatCurrency } from './helpers';
 import { useToastStore } from '../../stores/toast-store';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface TemplateRow {
   id: number;
@@ -62,7 +63,7 @@ export function SectionTemplatePickerModal({ jobId, onInserted, onClose }: {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginBottom: 4 }}>Section Templates</h3>
         <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { dismissOnEscOnly } from './modalDismiss';
 
 interface ShortcutRow {
   keys: string[];
@@ -61,7 +62,7 @@ export function ShortcutsOverlay() {
   if (!open) return null;
 
   return (
-    <div className="modal-overlay" onClick={() => setOpen(false)}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(() => setOpen(false))}>
       <div className="modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}
         role="dialog" aria-label="Keyboard shortcuts">
         <h3>Keyboard Shortcuts</h3>

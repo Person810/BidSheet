@@ -3,6 +3,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToastStore } from '../stores/toast-store';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
 import type { ClientRow } from '../../shared/types/ipc';
+import { dismissOnEscOnly } from '../components/modalDismiss';
 
 const CLIENT_SORT_ACCESSORS = {
   name: (c: ClientRow) => c.name,
@@ -210,7 +211,7 @@ export function ClientsPage() {
       )}
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? 'Edit Client' : 'Add Client'}</h3>
             {editing && (editing.job_count ?? 0) > 0 && (

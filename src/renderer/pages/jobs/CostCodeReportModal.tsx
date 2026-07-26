@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { formatCurrency } from './helpers';
 import { useToastStore } from '../../stores/toast-store';
 import { neutralizeCsvFormula } from '../../../shared/csvSafe';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface CodeRollup {
   code: string;
@@ -85,7 +86,7 @@ export function CostCodeReportModal({ job, sections, lineItems, onClose }: {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>Cost Code Summary</h3>

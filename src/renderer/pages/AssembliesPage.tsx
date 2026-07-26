@@ -49,6 +49,7 @@ interface FormItem {
 
 import { unitOptions } from '../../shared/constants/units';
 import { useUnitSystem } from '../stores/units-store';
+import { dismissOnEscOnly } from '../components/modalDismiss';
 
 const EMPTY_FORM = {
   name: '',
@@ -398,7 +399,7 @@ export function AssembliesPage() {
 
       {/* ---- Modal ---- */}
       {showModal && (
-        <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(closeModal)}>
           <div
             className="modal"
             onClick={(e) => e.stopPropagation()}

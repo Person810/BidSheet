@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ClientRow } from '../../shared/types/ipc';
+import { clientSummaryParts } from './clientSummary';
 
 /**
  * Client picker for the job forms (#94): a free-text input with known-client
@@ -113,11 +114,12 @@ export function ClientField({ value, onChange, details, onDetailsChange, placeho
     }
   };
 
+  // Same summary the job header shows (#110), plus the job count — which only
+  // means anything here, where you're deciding whether this is the client you
+  // meant.
   const summaryParts: string[] = [];
   if (matched) {
-    if (matched.contact_name) summaryParts.push(matched.contact_name);
-    if (matched.contact_phone) summaryParts.push(matched.contact_phone);
-    if (matched.address) summaryParts.push(matched.address);
+    summaryParts.push(...clientSummaryParts(matched));
     const count = matched.job_count ?? 0;
     if (count > 0) summaryParts.push(`${count} job${count !== 1 ? 's' : ''}`);
   }

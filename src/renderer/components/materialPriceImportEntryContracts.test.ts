@@ -46,7 +46,9 @@ describe('catalog material price import entry contract', () => {
     expect(catalogModal).toContain("onBack={() => setStep('map')}");
     expect(catalogReview).toMatch(/onClick=\{onBack\}[\s\S]*Back/);
     expect(catalogModal).toContain('if (!importing) onClose()');
-    expect(catalogModal).toContain('onClick={requestClose}');
+    // The backdrop still routes through requestClose; it just no longer fires
+    // for a stray click (#109 — see components/modalDismiss.ts).
+    expect(catalogModal).toContain('onClick={dismissOnEscOnly(requestClose)}');
   });
 
   it('wires the immutable reconciliation state into the catalogue importer', () => {
