@@ -334,7 +334,7 @@ export class CloudApiClient {
     token_hash: string;
     enc_token: string;
     role: 'member' | 'owner';
-  }): Promise<{ id: string; role: string }> {
+  }): Promise<{ id: string; role: string; /** Only an outdated Worker returns this. */ token?: string }> {
     return (await this.request('/invites', {
       method: 'POST',
       body: JSON.stringify(body),

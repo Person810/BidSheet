@@ -98,9 +98,10 @@ project.yml                 XcodeGen spec (generates the .xcodeproj)
   `HMAC-SHA256(inviteToken, "BSE1-keybind\0" ‖ pubkeyRaw)` (hex) at redeem, and
   the approving owner recomputes it over whatever pubkey the server returned —
   that is what stops a compromised server substituting its own key and
-  receiving a DEK it can open. A redeem without it still works, but drops that
-  member onto the weaker manual device-code path *silently*, which is exactly
-  the kind of downgrade nobody notices. Port `inviteKeyBinding` from
+  receiving a DEK it can open. A redeem without it still works, but leaves that
+  member on the weaker manual device-code path — the owner is told the check
+  couldn't be made, so it isn't invisible, but it does mean every phone-joined
+  teammate permanently costs someone a phone call. Port `inviteKeyBinding` from
   `sync-crypto.ts` alongside the redeem call, not after it.
 - **Photos are uploaded encrypted** with AAD payload type
   `photo:<filename>` (scope = cloud job id), mirroring the `plan:<sha>`

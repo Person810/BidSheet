@@ -187,16 +187,17 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   // own key and receiving a sealed DEK it can open.
   handle('cloud:org-members', async () => {
     const res = await api.listMembers();
+    // The binding check runs here, not in the renderer: it needs the DEK, and
+    // key_binding / invite_enc_token have no business crossing into the UI
+    // layer. The renderer gets the verdict only — enough to choose the right
+    // approval prompt, and nothing key-adjacent.
+    const statuses = await e2ee.memberBindingStatuses(res.members);
     return {
       ...res,
-      // key_binding / invite_enc_token stay in the main process. The renderer
-      // only needs to know whether an automatic check is *possible*, so it can
-      // pick the right approval prompt; handing the sealed invite token to the
-      // UI would spread key-adjacent material for no reason.
       members: res.members.map(({ key_binding, invite_enc_token, invite_id, ...m }) => ({
         ...m,
         safety_code: m.pubkey ? pubkeySafetyCode(Buffer.from(m.pubkey, 'base64')) : null,
-        binding_available: !!(key_binding && invite_enc_token && invite_id),
+        binding_status: statuses[m.user_id] ?? 'unchecked',
       })),
     };
   });
@@ -208,7 +209,12 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     logger.info('cloud:org-create-invite', `Creating ${role ?? 'member'} invite`);
     return e2ee.createInvite(role ?? 'member');
   });
-  handle('cloud:org-list-invites', () => api.listInvites());
+  // enc_token is stripped for the same reason it is on the members list: the
+  // renderer has no use for the sealed invite token, and key-adjacent material
+  // shouldn't cross into the UI layer just because it happens to be in the row.
+  handle('cloud:org-list-invites', async () =>
+    (await api.listInvites()).map(({ enc_token, ...inv }) => inv)
+  );
   handle('cloud:org-revoke-invite', (id: string) => api.revokeInvite(id));
   handle('cloud:org-redeem-invite', async (token: string) => {
     logger.info('cloud:org-redeem-invite', 'Redeeming invite and joining account');

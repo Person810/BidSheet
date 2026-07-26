@@ -35,7 +35,7 @@
 import Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { CloudAuth, encryptToken, decryptToken } from './supabase-auth';
-import { CloudApiClient, CloudApiError } from './api-client';
+import { CloudApiClient, CloudApiError, OrgMember } from './api-client';
 import {
   syncAad,
   encryptForSync,
@@ -89,6 +89,21 @@ export class E2eeLockedError extends Error {}
  * "someone is interfering", not "something went wrong".
  */
 export class E2eeKeyBindingError extends Error {}
+/** The server is older than this client and can't honour a request correctly. */
+export class E2eeServerOutdatedError extends Error {}
+
+/**
+ * Whether a pending member's registered public key can be proven to be theirs.
+ *
+ * - `verified` — the binding matched; the key is the one the invite holder made.
+ * - `unchecked` — no binding material, or this device can't check right now.
+ *   Usually a teammate who joined from a build predating the binding, but a
+ *   server withholding the field looks identical from here, so the owner still
+ *   has to confirm the device code out of band.
+ * - `suspect` — a binding is stored and it does NOT match, or the stored invite
+ *   won't open. Approval must be refused.
+ */
+export type MemberBindingStatus = 'verified' | 'unchecked' | 'suspect';
 
 export class E2eeManager {
   constructor(
@@ -355,6 +370,20 @@ export class E2eeManager {
       enc_token: encToken.toString('base64'),
       role,
     });
+    // A Worker older than this client ignores the id/hash/enc_token we sent,
+    // mints its OWN token, and returns it. Returning our token anyway would
+    // hand the owner a code the server has never heard of: the teammate gets
+    // "invalid invite" days later, on a different machine, with nothing here
+    // to explain it — and our enc_token would be bound to an invite id the
+    // server never stored, so approval could not check the binding either.
+    // The Worker-deploys-first rule is documented; this makes breaking it
+    // impossible to miss instead of merely against the rules.
+    if (res.token !== undefined || res.id !== id) {
+      throw new E2eeServerOutdatedError(
+        'BidSheet Cloud is running an older version than this app, so invites created here would not work. ' +
+          'Try again in a few minutes; if it keeps happening, contact support.'
+      );
+    }
     logger.info('cloud-e2ee', `Created ${role} invite ${id}`);
     return { id: res.id, token, role: res.role };
   }
@@ -362,12 +391,39 @@ export class E2eeManager {
   // ---- owner approves a pending member ----
 
   /**
+   * Binding status for each member, so the approval UI can say what it actually
+   * knows before the owner commits to anything. Never throws — a locked device
+   * or an offline server yields `unchecked`, which is the honest answer.
+   *
+   * This is advisory only. `approveMember` re-checks authoritatively against a
+   * fresh response, so a server that answers one way here and another way there
+   * still cannot get the DEK sealed to a key it controls.
+   */
+  async memberBindingStatuses(members: OrgMember[]): Promise<Record<string, MemberBindingStatus>> {
+    let dek: Buffer;
+    let accountId: string;
+    try {
+      dek = this.getDek();
+      accountId = await this.accountId();
+    } catch {
+      return {}; // locked or offline — callers read a missing entry as 'unchecked'
+    }
+    const out: Record<string, MemberBindingStatus> = {};
+    for (const m of members) {
+      if (!m.pubkey) continue;
+      out[m.user_id] = this.checkMemberBinding(m, Buffer.from(m.pubkey, 'base64'), accountId, dek).status;
+    }
+    return out;
+  }
+
+  /**
    * Seal the DEK to a pending member's public key so they can decrypt.
    *
-   * Verifies first that the key really is theirs. `verified: false` means the
-   * binding was unavailable (the member joined from a client that predates it),
-   * so the caller must fall back to having the owner compare device codes out
-   * of band — it does NOT mean anything was wrong.
+   * Refuses outright if their key is demonstrably not the one the invite holder
+   * generated. `verified: false` means the check could not be made at all — the
+   * member joined from a client predating the binding, or a server declined to
+   * return it — so the owner's out-of-band device-code comparison is still the
+   * only thing standing behind this approval.
    */
   async approveMember(targetUserId: string): Promise<{ verified: boolean }> {
     const accountId = await this.accountId();
@@ -379,7 +435,11 @@ export class E2eeManager {
       throw new E2eeLockedError('That member has not registered an encryption key yet.');
     }
     const pubRaw = Buffer.from(member.pubkey, 'base64');
-    const verified = this.verifyMemberBinding(member, pubRaw, accountId, dek);
+    const { status, detail } = this.checkMemberBinding(member, pubRaw, accountId, dek);
+    if (status === 'suspect') {
+      logger.error('cloud-e2ee', `REFUSED to approve ${targetUserId}: ${detail}`);
+      throw new E2eeKeyBindingError(detail!);
+    }
 
     const sealed = sealDek(dek, pubRaw, sealAad(accountId, targetUserId));
     await this.api.approveMember(targetUserId, {
@@ -388,36 +448,41 @@ export class E2eeManager {
     });
     logger.info(
       'cloud-e2ee',
-      `Approved member ${targetUserId}; DEK sealed to their key (binding ${verified ? 'verified' : 'unavailable'})`
+      `Approved member ${targetUserId}; DEK sealed to their key (binding ${status})`
     );
-    return { verified };
+    return { verified: status === 'verified' };
   }
 
   /**
-   * Refuse to seal the account DEK to a public key the invite holder did not
-   * generate. Without this the owner seals to whatever `pubkey` the *server*
-   * returned, so a compromised server could substitute its own key and receive
-   * a DEK it can open — voiding zero-knowledge for the whole team.
+   * Whether this member's public key can be proven to be the one they made.
    *
-   * Recovers the invite token from its DEK-encrypted copy and recomputes the
-   * HMAC the member sent at redeem. Returns false (does not throw) when either
-   * value is missing: an invite created or redeemed by desktop v0.3.3 has
-   * neither, and that is *unverified*, not tampered — hard-failing it would
-   * break team joins for anyone mid-upgrade. A binding that is present and
-   * wrong is a different matter and throws.
+   * The owner otherwise seals the account DEK to whatever `pubkey` the *server*
+   * returned, so a compromised server could substitute its own key and receive
+   * a DEK it can open. Recovering the invite token from its DEK-encrypted copy
+   * and recomputing the member's HMAC catches that.
+   *
+   * Note the limit of what this can do on its own: a server that wants to
+   * substitute a key can also just withhold `key_binding`, which lands on
+   * `unchecked` rather than `suspect`. That is *why* `unchecked` still routes
+   * the owner to the manual device-code comparison instead of waving them
+   * through — the automatic check narrows when the manual one is needed, it
+   * does not replace it. It replaces it completely only once no client can
+   * redeem without a binding, i.e. when v0.3.3 is out of the field.
+   *
+   * Never throws; the caller decides what each status means.
    */
-  private verifyMemberBinding(
+  private checkMemberBinding(
     member: { user_id: string; key_binding?: string | null; invite_enc_token?: string | null; invite_id?: string | null },
     pubRaw: Buffer,
     accountId: string,
     dek: Buffer
-  ): boolean {
+  ): { status: MemberBindingStatus; detail?: string } {
     if (!member.key_binding || !member.invite_enc_token || !member.invite_id) {
       logger.warn(
         'cloud-e2ee',
-        `No key binding stored for ${member.user_id}; approval falls back to the device-code check`
+        `No key binding stored for ${member.user_id}; approval relies on the device-code check`
       );
-      return false;
+      return { status: 'unchecked' };
     }
     let token: string;
     try {
@@ -427,18 +492,20 @@ export class E2eeManager {
         this.inviteTokenAad(accountId, member.invite_id)
       ).toString('utf8');
     } catch {
-      throw new E2eeKeyBindingError(
-        'The stored invite could not be opened with this account key, so their identity cannot be checked. ' +
-          'Do not approve. Revoke the invite and send a new one.'
-      );
+      return {
+        status: 'suspect',
+        detail:
+          'The stored invite for this person could not be opened with this account key, so there is no way to check that the key being offered is really theirs. Do not approve. Revoke the invite and send a new one.',
+      };
     }
     if (!verifyInviteKeyBinding(token, pubRaw, member.key_binding)) {
-      throw new E2eeKeyBindingError(
-        'The encryption key the server returned for this person is NOT the one they generated. ' +
-          'Do not approve them. Revoke the invite, send a new one, and get in touch — this should never happen.'
-      );
+      return {
+        status: 'suspect',
+        detail:
+          'The encryption key the server is offering for this person is NOT the one they generated. Do not approve them. Revoke the invite, send a new one, and get in touch — this should not happen.',
+      };
     }
-    return true;
+    return { status: 'verified' };
   }
 
   /** AAD binding an encrypted invite token to its account and invite id. */

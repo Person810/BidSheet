@@ -313,11 +313,13 @@ declare global {
           safety_code: string | null;
           has_wrap: number;
           /**
-           * True when this member's key can be checked against their invite
-           * automatically at approval. False for members who joined from a
-           * build without key binding — the owner must compare device codes.
+           * Whether this member's key can be proven to be theirs. 'verified' =
+           * checked against their invite and correct. 'unchecked' = no binding
+           * to check (older client, or a server withholding it) — the owner
+           * must compare device codes. 'suspect' = a binding exists and does
+           * not match; approval must be refused.
            */
-          binding_available: boolean;
+          binding_status: 'verified' | 'unchecked' | 'suspect';
         }[];
         me: { user_id: string; role: string };
       }>;
