@@ -312,6 +312,12 @@ declare global {
           pubkey: string | null;
           safety_code: string | null;
           has_wrap: number;
+          /**
+           * True when this member's key can be checked against their invite
+           * automatically at approval. False for members who joined from a
+           * build without key binding — the owner must compare device codes.
+           */
+          binding_available: boolean;
         }[];
         me: { user_id: string; role: string };
       }>;
@@ -325,7 +331,13 @@ declare global {
       >;
       cloudOrgRevokeInvite: (id: string) => Promise<void>;
       cloudOrgRedeemInvite: (token: string) => Promise<{ recoveryKey: string }>;
-      cloudOrgApproveMember: (userId: string) => Promise<void>;
+      /**
+       * Seal the account key to a pending member. `verified: false` means their
+       * key binding was unavailable (they joined from a build that predates it)
+       * and the owner must still compare device codes by hand — it does not
+       * mean anything was wrong. A binding that is present and wrong rejects.
+       */
+      cloudOrgApproveMember: (userId: string) => Promise<{ verified: boolean }>;
       cloudOrgRemoveMember: (userId: string) => Promise<void>;
       cloudBackupStatus: () => Promise<{
         configured: boolean;

@@ -646,6 +646,8 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       key_status: 'pending' | 'active' | null;
       pubkey: string | null;
       safety_code: string | null;
+      /** Their key can be checked against their invite automatically. */
+      binding_available: boolean;
     }[];
     me: { user_id: string; role: string };
   } | null>(null);
@@ -688,18 +690,32 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       setNewInvite(token);
     }, 'Could not create an invite.');
 
-  const handleApprove = (userId: string, memberLabel: string, safetyCode: string | null) => {
-    // Out-of-band key verification: approving seals the account's encryption
-    // key to whatever public key the server presented for this member. Having
-    // the owner confirm the code the teammate reads off their own screen is
-    // what keeps a tampered server from substituting its own key.
-    const prompt = safetyCode
-      ? `Approve ${memberLabel}?\n\nBefore approving, ask them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
-      : `Approve ${memberLabel}? They have no encryption key registered yet.`;
+  const handleApprove = (
+    userId: string,
+    memberLabel: string,
+    safetyCode: string | null,
+    bindingAvailable: boolean
+  ) => {
+    // Approving seals the account's encryption key to whatever public key the
+    // server presented for this member, so that key has to be proven theirs.
+    // Members who joined with a key binding are checked automatically before
+    // anything is sealed (e2ee.ts recomputes the HMAC against the invite
+    // token, which the server never had). Members who joined from an older
+    // build have no binding, and there the owner still has to do it by hand.
+    const prompt = bindingAvailable
+      ? `Approve ${memberLabel}?\n\nTheir encryption key will be checked against the invite they used before anything is shared with them.`
+      : safetyCode
+        ? `Approve ${memberLabel}?\n\nThis teammate joined from an older version, so their key can't be checked automatically. Ask them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
+        : `Approve ${memberLabel}? They have no encryption key registered yet.`;
     if (!confirm(prompt)) return;
     return run(async () => {
-      await window.api.cloudOrgApproveMember(userId);
-      addToast('Teammate approved. They can now decrypt the shared data.', 'success');
+      const { verified } = await window.api.cloudOrgApproveMember(userId);
+      addToast(
+        verified
+          ? 'Teammate approved — their encryption key matched their invite. They can now decrypt the shared data.'
+          : 'Teammate approved. They can now decrypt the shared data.',
+        'success'
+      );
     }, 'Could not approve that member.');
   };
 
@@ -760,7 +776,7 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
               <button
                 className="btn btn-sm btn-primary"
                 disabled={busy}
-                onClick={() => handleApprove(m.user_id, label(m), m.safety_code)}>
+                onClick={() => handleApprove(m.user_id, label(m), m.safety_code, m.binding_available)}>
                 Approve
               </button>
             </div>

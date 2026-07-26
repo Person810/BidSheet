@@ -38,6 +38,10 @@ import { CloudAuth, encryptToken, decryptToken } from './supabase-auth';
 import { CloudApiClient, CloudApiError } from './api-client';
 import {
   syncAad,
+  encryptForSync,
+  decryptForSync,
+  inviteKeyBinding,
+  verifyInviteKeyBinding,
   generateRecoveryKey,
   dekFingerprint,
   generateMemberKeypair,
@@ -70,6 +74,8 @@ export interface E2eeSetupResult {
 const DEK_LENGTH = 32;
 const WRAP_SCOPE = 'account';
 const WRAP_TYPE = 'dek-wrap';
+/** Matches the entropy the Worker used when it minted tokens itself. */
+const INVITE_TOKEN_BYTES = 24;
 
 /** Wrong/garbled recovery key, or a fresh device that can't unlock. */
 export class E2eeUnlockError extends Error {}
@@ -77,6 +83,12 @@ export class E2eeUnlockError extends Error {}
 export class E2eeAlreadySetupError extends Error {}
 /** The DEK is needed but not unlocked on this device. */
 export class E2eeLockedError extends Error {}
+/**
+ * The pending member's public key does not match what the invite holder
+ * generated. Its own class because this is the one failure here that means
+ * "someone is interfering", not "something went wrong".
+ */
+export class E2eeKeyBindingError extends Error {}
 
 export class E2eeManager {
   constructor(
@@ -298,6 +310,9 @@ export class E2eeManager {
       token,
       pubkey: pubRaw.toString('base64'),
       wrapped_priv: wrappedPriv.toString('base64'),
+      // Proves to the approving owner that this pubkey came from someone
+      // holding the invite token — which the server does not have.
+      key_binding: inviteKeyBinding(token, pubRaw),
     });
     // Redeem succeeded — we've left our old (solo) account for the org. Forget
     // the old account's cached DEK + member key BEFORE caching the new one, or a
@@ -315,10 +330,46 @@ export class E2eeManager {
     return { recoveryKey };
   }
 
+  // ---- owner mints an invite ----
+
+  /**
+   * Mint a single-use invite on this machine. The token is generated here, so
+   * the server only ever receives its SHA-256 and `enc_token` — the same token
+   * encrypted under the account DEK. That encrypted copy is what lets this
+   * owner recover the token at approval time (without having kept it) to check
+   * the joiner's key binding. Returns the raw token to show exactly once.
+   */
+  async createInvite(role: 'member' | 'owner' = 'member'): Promise<{ id: string; token: string; role: string }> {
+    const accountId = await this.accountId();
+    const dek = this.getDek(); // must be unlocked to seal the token
+    const id = crypto.randomUUID();
+    const token = crypto.randomBytes(INVITE_TOKEN_BYTES).toString('base64url');
+    const encToken = encryptForSync(
+      Buffer.from(token, 'utf8'),
+      dek,
+      this.inviteTokenAad(accountId, id)
+    );
+    const res = await this.api.createInvite({
+      id,
+      token_hash: crypto.createHash('sha256').update(token, 'utf8').digest('hex'),
+      enc_token: encToken.toString('base64'),
+      role,
+    });
+    logger.info('cloud-e2ee', `Created ${role} invite ${id}`);
+    return { id: res.id, token, role: res.role };
+  }
+
   // ---- owner approves a pending member ----
 
-  /** Seal the DEK to a pending member's public key so they can decrypt. */
-  async approveMember(targetUserId: string): Promise<void> {
+  /**
+   * Seal the DEK to a pending member's public key so they can decrypt.
+   *
+   * Verifies first that the key really is theirs. `verified: false` means the
+   * binding was unavailable (the member joined from a client that predates it),
+   * so the caller must fall back to having the owner compare device codes out
+   * of band — it does NOT mean anything was wrong.
+   */
+  async approveMember(targetUserId: string): Promise<{ verified: boolean }> {
     const accountId = await this.accountId();
     const dek = this.getDek(); // owner must be unlocked
     const fingerprint = dekFingerprint(dek);
@@ -327,12 +378,72 @@ export class E2eeManager {
     if (!member || !member.pubkey) {
       throw new E2eeLockedError('That member has not registered an encryption key yet.');
     }
-    const sealed = sealDek(dek, Buffer.from(member.pubkey, 'base64'), sealAad(accountId, targetUserId));
+    const pubRaw = Buffer.from(member.pubkey, 'base64');
+    const verified = this.verifyMemberBinding(member, pubRaw, accountId, dek);
+
+    const sealed = sealDek(dek, pubRaw, sealAad(accountId, targetUserId));
     await this.api.approveMember(targetUserId, {
       wrapped_dek: sealed.toString('base64'),
       dek_fingerprint: fingerprint,
     });
-    logger.info('cloud-e2ee', `Approved member ${targetUserId}; DEK sealed to their key`);
+    logger.info(
+      'cloud-e2ee',
+      `Approved member ${targetUserId}; DEK sealed to their key (binding ${verified ? 'verified' : 'unavailable'})`
+    );
+    return { verified };
+  }
+
+  /**
+   * Refuse to seal the account DEK to a public key the invite holder did not
+   * generate. Without this the owner seals to whatever `pubkey` the *server*
+   * returned, so a compromised server could substitute its own key and receive
+   * a DEK it can open — voiding zero-knowledge for the whole team.
+   *
+   * Recovers the invite token from its DEK-encrypted copy and recomputes the
+   * HMAC the member sent at redeem. Returns false (does not throw) when either
+   * value is missing: an invite created or redeemed by desktop v0.3.3 has
+   * neither, and that is *unverified*, not tampered — hard-failing it would
+   * break team joins for anyone mid-upgrade. A binding that is present and
+   * wrong is a different matter and throws.
+   */
+  private verifyMemberBinding(
+    member: { user_id: string; key_binding?: string | null; invite_enc_token?: string | null; invite_id?: string | null },
+    pubRaw: Buffer,
+    accountId: string,
+    dek: Buffer
+  ): boolean {
+    if (!member.key_binding || !member.invite_enc_token || !member.invite_id) {
+      logger.warn(
+        'cloud-e2ee',
+        `No key binding stored for ${member.user_id}; approval falls back to the device-code check`
+      );
+      return false;
+    }
+    let token: string;
+    try {
+      token = decryptForSync(
+        Buffer.from(member.invite_enc_token, 'base64'),
+        dek,
+        this.inviteTokenAad(accountId, member.invite_id)
+      ).toString('utf8');
+    } catch {
+      throw new E2eeKeyBindingError(
+        'The stored invite could not be opened with this account key, so their identity cannot be checked. ' +
+          'Do not approve. Revoke the invite and send a new one.'
+      );
+    }
+    if (!verifyInviteKeyBinding(token, pubRaw, member.key_binding)) {
+      throw new E2eeKeyBindingError(
+        'The encryption key the server returned for this person is NOT the one they generated. ' +
+          'Do not approve them. Revoke the invite, send a new one, and get in touch — this should never happen.'
+      );
+    }
+    return true;
+  }
+
+  /** AAD binding an encrypted invite token to its account and invite id. */
+  private inviteTokenAad(accountId: string, inviteId: string): Buffer {
+    return syncAad(accountId, 'account', `invite-token:${inviteId}`);
   }
 
   // ---- regenerate recovery key ----

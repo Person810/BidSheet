@@ -189,16 +189,24 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     const res = await api.listMembers();
     return {
       ...res,
-      members: res.members.map((m) => ({
+      // key_binding / invite_enc_token stay in the main process. The renderer
+      // only needs to know whether an automatic check is *possible*, so it can
+      // pick the right approval prompt; handing the sealed invite token to the
+      // UI would spread key-adjacent material for no reason.
+      members: res.members.map(({ key_binding, invite_enc_token, invite_id, ...m }) => ({
         ...m,
         safety_code: m.pubkey ? pubkeySafetyCode(Buffer.from(m.pubkey, 'base64')) : null,
+        binding_available: !!(key_binding && invite_enc_token && invite_id),
       })),
     };
   });
   handle('cloud:e2ee-safety-code', () => e2ee.mySafetyCode());
+  // Invite creation routes through E2eeManager, not the API client: the token
+  // is minted here and stored server-side encrypted under the account DEK, so
+  // an owner can recover it at approve time to verify the joiner's key binding.
   handle('cloud:org-create-invite', (role?: 'member' | 'owner') => {
     logger.info('cloud:org-create-invite', `Creating ${role ?? 'member'} invite`);
-    return api.createInvite(role);
+    return e2ee.createInvite(role ?? 'member');
   });
   handle('cloud:org-list-invites', () => api.listInvites());
   handle('cloud:org-revoke-invite', (id: string) => api.revokeInvite(id));
@@ -212,9 +220,13 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     engine.refreshRenderer();
     return res;
   });
+  // Returns whether the member's key binding could be checked automatically.
+  // `verified: false` means they joined from a client that predates the binding,
+  // so the renderer must still ask the owner to compare device codes out of
+  // band. A binding that is present and *wrong* throws instead.
   handle('cloud:org-approve-member', async (userId: string) => {
     logger.info('cloud:org-approve-member', `Approving member ${userId}`);
-    await e2ee.approveMember(userId);
+    return e2ee.approveMember(userId);
   });
   handle('cloud:org-remove-member', (userId: string) => api.removeMember(userId));
 

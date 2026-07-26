@@ -24,6 +24,9 @@ import {
   unwrapWithRecoveryCode,
   isKdfWrapped,
   ShortRecoveryKeyRetiredError,
+  inviteKeyBinding,
+  verifyInviteKeyBinding,
+  pubkeySafetyCode,
 } from './sync-crypto';
 
 const dek = crypto.randomBytes(32);
@@ -203,6 +206,61 @@ describe('recovery-code wrapping', () => {
     const attempt = () => unwrapWithRecoveryCode(bskd, generateRecoveryKey(), wrapAad);
     expect(attempt).toThrow(ShortRecoveryKeyRetiredError);
     expect(attempt).toThrow(/short recovery key/i);
+  });
+});
+
+describe('invite key binding (stops a server swapping in its own member key)', () => {
+  const token = 'Oqbo7isD7dAiyBbpOUIQyZcGqMQuW_xw';
+
+  it('round-trips for the key the invite holder generated', () => {
+    const { pubRaw } = generateMemberKeypair();
+    expect(verifyInviteKeyBinding(token, pubRaw, inviteKeyBinding(token, pubRaw))).toBe(true);
+  });
+
+  // The attack this exists for: the server hands the approving owner its OWN
+  // public key instead of the joiner's, so the DEK gets sealed to a key the
+  // server can open. The binding was made by the joiner over THEIR key, so it
+  // cannot validate the substitute.
+  it('fails when the server substitutes a different public key', () => {
+    const joiner = generateMemberKeypair();
+    const attacker = generateMemberKeypair();
+    const binding = inviteKeyBinding(token, joiner.pubRaw);
+    expect(verifyInviteKeyBinding(token, joiner.pubRaw, binding)).toBe(true);
+    expect(verifyInviteKeyBinding(token, attacker.pubRaw, binding)).toBe(false);
+  });
+
+  it('fails for a different invite token (the key the server does not hold)', () => {
+    const { pubRaw } = generateMemberKeypair();
+    const binding = inviteKeyBinding(token, pubRaw);
+    expect(verifyInviteKeyBinding('a-different-token', pubRaw, binding)).toBe(false);
+  });
+
+  it('is a 64-char hex digest and hides the token', () => {
+    const { pubRaw } = generateMemberKeypair();
+    const binding = inviteKeyBinding(token, pubRaw);
+    expect(binding).toMatch(/^[0-9a-f]{64}$/);
+    expect(binding).not.toContain(token);
+  });
+
+  it('tolerates surrounding whitespace on a pasted token', () => {
+    const { pubRaw } = generateMemberKeypair();
+    expect(inviteKeyBinding(`  ${token}\n`, pubRaw)).toBe(inviteKeyBinding(token, pubRaw));
+  });
+
+  it('is domain-separated from the other MACs over the same key bytes', () => {
+    const { pubRaw } = generateMemberKeypair();
+    expect(inviteKeyBinding(token, pubRaw)).not.toBe(syncContentMac(pubRaw, Buffer.from(token.padEnd(32, '0').slice(0, 32))));
+    expect(inviteKeyBinding(token, pubRaw)).not.toContain(pubkeySafetyCode(pubRaw).replace(/-/g, '').toLowerCase());
+  });
+
+  // timingSafeEqual throws on a length mismatch, so a truncated binding from a
+  // hostile server must fail the check rather than crash the approval.
+  it('returns false (never throws) on a malformed stored binding', () => {
+    const { pubRaw } = generateMemberKeypair();
+    for (const bad of ['', 'abc', 'z'.repeat(64), 'a'.repeat(128)]) {
+      expect(() => verifyInviteKeyBinding(token, pubRaw, bad)).not.toThrow();
+      expect(verifyInviteKeyBinding(token, pubRaw, bad)).toBe(false);
+    }
   });
 });
 
