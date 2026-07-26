@@ -24,16 +24,33 @@ export function resolveLocaleProfile(
   osLocale: string,
   userPreference?: string | null,
 ): LocaleProfile {
-  const selectedTag = userPreference || osLocale || DEFAULT_LOCALE;
-  const normalized = selectedTag.replace('_', '-').trim();
-  const match = findProfile(normalized);
-  if (match) return match;
+  // 1. Try to resolve user preference if provided
+  if (userPreference) {
+    const normalizedPref = userPreference.replace('_', '-').trim();
+    const matchPref = findProfile(normalizedPref);
+    if (matchPref) return matchPref;
+  }
+
+  // 2. Try to resolve OS locale
+  const normalizedOS = (osLocale || '').replace('_', '-').trim();
+  if (normalizedOS) {
+    const matchOS = findProfile(normalizedOS);
+    if (matchOS) return matchOS;
+  }
+
+  // 3. Dynamic resolution or fallback using the selected tag
+  const fallbackTag = userPreference || osLocale || DEFAULT_LOCALE;
+  const normalizedFallback = fallbackTag.replace('_', '-').trim();
+  const matchFallback = findProfile(normalizedFallback);
+  if (matchFallback) return matchFallback;
+
+  const defaultProfile = LOCALE_PROFILES[DEFAULT_LOCALE];
 
   // Dynamically resolve dateFormat using Intl.DateTimeFormat for arbitrary locales
-  let resolvedFormat: 'dmy' | 'mdy' | 'ymd' = 'ymd';
+  let resolvedFormat: 'dmy' | 'mdy' | 'ymd' = defaultProfile.dateFormat;
   try {
-    if (Intl.DateTimeFormat.supportedLocalesOf([normalized]).length > 0) {
-      const parts = new Intl.DateTimeFormat(normalized, {
+    if (Intl.DateTimeFormat.supportedLocalesOf([normalizedFallback]).length > 0) {
+      const parts = new Intl.DateTimeFormat(normalizedFallback, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -52,15 +69,8 @@ export function resolveLocaleProfile(
   }
 
   return {
-    id: normalized,
-    displayName: normalized,
+    ...defaultProfile,
     dateFormat: resolvedFormat,
-    taxLabel: 'Sales Tax',
-    postalLabel: 'Zip Code',
-    gcLabel: 'GC / Owner',
-    currencySymbol: '$',
-    thousandsSep: ',',
-    decimalSep: '.',
   };
 }
 
