@@ -15,10 +15,13 @@
  * context on decrypt, so a ciphertext moved to a different account/job/
  * payload-type fails the auth tag.
  *
- * Not yet ported: the BSKD (scrypt) envelope used by *short* 80-bit recovery
- * keys — CryptoKit has no scrypt. Short-key accounts get a clear error
- * telling them to use their full-length recovery key for now (see
- * SyncCryptoError.shortRecoveryKeyUnsupported).
+ * Retired format: the BSKD (scrypt) envelope that carried *short* 80-bit
+ * recovery keys. It was never ported here — CryptoKit has no scrypt, and a
+ * 128 MiB KDF working set is not something a phone should carry — and as of
+ * 2026-07-26 the desktop dropped it too, so one recovery-key shape now exists
+ * everywhere. Blobs written by desktop v0.3.3 or earlier are still detected
+ * and reported accurately (SyncCryptoError.shortRecoveryKeyRetired) rather
+ * than surfacing as corrupt data.
  */
 
 import CryptoKit
@@ -29,7 +32,7 @@ enum SyncCryptoError: LocalizedError {
     case unsupportedFormatVersion(Int)
     case decryptFailed
     case invalidRecoveryKey
-    case shortRecoveryKeyUnsupported
+    case shortRecoveryKeyRetired
     case badKeyLength
 
     var errorDescription: String? {
@@ -42,8 +45,8 @@ enum SyncCryptoError: LocalizedError {
             return "Could not decrypt cloud data — wrong key, wrong context, or the data is damaged."
         case .invalidRecoveryKey:
             return "That doesn't look like a valid recovery key. Check it and try again."
-        case .shortRecoveryKeyUnsupported:
-            return "This account uses a short recovery key, which the iOS app can't unlock yet. Unlock is coming in a future update — until then, sync is available on desktop."
+        case .shortRecoveryKeyRetired:
+            return "This account was set up with a short recovery key, which BidSheet no longer supports. On a computer where encrypted sync is still unlocked, open Settings → Cloud Sync and generate a new recovery key — that replaces the old one for every device, including this one."
         case .badKeyLength:
             return "Encryption key has the wrong length."
         }
@@ -89,7 +92,8 @@ enum SyncCrypto {
         blob.count >= magic.count && blob.prefix(magic.count) == magic
     }
 
-    /// True if a wrapped blob is the scrypt (BSKD) short-recovery-key form.
+    /// True if a wrapped blob is the retired scrypt (BSKD) short-recovery-key
+    /// form. Detection only — no build can open one any more.
     static func isKdfWrapped(_ blob: Data) -> Bool {
         blob.count >= kdfMagic.count && blob.prefix(kdfMagic.count) == kdfMagic
     }
@@ -191,11 +195,11 @@ enum SyncCrypto {
         return decoded.prefix(recoveryKeyBytes)
     }
 
-    /// Reverse the desktop's wrapWithRecoveryCode for the direct (full-key)
-    /// path. BSKD (short-key scrypt) blobs are detected and rejected with a
-    /// user-facing explanation until scrypt lands on iOS.
+    /// Reverse the desktop's wrapWithRecoveryCode. There is only one key shape
+    /// now; a retired BSKD (short-key scrypt) blob is detected and rejected
+    /// with an explanation that points at the way out.
     static func unwrapWithRecoveryCode(_ blob: Data, code: String, aad: Data) throws -> Data {
-        if isKdfWrapped(blob) { throw SyncCryptoError.shortRecoveryKeyUnsupported }
+        if isKdfWrapped(blob) { throw SyncCryptoError.shortRecoveryKeyRetired }
         return try decryptForSync(blob, dek: recoveryKeyToBytes(code), aad: aad)
     }
 

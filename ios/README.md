@@ -85,10 +85,24 @@ project.yml                 XcodeGen spec (generates the .xcodeproj)
   enroll a new authenticator — enrolling the second factor on the same
   device that holds the session would weaken MFA, and the desktop flow
   already exists.
-- **Short (80-bit) recovery keys can't unlock yet.** They require scrypt,
-  which CryptoKit doesn't provide. BSKD blobs are detected and rejected with
-  a clear message; full-length (256-bit) keys work. Options for later: a
-  small vendored scrypt, or libsodium via SPM.
+- **There is one recovery-key shape, and this app can open it.** Short
+  (80-bit) keys and their scrypt `BSKD` envelope were retired platform-wide on
+  2026-07-26, partly *because* they made this app permanently unable to unlock
+  such an account — CryptoKit has no scrypt, and a 128 MiB KDF working set is
+  not something a phone should carry. Nothing writes a BSKD blob any more;
+  `SyncCrypto` still detects one from desktop v0.3.3 or earlier and reports it
+  accurately instead of letting it look like corrupt data. Do not "add scrypt
+  support" later — the format is gone, not deferred.
+- **There is no invite-redeem flow here yet, and when there is, it MUST send
+  `key_binding`.** The desktop computes
+  `HMAC-SHA256(inviteToken, "BSE1-keybind\0" ‖ pubkeyRaw)` (hex) at redeem, and
+  the approving owner recomputes it over whatever pubkey the server returned —
+  that is what stops a compromised server substituting its own key and
+  receiving a DEK it can open. A redeem without it still works, but leaves that
+  member on the weaker manual device-code path — the owner is told the check
+  couldn't be made, so it isn't invisible, but it does mean every phone-joined
+  teammate permanently costs someone a phone call. Port `inviteKeyBinding` from
+  `sync-crypto.ts` alongside the redeem call, not after it.
 - **Photos are uploaded encrypted** with AAD payload type
   `photo:<filename>` (scope = cloud job id), mirroring the `plan:<sha>`
   pattern. The desktop doesn't display synced photos yet — when that lands
@@ -101,5 +115,4 @@ project.yml                 XcodeGen spec (generates the .xcodeproj)
 - Walls and elevation surfaces in the takeoff overlay (runs, areas, items,
   nodes, and annotations render today)
 - Offline upload queue (photos taken with no signal send when back on wifi)
-- Short-recovery-key unlock (scrypt)
 - Background manifest refresh + push on new addenda

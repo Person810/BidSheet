@@ -17,6 +17,7 @@ import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty }
 import { isManual, withManual, type OverridableField } from '../../../shared/manualFields';
 import { unitOptions } from '../../../shared/constants/units';
 import { useUnitSystem } from '../../stores/units-store';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface LineItemModalProps {
   lineForm: any;
@@ -299,7 +300,7 @@ export function LineItemModal({
   );
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 700, maxHeight: '90vh' }}>
         <h3>{editingLineItem ? 'Edit Line Item' : 'Add Line Item'}</h3>
 

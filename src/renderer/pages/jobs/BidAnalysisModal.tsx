@@ -5,6 +5,7 @@ import { neutralizeCsvFormula } from '../../../shared/csvSafe';
 import { computeBidAnalysis, CREW_DAY_HOURS } from './bidAnalysis';
 import { convertQty, formatPipeSize, metricUnitPrice, unitLabel } from '../../../shared/unitSystem';
 import { useUnitSystem } from '../../stores/units-store';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 function csvEscape(value: string | number): string {
   const s = neutralizeCsvFormula(String(value));
@@ -90,7 +91,7 @@ export function BidAnalysisModal({ job, sections, lineItems, onClose }: {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" style={{ maxWidth: 900 }} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>Bid Analysis</h3>

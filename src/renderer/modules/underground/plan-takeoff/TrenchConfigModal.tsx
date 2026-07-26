@@ -6,6 +6,7 @@ import { parsePipeSizeFromName } from '../trenchCalc';
 import { formatPipeSize, fromDisplay } from '../../../../shared/unitSystem';
 import { useUnitSystem } from '../../../stores/units-store';
 import type { RunConfig, UtilityType } from './types';
+import { dismissOnEscOnly } from '../../../components/modalDismiss';
 
 const UTILITY_OPTIONS: { value: UtilityType; label: string }[] = [
   { value: 'sanitary', label: 'Sanitary Sewer' },
@@ -86,7 +87,7 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
   };
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onCancel)}>
       <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>

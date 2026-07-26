@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useToastStore } from '../../stores/toast-store';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface SectionSettingsModalProps {
   section: any;
@@ -60,7 +61,7 @@ export function SectionSettingsModal({ section, job, onSave, onClose }: SectionS
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginBottom: 16 }}>Section Settings</h3>
 

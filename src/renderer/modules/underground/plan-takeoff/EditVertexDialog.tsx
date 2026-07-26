@@ -4,6 +4,7 @@ import type { AutocompleteItem } from '../../../components/FuzzyAutocomplete';
 import { fromDisplay, toDisplay, unitLabel } from '../../../../shared/unitSystem';
 import { useUnitSystem } from '../../../stores/units-store';
 import type { TakeoffVertex, TakeoffNode } from './types';
+import { dismissOnEscOnly } from '../../../components/modalDismiss';
 
 const STRUCTURE_TYPES: AutocompleteItem[] = [
   { id: 'Manhole', label: 'Manhole' },
@@ -57,7 +58,7 @@ export function EditVertexDialog({ vertex, vertexIndex, runLabel, onSave, onClos
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)} style={{ zIndex: 10000 }}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
         <h3>Edit Vertex</h3>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>

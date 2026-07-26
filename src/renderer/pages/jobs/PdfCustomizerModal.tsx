@@ -5,6 +5,7 @@ import {
   PDF_SECTION_LABELS,
   DEFAULT_PDF_TEMPLATE,
 } from '../../../shared/types/pdf';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface Props {
   jobId: number;
@@ -123,7 +124,7 @@ export function PdfCustomizerModal({ jobId, onClose }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 600 }}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)} style={{ zIndex: 600 }}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{

@@ -10,6 +10,7 @@ import {
 import type {
   CsvParseResult, PriceImportContext, PriceImportCommitRow, PriceImportCommitResult,
 } from '../../../shared/types/ipc';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 // ============================================================
 // Column auto-mapping (a quote, not a catalog — see §6 copy)
@@ -219,7 +220,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
 
   const wide = step === 'reconcile';
   return (
-    <div className="modal-overlay" onClick={handleClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(handleClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}
         style={{ width: wide ? 1000 : 560, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
         <h3 style={{ marginBottom: 4 }}>

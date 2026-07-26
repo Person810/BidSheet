@@ -21,6 +21,7 @@ import {
   ColumnSelect,
   CsvDropZone,
 } from './csvImport';
+import { dismissOnEscOnly } from './modalDismiss';
 
 interface CsvRow {
   [key: string]: string;
@@ -271,7 +272,7 @@ export function CsvImportModal({
         : 'Import Complete';
 
   return (
-    <div className="modal-overlay" onClick={requestClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(requestClose)}>
       <div
         className="modal"
         onClick={(event) => event.stopPropagation()}

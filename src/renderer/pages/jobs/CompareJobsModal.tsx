@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { formatCurrency } from './helpers';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface SectionTotals {
   name: string;
@@ -110,7 +111,7 @@ export function CompareJobsModal({ baseJobId, onClose }: {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginBottom: 12 }}>Compare Estimates</h3>
 

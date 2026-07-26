@@ -60,6 +60,7 @@ const EMPTY_MATERIAL = {
 };
 
 import { unitOptions } from '../../shared/constants/units';
+import { dismissOnEscOnly } from '../components/modalDismiss';
 import { useUnitSystem } from '../stores/units-store';
 
 export function MaterialsPage() {
@@ -394,7 +395,7 @@ export function MaterialsPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editingMaterial ? 'Edit Material' : 'Add Material'}</h3>
             <div className="form-row">

@@ -6,6 +6,7 @@ import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
 import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 import { formatDateLocal, statusBadge } from './helpers';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 import { LocalizedDateField } from '../../components/LocalizedDateField';
 import { JobLocationFields, formatJobLocation } from '../../components/JobLocationFields';
@@ -393,7 +394,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {conflictJobId !== null && (
-        <div className="modal-overlay" onClick={() => setConflictJobId(null)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setConflictJobId(null))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Sync Conflict</h3>
             <p className="text-muted" style={{ marginBottom: 16 }}>
@@ -429,7 +430,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {dupState && (
-        <div className="modal-overlay" onClick={() => setDupState(null)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setDupState(null))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Copy Job as Template</h3>
             <p className="text-muted" style={{ marginBottom: 16 }}>All sections, line items, markups, and trench profiles will be copied. The original job stays untouched.</p>
@@ -466,7 +467,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {showCreate && (
-        <div className="modal-overlay" onClick={closeCreate}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(closeCreate)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>New Job</h3>
             <div className="form-row">

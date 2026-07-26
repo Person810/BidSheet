@@ -3,6 +3,8 @@ import { Lock, Unlock } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { EditJobModal, type EditJobForm } from './EditJobModal';
+import { clientSummaryParts } from '../../components/clientSummary';
+import type { ClientRow } from '../../../shared/types/ipc';
 import { ChangeOrdersTab } from './ChangeOrdersTab';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
@@ -50,6 +52,9 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [changeOrders, setChangeOrders] = useState<any[]>([]);
   const [coSummaries, setCoSummaries] = useState<Record<number, any>>({});
   const [parentJob, setParentJob] = useState<any>(null);
+  // The client's saved contact details for the header (#110); the job row
+  // carries only the denormalized name.
+  const [client, setClient] = useState<ClientRow | null>(null);
   const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'documents' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
   const [showBidAnalysis, setShowBidAnalysis] = useState(false);
@@ -142,6 +147,13 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       setEquipment(eq);
       setSettings(set);
       setAssemblies(asm);
+      // Header detail only, so a lookup failure costs the contact line and
+      // not the estimate below it.
+      const cl = j.client_id
+        ? await window.api.getClient(j.client_id).catch(() => null)
+        : null;
+      if (!isCurrent()) return;
+      setClient(cl ?? null);
       const items: Record<number, any[]> = {};
       for (const sec of s) {
         items[sec.id] = await window.api.getBidLineItems(sec.id);
@@ -805,6 +817,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
   if (!job) return <p className="text-muted">Loading job...</p>;
 
+  const clientSummary = clientSummaryParts(client);
+
   return (
     <div className="job-detail-page">
       <div className="page-header no-print">
@@ -831,6 +845,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             {job.location && <span> &middot; {job.location}</span>}
             {job.bid_date && <span> &middot; Due {formatDateLocal(job.bid_date)}</span>}
           </div>
+          {clientSummary.length > 0 && (
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
+              {clientSummary.join(' · ')}
+            </div>
+          )}
         </div>
         <div className="flex gap-8">
           <button

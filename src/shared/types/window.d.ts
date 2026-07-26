@@ -305,9 +305,9 @@ declare global {
       cloudE2eeState: () => Promise<
         'not_setup' | 'unlocked' | 'locked' | 'pending_approval' | 'unavailable'
       >;
-      cloudE2eeSetup: (shorter?: boolean) => Promise<{ recoveryKey: string }>;
+      cloudE2eeSetup: () => Promise<{ recoveryKey: string }>;
       cloudE2eeUnlock: (recoveryKey: string) => Promise<void>;
-      cloudE2eeRegenerateRecovery: (shorter?: boolean) => Promise<{ recoveryKey: string }>;
+      cloudE2eeRegenerateRecovery: () => Promise<{ recoveryKey: string }>;
       cloudOrgMembers: () => Promise<{
         members: {
           user_id: string;
@@ -318,6 +318,14 @@ declare global {
           pubkey: string | null;
           safety_code: string | null;
           has_wrap: number;
+          /**
+           * Whether this member's key can be proven to be theirs. 'verified' =
+           * checked against their invite and correct. 'unchecked' = no binding
+           * to check (older client, or a server withholding it) — the owner
+           * must compare device codes. 'suspect' = a binding exists and does
+           * not match; approval must be refused.
+           */
+          binding_status: 'verified' | 'unchecked' | 'suspect';
         }[];
         me: { user_id: string; role: string };
       }>;
@@ -330,8 +338,14 @@ declare global {
         { id: string; role: string; expires_at: string; opened_count: number; created_at: string }[]
       >;
       cloudOrgRevokeInvite: (id: string) => Promise<void>;
-      cloudOrgRedeemInvite: (token: string, shorter?: boolean) => Promise<{ recoveryKey: string }>;
-      cloudOrgApproveMember: (userId: string) => Promise<void>;
+      cloudOrgRedeemInvite: (token: string) => Promise<{ recoveryKey: string }>;
+      /**
+       * Seal the account key to a pending member. `verified: false` means their
+       * key binding was unavailable (they joined from a build that predates it)
+       * and the owner must still compare device codes by hand — it does not
+       * mean anything was wrong. A binding that is present and wrong rejects.
+       */
+      cloudOrgApproveMember: (userId: string) => Promise<{ verified: boolean }>;
       cloudOrgRemoveMember: (userId: string) => Promise<void>;
       cloudBackupStatus: () => Promise<{
         configured: boolean;

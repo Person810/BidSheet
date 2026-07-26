@@ -53,7 +53,7 @@ const filename = z
   );
 
 const snapshotSchema = z.strictObject({
-  format: z.union([z.literal(1), z.literal(2)]),
+  format: z.literal(2),
   pushed_at: z.string().max(64).optional(),
   app_version: z.string().max(64).optional(),
   job: row,

@@ -237,17 +237,19 @@ describe('importJob (format 2)', () => {
     expect(u2).toMatch(UUID_RE);
   });
 
-  it('still imports legacy format-1 snapshots with integer-id semantics', () => {
+  // Format 1 (raw integer catalog refs) was removed on 2026-07-26: no released
+  // build ever wrote one and production held zero stored snapshots. A document
+  // claiming format 1 now can only be corrupt or hostile, so it must be
+  // rejected whole rather than half-imported with refs pointing at whatever
+  // local rows happen to share those integer ids.
+  it('rejects a legacy format-1 snapshot outright, importing nothing', () => {
     const db = freshDb();
     const { matId } = buildFixture(db);
-    const legacy: JobSnapshot = {
+    const legacy = {
       format: 1,
       job: { name: 'Old Client Job' },
       sections: [{ id: 7, name: 'Base Bid' }],
-      line_items: [
-        { id: 1, section_id: 7, description: 'kept ref', material_id: matId },
-        { id: 2, section_id: 7, description: 'dangling ref', material_id: 9999 },
-      ],
+      line_items: [{ id: 1, section_id: 7, description: 'kept ref', material_id: matId }],
       trench_profiles: [],
       quotes: [],
       takeoff: {
@@ -255,14 +257,10 @@ describe('importJob (format 2)', () => {
         points: [], items: [], areas: [], area_points: [], annotations: [],
       },
       plan: null,
-    };
-    const result = importJob(db, 'legacy-1', legacy);
-    const items = db
-      .prepare('SELECT * FROM bid_line_items WHERE job_id = ? ORDER BY id')
-      .all(result.jobId) as any[];
-    expect(items[0].material_id).toBe(matId);
-    expect(items[1].material_id).toBeNull();
-    expect(result.droppedCatalogRefs).toBe(1);
+    } as unknown as JobSnapshot;
+    const before = (db.prepare('SELECT COUNT(*) AS n FROM jobs').get() as any).n;
+    expect(() => importJob(db, 'legacy-1', legacy)).toThrow(/format/i);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM jobs').get() as any).n).toBe(before);
   });
 });
 

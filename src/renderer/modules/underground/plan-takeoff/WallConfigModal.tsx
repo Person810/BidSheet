@@ -4,6 +4,7 @@ import { UnitInput } from '../../../components/UnitInput';
 import { fromDisplay, unitLabel } from '../../../../shared/unitSystem';
 import { useUnitSystem } from '../../../stores/units-store';
 import type { WallConfig } from './types';
+import { dismissOnEscOnly } from '../../../components/modalDismiss';
 
 const DEFAULT_CONFIG: WallConfig = {
   label: '',
@@ -75,7 +76,7 @@ export function WallConfigModal({ onConfirm, onCancel, initialConfig, lastWallCo
   };
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onCancel)}>
       <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>

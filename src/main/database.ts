@@ -1720,6 +1720,12 @@ function migrateV27(db: Database.Database): void {
   // this machine without re-prompting; the salt also rides in the uploaded
   // file's header so a fresh machine can re-derive the key from the
   // passphrase alone. The passphrase itself is never stored anywhere.
+  //
+  // SUPERSEDED: backups now ride the E2EE DEK, and the passphrase scheme this
+  // describes is gone (backup-crypto.ts was deleted once it had no callers).
+  // backup_salt/backup_key_enc are dead columns kept only because migrations
+  // are forward-only; backup_last_at survives as a display fallback. The text
+  // above is left as-is because it explains why the columns exist.
   db.exec(`
     ALTER TABLE cloud_auth ADD COLUMN backup_salt TEXT;
     ALTER TABLE cloud_auth ADD COLUMN backup_key_enc TEXT;

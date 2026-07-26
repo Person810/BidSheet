@@ -8,6 +8,7 @@ import { JobLocationFields, formatJobLocation } from '../../components/JobLocati
 import { ClientForm } from '../../components/clients/ClientEditorForm';
 import { parseClientAddress } from '../../components/clients/clientForm';
 import type { ClientRow } from '../../../shared/types/ipc';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 export interface EditJobForm {
   name: string;
@@ -62,7 +63,7 @@ export function EditJobModal({
   }, [form.client]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Edit Job</h3>
         <div className="form-row">
@@ -140,7 +141,7 @@ export function EditJobModal({
             )}
           </div>
           {editingClient && (
-            <div className="modal-overlay" onClick={() => setEditingClient(false)} style={{ zIndex: 1100 }}>
+            <div className="modal-overlay" onClick={dismissOnEscOnly(() => setEditingClient(false))} style={{ zIndex: 1100 }}>
               <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
                 <h3>{selectedClientRow ? 'Edit Client' : 'Add Client'}</h3>
                 <ClientForm
