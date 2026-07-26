@@ -1,6 +1,5 @@
 import React from 'react';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
-import { ClientField, type ClientDetailsDraft } from '../../components/ClientField';
 import { useLocaleStore } from '../../stores/locale-store';
 import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 
@@ -14,6 +13,8 @@ export interface EditJobForm {
   jobNumber: string;
   client: string;
   location: string;
+  sitePostcode: string;
+  siteCountry: string;
   bidDate: string;
   description: string;
   overheadPercent: number;
@@ -31,22 +32,18 @@ interface EditJobModalProps {
   onClose: () => void;
   /** Excluded from the duplicate-number warning (a job matches itself). */
   jobId?: number;
-  /** Client details draft (#94), committed by the parent's onSave. */
-  clientDetails: ClientDetailsDraft | null;
-  onClientDetailsChange: (details: ClientDetailsDraft | null) => void;
 }
 
 /** Edit-job info + markups modal, extracted from JobDetail. */
 export function EditJobModal({
-  form, setForm, onSave, onClose, jobId, clientDetails, onClientDetailsChange,
+  form, setForm, onSave, onClose, jobId,
 }: EditJobModalProps) {
   const numberWarning = useJobNumberWarning(form.jobNumber, jobId);
   const { profile } = useLocaleStore();
 
   const [selectedClientRow, setSelectedClientRow] = React.useState<ClientRow | null>(null);
   const [editingClient, setEditingClient] = React.useState(false);
-  const [postalCode, setPostalCode] = React.useState('');
-  const [country, setCountry] = React.useState('');
+  const [isDateValid, setIsDateValid] = React.useState(true);
 
   React.useEffect(() => {
     if (form.client.trim()) {
@@ -84,72 +81,73 @@ export function EditJobModal({
             )}
           </div>
         </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>{profile.gcLabel}</label>
-            <SavedClientPicker
-              value={form.client}
-              onChange={(clientName) => {
-                setForm({ ...form, client: clientName });
-                if (!clientName) {
-                  setSelectedClientRow(null);
-                }
-              }}
-              onSelectClient={(client) => {
-                setForm({
-                  ...form,
-                  client: client.name,
-                  location: client.address || form.location,
-                });
-                setSelectedClientRow(client);
-              }}
-            />
-            {form.client.trim() !== '' && (
-              <div style={{ marginTop: 4 }}>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  style={{ fontSize: 11, padding: '1px 8px' }}
-                  onClick={() => setEditingClient(!editingClient)}
-                >
-                  {selectedClientRow ? 'Edit details' : 'Add details'}
-                </button>
-              </div>
-            )}
-            {editingClient && (
-              <div className="inline-client-form" style={{ marginTop: 10, border: '1px solid #ccc', padding: 10, borderRadius: 4 }}>
-                <ClientForm
-                  initialClient={selectedClientRow}
-                  onSaved={(client) => {
-                    setSelectedClientRow(client);
-                    setForm({
-                      ...form,
-                      client: client.name,
-                      location: client.address || form.location,
-                    });
-                    setEditingClient(false);
-                  }}
-                  onCancel={() => setEditingClient(false)}
-                />
-              </div>
-            )}
+        <div className="form-group" style={{ position: 'relative' }}>
+          <label>Client / Builder</label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <SavedClientPicker
+                value={form.client}
+                onChange={(clientName) => {
+                  setForm({ ...form, client: clientName });
+                  if (!clientName.trim()) {
+                    setSelectedClientRow(null);
+                  }
+                }}
+                onSelectClient={(client) => {
+                  setForm({
+                    ...form,
+                    client: client.name,
+                  });
+                  setSelectedClientRow(client);
+                }}
+                disabled={false}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '6px 12px', height: '32px' }}
+              onClick={() => setEditingClient(!editingClient)}
+            >
+              {selectedClientRow ? 'Edit details' : 'Add details'}
+            </button>
           </div>
+          {editingClient && (
+            <div style={{ marginTop: '8px' }}>
+              <ClientForm
+                initialClient={selectedClientRow}
+                onSave={(client) => {
+                  setForm({
+                    ...form,
+                    client: client.name,
+                  });
+                  setSelectedClientRow(client);
+                  setEditingClient(false);
+                }}
+                onCancel={() => setEditingClient(false)}
+              />
+            </div>
+          )}
+        </div>
+        <div className="form-row">
           <div className="form-group">
             <LocalizedDateField
               label="Bid Date"
               value={form.bidDate || null}
               onChange={(date) => setForm({ ...form, bidDate: date || '' })}
+              onValidityChange={setIsDateValid}
             />
           </div>
         </div>
         <div className="form-group">
           <JobLocationFields
             location={form.location}
-            postalCode={postalCode}
-            country={country}
+            postalCode={form.sitePostcode}
+            country={form.siteCountry}
             onLocationChange={(loc) => setForm({ ...form, location: loc })}
-            onPostalCodeChange={setPostalCode}
-            onCountryChange={setCountry}
+            onPostalCodeChange={(pc) => setForm({ ...form, sitePostcode: pc })}
+            onCountryChange={(c) => setForm({ ...form, siteCountry: c })}
+            builderAddress={selectedClientRow?.address}
           />
         </div>
         <div className="form-group">
@@ -192,7 +190,7 @@ export function EditJobModal({
         </div>
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={onSave} disabled={!form.name.trim()}>Save</button>
+          <button className="btn btn-primary" onClick={onSave} disabled={!form.name.trim() || !isDateValid}>Save</button>
         </div>
       </div>
     </div>

@@ -9,6 +9,8 @@ import {
   createEmptyClientForm,
   failClientSave,
   prepareClientPayload,
+  parseClientAddress,
+  formatClientAddress,
   type ClientFormValues,
 } from './clientForm';
 
@@ -31,7 +33,33 @@ describe('client form payload preparation', () => {
       contactPhone: '',
       address: '',
       notes: '',
+      street: '',
+      suburb: '',
+      state: '',
+      postcode: '',
     });
+  });
+
+  it('parses Australia Post standard formatted address correctly', () => {
+    // Both business and contact name
+    const address = formatClientAddress('Acme Civil', 'Alice Estimator', '10 Client Street', 'Adelaide', 'SA', '5000');
+    expect(address).toBe('Acme Civil\nAlice Estimator\n10 Client Street\nADELAIDE SA 5000');
+
+    const parsed = parseClientAddress(address);
+    expect(parsed).toEqual({
+      street: '10 Client Street',
+      suburb: 'ADELAIDE',
+      state: 'SA',
+      postcode: '5000',
+    });
+
+    // Only business name
+    const addressOnlyBusiness = formatClientAddress('Acme Civil', '', '10 Client Street', 'Adelaide', 'SA', '5000');
+    expect(addressOnlyBusiness).toBe('Acme Civil\n10 Client Street\nADELAIDE SA 5000');
+
+    // Only contact name
+    const addressOnlyContact = formatClientAddress('', 'Alice Estimator', '10 Client Street', 'Adelaide', 'SA', '5000');
+    expect(addressOnlyContact).toBe('Alice Estimator\n10 Client Street\nADELAIDE SA 5000');
   });
 
   it('normalizes surrounding Unicode whitespace and blank optionals to null', () => {

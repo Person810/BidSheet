@@ -162,6 +162,25 @@ describe('migration v47 — custom trades', () => {
   });
 });
 
+describe('migration v48 — freight and site location fields', () => {
+  it('adds freight, site_postcode, and site_country columns to jobs table', () => {
+    const db = dbAtVersion(47);
+
+    db.transaction(() => MIGRATIONS[47](db))();
+
+    const cols = (db.prepare('PRAGMA table_info(jobs)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('freight');
+    expect(cols).toContain('site_postcode');
+    expect(cols).toContain('site_country');
+
+    const job_id = insertJob(db, 'Test Job');
+    const row = db.prepare('SELECT freight, site_postcode, site_country FROM jobs WHERE id = ?').get(job_id) as any;
+    expect(row.freight).toBe(0.0);
+    expect(row.site_postcode).toBeNull();
+    expect(row.site_country).toBeNull();
+  });
+});
+
 describe('sample-catalog management', () => {
   const freshDb = () => dbAtVersion(MIGRATIONS.length);
 

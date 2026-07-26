@@ -187,6 +187,9 @@ export interface JobRow {
   bid_locked: number;
   parent_job_id: number | null;
   change_order_number: number | null;
+  freight?: number;
+  site_postcode?: string | null;
+  site_country?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -212,6 +215,8 @@ export interface SaveJobPayload {
   changeOrderNumber?: number | null;
   clientId?: number | null;
   freight?: number | null;
+  sitePostcode?: string | null;
+  siteCountry?: string | null;
 }
 
 export interface ClientRow {

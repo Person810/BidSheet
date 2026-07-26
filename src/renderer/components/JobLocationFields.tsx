@@ -20,6 +20,7 @@ export interface JobLocationFieldsProps {
   disabled?: boolean;
   postalCodeError?: string | null;
   countryError?: string | null;
+  builderAddress?: string | null;
 }
 
 export function JobLocationFields({
@@ -32,6 +33,7 @@ export function JobLocationFields({
   disabled = false,
   postalCodeError = null,
   countryError = null,
+  builderAddress = null,
 }: JobLocationFieldsProps) {
   const id = useId();
   const requestId = useRef(0);
@@ -68,13 +70,40 @@ export function JobLocationFields({
     onCountryChange(value);
   };
 
+  const handleUseBuilderAddress = () => {
+    if (!builderAddress) return;
+
+    const lines = builderAddress.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+
+    const lastLine = lines[lines.length - 1];
+    const match = /(?<suburb>[A-Z\s]+)\s+(?<state>[A-Z]{2,3})\s+(?<postcode>\d{4})$/i.exec(lastLine);
+
+    let parsedLocation = '';
+    let parsedPostcode = '';
+    let parsedCountry = 'Australia';
+
+    if (match && match.groups) {
+      const street = lines.length >= 2 ? lines[lines.length - 2] : '';
+      const suburb = match.groups.suburb.trim();
+      const state = match.groups.state.trim();
+      parsedLocation = street ? `${street}\n${suburb} ${state}` : `${suburb} ${state}`;
+      parsedPostcode = match.groups.postcode.trim();
+    } else {
+      parsedLocation = lines.join('\n');
+    }
+
+    changeLocation(parsedLocation);
+    changePostalCode(parsedPostcode);
+    changeCountry(parsedCountry);
+  };
+
   const findSuggestions = async () => {
     if (!postalCode.trim() || disabled) return;
     const activeRequest = ++requestId.current;
     setState((current) => beginJobLocationLookup(current, activeRequest));
     try {
-      // TODO: wire up IPC handler for job location suggestions
-      const result = await (window.api as any).findJobLocationSuggestions({
+      const result = await window.api.findJobLocationSuggestions({
         postalCode,
         country: country || null,
       });
@@ -111,10 +140,11 @@ export function JobLocationFields({
     >
       <div className="form-group">
         <label htmlFor={`${id}-location`}>Project Location</label>
-        <input
+        <textarea
           id={`${id}-location`}
           className="form-control"
           value={location}
+          rows={3}
           onChange={(event) => changeLocation(event.target.value)}
         />
       </div>
@@ -156,14 +186,26 @@ export function JobLocationFields({
           )}
         </div>
       </div>
-      <button
-        type="button"
-        className="btn btn-sm btn-secondary"
-        disabled={disabled || !postalCode.trim() || state.status.kind === 'loading'}
-        onClick={() => void findSuggestions()}
-      >
-        {state.status.kind === 'loading' ? 'Finding…' : 'Find saved locations'}
-      </button>
+      <div className="flex gap-8">
+        <button
+          type="button"
+          className="btn btn-sm btn-secondary"
+          disabled={disabled || !postalCode.trim() || state.status.kind === 'loading'}
+          onClick={() => void findSuggestions()}
+        >
+          {state.status.kind === 'loading' ? 'Finding…' : 'Find saved locations'}
+        </button>
+        {builderAddress && (
+          <button
+            type="button"
+            className="btn btn-sm btn-secondary"
+            disabled={disabled}
+            onClick={handleUseBuilderAddress}
+          >
+            Use Builder Address
+          </button>
+        )}
+      </div>
       <div aria-live="polite" role="status" style={{ marginTop: 8 }}>
         {state.status.kind === 'empty' && 'No saved locations found. You can enter one manually.'}
         {state.status.kind === 'error' && state.status.message}

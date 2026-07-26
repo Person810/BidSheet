@@ -4,7 +4,6 @@ import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
 import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
-import { ClientField, commitClientDetails, type ClientDetailsDraft } from '../../components/ClientField';
 import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 import { formatDateLocal, statusBadge } from './helpers';
 
@@ -50,6 +49,7 @@ export function JobList({ onOpenJob }: JobListProps) {
   const [form, setForm] = useState({ ...EMPTY_JOB_FORM });
   const [editingClient, setEditingClient] = useState(false);
   const [selectedClientRow, setSelectedClientRow] = useState<ClientRow | null>(null);
+  const [isDateValid, setIsDateValid] = useState(true);
   const { profile } = useLocaleStore();
   const { format: formatDate } = useDateFormat();
 
@@ -87,6 +87,7 @@ export function JobList({ onOpenJob }: JobListProps) {
     setSuggestedNumber(null);
     setSelectedClientRow(null);
     setEditingClient(false);
+    setIsDateValid(true);
   };
 
   // Staleness guard: switching the status filter quickly can leave a slow
@@ -132,6 +133,8 @@ export function JobList({ onOpenJob }: JobListProps) {
       taxPercent: settings?.default_tax_percent || 0,
       escalationPercent: 0,
       freight: form.freight || 0,
+      sitePostcode: form.postalCode || null,
+      siteCountry: form.country || null,
       notes: null,
     });
     closeCreate();
@@ -535,11 +538,11 @@ export function JobList({ onOpenJob }: JobListProps) {
                   </div>
                 )}
               </div>
-              <div className="form-group">
                 <LocalizedDateField
                   label="Bid Date"
                   value={form.bidDate || null}
                   onChange={(date) => setForm({ ...form, bidDate: date || '' })}
+                  onValidityChange={setIsDateValid}
                 />
               </div>
             </div>
@@ -551,6 +554,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                 onLocationChange={(loc) => setForm((f) => ({ ...f, location: loc }))}
                 onPostalCodeChange={(pc) => setForm((f) => ({ ...f, postalCode: pc }))}
                 onCountryChange={(c) => setForm((f) => ({ ...f, country: c }))}
+                builderAddress={selectedClientRow?.address}
               />
             </div>
             <div className="form-row">
@@ -567,7 +571,7 @@ export function JobList({ onOpenJob }: JobListProps) {
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={closeCreate}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreate} disabled={!form.name.trim()}>Create Job</button>
+              <button className="btn btn-primary" onClick={handleCreate} disabled={!form.name.trim() || !isDateValid}>Create Job</button>
             </div>
           </div>
         </div>

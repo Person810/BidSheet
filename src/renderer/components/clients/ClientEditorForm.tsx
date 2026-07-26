@@ -1,6 +1,7 @@
 import React, { useId, useRef, useState } from 'react';
 
 import type { ClientRow, SaveClientPayload } from '../../../shared/types/ipc';
+import { useLocaleStore } from '../../stores/locale-store';
 import {
   beginClientSave,
   cancelClientForm,
@@ -60,12 +61,14 @@ export function ClientForm({
 }: ClientFormProps) {
   const idPrefix = useId();
   const savingRef = useRef(false);
+  const { profile } = useLocaleStore();
+  const isAU = profile.locale === 'en-AU';
   const [state, setState] = useState(() => clientFormFromClient(initialClient));
   const [errors, setErrors] = useState<
-    Partial<Record<ClientFormTextField, string>>
+    Partial<Record<keyof ClientFormValues, string>>
   >({});
 
-  const update = (field: ClientFormTextField, value: string) => {
+  const update = (field: keyof ClientFormValues, value: string) => {
     setState((current) => ({
       ...current,
       values: { ...current.values, [field]: value },
@@ -86,16 +89,16 @@ export function ClientForm({
           className="form-control"
           type={type}
           autoComplete={autoComplete}
-          value={state.values[name] as string}
+          value={state.values[name as keyof ClientFormValues] as string}
           disabled={disabled || state.saving}
           required={name === 'name'}
-          aria-invalid={Boolean(errors[name])}
-          aria-describedby={errors[name] ? errorId : undefined}
-          onChange={(event) => update(name, event.target.value)}
+          aria-invalid={Boolean(errors[name as keyof ClientFormValues])}
+          aria-describedby={errors[name as keyof ClientFormValues] ? errorId : undefined}
+          onChange={(event) => update(name as keyof ClientFormValues, event.target.value)}
         />
-        {errors[name] && (
+        {errors[name as keyof ClientFormValues] && (
           <div id={errorId} className="form-error" role="alert">
-            {errors[name]}
+            {errors[name as keyof ClientFormValues]}
           </div>
         )}
       </div>
@@ -142,23 +145,102 @@ export function ClientForm({
       {FIELDS.slice(0, 2).map(field)}
       <div className="form-row">{FIELDS.slice(2, 4).map(field)}</div>
 
-      <div className="form-group">
-        <label htmlFor={`${idPrefix}-address`}>Address</label>
-        <textarea
-          id={`${idPrefix}-address`}
-          className="form-control"
-          value={state.values.address as string}
-          disabled={disabled || state.saving}
-          aria-invalid={Boolean(errors.address)}
-          aria-describedby={errors.address ? `${idPrefix}-address-error` : undefined}
-          onChange={(event) => update('address' as ClientFormTextField, event.target.value)}
-        />
-        {errors.address && (
-          <div id={`${idPrefix}-address-error`} className="form-error" role="alert">
-            {errors.address}
+      {isAU ? (
+        <>
+          <div className="form-group">
+            <label htmlFor={`${idPrefix}-street`}>Street Address</label>
+            <input
+              id={`${idPrefix}-street`}
+              className="form-control"
+              type="text"
+              value={state.values.street}
+              disabled={disabled || state.saving}
+              aria-invalid={Boolean(errors.street)}
+              aria-describedby={errors.street ? `${idPrefix}-street-error` : undefined}
+              onChange={(event) => update('street', event.target.value)}
+            />
+            {errors.street && (
+              <div id={`${idPrefix}-street-error`} className="form-error" role="alert">
+                {errors.street}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor={`${idPrefix}-suburb`}>Suburb / Locality</label>
+              <input
+                id={`${idPrefix}-suburb`}
+                className="form-control"
+                type="text"
+                value={state.values.suburb}
+                disabled={disabled || state.saving}
+                aria-invalid={Boolean(errors.suburb)}
+                aria-describedby={errors.suburb ? `${idPrefix}-suburb-error` : undefined}
+                onChange={(event) => update('suburb', event.target.value)}
+              />
+              {errors.suburb && (
+                <div id={`${idPrefix}-suburb-error`} className="form-error" role="alert">
+                  {errors.suburb}
+                </div>
+              )}
+            </div>
+            <div className="form-group">
+              <label htmlFor={`${idPrefix}-state`}>State</label>
+              <input
+                id={`${idPrefix}-state`}
+                className="form-control"
+                type="text"
+                value={state.values.state}
+                disabled={disabled || state.saving}
+                aria-invalid={Boolean(errors.state)}
+                aria-describedby={errors.state ? `${idPrefix}-state-error` : undefined}
+                onChange={(event) => update('state', event.target.value)}
+              />
+              {errors.state && (
+                <div id={`${idPrefix}-state-error`} className="form-error" role="alert">
+                  {errors.state}
+                </div>
+              )}
+            </div>
+            <div className="form-group">
+              <label htmlFor={`${idPrefix}-postcode`}>Postcode</label>
+              <input
+                id={`${idPrefix}-postcode`}
+                className="form-control"
+                type="text"
+                value={state.values.postcode}
+                disabled={disabled || state.saving}
+                aria-invalid={Boolean(errors.postcode)}
+                aria-describedby={errors.postcode ? `${idPrefix}-postcode-error` : undefined}
+                onChange={(event) => update('postcode', event.target.value)}
+              />
+              {errors.postcode && (
+                <div id={`${idPrefix}-postcode-error`} className="form-error" role="alert">
+                  {errors.postcode}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="form-group">
+          <label htmlFor={`${idPrefix}-address`}>Address</label>
+          <textarea
+            id={`${idPrefix}-address`}
+            className="form-control"
+            value={state.values.address}
+            disabled={disabled || state.saving}
+            aria-invalid={Boolean(errors.address)}
+            aria-describedby={errors.address ? `${idPrefix}-address-error` : undefined}
+            onChange={(event) => update('address', event.target.value)}
+          />
+          {errors.address && (
+            <div id={`${idPrefix}-address-error`} className="form-error" role="alert">
+              {errors.address}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="form-group">
         <label htmlFor={`${idPrefix}-notes`}>Notes</label>

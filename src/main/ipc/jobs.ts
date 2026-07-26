@@ -30,6 +30,7 @@ export function registerJobHandlers(db: Database.Database): void {
   safeHandle('db:job-locations:find-suggestions', (_event, request: any) => {
     const limit = request.limit ?? 20;
     const postalCode = (request.postalCode || '').trim();
+    const country = (request.country || '').trim();
     if (!postalCode) {
       return { suggestions: [], truncated: false };
     }
@@ -42,20 +43,28 @@ export function registerJobHandlers(db: Database.Database): void {
         suggestions.push({
           location: row.address,
           postalCode,
-          country: request.country ?? null,
+          country: country || null,
           sourceKind: 'client',
         });
       }
     }
-    const jobRows = db.prepare(
-      "SELECT name, location FROM jobs WHERE location LIKE ? LIMIT ?"
-    ).all(`%${postalCode}%`, limit) as any[];
+
+    let jobQuery = "SELECT name, location, site_postcode, site_country FROM jobs WHERE site_postcode LIKE ?";
+    const jobParams: any[] = [`%${postalCode}%`];
+    if (country) {
+      jobQuery += " AND (site_country LIKE ? OR site_country IS NULL OR site_country = '')";
+      jobParams.push(`%${country}%`);
+    }
+    jobQuery += " LIMIT ?";
+    jobParams.push(limit);
+
+    const jobRows = db.prepare(jobQuery).all(...jobParams) as any[];
     for (const row of jobRows) {
       if (row.location) {
         suggestions.push({
           location: row.location,
-          postalCode,
-          country: request.country ?? null,
+          postalCode: row.site_postcode || postalCode,
+          country: row.site_country || country || null,
           sourceKind: 'job',
         });
       }
@@ -80,6 +89,7 @@ export function registerJobHandlers(db: Database.Database): void {
               bid_date = ?, start_date = ?, description = ?, status = ?,
               overhead_percent = ?, profit_percent = ?, bond_percent = ?,
               tax_percent = ?, escalation_percent = ?, notes = ?, bid_locked = ?,
+              freight = ?, site_postcode = ?, site_country = ?,
               updated_at = datetime('now', 'localtime')
             WHERE id = ?`
           )
@@ -87,20 +97,22 @@ export function registerJobHandlers(db: Database.Database): void {
             job.name, job.jobNumber, job.client, clientId, job.location,
             job.bidDate, job.startDate, job.description, job.status,
             job.overheadPercent, job.profitPercent, job.bondPercent,
-            job.taxPercent, job.escalationPercent ?? 0, job.notes, job.bidLocked ? 1 : 0, job.id
+            job.taxPercent, job.escalationPercent ?? 0, job.notes, job.bidLocked ? 1 : 0,
+            job.freight ?? 0.0, job.sitePostcode ?? null, job.siteCountry ?? null, job.id
           );
       } else {
         return db
           .prepare(
-            `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, parent_job_id, change_order_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, parent_job_id, change_order_number, freight, site_postcode, site_country)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             job.name, job.jobNumber, job.client, clientId, job.location,
             job.bidDate, job.startDate, job.description,
             job.overheadPercent, job.profitPercent, job.bondPercent,
             job.taxPercent, job.escalationPercent ?? 0, job.notes,
-            job.parentJobId || null, job.changeOrderNumber || null
+            job.parentJobId || null, job.changeOrderNumber || null,
+            job.freight ?? 0.0, job.sitePostcode ?? null, job.siteCountry ?? null
           );
       }
     });

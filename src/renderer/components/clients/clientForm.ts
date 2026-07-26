@@ -1,10 +1,18 @@
-import type { ClientRow, SaveClientPayload } from '../../../shared/types/ipc';
-
-export type ClientFormTextField = Exclude<keyof SaveClientPayload, 'id'>;
-
-export interface ClientFormValues extends Record<ClientFormTextField, string> {
+export interface ClientFormValues {
   id: number | undefined;
+  name: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
+  notes: string;
+  street: string;
+  suburb: string;
+  state: string;
+  postcode: string;
 }
+
+export type ClientFormTextField = keyof ClientFormValues;
 
 export interface ClientFormState {
   mode: 'create' | 'edit';
@@ -20,17 +28,80 @@ export interface ClientFormState {
 export interface PreparedClientPayload {
   ok: boolean;
   payload?: SaveClientPayload;
-  errors: Partial<Record<ClientFormTextField, string>>;
+  errors: Partial<Record<keyof ClientFormValues, string>>;
 }
 
-const FIELD_BOUNDS: Record<ClientFormTextField, number> = {
+const FIELD_BOUNDS: Record<string, number> = {
   name: 200,
   contactName: 200,
   contactEmail: 320,
   contactPhone: 100,
   address: 500,
   notes: 2_000,
+  street: 200,
+  suburb: 100,
+  state: 10,
+  postcode: 20,
 };
+
+export function parseClientAddress(address: string | null | undefined): {
+  street: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+} {
+  const result = { street: '', suburb: '', state: '', postcode: '' };
+  if (!address) return result;
+
+  const lines = address.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return result;
+
+  const lastLine = lines[lines.length - 1];
+  const match = /(?<suburb>[A-Z\s]+)\s+(?<state>[A-Z]{2,3})\s+(?<postcode>\d{4})$/i.exec(lastLine);
+
+  if (match && match.groups) {
+    result.postcode = match.groups.postcode.trim();
+    result.state = match.groups.state.trim();
+    result.suburb = match.groups.suburb.trim();
+    // Street line is the one before suburb state postcode
+    result.street = lines.length >= 2 ? lines[lines.length - 2] : '';
+  } else {
+    result.street = lines.join('\n');
+  }
+
+  return result;
+}
+
+export function formatClientAddress(
+  businessName: string,
+  recipientName: string,
+  street: string,
+  suburb: string,
+  state: string,
+  postcode: string,
+): string {
+  const lines: string[] = [];
+
+  if (businessName.trim() && recipientName.trim()) {
+    lines.push(businessName.trim());
+    lines.push(recipientName.trim());
+  } else if (businessName.trim()) {
+    lines.push(businessName.trim());
+  } else if (recipientName.trim()) {
+    lines.push(recipientName.trim());
+  }
+
+  if (street.trim()) {
+    lines.push(street.trim());
+  }
+
+  const suburbStatePostcode = `${suburb.trim().toUpperCase()} ${state.trim().toUpperCase()} ${postcode.trim()}`;
+  if (suburbStatePostcode.trim()) {
+    lines.push(suburbStatePostcode);
+  }
+
+  return lines.join('\n');
+}
 
 export function createEmptyClientForm(): ClientFormValues {
   return {
@@ -41,6 +112,10 @@ export function createEmptyClientForm(): ClientFormValues {
     contactPhone: '',
     address: '',
     notes: '',
+    street: '',
+    suburb: '',
+    state: '',
+    postcode: '',
   };
 }
 
@@ -54,6 +129,12 @@ export function clientFormFromClient(client: ClientRow | null): ClientFormState 
     values.contactPhone = client.contact_phone ?? '';
     values.address = client.address ?? '';
     values.notes = client.notes ?? '';
+
+    const parsed = parseClientAddress(client.address);
+    values.street = parsed.street;
+    values.suburb = parsed.suburb;
+    values.state = parsed.state;
+    values.postcode = parsed.postcode;
   }
   return {
     mode: client ? 'edit' : 'create',
@@ -72,26 +153,47 @@ function normalize(value: string): string | null {
   return result || null;
 }
 
-function fieldLabel(field: ClientFormTextField): string {
+function fieldLabel(field: string): string {
   return field.replace(/([A-Z])/g, ' $1').toLowerCase().trim();
 }
 
 export function prepareClientPayload(values: ClientFormValues): PreparedClientPayload {
-  const errors: Partial<Record<ClientFormTextField, string>> = {};
+  const errors: Partial<Record<keyof ClientFormValues, string>> = {};
   const payload: Record<string, string | number | null | undefined> = {
     id: values.id,
   };
 
-  for (const [field, bound] of Object.entries(FIELD_BOUNDS) as Array<
-    [ClientFormTextField, number]
-  >) {
-    const value = normalize(values[field]);
+  // If using separate fields for Australia Post, format the combined address
+  let finalAddress = values.address;
+  if (values.street.trim() || values.suburb.trim() || values.state.trim() || values.postcode.trim()) {
+    finalAddress = formatClientAddress(
+      values.name,
+      values.contactName,
+      values.street,
+      values.suburb,
+      values.state,
+      values.postcode
+    );
+  }
+
+  const valuesToValidate = {
+    ...values,
+    address: finalAddress,
+  };
+
+  const keysToValidate = ['name', 'contactName', 'contactEmail', 'contactPhone', 'address', 'notes', 'street', 'suburb', 'state', 'postcode'];
+
+  for (const field of keysToValidate) {
+    const value = normalize((valuesToValidate as any)[field] || '');
+    const bound = FIELD_BOUNDS[field];
     if (field === 'name' && value == null) {
       errors.name = 'Client name is required.';
     } else if (value != null && value.length > bound) {
-      errors[field] = `Client ${fieldLabel(field)} must be ${bound} characters or fewer.`;
+      errors[field as keyof ClientFormValues] = `Client ${fieldLabel(field)} must be ${bound} characters or fewer.`;
     }
-    payload[field] = value;
+    if (['name', 'contactName', 'contactEmail', 'contactPhone', 'address', 'notes'].includes(field)) {
+      payload[field] = value;
+    }
   }
 
   const email = payload.contactEmail;
