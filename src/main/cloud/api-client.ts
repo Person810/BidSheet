@@ -51,12 +51,13 @@ export interface CloudBackupMeta {
 }
 
 /**
- * The account's key material — opaque to the server (zero-knowledge). Format 1
- * is the legacy single-key shape (recovery key directly unwraps wrapped_dek).
- * Format 2 (per-member) additionally returns THIS caller's own material:
- * my_wrapped_priv (their private key under their recovery key) and
- * my_wrapped_dek (the DEK sealed to their pubkey — null until an owner approves
- * them).
+ * The account's key material — opaque to the server (zero-knowledge). `format`
+ * is always 2; it stays on the wire as a version marker, but the format-1
+ * (single-key) shape was removed on 2026-07-26 and no account ever used it.
+ * The response returns the account-level wrapped_dek (owner recovery) plus THIS
+ * caller's own material: my_wrapped_priv (their private key under their
+ * recovery key) and my_wrapped_dek (the DEK sealed to their pubkey — null until
+ * an owner approves them).
  */
 export interface KeyMaterial {
   format: number;

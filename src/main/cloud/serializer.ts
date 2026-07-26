@@ -32,8 +32,13 @@ export interface PlanRef {
 }
 
 export interface JobSnapshot {
-  /** 1 = integer catalog refs (legacy), 2 = UUID catalog refs. */
-  format: 1 | 2;
+  /**
+   * Snapshot format. 2 = takeoff/line-item rows carry `<col>_uuid` catalog
+   * refs. Format 1 (raw integer refs) was removed on 2026-07-26 — it had never
+   * been written by any released build (buildSnapshot has always emitted 2) and
+   * production held zero stored snapshots, so no format-1 document exists.
+   */
+  format: 2;
   pushed_at?: string;
   app_version?: string;
   job: Record<string, any>;
@@ -199,6 +204,8 @@ export function exportJob(db: Database.Database, jobId: number): JobSnapshot {
 export function buildMarkupDoc(snapshot: JobSnapshot): Record<string, any> {
   return {
     // Tracks the snapshot format: 2 = takeoff rows carry *_uuid catalog refs.
+    // The phone reads this to know how to interpret the refs; it stays in the
+    // document even though only one value is possible now.
     format: snapshot.format,
     job_name: snapshot.job.name,
     plan: snapshot.plan,
@@ -242,7 +249,6 @@ export function importJob(
   // Untrusted-input boundary: structural validation first, whole-snapshot
   // reject on failure — nothing below runs on a malformed document.
   snapshot = validateSnapshot(snapshot);
-  const uuidRefs = snapshot.format >= 2;
   let dropped = 0;
 
   // SQL-injection invariant for everything below: snapshots are untrusted
@@ -256,9 +262,6 @@ export function importJob(
     return new Set(rows.map((r) => r.name));
   };
 
-  const exists = (table: string, id: any): boolean =>
-    id != null && !!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
-
   /** Local integer id for a catalog row's stable uuid, or null. */
   const idForUuid = (table: string, uuid: any): number | null => {
     if (typeof uuid !== 'string') return null;
@@ -271,11 +274,11 @@ export function importJob(
     const cols = columnsOf(table);
     const fks = CATALOG_FKS[table];
 
-    // Format 2: resolve <col>_uuid → this machine's integer id before the
-    // column filter (the _uuid keys aren't real columns and would be
-    // dropped). Unresolvable refs are nulled and counted.
+    // Resolve <col>_uuid → this machine's integer id before the column filter
+    // (the _uuid keys aren't real columns and would be dropped). Unresolvable
+    // refs are nulled and counted.
     const source: Record<string, any> = { ...row };
-    if (fks && uuidRefs) {
+    if (fks) {
       for (const [col, refTable] of Object.entries(fks)) {
         const uuidKey = col.replace(/_id$/, '_uuid');
         const refUuid = source[uuidKey];
@@ -290,16 +293,6 @@ export function importJob(
     for (const [k, v] of Object.entries(source)) {
       if (k === 'id' || !cols.has(k)) continue;
       clean[k] = v;
-    }
-    // Format 1 (legacy): integer refs are kept only when a local row with
-    // that exact id exists (same-machine round trip), nulled otherwise.
-    if (fks && !uuidRefs) {
-      for (const col of Object.keys(fks)) {
-        if (clean[col] != null && !exists(fks[col], clean[col])) {
-          clean[col] = null;
-          dropped++;
-        }
-      }
     }
     // Row uuids normally survive the trip — that's the stable identity
     // future row-level merge diffs on. But if another local job already
