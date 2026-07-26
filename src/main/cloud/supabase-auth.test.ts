@@ -203,6 +203,51 @@ describe('CloudAuth.restore — a 4xx that is not GoTrue must not sign the user 
     expect(storedToken(db)).not.toBeNull();
   });
 
+  it('drops a structurally corrupt stored token (the live validation_failed body)', async () => {
+    // Verbatim from the live project, 2026-07-26: GoTrue format-validates the
+    // refresh token before looking it up, so a corrupted stored token (garbled
+    // safeStorage decrypt, truncated b64 fallback) comes back validation_failed
+    // rather than refresh_token_not_found. It can never succeed, so it has to
+    // clear — otherwise the app reads signed-out and retries it every launch,
+    // forever.
+    seedSession(db, 'corrupted-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ code: 400, error_code: 'validation_failed', msg: 'Refresh token is not valid' }),
+          { status: 400 }
+        )
+      )
+    );
+
+    await new CloudAuth(db).restore();
+
+    expect(storedToken(db)).toBeNull();
+  });
+
+  it('drops the stored token for the live well-formed-but-unknown body', async () => {
+    // Also verbatim from the live project: the ordinary expiry/rotation case.
+    seedSession(db, 'refresh-stale');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 400,
+            error_code: 'refresh_token_not_found',
+            msg: 'Invalid Refresh Token: Refresh Token Not Found',
+          }),
+          { status: 400 }
+        )
+      )
+    );
+
+    await new CloudAuth(db).restore();
+
+    expect(storedToken(db)).toBeNull();
+  });
+
   it('drops the stored token for an old-style GoTrue body that names the grant', async () => {
     // Older/OAuth-style rejection: {"error":"invalid_grant"} with no
     // error_code. This is the whole reason errorCodeOf() reads `error` too —
@@ -305,8 +350,12 @@ describe('provesRefreshTokenDead', () => {
   });
 
   it('is false for a 4xx carrying an unrelated error code', () => {
-    expect(provesRefreshTokenDead(new CloudAuthError('nope', 'validation_failed', 400))).toBe(false);
     expect(provesRefreshTokenDead(new CloudAuthError('mfa', 'mfa_verification_failed', 400))).toBe(false);
+    expect(provesRefreshTokenDead(new CloudAuthError('weak', 'weak_password', 422))).toBe(false);
+  });
+
+  it('is true for validation_failed — a malformed token that can never succeed', () => {
+    expect(provesRefreshTokenDead(new CloudAuthError('bad shape', 'validation_failed', 400))).toBe(true);
   });
 
   it('is false for an unrecognised (non-CloudAuthError) failure', () => {
