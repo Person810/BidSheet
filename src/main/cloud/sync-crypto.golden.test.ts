@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import crypto from 'crypto';
 import {
   decryptForSync,
   unwrapWithRecoveryCode,
@@ -13,6 +14,8 @@ import {
   recoveryKeyToBytes,
   SyncDecryptError,
   ShortRecoveryKeyRetiredError,
+  inviteKeyBinding,
+  verifyInviteKeyBinding,
 } from './sync-crypto';
 
 /**
@@ -62,6 +65,14 @@ const V = {
     'f3C7EiCQk+fRCskquV3B+ZcWxCwB1FFG5ET2+8I8ekxCU0UxAW4j53B92S2N9USMNombtxxmn/lih23+NrJD36Ijl8NZTsedzgu1N1tbRyQH+sSB7qaSnTtze1syjvqvuQ==',
   fingerprint: 'c6c93e1a603b47b5',
   contentMac: '4106d779fdd8b7e4c77d88291cc7df281644a85bcbe43c91025eb6c98a71e0a4',
+  // Invite key binding (orgs #5). Frozen from the moment it shipped: an owner
+  // recomputes this at approval over a pubkey the *server* handed back, so a
+  // change to the prefix, the encoding, or the key would make every stored
+  // binding mismatch — which presents to owners as "the server swapped this
+  // person's key", the single most alarming message the app can produce.
+  inviteToken: 'BSKI-golden-invite-token-0001',
+  memberPubB64: 'tW6mUsPp0//QltPVXA460eCtFbbCi/TuvsUmUXj7oFs=',
+  inviteKeyBindingHex: 'bd6e093a45f739436a3f2888df74085247892bfddec116d93b8952375d5324ad',
 } as const;
 
 const dek = Buffer.from(V.dekHex, 'hex');
@@ -112,6 +123,24 @@ describe('golden: stored ciphertext must always decrypt', () => {
   it('dekFingerprint and syncContentMac are stable', () => {
     expect(dekFingerprint(dek)).toBe(V.fingerprint);
     expect(syncContentMac(plaintext, dek)).toBe(V.contentMac);
+  });
+
+  it('inviteKeyBinding is stable for a known token + member key', () => {
+    const pubRaw = Buffer.from(V.memberPubB64, 'base64');
+    expect(inviteKeyBinding(V.inviteToken, pubRaw)).toBe(V.inviteKeyBindingHex);
+    expect(verifyInviteKeyBinding(V.inviteToken, pubRaw, V.inviteKeyBindingHex)).toBe(true);
+  });
+
+  it('the pinned member public key really is the pinned private key', () => {
+    // Guards the vector above against being regenerated from a mismatched pair.
+    const derived = crypto.createPublicKey(
+      crypto.createPrivateKey({
+        key: Buffer.concat([Buffer.from('302e020100300506032b656e04220420', 'hex'), memberPriv]),
+        format: 'der',
+        type: 'pkcs8',
+      })
+    ).export({ format: 'der', type: 'spki' });
+    expect(Buffer.from(derived.subarray(derived.length - 32)).toString('base64')).toBe(V.memberPubB64);
   });
 });
 

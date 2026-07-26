@@ -187,20 +187,34 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   // own key and receiving a sealed DEK it can open.
   handle('cloud:org-members', async () => {
     const res = await api.listMembers();
+    // The binding check runs here, not in the renderer: it needs the DEK, and
+    // key_binding / invite_enc_token have no business crossing into the UI
+    // layer. The renderer gets the verdict only — enough to choose the right
+    // approval prompt, and nothing key-adjacent.
+    const statuses = await e2ee.memberBindingStatuses(res.members);
     return {
       ...res,
-      members: res.members.map((m) => ({
+      members: res.members.map(({ key_binding, invite_enc_token, invite_id, ...m }) => ({
         ...m,
         safety_code: m.pubkey ? pubkeySafetyCode(Buffer.from(m.pubkey, 'base64')) : null,
+        binding_status: statuses[m.user_id] ?? 'unchecked',
       })),
     };
   });
   handle('cloud:e2ee-safety-code', () => e2ee.mySafetyCode());
+  // Invite creation routes through E2eeManager, not the API client: the token
+  // is minted here and stored server-side encrypted under the account DEK, so
+  // an owner can recover it at approve time to verify the joiner's key binding.
   handle('cloud:org-create-invite', (role?: 'member' | 'owner') => {
     logger.info('cloud:org-create-invite', `Creating ${role ?? 'member'} invite`);
-    return api.createInvite(role);
+    return e2ee.createInvite(role ?? 'member');
   });
-  handle('cloud:org-list-invites', () => api.listInvites());
+  // enc_token is stripped for the same reason it is on the members list: the
+  // renderer has no use for the sealed invite token, and key-adjacent material
+  // shouldn't cross into the UI layer just because it happens to be in the row.
+  handle('cloud:org-list-invites', async () =>
+    (await api.listInvites()).map(({ enc_token, ...inv }) => inv)
+  );
   handle('cloud:org-revoke-invite', (id: string) => api.revokeInvite(id));
   handle('cloud:org-redeem-invite', async (token: string) => {
     logger.info('cloud:org-redeem-invite', 'Redeeming invite and joining account');
@@ -212,9 +226,13 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     engine.refreshRenderer();
     return res;
   });
+  // Returns whether the member's key binding could be checked automatically.
+  // `verified: false` means they joined from a client that predates the binding,
+  // so the renderer must still ask the owner to compare device codes out of
+  // band. A binding that is present and *wrong* throws instead.
   handle('cloud:org-approve-member', async (userId: string) => {
     logger.info('cloud:org-approve-member', `Approving member ${userId}`);
-    await e2ee.approveMember(userId);
+    return e2ee.approveMember(userId);
   });
   handle('cloud:org-remove-member', (userId: string) => api.removeMember(userId));
 

@@ -1,23 +1,27 @@
 /**
  * End-to-end encryption key management (zero-knowledge sync).
  *
- * Two key schemes coexist:
+ * One key scheme (format 2), used by solo accounts and multi-member orgs alike:
  *
- * Format 1 (legacy, single user):
- *   recovery key (256-bit) --directly wraps--> DEK
- *
- * Format 2 (multi-member orgs):
  *   recovery key (256-bit, per member) --wraps--> member X25519 PRIVATE key
  *   member private key + sealed blob ------------> DEK (sealed to the member's
  *                                                  public key by an owner)
- *   DEK (256-bit) --encrypts--> all synced data (unchanged across both schemes)
+ *   DEK (256-bit) --encrypts--> all synced data
  *
- * One per-account Data Encryption Key (DEK) encrypts every synced payload. Under
- * format 2 the DEK is *sealed* to each member's public key (one wrap per
- * member), so several people can decrypt the same account while the server still
- * holds only ciphertext. Each member's private key is wrapped under their own
- * recovery key. The server never sees a recovery key, a private key, or the raw
- * DEK — it cannot read anything (zero-knowledge).
+ * One per-account Data Encryption Key (DEK) encrypts every synced payload. The
+ * DEK is *sealed* to each member's public key (one wrap per member), so several
+ * people can decrypt the same account while the server still holds only
+ * ciphertext. Each member's private key is wrapped under their own recovery
+ * key. The server never sees a recovery key, a private key, or the raw DEK — it
+ * cannot read anything (zero-knowledge).
+ *
+ * A "format 1" scheme (the recovery key wrapping the DEK directly, single-user)
+ * existed in the schema but was never written by any released build — setup()
+ * has always emitted format 2 — and production held zero e2ee_keys rows, so no
+ * format-1 account ever existed anywhere. Its branches, the legacy-unlock path,
+ * and the 1->2 upgrade were removed on 2026-07-26. What survives is
+ * e2ee_keys.wrapped_dek itself: still written at setup and rotated on
+ * regenerate, as the account-level owner-recovery path beside the member seals.
  *
  * Joining is two-step by construction: a newcomer registers their public key
  * (status 'pending'; they can authenticate but decrypt nothing), then an
@@ -25,17 +29,19 @@
  * unlocked member holds the DEK to seal — the server cannot do it.
  *
  * After unlock the DEK (and the member private key) are cached locally with the
- * OS keychain (safeStorage) so day-to-day sync never re-prompts. The legacy
- * e2ee_keys.wrapped_dek (recovery key -> DEK) is preserved under format 2 too,
- * as an account-level recovery path for the owner and for un-upgraded clients.
+ * OS keychain (safeStorage) so day-to-day sync never re-prompts.
  */
 
 import Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { CloudAuth, encryptToken, decryptToken } from './supabase-auth';
-import { CloudApiClient, CloudApiError } from './api-client';
+import { CloudApiClient, CloudApiError, OrgMember } from './api-client';
 import {
   syncAad,
+  encryptForSync,
+  decryptForSync,
+  inviteKeyBinding,
+  verifyInviteKeyBinding,
   generateRecoveryKey,
   dekFingerprint,
   generateMemberKeypair,
@@ -68,6 +74,8 @@ export interface E2eeSetupResult {
 const DEK_LENGTH = 32;
 const WRAP_SCOPE = 'account';
 const WRAP_TYPE = 'dek-wrap';
+/** Matches the entropy the Worker used when it minted tokens itself. */
+const INVITE_TOKEN_BYTES = 24;
 
 /** Wrong/garbled recovery key, or a fresh device that can't unlock. */
 export class E2eeUnlockError extends Error {}
@@ -75,6 +83,27 @@ export class E2eeUnlockError extends Error {}
 export class E2eeAlreadySetupError extends Error {}
 /** The DEK is needed but not unlocked on this device. */
 export class E2eeLockedError extends Error {}
+/**
+ * The pending member's public key does not match what the invite holder
+ * generated. Its own class because this is the one failure here that means
+ * "someone is interfering", not "something went wrong".
+ */
+export class E2eeKeyBindingError extends Error {}
+/** The server is older than this client and can't honour a request correctly. */
+export class E2eeServerOutdatedError extends Error {}
+
+/**
+ * Whether a pending member's registered public key can be proven to be theirs.
+ *
+ * - `verified` — the binding matched; the key is the one the invite holder made.
+ * - `unchecked` — no binding material, or this device can't check right now.
+ *   Usually a teammate who joined from a build predating the binding, but a
+ *   server withholding the field looks identical from here, so the owner still
+ *   has to confirm the device code out of band.
+ * - `suspect` — a binding is stored and it does NOT match, or the stored invite
+ *   won't open. Approval must be refused.
+ */
+export type MemberBindingStatus = 'verified' | 'unchecked' | 'suspect';
 
 export class E2eeManager {
   constructor(
@@ -145,9 +174,8 @@ export class E2eeManager {
       return 'unavailable'; // network error — can't determine; don't claim not_setup
     }
     if (!material) return 'not_setup';
-    if (!(material.format >= 2)) return 'locked'; // legacy: needs recovery key here
 
-    // Format 2: not approved yet?
+    // Joined but not approved yet?
     if (material.my_status === 'pending' || !material.my_wrapped_dek) return 'pending_approval';
 
     // Approved. If this device already holds the member private key (it joined
@@ -186,7 +214,7 @@ export class E2eeManager {
     const fingerprint = dekFingerprint(dek);
     const { pubRaw, privRaw } = generateMemberKeypair();
 
-    // Account-level recovery wrap (legacy field) + this owner's member material.
+    // Account-level recovery wrap (owner recovery) + this owner's member material.
     const wrappedDek = wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId));
     const wrappedPriv = wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId));
     const sealedDek = sealDek(dek, pubRaw, sealAad(accountId, userId));
@@ -224,16 +252,7 @@ export class E2eeManager {
       throw new E2eeUnlockError('Encrypted sync is not set up for this account yet.');
     }
 
-    if (!(material.format >= 2)) {
-      // Legacy format 1: recovery key directly unwraps the DEK, then upgrade.
-      const dek = await this.unwrapLegacyDek(material.wrapped_dek, recoveryKey, accountId, material.dek_fingerprint);
-      this.cacheDek(dek, material.dek_fingerprint);
-      logger.info('cloud-e2ee', 'Encrypted sync unlocked (format 1)');
-      await this.upgradeToFormat2(dek, recoveryKey, accountId, userId, material.wrapped_dek);
-      return;
-    }
-
-    // Format 2: recover the private key, then open the DEK sealed to it.
+    // Recover this member's private key, then open the DEK sealed to it.
     if (!material.my_wrapped_priv) {
       throw new E2eeUnlockError(
         "You haven't joined this account's encrypted sync yet, or your key was removed."
@@ -306,6 +325,9 @@ export class E2eeManager {
       token,
       pubkey: pubRaw.toString('base64'),
       wrapped_priv: wrappedPriv.toString('base64'),
+      // Proves to the approving owner that this pubkey came from someone
+      // holding the invite token — which the server does not have.
+      key_binding: inviteKeyBinding(token, pubRaw),
     });
     // Redeem succeeded — we've left our old (solo) account for the org. Forget
     // the old account's cached DEK + member key BEFORE caching the new one, or a
@@ -323,10 +345,87 @@ export class E2eeManager {
     return { recoveryKey };
   }
 
+  // ---- owner mints an invite ----
+
+  /**
+   * Mint a single-use invite on this machine. The token is generated here, so
+   * the server only ever receives its SHA-256 and `enc_token` — the same token
+   * encrypted under the account DEK. That encrypted copy is what lets this
+   * owner recover the token at approval time (without having kept it) to check
+   * the joiner's key binding. Returns the raw token to show exactly once.
+   */
+  async createInvite(role: 'member' | 'owner' = 'member'): Promise<{ id: string; token: string; role: string }> {
+    const accountId = await this.accountId();
+    const dek = this.getDek(); // must be unlocked to seal the token
+    const id = crypto.randomUUID();
+    const token = crypto.randomBytes(INVITE_TOKEN_BYTES).toString('base64url');
+    const encToken = encryptForSync(
+      Buffer.from(token, 'utf8'),
+      dek,
+      this.inviteTokenAad(accountId, id)
+    );
+    const res = await this.api.createInvite({
+      id,
+      token_hash: crypto.createHash('sha256').update(token, 'utf8').digest('hex'),
+      enc_token: encToken.toString('base64'),
+      role,
+    });
+    // A Worker older than this client ignores the id/hash/enc_token we sent,
+    // mints its OWN token, and returns it. Returning our token anyway would
+    // hand the owner a code the server has never heard of: the teammate gets
+    // "invalid invite" days later, on a different machine, with nothing here
+    // to explain it — and our enc_token would be bound to an invite id the
+    // server never stored, so approval could not check the binding either.
+    // The Worker-deploys-first rule is documented; this makes breaking it
+    // impossible to miss instead of merely against the rules.
+    if (res.token !== undefined || res.id !== id) {
+      throw new E2eeServerOutdatedError(
+        'BidSheet Cloud is running an older version than this app, so invites created here would not work. ' +
+          'Try again in a few minutes; if it keeps happening, contact support.'
+      );
+    }
+    logger.info('cloud-e2ee', `Created ${role} invite ${id}`);
+    return { id: res.id, token, role: res.role };
+  }
+
   // ---- owner approves a pending member ----
 
-  /** Seal the DEK to a pending member's public key so they can decrypt. */
-  async approveMember(targetUserId: string): Promise<void> {
+  /**
+   * Binding status for each member, so the approval UI can say what it actually
+   * knows before the owner commits to anything. Never throws — a locked device
+   * or an offline server yields `unchecked`, which is the honest answer.
+   *
+   * This is advisory only. `approveMember` re-checks authoritatively against a
+   * fresh response, so a server that answers one way here and another way there
+   * still cannot get the DEK sealed to a key it controls.
+   */
+  async memberBindingStatuses(members: OrgMember[]): Promise<Record<string, MemberBindingStatus>> {
+    let dek: Buffer;
+    let accountId: string;
+    try {
+      dek = this.getDek();
+      accountId = await this.accountId();
+    } catch {
+      return {}; // locked or offline — callers read a missing entry as 'unchecked'
+    }
+    const out: Record<string, MemberBindingStatus> = {};
+    for (const m of members) {
+      if (!m.pubkey) continue;
+      out[m.user_id] = this.checkMemberBinding(m, Buffer.from(m.pubkey, 'base64'), accountId, dek).status;
+    }
+    return out;
+  }
+
+  /**
+   * Seal the DEK to a pending member's public key so they can decrypt.
+   *
+   * Refuses outright if their key is demonstrably not the one the invite holder
+   * generated. `verified: false` means the check could not be made at all — the
+   * member joined from a client predating the binding, or a server declined to
+   * return it — so the owner's out-of-band device-code comparison is still the
+   * only thing standing behind this approval.
+   */
+  async approveMember(targetUserId: string): Promise<{ verified: boolean }> {
     const accountId = await this.accountId();
     const dek = this.getDek(); // owner must be unlocked
     const fingerprint = dekFingerprint(dek);
@@ -335,12 +434,83 @@ export class E2eeManager {
     if (!member || !member.pubkey) {
       throw new E2eeLockedError('That member has not registered an encryption key yet.');
     }
-    const sealed = sealDek(dek, Buffer.from(member.pubkey, 'base64'), sealAad(accountId, targetUserId));
+    const pubRaw = Buffer.from(member.pubkey, 'base64');
+    const { status, detail } = this.checkMemberBinding(member, pubRaw, accountId, dek);
+    if (status === 'suspect') {
+      logger.error('cloud-e2ee', `REFUSED to approve ${targetUserId}: ${detail}`);
+      throw new E2eeKeyBindingError(detail!);
+    }
+
+    const sealed = sealDek(dek, pubRaw, sealAad(accountId, targetUserId));
     await this.api.approveMember(targetUserId, {
       wrapped_dek: sealed.toString('base64'),
       dek_fingerprint: fingerprint,
     });
-    logger.info('cloud-e2ee', `Approved member ${targetUserId}; DEK sealed to their key`);
+    logger.info(
+      'cloud-e2ee',
+      `Approved member ${targetUserId}; DEK sealed to their key (binding ${status})`
+    );
+    return { verified: status === 'verified' };
+  }
+
+  /**
+   * Whether this member's public key can be proven to be the one they made.
+   *
+   * The owner otherwise seals the account DEK to whatever `pubkey` the *server*
+   * returned, so a compromised server could substitute its own key and receive
+   * a DEK it can open. Recovering the invite token from its DEK-encrypted copy
+   * and recomputing the member's HMAC catches that.
+   *
+   * Note the limit of what this can do on its own: a server that wants to
+   * substitute a key can also just withhold `key_binding`, which lands on
+   * `unchecked` rather than `suspect`. That is *why* `unchecked` still routes
+   * the owner to the manual device-code comparison instead of waving them
+   * through — the automatic check narrows when the manual one is needed, it
+   * does not replace it. It replaces it completely only once no client can
+   * redeem without a binding, i.e. when v0.3.3 is out of the field.
+   *
+   * Never throws; the caller decides what each status means.
+   */
+  private checkMemberBinding(
+    member: { user_id: string; key_binding?: string | null; invite_enc_token?: string | null; invite_id?: string | null },
+    pubRaw: Buffer,
+    accountId: string,
+    dek: Buffer
+  ): { status: MemberBindingStatus; detail?: string } {
+    if (!member.key_binding || !member.invite_enc_token || !member.invite_id) {
+      logger.warn(
+        'cloud-e2ee',
+        `No key binding stored for ${member.user_id}; approval relies on the device-code check`
+      );
+      return { status: 'unchecked' };
+    }
+    let token: string;
+    try {
+      token = decryptForSync(
+        Buffer.from(member.invite_enc_token, 'base64'),
+        dek,
+        this.inviteTokenAad(accountId, member.invite_id)
+      ).toString('utf8');
+    } catch {
+      return {
+        status: 'suspect',
+        detail:
+          'The stored invite for this person could not be opened with this account key, so there is no way to check that the key being offered is really theirs. Do not approve. Revoke the invite and send a new one.',
+      };
+    }
+    if (!verifyInviteKeyBinding(token, pubRaw, member.key_binding)) {
+      return {
+        status: 'suspect',
+        detail:
+          'The encryption key the server is offering for this person is NOT the one they generated. Do not approve them. Revoke the invite, send a new one, and get in touch — this should not happen.',
+      };
+    }
+    return { status: 'verified' };
+  }
+
+  /** AAD binding an encrypted invite token to its account and invite id. */
+  private inviteTokenAad(accountId: string, inviteId: string): Buffer {
+    return syncAad(accountId, 'account', `invite-token:${inviteId}`);
   }
 
   // ---- regenerate recovery key ----
@@ -353,20 +523,7 @@ export class E2eeManager {
 
     const recoveryKey = generateRecoveryKey();
 
-    if (!(material.format >= 2)) {
-      // Legacy: re-wrap the DEK (same DEK, new recovery key).
-      const dek = this.getDek();
-      const wrapped = wrapWithRecoveryCode(dek, recoveryKey, this.wrapAad(accountId));
-      await this.api.putKeyMaterial({
-        format: 1,
-        wrapped_dek: wrapped.toString('base64'),
-        dek_fingerprint: dekFingerprint(dek),
-      });
-      logger.info('cloud-e2ee', 'Recovery key regenerated (format 1)');
-      return { recoveryKey };
-    }
-
-    // Format 2: re-wrap this member's private key under the new recovery key.
+    // Re-wrap this member's private key under the new recovery key.
     // The DEK and its member seals are untouched — no data is re-encrypted.
     const priv = this.localPrivateKey();
     if (!priv) {
@@ -377,9 +534,9 @@ export class E2eeManager {
     const wrappedPriv = wrapWithRecoveryCode(priv, recoveryKey, privKeyWrapAad(userId));
 
     // For an OWNER the private-key rewrap alone is not enough: the
-    // account-level legacy wrap (e2ee_keys.wrapped_dek, created at setup and
-    // preserved by the format 1->2 upgrade) is wrapped under their ORIGINAL
-    // recovery key and still served by GET /keys. Leaving it means a leaked
+    // account-level wrap (e2ee_keys.wrapped_dek, written at setup) is wrapped
+    // under their ORIGINAL recovery key and still served by GET /keys, so
+    // leaving it alone means a leaked
     // recovery key the owner believes revoked can unwrap the DEK offline
     // forever. Re-wrap it under the new key in the same PUT /keys that also
     // carries the new wrapped_priv (PUT /keys is owner-only, so members fall
@@ -408,7 +565,7 @@ export class E2eeManager {
         });
         logger.info(
           'cloud-e2ee',
-          'Recovery key regenerated (format 2; private key AND account recovery wrap re-wrapped)'
+          'Recovery key regenerated (private key AND account recovery wrap re-wrapped)'
         );
         return { recoveryKey };
       }
@@ -419,7 +576,7 @@ export class E2eeManager {
     }
 
     await this.api.rewrapPrivateKey(wrappedPriv.toString('base64'));
-    logger.info('cloud-e2ee', 'Recovery key regenerated (format 2; private key re-wrapped)');
+    logger.info('cloud-e2ee', 'Recovery key regenerated (private key re-wrapped)');
     return { recoveryKey };
   }
 
@@ -454,57 +611,6 @@ export class E2eeManager {
   }
 
   // ---- helpers ----
-
-  private async unwrapLegacyDek(
-    wrappedDek: string,
-    recoveryKey: string,
-    accountId: string,
-    fingerprint: string
-  ): Promise<Buffer> {
-    let dek: Buffer;
-    try {
-      dek = unwrapWithRecoveryCode(Buffer.from(wrappedDek, 'base64'), recoveryKey, this.wrapAad(accountId));
-    } catch (err) {
-      if (err instanceof ShortRecoveryKeyRetiredError) throw new E2eeUnlockError(err.message);
-      throw new E2eeUnlockError('That recovery key did not match. Check it and try again.');
-    }
-    if (dekFingerprint(dek) !== fingerprint) {
-      throw new E2eeUnlockError(
-        'The recovery key unlocked a key that does not match this account. Contact support.'
-      );
-    }
-    return dek;
-  }
-
-  /** Transparently move a format-1 account to format 2 on first unlock. Best effort. */
-  private async upgradeToFormat2(
-    dek: Buffer,
-    recoveryKey: string,
-    accountId: string,
-    userId: string,
-    legacyWrappedDek: string
-  ): Promise<void> {
-    try {
-      const { pubRaw, privRaw } = generateMemberKeypair();
-      const wrappedPriv = wrapWithRecoveryCode(privRaw, recoveryKey, privKeyWrapAad(userId));
-      const sealedDek = sealDek(dek, pubRaw, sealAad(accountId, userId));
-      await this.api.putKeyMaterial({
-        format: 2,
-        // Keep the legacy recovery->DEK wrap intact (same recovery key).
-        wrapped_dek: legacyWrappedDek,
-        dek_fingerprint: dekFingerprint(dek),
-        pubkey: pubRaw.toString('base64'),
-        wrapped_priv: wrappedPriv.toString('base64'),
-        sealed_dek: sealedDek.toString('base64'),
-      });
-      this.cacheMemberKey(privRaw, pubRaw, 2);
-      logger.info('cloud-e2ee', 'Upgraded encrypted sync to format 2 (per-member keys)');
-    } catch (err: any) {
-      // Non-fatal: the DEK is already cached, so sync works; we retry the
-      // upgrade on the next unlock.
-      logger.warn('cloud-e2ee', 'Format 1->2 upgrade deferred', err?.message);
-    }
-  }
 
   private derivePub(privRaw: Buffer): Buffer {
     const priv = crypto.createPrivateKey({

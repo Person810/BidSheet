@@ -250,6 +250,41 @@ export function dekFingerprint(dek: Buffer): string {
 }
 
 /**
+ * Binds a member's public key to the invite they redeemed, so an owner can tell
+ * at approval time whether the pubkey the *server* returned is the one the
+ * invite holder actually generated.
+ *
+ * The invite token is the key. It is high-entropy, shared out of band, and the
+ * server stores only its SHA-256 — so it is a secret the server does not have
+ * and cannot forge this MAC with. The member computes it at redeem; the owner
+ * recomputes it at approve after recovering the token from the invite's
+ * DEK-encrypted copy. A mismatch means the server swapped the key.
+ *
+ * Domain-separated so this MAC can never be confused with a content MAC or a
+ * file object key computed over the same bytes. FROZEN once shipped: changing
+ * the prefix, the encoding, or the key would make every already-stored
+ * key_binding fail to verify, which reads to owners as an attack.
+ */
+export function inviteKeyBinding(token: string, pubRaw: Buffer): string {
+  return crypto
+    .createHmac('sha256', Buffer.from(token.trim(), 'utf8'))
+    .update(Buffer.concat([Buffer.from('BSE1-keybind\0'), pubRaw]))
+    .digest('hex');
+}
+
+/**
+ * True if `stored` is the binding for this token and public key. Constant-time
+ * on the digest, and length-guarded because timingSafeEqual throws rather than
+ * returning false on a length mismatch — a server that returned a short binding
+ * would otherwise crash the approval instead of failing it.
+ */
+export function verifyInviteKeyBinding(token: string, pubRaw: Buffer, stored: string): boolean {
+  const expected = Buffer.from(inviteKeyBinding(token, pubRaw), 'utf8');
+  const actual = Buffer.from(stored, 'utf8');
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+/**
  * Human-comparable device code for a member's X25519 public key, shown to the
  * joiner and to the owner at approve time. Comparing it out-of-band is what
  * stops a compromised server from substituting its own public key for a

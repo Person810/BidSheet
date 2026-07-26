@@ -93,6 +93,16 @@ project.yml                 XcodeGen spec (generates the .xcodeproj)
   `SyncCrypto` still detects one from desktop v0.3.3 or earlier and reports it
   accurately instead of letting it look like corrupt data. Do not "add scrypt
   support" later — the format is gone, not deferred.
+- **There is no invite-redeem flow here yet, and when there is, it MUST send
+  `key_binding`.** The desktop computes
+  `HMAC-SHA256(inviteToken, "BSE1-keybind\0" ‖ pubkeyRaw)` (hex) at redeem, and
+  the approving owner recomputes it over whatever pubkey the server returned —
+  that is what stops a compromised server substituting its own key and
+  receiving a DEK it can open. A redeem without it still works, but leaves that
+  member on the weaker manual device-code path — the owner is told the check
+  couldn't be made, so it isn't invisible, but it does mean every phone-joined
+  teammate permanently costs someone a phone call. Port `inviteKeyBinding` from
+  `sync-crypto.ts` alongside the redeem call, not after it.
 - **Photos are uploaded encrypted** with AAD payload type
   `photo:<filename>` (scope = cloud job id), mirroring the `plan:<sha>`
   pattern. The desktop doesn't display synced photos yet — when that lands

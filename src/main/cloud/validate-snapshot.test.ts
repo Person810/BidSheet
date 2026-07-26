@@ -28,13 +28,14 @@ const valid = () => ({
 });
 
 describe('validateSnapshot', () => {
-  it('accepts a well-formed snapshot (formats 1 and 2)', () => {
+  it('accepts a well-formed format-2 snapshot', () => {
     expect(() => validateSnapshot(valid())).not.toThrow();
-    expect(() => validateSnapshot({ ...valid(), format: 1 })).not.toThrow();
   });
 
-  it('rejects non-objects and unknown formats', () => {
-    for (const garbage of [null, 42, 'snapshot', [], { ...valid(), format: 3 }]) {
+  // Format 2 is the only shape. Format 1 was retired on 2026-07-26 and is now
+  // just as invalid as a format nobody has invented yet.
+  it('rejects non-objects and every format but 2', () => {
+    for (const garbage of [null, 42, 'snapshot', [], { ...valid(), format: 1 }, { ...valid(), format: 3 }]) {
       expect(() => validateSnapshot(garbage)).toThrow(/validation|rejected/i);
     }
   });
