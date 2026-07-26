@@ -14,9 +14,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onChanged: () => void;
+  onCategoryDeleted?: (deletedId: number, replacementId: number | null) => void;
 }
 
-export function MaterialCategoryManager({ open, onClose, onChanged }: Props) {
+export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDeleted }: Props) {
   const [categories, setCategories] = useState<MaterialCategoryManagementRow[]>([]);
   const [form, setForm] = useState<CategoryForm>(createEmptyCategoryForm());
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -89,6 +90,9 @@ export function MaterialCategoryManager({ open, onClose, onChanged }: Props) {
       setDeleteTarget(null);
       await loadCategories();
       onChanged();
+      if (onCategoryDeleted) {
+        onCategoryDeleted(payload.categoryId, payload.replacementCategoryId);
+      }
     } catch (err: any) {
       if (isStaleCategoryUsageError(err.message)) {
         await loadCategories();

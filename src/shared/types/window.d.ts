@@ -82,7 +82,6 @@ declare global {
       saveMaterialCategory: (payload: SaveMaterialCategoryPayload) => Promise<MaterialCategoryRow>;
       getMaterialCategoryUsage: (categoryId: number) => Promise<MaterialCategoryUsage>;
       deleteMaterialCategory: (payload: DeleteMaterialCategoryPayload) => Promise<DeleteMaterialCategoryResult>;
-      reassignMaterialsCategory: (materialIds: number[], targetCategoryId: number) => Promise<SqlRunResult>;
       getMaterials: (categoryId?: number, includeInactive?: boolean) => Promise<MaterialRow[]>;
       getMaterial: (id: number) => Promise<MaterialRow | undefined>;
       saveMaterial: (material: SaveMaterialPayload) => Promise<SqlRunResult>;

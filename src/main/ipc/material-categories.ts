@@ -76,6 +76,9 @@ export function listMaterialCategoriesWithUsage(db: Database.Database): Material
 
 /** Delete a category, optionally reassigning materials first. */
 export function deleteMaterialCategory(db: Database.Database, input: DeleteMaterialCategoryPayload): DeleteMaterialCategoryResult {
+  // NOTE: Category deletion is currently implemented as a hard delete in the SQLite database.
+  // This does not propagate through the cloud sync engine yet. On multi-machine accounts,
+  // deleted categories might reappear (empty) upon synchronization with another device.
   const { categoryId, replacementCategoryId, expectedMaterialCount } = input;
   
   if (categoryId === replacementCategoryId) {

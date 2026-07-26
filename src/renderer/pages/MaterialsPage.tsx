@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MaterialCategoryManager } from '../components/MaterialCategoryManager';
+import { getPostDeleteCategorySelection } from '../components/materialCategoryForm';
 import {
   FuzzyAutocomplete,
   categoriesToAutocomplete,
@@ -386,6 +387,9 @@ export function MaterialsPage() {
         open={showCategoryManager}
         onClose={() => setShowCategoryManager(false)}
         onChanged={() => { loadCategories(); loadMaterials(); }}
+        onCategoryDeleted={(deletedId, replacementId) => {
+          setSelectedCategory(prev => getPostDeleteCategorySelection(deletedId, replacementId, prev));
+        }}
       />
 
       {/* Add/Edit Modal */}

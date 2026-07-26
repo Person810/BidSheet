@@ -23,7 +23,6 @@ contextBridge.exposeInMainWorld('api', {
   saveMaterialCategory: (payload: any) => invoke('db:material-categories:save', payload),
   getMaterialCategoryUsage: (categoryId: number) => invoke('db:material-categories:usage', categoryId),
   deleteMaterialCategory: (payload: any) => invoke('db:material-categories:delete', payload),
-  reassignMaterialsCategory: (materialIds: number[], targetCategoryId: number) => invoke('db:materials:reassign-category', materialIds, targetCategoryId),
   getMaterials: (categoryId?: number, includeInactive?: boolean) => invoke('db:materials:list', categoryId, includeInactive),
   getMaterial: (id: number) => invoke('db:materials:get', id),
   saveMaterial: (material: any) => invoke('db:materials:save', material),

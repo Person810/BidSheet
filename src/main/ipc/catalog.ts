@@ -38,16 +38,6 @@ export function registerCatalogHandlers(db: Database.Database): void {
     return deleteMaterialCategory(db, payload);
   });
 
-  safeHandle('db:materials:reassign-category', (_event, materialIds: number[], targetCategoryId: number) => {
-    const stmt = db.prepare('UPDATE materials SET category_id = ? WHERE id = ?');
-    const tx = db.transaction(() => {
-      for (const id of materialIds) {
-        stmt.run(targetCategoryId, id);
-      }
-    });
-    tx();
-    return { changes: materialIds.length, lastInsertRowid: 0 };
-  });
 
   // ================================================================
   // MATERIALS
