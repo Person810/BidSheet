@@ -4,6 +4,11 @@ import { ClientField, type ClientDetailsDraft } from '../../components/ClientFie
 import { useLocaleStore } from '../../stores/locale-store';
 import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 
+import { LocalizedDateField } from '../../components/LocalizedDateField';
+import { JobLocationFields } from '../../components/JobLocationFields';
+import { ClientForm } from '../../components/clients/ClientEditorForm';
+import type { ClientRow } from '../../../shared/types/ipc';
+
 export interface EditJobForm {
   name: string;
   jobNumber: string;
@@ -16,6 +21,7 @@ export interface EditJobForm {
   bondPercent: number;
   taxPercent: number;
   escalationPercent: number;
+  freight: number;
 }
 
 interface EditJobModalProps {
@@ -36,8 +42,29 @@ export function EditJobModal({
 }: EditJobModalProps) {
   const numberWarning = useJobNumberWarning(form.jobNumber, jobId);
   const { profile } = useLocaleStore();
+
+  const [selectedClientRow, setSelectedClientRow] = React.useState<ClientRow | null>(null);
+  const [editingClient, setEditingClient] = React.useState(false);
+  const [postalCode, setPostalCode] = React.useState('');
+  const [country, setCountry] = React.useState('');
+
+  React.useEffect(() => {
+    if (form.client.trim()) {
+      window.api.searchClients(form.client, 1).then((results) => {
+        const match = results.find(c => c.name.toLowerCase() === form.client.toLowerCase());
+        if (match) {
+          setSelectedClientRow(match);
+        } else {
+          setSelectedClientRow(null);
+        }
+      }).catch(console.warn);
+    } else {
+      setSelectedClientRow(null);
+    }
+  }, [form.client]);
+
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Edit Job</h3>
         <div className="form-row">
@@ -60,19 +87,70 @@ export function EditJobModal({
         <div className="form-row">
           <div className="form-group">
             <label>{profile.gcLabel}</label>
-            <SavedClientPicker value={form.client}
-              onChange={(client) => setForm({ ...form, client })} />
+            <SavedClientPicker
+              value={form.client}
+              onChange={(clientName) => {
+                setForm({ ...form, client: clientName });
+                if (!clientName) {
+                  setSelectedClientRow(null);
+                }
+              }}
+              onSelectClient={(client) => {
+                setForm({
+                  ...form,
+                  client: client.name,
+                  location: client.address || form.location,
+                });
+                setSelectedClientRow(client);
+              }}
+            />
+            {form.client.trim() !== '' && (
+              <div style={{ marginTop: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  style={{ fontSize: 11, padding: '1px 8px' }}
+                  onClick={() => setEditingClient(!editingClient)}
+                >
+                  {selectedClientRow ? 'Edit details' : 'Add details'}
+                </button>
+              </div>
+            )}
+            {editingClient && (
+              <div className="inline-client-form" style={{ marginTop: 10, border: '1px solid #ccc', padding: 10, borderRadius: 4 }}>
+                <ClientForm
+                  initialClient={selectedClientRow}
+                  onSaved={(client) => {
+                    setSelectedClientRow(client);
+                    setForm({
+                      ...form,
+                      client: client.name,
+                      location: client.address || form.location,
+                    });
+                    setEditingClient(false);
+                  }}
+                  onCancel={() => setEditingClient(false)}
+                />
+              </div>
+            )}
           </div>
           <div className="form-group">
-            <label>Bid Date</label>
-            <input type="date" className="form-control" value={form.bidDate}
-              onChange={(e) => setForm({ ...form, bidDate: e.target.value })} />
+            <LocalizedDateField
+              label="Bid Date"
+              value={form.bidDate || null}
+              onChange={(date) => setForm({ ...form, bidDate: date || '' })}
+            />
           </div>
         </div>
         <div className="form-group">
-          <label>Location</label>
-          <input type="text" className="form-control" value={form.location}
-            onChange={(e) => setForm({ ...form, location: e.target.value })} />
+          <JobLocationFields
+            location={form.location}
+            postalCode={postalCode}
+            country={country}
+            onLocationChange={(loc) => setForm({ ...form, location: loc })}
+            onPostalCodeChange={setPostalCode}
+            onCountryChange={setCountry}
+          />
         </div>
         <div className="form-group">
           <label>Description</label>
@@ -105,6 +183,11 @@ export function EditJobModal({
             <label title="Material price escalation for long-lead bids. Raises material direct cost before markups.">Escalation %</label>
             <input type="number" className="form-control" value={form.escalationPercent} step="0.5"
               onChange={(e) => setForm({ ...form, escalationPercent: parseFloat(e.target.value) || 0 })} />
+          </div>
+          <div className="form-group">
+            <label>Freight ($)</label>
+            <input type="number" className="form-control" value={form.freight}
+              onChange={(e) => setForm({ ...form, freight: parseFloat(e.target.value) || 0 })} />
           </div>
         </div>
         <div className="modal-actions">

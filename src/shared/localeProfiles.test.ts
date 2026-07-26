@@ -34,6 +34,16 @@ describe('locale profile resolution', () => {
     expect(resolveLocaleProfile('en-AU', 'invalid-pref').id).toBe('en-AU');
   });
   
+  it('normalizes OS locale with underscores or mixed case (en_au → en-AU)', () => {
+    expect(resolveLocaleProfile('en_au').id).toBe('en-AU');
+    expect(resolveLocaleProfile('en-au').id).toBe('en-AU');
+    expect(resolveLocaleProfile('EN-AU').id).toBe('en-AU');
+  });
+  
+  it('matches prefix for bare language locale (en → en-US)', () => {
+    expect(resolveLocaleProfile('en').id).toBe('en-US');
+  });
+  
   it('all 5 initial profiles have required fields (id, displayName, dateFormat, taxLabel, postalLabel, gcLabel, currencySymbol, thousandsSep, decimalSep)', () => {
     const requiredFields: (keyof LocaleProfile)[] = ['id', 'displayName', 'dateFormat', 'taxLabel', 'postalLabel', 'gcLabel', 'currencySymbol', 'thousandsSep', 'decimalSep'];
     

@@ -61,6 +61,7 @@ export function jobToPayload(job: any) {
     taxPercent: job.tax_percent, escalationPercent: job.escalation_percent ?? 0,
     notes: job.notes, bidLocked: job.bid_locked === 1,
     parentJobId: job.parent_job_id || null, changeOrderNumber: job.change_order_number || null,
+    freight: job.freight ?? 0,
   };
 }
 

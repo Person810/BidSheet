@@ -27,6 +27,45 @@ export function registerJobHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
   });
 
+  safeHandle('db:job-locations:find-suggestions', (_event, request: any) => {
+    const limit = request.limit ?? 20;
+    const postalCode = (request.postalCode || '').trim();
+    if (!postalCode) {
+      return { suggestions: [], truncated: false };
+    }
+    const suggestions: any[] = [];
+    const clientRows = db.prepare(
+      "SELECT name, address FROM clients WHERE address LIKE ? AND is_active = 1 LIMIT ?"
+    ).all(`%${postalCode}%`, limit) as any[];
+    for (const row of clientRows) {
+      if (row.address) {
+        suggestions.push({
+          location: row.address,
+          postalCode,
+          country: request.country ?? null,
+          sourceKind: 'client',
+        });
+      }
+    }
+    const jobRows = db.prepare(
+      "SELECT name, location FROM jobs WHERE location LIKE ? LIMIT ?"
+    ).all(`%${postalCode}%`, limit) as any[];
+    for (const row of jobRows) {
+      if (row.location) {
+        suggestions.push({
+          location: row.location,
+          postalCode,
+          country: request.country ?? null,
+          sourceKind: 'job',
+        });
+      }
+    }
+    return {
+      suggestions: suggestions.slice(0, limit),
+      truncated: suggestions.length > limit,
+    };
+  });
+
   safeHandle('db:jobs:save', (_event, job: any) => {
     // client_id is re-derived from the typed name on every save (creating
     // the client record when it's new — that's how "add a client without

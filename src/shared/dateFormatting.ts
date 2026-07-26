@@ -1,3 +1,5 @@
+import { resolveLocaleProfile } from './localeProfiles';
+
 export type DateFormatPreference = 'system' | 'dmy' | 'mdy' | 'ymd';
 export type DateOrder = Exclude<DateFormatPreference, 'system'>;
 
@@ -29,31 +31,14 @@ export function resolveDateOrder(
   if (preference !== 'system') {
     return { order: preference, source: 'preference' };
   }
+  
   if (!locale) {
     return { order: 'ymd', source: 'fallback' };
   }
-
-  try {
-    if (Intl.DateTimeFormat.supportedLocalesOf([locale]).length === 0) {
-      return { order: 'ymd', source: 'fallback' };
-    }
-    const parts = new Intl.DateTimeFormat(locale, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      timeZone: 'UTC',
-    }).formatToParts(new Date(Date.UTC(2006, 10, 22)));
-    const order = parts
-      .filter((part) => part.type === 'year' || part.type === 'month' || part.type === 'day')
-      .map((part) => part.type[0])
-      .join('');
-    if (order === 'dmy' || order === 'mdy' || order === 'ymd') {
-      return { order, source: 'system' };
-    }
-  } catch {
-    // Unsupported and malformed locales use the stable application fallback.
-  }
-  return { order: 'ymd', source: 'fallback' };
+  
+  // Use LocaleProfile as the single source of truth for the system date format
+  const systemProfile = resolveLocaleProfile(locale);
+  return { order: systemProfile.dateFormat, source: 'system' };
 }
 
 function isValidDate(year: number, month: number, day: number): boolean {

@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('api', {
   getNextJobNumber: () => invoke('db:jobs:next-number'),
   checkJobNumberInUse: (jobNumber: string, excludeJobId?: number) =>
     invoke('db:jobs:number-in-use', jobNumber, excludeJobId),
+  findJobLocationSuggestions: (request: any) =>
+    invoke('db:job-locations:find-suggestions', request),
 
   // ---- Clients ----
   getClients: (includeInactive?: boolean) => invoke('db:clients:list', includeInactive),

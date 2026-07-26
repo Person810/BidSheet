@@ -121,6 +121,10 @@ declare global {
         jobNumber: string,
         excludeJobId?: number
       ) => Promise<{ inUse: boolean; jobId?: number; jobName?: string }>;
+      findJobLocationSuggestions: (request: {
+        postalCode: string;
+        country?: string | null;
+      }) => Promise<{ suggestions: any[]; truncated: boolean }>;
 
       // Clients
       getClients: (includeInactive?: boolean) => Promise<ClientRow[]>;

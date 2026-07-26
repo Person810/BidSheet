@@ -87,6 +87,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [editJobForm, setEditJobForm] = useState<EditJobForm>({
     name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
     overheadPercent: 0, profitPercent: 0, bondPercent: 0, taxPercent: 0, escalationPercent: 0,
+    freight: 0,
   });
   const [editClientDetails, setEditClientDetails] = useState<ClientDetailsDraft | null>(null);
   const [lockBypassed, setLockBypassed] = useState(false);
@@ -253,6 +254,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       bondPercent: job.bond_percent ?? 0,
       taxPercent: job.tax_percent ?? 0,
       escalationPercent: job.escalation_percent ?? 0,
+      freight: (job as any).freight ?? 0,
     });
     setEditClientDetails(null);
     setShowEditJob(true);
@@ -277,6 +279,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       bondPercent: editJobForm.bondPercent,
       taxPercent: editJobForm.taxPercent,
       escalationPercent: editJobForm.escalationPercent,
+      freight: editJobForm.freight,
     });
     setShowEditJob(false);
     loadJob();

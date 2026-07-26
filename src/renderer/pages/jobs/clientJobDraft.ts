@@ -7,6 +7,7 @@ export interface JobClientDraft {
   name: string;
   clientName: string;
   clientId: number | null;
+  jobNumber: string;
   contactName: string;
   contactEmail: string;
   contactPhone: string;
@@ -35,6 +36,7 @@ export function createEmptyJobDraft(): JobClientDraft {
     name: '',
     clientName: '',
     clientId: null,
+    jobNumber: '',
     contactName: '',
     contactEmail: '',
     contactPhone: '',
@@ -105,6 +107,7 @@ export function buildJobSavePayload(
     name: draft.name.trim(),
     client: draft.clientName.trim(),
     clientId: draft.clientId,
+    jobNumber: optional(draft.jobNumber),
     location: optional(draft.location),
     bidDate: optional(draft.bidDate),
     startDate: null,

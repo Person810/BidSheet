@@ -24,8 +24,61 @@ export function resolveLocaleProfile(
   osLocale: string,
   userPreference?: string | null,
 ): LocaleProfile {
-  if (userPreference && LOCALE_PROFILES[userPreference]) {
-    return LOCALE_PROFILES[userPreference];
+  const selectedTag = userPreference || osLocale || DEFAULT_LOCALE;
+  const normalized = selectedTag.replace('_', '-').trim();
+  const match = findProfile(normalized);
+  if (match) return match;
+
+  // Dynamically resolve dateFormat using Intl.DateTimeFormat for arbitrary locales
+  let resolvedFormat: 'dmy' | 'mdy' | 'ymd' = 'ymd';
+  try {
+    if (Intl.DateTimeFormat.supportedLocalesOf([normalized]).length > 0) {
+      const parts = new Intl.DateTimeFormat(normalized, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: 'UTC',
+      }).formatToParts(new Date(Date.UTC(2006, 10, 22)));
+      const order = parts
+        .filter((part) => part.type === 'year' || part.type === 'month' || part.type === 'day')
+        .map((part) => part.type[0])
+        .join('');
+      if (order === 'dmy' || order === 'mdy' || order === 'ymd') {
+        resolvedFormat = order;
+      }
+    }
+  } catch {
+    // Fallback
   }
-  return LOCALE_PROFILES[osLocale] ?? LOCALE_PROFILES[DEFAULT_LOCALE];
+
+  return {
+    id: normalized,
+    displayName: normalized,
+    dateFormat: resolvedFormat,
+    taxLabel: 'Sales Tax',
+    postalLabel: 'Zip Code',
+    gcLabel: 'GC / Owner',
+    currencySymbol: '$',
+    thousandsSep: ',',
+    decimalSep: '.',
+  };
+}
+
+function findProfile(localeTag: string): LocaleProfile | undefined {
+  const keys = Object.keys(LOCALE_PROFILES);
+  // 1. Case-insensitive exact match
+  const exact = keys.find((k) => k.toLowerCase() === localeTag.toLowerCase());
+  if (exact) return LOCALE_PROFILES[exact];
+
+  // 2. Prefix matching (e.g. "en" -> "en-US", "en-au" -> "en-AU")
+  const lang = localeTag.split('-')[0].toLowerCase();
+  const prefixMatches = keys.filter((k) => k.split('-')[0].toLowerCase() === lang);
+  if (prefixMatches.length > 0) {
+    const preferred = prefixMatches.find(
+      (k) => k.toLowerCase() === `${lang}-${lang}` || k === 'en-US'
+    );
+    return LOCALE_PROFILES[preferred || prefixMatches[0]];
+  }
+
+  return undefined;
 }

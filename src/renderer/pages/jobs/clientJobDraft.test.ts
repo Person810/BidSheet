@@ -154,6 +154,7 @@ describe('job save payload mapping', () => {
       taxPercent: 10,
       escalationPercent: 0,
       freight: 0,
+      jobNumber: null,
     });
   });
 
@@ -175,6 +176,7 @@ describe('job save payload mapping', () => {
       client: 'Casual Customer',
       clientId: null,
       location: null,
+      jobNumber: null,
     });
   });
 
@@ -197,8 +199,8 @@ describe('job save payload mapping', () => {
       name: 'Trimmed Job',
       client: 'Manual Client',
       description: null,
+      jobNumber: null,
     });
-    expect(payload).not.toHaveProperty('jobNumber');
     expect(draft).toEqual(before);
   });
 });
