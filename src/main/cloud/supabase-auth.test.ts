@@ -10,7 +10,7 @@ vi.mock('electron', () => ({
 }));
 
 import { initializeDatabase } from '../database';
-import { CloudAuth, encryptToken, isTransientAuthError, CloudAuthError } from './supabase-auth';
+import { CloudAuth, encryptToken, provesRefreshTokenDead, CloudAuthError } from './supabase-auth';
 
 function seedSession(db: Database.Database, refreshToken: string): void {
   db.prepare(
@@ -65,6 +65,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers(); // the refresh tests jump the clock past token expiry
   db.close();
 });
 
@@ -174,21 +175,142 @@ describe('CloudAuth.clearLocalSession — sign-out must not land half-applied', 
   });
 });
 
-describe('isTransientAuthError', () => {
-  it('treats network, timeout, rate-limit, and 5xx as transient (keep the session)', () => {
-    expect(isTransientAuthError(new CloudAuthError('offline', 'network', 0))).toBe(true);
-    expect(isTransientAuthError(new CloudAuthError('timeout', undefined, 408))).toBe(true);
-    expect(isTransientAuthError(new CloudAuthError('rate', 'over_request_rate_limit', 429))).toBe(true);
-    expect(isTransientAuthError(new CloudAuthError('down', undefined, 503))).toBe(true);
+describe('CloudAuth.restore — a 4xx that is not GoTrue must not sign the user out', () => {
+  it('keeps the stored token when something in front of GoTrue answers 403', async () => {
+    // An edge/WAF block or a paused project: a 4xx that says nothing about the
+    // token. Status alone used to read as a definitive rejection and wipe a
+    // perfectly good session.
+    seedSession(db, 'refresh-abc');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html>Blocked</html>', { status: 403 }))
+    );
+
+    await new CloudAuth(db).restore();
+
+    expect(storedToken(db)).not.toBeNull();
   });
 
-  it('treats a 4xx auth rejection as definitive (drop the session)', () => {
-    expect(isTransientAuthError(new CloudAuthError('bad token', 'refresh_token_not_found', 400))).toBe(false);
-    expect(isTransientAuthError(new CloudAuthError('unauthorized', undefined, 401))).toBe(false);
+  it('keeps the stored token when a proxy answers 404 with a JSON body of its own', async () => {
+    seedSession(db, 'refresh-abc');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'blocked' }), { status: 404 }))
+    );
+
+    await new CloudAuth(db).restore();
+
+    expect(storedToken(db)).not.toBeNull();
   });
 
-  it('treats an unrecognised (non-CloudAuthError) failure as transient', () => {
+  it('drops the stored token for an old-style GoTrue body that names the grant', async () => {
+    // Older/OAuth-style rejection: {"error":"invalid_grant"} with no
+    // error_code. This is the whole reason errorCodeOf() reads `error` too —
+    // reading only error_code leaves the code undefined and the dead token
+    // lingering forever.
+    seedSession(db, 'refresh-stale');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid Refresh Token' }),
+          { status: 400 }
+        )
+      )
+    );
+
+    await new CloudAuth(db).restore();
+
+    expect(storedToken(db)).toBeNull();
+  });
+});
+
+describe('CloudAuth.refresh — a 200 with no session must not blank the live session', () => {
+  it('keeps the in-memory session alive when a mid-session refresh gets a bodyless 200', async () => {
+    // The response parses to {}. Adopting it as a session used to set the
+    // access token to undefined and, because getAccessToken() ends in
+    // `return this.accessToken!`, hand that undefined straight to the API
+    // client — "Bearer undefined" on every call, and a session that reads as
+    // signed out until the app restarts.
+    const auth = await signedInAuth(db);
+    expect(auth.status().signedIn).toBe(true);
+    // Force the next getAccessToken() to refresh rather than reuse the token.
+    vi.setSystemTime(Date.now() + 3600_000);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html>Blocked</html>', { status: 200 }))
+    );
+
+    await expect(auth.getAccessToken()).rejects.toThrow();
+
+    expect(auth.status().signedIn).toBe(true); // still signed in...
+    expect(auth.status().aal).toBe('aal2'); // ...and still at aal2
+    expect(storedToken(db)).not.toBeNull();
+  });
+
+  it('recovers on the next refresh once the service answers properly', async () => {
+    const auth = await signedInAuth(db);
+    vi.setSystemTime(Date.now() + 3600_000);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html>Blocked</html>', { status: 200 }))
+    );
+    await expect(auth.getAccessToken()).rejects.toThrow();
+
+    // Service comes back: the single-flight promise must have been released.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: fakeJwt({ aal: 'aal2', exp: Math.floor(Date.now() / 1000) + 7200 }),
+            refresh_token: 'refresh-rotated',
+            user: { id: 'user-1', email: 'e@example.com' },
+          }),
+          { status: 200 }
+        )
+      )
+    );
+
+    await expect(auth.getAccessToken()).resolves.toBeTruthy();
+    expect(auth.status().signedIn).toBe(true);
+  });
+});
+
+describe('provesRefreshTokenDead', () => {
+  it('is false for network, timeout, rate-limit, and 5xx (keep the session)', () => {
+    expect(provesRefreshTokenDead(new CloudAuthError('offline', 'network', 0))).toBe(false);
+    expect(provesRefreshTokenDead(new CloudAuthError('timeout', undefined, 408))).toBe(false);
+    expect(provesRefreshTokenDead(new CloudAuthError('rate', 'over_request_rate_limit', 429))).toBe(false);
+    expect(provesRefreshTokenDead(new CloudAuthError('down', undefined, 503))).toBe(false);
+  });
+
+  it('is true only for a 4xx GoTrue attributed to the token itself', () => {
+    expect(provesRefreshTokenDead(new CloudAuthError('bad token', 'refresh_token_not_found', 400))).toBe(true);
+    expect(provesRefreshTokenDead(new CloudAuthError('reused', 'refresh_token_already_used', 400))).toBe(true);
+    expect(provesRefreshTokenDead(new CloudAuthError('old style', 'invalid_grant', 400))).toBe(true);
+    expect(provesRefreshTokenDead(new CloudAuthError('gone', 'session_not_found', 401))).toBe(true);
+  });
+
+  it('is false for a bare 4xx with no GoTrue error code', () => {
+    // Something in front of GoTrue answered. A status code on its own must
+    // never be enough to destroy a session.
+    expect(provesRefreshTokenDead(new CloudAuthError('unauthorized', undefined, 401))).toBe(false);
+    expect(provesRefreshTokenDead(new CloudAuthError('forbidden', undefined, 403))).toBe(false);
+    expect(provesRefreshTokenDead(new CloudAuthError('not found', undefined, 404))).toBe(false);
+  });
+
+  it('tolerates surrounding whitespace and casing on the code', () => {
+    expect(provesRefreshTokenDead(new CloudAuthError('padded', ' Refresh_Token_Not_Found ', 400))).toBe(true);
+  });
+
+  it('is false for a 4xx carrying an unrelated error code', () => {
+    expect(provesRefreshTokenDead(new CloudAuthError('nope', 'validation_failed', 400))).toBe(false);
+    expect(provesRefreshTokenDead(new CloudAuthError('mfa', 'mfa_verification_failed', 400))).toBe(false);
+  });
+
+  it('is false for an unrecognised (non-CloudAuthError) failure', () => {
     // Never sign the user out on an error we cannot classify.
-    expect(isTransientAuthError(new Error('unexpected'))).toBe(true);
+    expect(provesRefreshTokenDead(new Error('unexpected'))).toBe(false);
   });
 });

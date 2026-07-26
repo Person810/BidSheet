@@ -54,18 +54,66 @@ export class CloudAuthError extends Error {
 }
 
 /**
- * A refresh failure is "transient" when it does not prove the stored token is
- * invalid — no network (offline launch), a 5xx, a timeout, or a rate-limit. On
- * those the token may still be good, so the session should be kept and retried
- * rather than destroyed. Only a definitive auth rejection (a 4xx from GoTrue)
- * means the refresh token is actually dead. An unrecognised error is treated as
- * transient: never sign the user out on an error we can't classify.
+ * GoTrue error codes that actually prove the stored refresh token is dead.
+ * Anything outside this list leaves the token alone — see provesRefreshTokenDead.
  */
-export function isTransientAuthError(err: unknown): boolean {
-  if (!(err instanceof CloudAuthError)) return true;
-  if (err.code === 'network') return true;
+const DEAD_REFRESH_CODES = new Set([
+  'invalid_grant', // classic OAuth rejection; older GoTrue puts it in `error`
+  'refresh_token_not_found',
+  'refresh_token_already_used',
+  'session_not_found',
+  'session_expired',
+  'bad_jwt',
+  'user_not_found',
+  'user_banned',
+]);
+
+/**
+ * Does this refresh failure prove the stored token is dead?
+ *
+ * Only `true` for a 4xx that GoTrue itself attributed to the token, identified
+ * by an error code from DEAD_REFRESH_CODES. Everything else keeps the token so
+ * a later getAccessToken() — or the next launch — can retry.
+ *
+ * The status code alone is NOT enough. Plenty of 4xx responses reach us from
+ * something in front of GoTrue and say nothing about the token: a Supabase or
+ * Cloudflare edge 403/404, a WAF block, a paused project. Destroying the
+ * session on those forces a full password + TOTP re-login over a token that
+ * was never invalid — and it tends to happen on bad networks, i.e. at a
+ * jobsite. Requiring GoTrue's own error code keeps the wipe to the cases that
+ * actually mean the token is gone.
+ *
+ * This is not a defence against a hostile network. Anything that can forge a
+ * 4xx for an https:// host already holds a trusted CA, and could just as
+ * easily return `{"error_code":"refresh_token_not_found"}` to force the wipe.
+ * The genuinely offline cases — no DNS, no route, a TLS failure against a
+ * captive portal — never reach here at all: `fetch` throws and gotrue() turns
+ * that into `code:'network'`, status 0.
+ *
+ * The failure mode of being wrong in the other direction is mild and
+ * self-correcting: a genuinely dead token we can't classify is kept, the app
+ * reads signed-out, and the user signs in again by hand.
+ */
+export function provesRefreshTokenDead(err: unknown): boolean {
+  if (!(err instanceof CloudAuthError)) return false;
+  if (err.code === 'network') return false;
   const status = err.status ?? 0;
-  return status === 0 || status === 408 || status === 429 || status >= 500;
+  if (status < 400 || status >= 500) return false;
+  return !!err.code && DEAD_REFRESH_CODES.has(err.code.trim().toLowerCase());
+}
+
+/**
+ * The machine-readable error code out of a GoTrue error body, across both
+ * shapes it ships in: newer `{ error_code: "refresh_token_not_found", ... }`
+ * and older/OAuth-style `{ error: "invalid_grant", ... }`. Deliberately does
+ * NOT read `data.code` — in newer GoTrue that's the numeric HTTP status, not a
+ * code. Undefined when the body wasn't JSON at all (an HTML error page parses
+ * to `{}`), which is exactly what keeps provesRefreshTokenDead from firing.
+ */
+function errorCodeOf(data: any): string | undefined {
+  if (typeof data?.error_code === 'string') return data.error_code;
+  if (typeof data?.error === 'string') return data.error;
+  return undefined;
 }
 
 function friendlyAuthMessage(status: number, data: any): string {
@@ -102,7 +150,7 @@ async function gotrue(path: string, body?: unknown, token?: string, method?: str
     throw new CloudAuthError(friendlyAuthMessage(0, null), 'network', 0);
   }
   const data: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw new CloudAuthError(friendlyAuthMessage(res.status, data), data?.error_code, res.status);
+  if (!res.ok) throw new CloudAuthError(friendlyAuthMessage(res.status, data), errorCodeOf(data), res.status);
   return data;
 }
 
@@ -232,16 +280,18 @@ export class CloudAuth {
       await this.refresh();
       logger.info('cloud-auth', `Restored cloud session for ${this.email}`);
     } catch (err: any) {
-      if (isTransientAuthError(err)) {
-        // Offline launch or a transient server error: the refresh token may
-        // still be valid, so keep it (in memory and on disk). A later
-        // getAccessToken() — or the next launch, once online — can refresh
-        // without forcing a full re-login (password + TOTP) at a no-signal
-        // jobsite. The session just reads as signed-out until then.
-        logger.warn('cloud-auth', 'Could not verify stored cloud session; keeping it to retry', err.message);
-      } else {
+      if (provesRefreshTokenDead(err)) {
         logger.warn('cloud-auth', 'Stored cloud session is no longer valid', err.message);
         this.clearLocalSession();
+      } else {
+        // Offline launch, a transient server error, or a 4xx we can't pin on
+        // GoTrue itself (an edge/WAF block, a paused project): the refresh
+        // token may still be valid, so keep it — in memory and on disk. A later
+        // getAccessToken() — or the next launch, once the service answers for
+        // real — can refresh without forcing a full re-login (password + TOTP)
+        // at a no-signal jobsite. The session just reads as signed-out until
+        // then.
+        logger.warn('cloud-auth', 'Could not verify stored cloud session; keeping it to retry', err.message);
       }
     }
     return this.status();
@@ -337,7 +387,22 @@ export class CloudAuth {
       this.refreshing = gotrue('/token?grant_type=refresh_token', {
         refresh_token: this.refreshToken,
       })
-        .then((data) => this.adoptSession(data as SupabaseSession))
+        .then((data) => {
+          // A 200 that isn't a session — an edge error page, a stray HTML body
+          // — parses to {}. Adopting that would blank the in-memory session and
+          // read as a sign-out until the next launch, and because
+          // getAccessToken() ends in `return this.accessToken!` it would hand
+          // `undefined` to the API client as a bearer token. Treat a response
+          // with no access token as transient rather than as a session.
+          if (!data?.access_token) {
+            throw new CloudAuthError(
+              'Could not reach the sign-in service. Check your internet connection.',
+              'network',
+              0
+            );
+          }
+          this.adoptSession(data as SupabaseSession);
+        })
         .finally(() => {
           this.refreshing = null;
         });
