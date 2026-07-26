@@ -1,4 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { useLocaleStore } from '../stores/locale-store';
 import type { JobLocationSuggestion } from '../../shared/types/ipc/job-locations';
 import {
   beginJobLocationLookup,
@@ -9,6 +11,48 @@ import {
   selectJobLocationSuggestion,
   updateJobLocationDraft,
 } from './jobLocationFieldState';
+
+export function parseJobLocation(location: string | null | undefined): {
+  street: string;
+  suburb: string;
+  state: string;
+} {
+  const result = { street: '', suburb: '', state: '' };
+  if (!location) return result;
+
+  const lines = location.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return result;
+
+  const lastLine = lines[lines.length - 1];
+  const match = /(?<suburb>[A-Z\s]+)\s+(?<state>[A-Z]{2,3})\s+(?<postcode>\d{4})$/i.exec(lastLine);
+
+  if (match && match.groups) {
+    result.state = match.groups.state.trim();
+    result.suburb = match.groups.suburb.trim();
+    result.street = lines.slice(0, lines.length - 1).join('\n');
+  } else {
+    result.street = lines.join('\n');
+  }
+
+  return result;
+}
+
+export function formatJobLocation(
+  street: string,
+  suburb: string,
+  state: string,
+  postcode: string,
+): string {
+  const lines: string[] = [];
+  if (street.trim()) {
+    lines.push(street.trim());
+  }
+  const suburbStatePostcode = `${suburb.trim().toUpperCase()} ${state.trim().toUpperCase()} ${postcode.trim()}`;
+  if (suburbStatePostcode.trim()) {
+    lines.push(suburbStatePostcode);
+  }
+  return lines.join('\n');
+}
 
 export interface JobLocationFieldsProps {
   location: string;
@@ -37,6 +81,14 @@ export function JobLocationFields({
 }: JobLocationFieldsProps) {
   const id = useId();
   const requestId = useRef(0);
+  const { profile } = useLocaleStore();
+  const isAU = profile.id === 'en-AU';
+
+  const [street, setStreet] = useState('');
+  const [suburb, setSuburb] = useState('');
+  const [stateVal, setStateVal] = useState('');
+  const lastFormattedRef = useRef('');
+
   const [state, setState] = useState(() =>
     createJobLocationFieldState({
       location,
@@ -53,7 +105,17 @@ export function JobLocationFields({
         siteCountry: country,
       },
     }));
-  }, [location, postalCode, country]);
+
+    if (isAU) {
+      if (location !== lastFormattedRef.current) {
+        const parsed = parseJobLocation(location);
+        setStreet(parsed.street);
+        setSuburb(parsed.suburb);
+        setStateVal(parsed.state);
+        lastFormattedRef.current = location;
+      }
+    }
+  }, [location, postalCode, country, isAU]);
 
   const changeLocation = (value: string) => {
     setState((current) => updateJobLocationDraft(current, { location: value }));
@@ -63,11 +125,37 @@ export function JobLocationFields({
     setState((current) =>
       updateJobLocationDraft(current, { sitePostcode: value }));
     onPostalCodeChange(value);
+    if (isAU) {
+      const combined = formatJobLocation(street, suburb, stateVal, value);
+      lastFormattedRef.current = combined;
+      onLocationChange(combined);
+    }
   };
   const changeCountry = (value: string) => {
     setState((current) =>
       updateJobLocationDraft(current, { siteCountry: value }));
     onCountryChange(value);
+  };
+
+  const handleStreetChange = (val: string) => {
+    setStreet(val);
+    const combined = formatJobLocation(val, suburb, stateVal, postalCode);
+    lastFormattedRef.current = combined;
+    onLocationChange(combined);
+  };
+
+  const handleSuburbChange = (val: string) => {
+    setSuburb(val);
+    const combined = formatJobLocation(street, val, stateVal, postalCode);
+    lastFormattedRef.current = combined;
+    onLocationChange(combined);
+  };
+
+  const handleStateChange = (val: string) => {
+    setStateVal(val);
+    const combined = formatJobLocation(street, suburb, val, postalCode);
+    lastFormattedRef.current = combined;
+    onLocationChange(combined);
   };
 
   const handleUseBuilderAddress = () => {
@@ -84,18 +172,33 @@ export function JobLocationFields({
     let parsedCountry = 'Australia';
 
     if (match && match.groups) {
-      const street = lines.length >= 2 ? lines[lines.length - 2] : '';
-      const suburb = match.groups.suburb.trim();
-      const state = match.groups.state.trim();
-      parsedLocation = street ? `${street}\n${suburb} ${state}` : `${suburb} ${state}`;
-      parsedPostcode = match.groups.postcode.trim();
+      const streetVal = lines.length >= 2 ? lines[lines.length - 2] : '';
+      const suburbVal = match.groups.suburb.trim();
+      const stateCode = match.groups.state.trim();
+      const pc = match.groups.postcode.trim();
+
+      parsedLocation = formatJobLocation(streetVal, suburbVal, stateCode, pc);
+      parsedPostcode = pc;
+
+      if (isAU) {
+        setStreet(streetVal);
+        setSuburb(suburbVal);
+        setStateVal(stateCode);
+        lastFormattedRef.current = parsedLocation;
+      }
     } else {
       parsedLocation = lines.join('\n');
+      if (isAU) {
+        setStreet(parsedLocation);
+        setSuburb('');
+        setStateVal('');
+        lastFormattedRef.current = parsedLocation;
+      }
     }
 
-    changeLocation(parsedLocation);
-    changePostalCode(parsedPostcode);
-    changeCountry(parsedCountry);
+    onLocationChange(parsedLocation);
+    onPostalCodeChange(parsedPostcode);
+    onCountryChange(parsedCountry);
   };
 
   const findSuggestions = async () => {
@@ -138,54 +241,129 @@ export function JobLocationFields({
         }
       }}
     >
-      <div className="form-group">
-        <label htmlFor={`${id}-location`}>Project Location</label>
-        <textarea
-          id={`${id}-location`}
-          className="form-control"
-          value={location}
-          rows={3}
-          onChange={(event) => changeLocation(event.target.value)}
-        />
-      </div>
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor={`${id}-postcode`}>Postal code / postcode</label>
-          <input
-            id={`${id}-postcode`}
-            className="form-control"
-            value={postalCode}
-            maxLength={40}
-            autoComplete="postal-code"
-            aria-invalid={Boolean(postalCodeError)}
-            aria-describedby={postalCodeError ? `${id}-postcode-error` : undefined}
-            onChange={(event) => changePostalCode(event.target.value)}
-          />
-          {postalCodeError && (
-            <div id={`${id}-postcode-error`} className="form-error" role="alert">
-              {postalCodeError}
+      {isAU ? (
+        <>
+          <div className="form-group">
+            <label htmlFor={`${id}-street`}>Street Address</label>
+            <input
+              id={`${id}-street`}
+              className="form-control"
+              type="text"
+              value={street}
+              onChange={(e) => handleStreetChange(e.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor={`${id}-suburb`}>Suburb / Locality</label>
+              <input
+                id={`${id}-suburb`}
+                className="form-control"
+                type="text"
+                value={suburb}
+                onChange={(e) => handleSuburbChange(e.target.value)}
+              />
             </div>
-          )}
-        </div>
-        <div className="form-group">
-          <label htmlFor={`${id}-country`}>Country</label>
-          <input
-            id={`${id}-country`}
-            className="form-control"
-            value={country}
-            maxLength={100}
-            autoComplete="country-name"
-            aria-invalid={Boolean(countryError)}
-            aria-describedby={countryError ? `${id}-country-error` : undefined}
-            onChange={(event) => changeCountry(event.target.value)}
-          />
-          {countryError && (
-            <div id={`${id}-country-error`} className="form-error" role="alert">
-              {countryError}
+            <div className="form-group">
+              <label htmlFor={`${id}-state`}>State</label>
+              <input
+                id={`${id}-state`}
+                className="form-control"
+                type="text"
+                value={stateVal}
+                onChange={(e) => handleStateChange(e.target.value)}
+              />
             </div>
-          )}
-        </div>
-      </div>
+            <div className="form-group">
+              <label htmlFor={`${id}-postcode`}>Postcode</label>
+              <input
+                id={`${id}-postcode`}
+                className="form-control"
+                value={postalCode}
+                maxLength={40}
+                autoComplete="postal-code"
+                aria-invalid={Boolean(postalCodeError)}
+                aria-describedby={postalCodeError ? `${id}-postcode-error` : undefined}
+                onChange={(event) => changePostalCode(event.target.value)}
+              />
+              {postalCodeError && (
+                <div id={`${id}-postcode-error`} className="form-error" role="alert">
+                  {postalCodeError}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="form-group">
+            <label htmlFor={`${id}-country`}>Country</label>
+            <input
+              id={`${id}-country`}
+              className="form-control"
+              value={country}
+              maxLength={100}
+              autoComplete="country-name"
+              aria-invalid={Boolean(countryError)}
+              aria-describedby={countryError ? `${id}-country-error` : undefined}
+              onChange={(event) => changeCountry(event.target.value)}
+            />
+            {countryError && (
+              <div id={`${id}-country-error`} className="form-error" role="alert">
+                {countryError}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="form-group">
+            <label htmlFor={`${id}-location`}>Project Location</label>
+            <textarea
+              id={`${id}-location`}
+              className="form-control"
+              value={location}
+              rows={3}
+              onChange={(event) => changeLocation(event.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor={`${id}-postcode`}>Postal code / postcode</label>
+              <input
+                id={`${id}-postcode`}
+                className="form-control"
+                value={postalCode}
+                maxLength={40}
+                autoComplete="postal-code"
+                aria-invalid={Boolean(postalCodeError)}
+                aria-describedby={postalCodeError ? `${id}-postcode-error` : undefined}
+                onChange={(event) => changePostalCode(event.target.value)}
+              />
+              {postalCodeError && (
+                <div id={`${id}-postcode-error`} className="form-error" role="alert">
+                  {postalCodeError}
+                </div>
+              )}
+            </div>
+            <div className="form-group">
+              <label htmlFor={`${id}-country`}>Country</label>
+              <input
+                id={`${id}-country`}
+                className="form-control"
+                value={country}
+                maxLength={100}
+                autoComplete="country-name"
+                aria-invalid={Boolean(countryError)}
+                aria-describedby={countryError ? `${id}-country-error` : undefined}
+                onChange={(event) => changeCountry(event.target.value)}
+              />
+              {countryError && (
+                <div id={`${id}-country-error`} className="form-error" role="alert">
+                  {countryError}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
       <div className="flex gap-8">
         <button
           type="button"

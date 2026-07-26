@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import type { ClientRow } from '../../../shared/types/ipc';
 import {
@@ -35,7 +36,7 @@ export function SavedClientPicker({
   onChange,
   onSelectClient,
   label,
-  placeholder = 'Search saved clients…',
+  placeholder = 'Search saved clients or type new…',
   disabled = false,
   className = '',
 }: SavedClientPickerProps) {
@@ -160,8 +161,12 @@ export function SavedClientPicker({
             ×
           </button>
         )}
+        {!value && (
+          <span className="fuzzy-dropdown-icon">
+            <ChevronDown size={16} />
+          </span>
+        )}
       </div>
-
       <div id={statusId} role={error ? 'alert' : 'status'} aria-live="polite" className="sr-only">
         {status}
       </div>

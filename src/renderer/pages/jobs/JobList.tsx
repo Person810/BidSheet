@@ -8,8 +8,9 @@ import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 import { formatDateLocal, statusBadge } from './helpers';
 
 import { LocalizedDateField } from '../../components/LocalizedDateField';
-import { JobLocationFields } from '../../components/JobLocationFields';
+import { JobLocationFields, formatJobLocation } from '../../components/JobLocationFields';
 import { ClientForm } from '../../components/clients/ClientEditorForm';
+import { parseClientAddress } from '../../components/clients/clientForm';
 import { useLocaleStore } from '../../stores/locale-store';
 import { useDateFormat } from '../../contexts/DateFormatContext';
 import type { ClientRow } from '../../../shared/types/ipc';
@@ -491,53 +492,94 @@ export function JobList({ onOpenJob }: JobListProps) {
             <div className="form-row">
               <div className="form-group">
                 <label>{profile.gcLabel}</label>
-                <SavedClientPicker
-                  value={form.client}
-                  onChange={(name) => {
-                    setForm((f) => ({ ...f, client: name }));
-                    if (!name) {
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <SavedClientPicker
+                      value={form.client}
+                      onChange={(name) => {
+                        setForm((f) => ({ ...f, client: name }));
+                        if (!name) {
+                          setSelectedClientRow(null);
+                        }
+                      }}
+                      onSelectClient={(client) => {
+                        if (profile.id === 'en-AU') {
+                          const parsedAddr = parseClientAddress(client.address);
+                          const jobLoc = formatJobLocation(parsedAddr.street, parsedAddr.suburb, parsedAddr.state, parsedAddr.postcode);
+                          setForm((f) => ({
+                            ...f,
+                            client: client.name,
+                            location: jobLoc,
+                            postalCode: parsedAddr.postcode,
+                            country: 'Australia',
+                          }));
+                        } else {
+                          setForm((f) => ({
+                            ...f,
+                            client: client.name,
+                            location: client.address || f.location,
+                          }));
+                        }
+                        setSelectedClientRow(client);
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', height: '38px', whiteSpace: 'nowrap' }}
+                    onClick={() => {
                       setSelectedClientRow(null);
-                    }
-                  }}
-                  onSelectClient={(client) => {
-                    setForm((f) => ({
-                      ...f,
-                      client: client.name,
-                      location: client.address || f.location,
-                    }));
-                    setSelectedClientRow(client);
-                  }}
-                />
-                {form.client.trim() !== '' && (
-                  <div style={{ marginTop: 4 }}>
+                      setEditingClient(true);
+                    }}
+                  >
+                    + New Client
+                  </button>
+                  {selectedClientRow && (
                     <button
                       type="button"
-                      className="btn btn-sm btn-secondary"
-                      style={{ fontSize: 11, padding: '1px 8px' }}
-                      onClick={() => setEditingClient(!editingClient)}
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', height: '38px', whiteSpace: 'nowrap' }}
+                      onClick={() => setEditingClient(true)}
                     >
-                      {selectedClientRow ? 'Edit details' : 'Add details'}
+                      Edit Details
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
                 {editingClient && (
-                  <div className="inline-client-form" style={{ marginTop: 10, border: '1px solid #ccc', padding: 10, borderRadius: 4 }}>
-                    <ClientForm
-                      initialClient={selectedClientRow}
-                      onSaved={(client) => {
-                        setSelectedClientRow(client);
-                        setForm((f) => ({
-                          ...f,
-                          client: client.name,
-                          location: client.address || f.location,
-                        }));
-                        setEditingClient(false);
-                      }}
-                      onCancel={() => setEditingClient(false)}
-                    />
+                  <div className="modal-overlay" onClick={() => setEditingClient(false)} style={{ zIndex: 1100 }}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                      <h3>{selectedClientRow ? 'Edit Client' : 'Add Client'}</h3>
+                      <ClientForm
+                        initialClient={selectedClientRow}
+                        onSaved={(client) => {
+                          setSelectedClientRow(client);
+                          if (profile.id === 'en-AU') {
+                            const parsedAddr = parseClientAddress(client.address);
+                            const jobLoc = formatJobLocation(parsedAddr.street, parsedAddr.suburb, parsedAddr.state, parsedAddr.postcode);
+                            setForm((f) => ({
+                              ...f,
+                              client: client.name,
+                              location: jobLoc,
+                              postalCode: parsedAddr.postcode,
+                              country: 'Australia',
+                            }));
+                          } else {
+                            setForm((f) => ({
+                              ...f,
+                              client: client.name,
+                              location: client.address || f.location,
+                            }));
+                          }
+                          setEditingClient(false);
+                        }}
+                        onCancel={() => setEditingClient(false)}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
+              <div className="form-group">
                 <LocalizedDateField
                   label="Bid Date"
                   value={form.bidDate || null}

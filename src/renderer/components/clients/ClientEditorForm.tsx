@@ -62,7 +62,7 @@ export function ClientForm({
   const idPrefix = useId();
   const savingRef = useRef(false);
   const { profile } = useLocaleStore();
-  const isAU = profile.locale === 'en-AU';
+  const isAU = profile.id === 'en-AU';
   const [state, setState] = useState(() => clientFormFromClient(initialClient));
   const [errors, setErrors] = useState<
     Partial<Record<keyof ClientFormValues, string>>

@@ -1358,6 +1358,19 @@ body {
   color: #fff;
 }
 
+.fuzzy-dropdown-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+}
+
 .fuzzy-dropdown {
   position: absolute;
   top: 100%;

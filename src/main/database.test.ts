@@ -162,11 +162,11 @@ describe('migration v47 — custom trades', () => {
   });
 });
 
-describe('migration v48 — freight and site location fields', () => {
+describe('migration v49 — freight and site location fields', () => {
   it('adds freight, site_postcode, and site_country columns to jobs table', () => {
-    const db = dbAtVersion(47);
+    const db = dbAtVersion(48);
 
-    db.transaction(() => MIGRATIONS[47](db))();
+    db.transaction(() => MIGRATIONS[48](db))();
 
     const cols = (db.prepare('PRAGMA table_info(jobs)').all() as any[]).map((c) => c.name);
     expect(cols).toContain('freight');
