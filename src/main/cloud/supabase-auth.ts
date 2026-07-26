@@ -56,10 +56,30 @@ export class CloudAuthError extends Error {
 /**
  * GoTrue error codes that actually prove the stored refresh token is dead.
  * Anything outside this list leaves the token alone — see provesRefreshTokenDead.
+ *
+ * The first two were confirmed against the live project (2026-07-26) by
+ * refreshing with deliberately bad tokens. GoTrue format-validates the token
+ * before it ever looks it up, which splits the failures in two:
+ *
+ *   well-formed but unknown  → refresh_token_not_found
+ *   malformed                → validation_failed ("Refresh token is not valid")
+ *
+ * A real token that merely expired or rotated is well-formed by construction,
+ * so ordinary expiry lands on refresh_token_not_found. validation_failed can
+ * only mean the stored token is structurally corrupt — a garbled safeStorage
+ * decrypt, a truncated b64 fallback — and a token that fails the format check
+ * can never succeed, so keeping it is pointless. It stays scoped to the
+ * refresh grant, where the token is the only input; an edge/WAF/portal in
+ * front of GoTrue cannot produce a GoTrue error_code at all.
+ *
+ * The rest are from GoTrue's documented set and remain unverified against this
+ * project: reaching them needs a session that has genuinely expired, rotated,
+ * or been banned, which can't be provoked with a throwaway request.
  */
 const DEAD_REFRESH_CODES = new Set([
+  'refresh_token_not_found', // verified live: well-formed token, no such session
+  'validation_failed', // verified live: malformed token — can never succeed
   'invalid_grant', // classic OAuth rejection; older GoTrue puts it in `error`
-  'refresh_token_not_found',
   'refresh_token_already_used',
   'session_not_found',
   'session_expired',
