@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
-import { E2eeEnrollStep, RecoveryKeyPanel, ShortCodeCheckbox } from './E2eeEnrollment';
+import { E2eeEnrollStep, RecoveryKeyPanel } from './E2eeEnrollment';
 
 /**
  * "Create Account" wizard — pops over the app instead of inline forms:
@@ -50,7 +50,6 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
   // the field back when the server rejected it (or the user asks), so the
   // happy path isn't asked to paste the same code twice.
   const [editCode, setEditCode] = useState(false);
-  const [shortCode, setShortCode] = useState(false);
   const [joinRecoveryKey, setJoinRecoveryKey] = useState<string | null>(null);
   // This device's member-key code; the owner is prompted to verify it out of
   // band before approving, so the joiner has to leave here knowing it.
@@ -140,7 +139,7 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
     act(async () => {
       let res;
       try {
-        res = await window.api.cloudOrgRedeemInvite(inviteCode.trim(), shortCode);
+        res = await window.api.cloudOrgRedeemInvite(inviteCode.trim());
       } catch (err) {
         setEditCode(true);
         throw err; // act() turns it into the toast
@@ -400,7 +399,6 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
                   </button>
                 </p>
               )}
-              <ShortCodeCheckbox checked={shortCode} onChange={setShortCode} />
               <div className="modal-actions">
                 <button className="btn btn-secondary" disabled={busy} onClick={onClose}>
                   Finish Later

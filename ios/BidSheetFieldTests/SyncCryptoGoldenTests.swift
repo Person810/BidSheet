@@ -5,8 +5,9 @@
  * These are real ciphertexts produced by a known-good desktop build. If the
  * Swift port can decrypt every one of them, it interops byte-for-byte with
  * what users already have stored in the cloud. If any of these fail, the
- * Swift code is wrong — never "fix" a vector. (The BSKD/scrypt vectors are
- * intentionally covered only as detect-and-reject until scrypt lands.)
+ * Swift code is wrong — never "fix" a vector. (wrappedDekScryptB64 is the one
+ * exception by design: short recovery keys were retired on 2026-07-26, so it
+ * is covered as detect-and-reject on both platforms, never as a decrypt.)
  *
  * Run on your Mac: open the generated Xcode project → Cmd-U.
  */
@@ -108,12 +109,12 @@ final class SyncCryptoGoldenTests: XCTestCase {
                 Data(base64Encoded: wrappedDekDirectB64)!, code: fullCode, aad: otherAcct))
     }
 
-    func testShortKeyBlobDetectedAndRejectedClearly() {
+    func testRetiredShortKeyBlobDetectedAndRejectedClearly() {
         let blob = Data(base64Encoded: wrappedDekScryptB64)!
         XCTAssertTrue(SyncCrypto.isKdfWrapped(blob))
-        XCTAssertThrowsError(try SyncCrypto.unwrapWithRecoveryCode(blob, code: "BSK1-ER21-YXDY-6HYW-YPT5", aad: wrapAad)) {
-            guard case SyncCryptoError.shortRecoveryKeyUnsupported = $0 else {
-                return XCTFail("expected shortRecoveryKeyUnsupported, got \($0)")
+        XCTAssertThrowsError(try SyncCrypto.unwrapWithRecoveryCode(blob, code: fullCode, aad: wrapAad)) {
+            guard case SyncCryptoError.shortRecoveryKeyRetired = $0 else {
+                return XCTFail("expected shortRecoveryKeyRetired, got \($0)")
             }
         }
     }

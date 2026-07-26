@@ -79,35 +79,6 @@ export function RecoveryKeyPanel({
   );
 }
 
-/**
- * Opt-in shorter (80-bit) recovery key, easier to write down. Still safe
- * offline because the short key is stretched with scrypt before it wraps
- * anything (see sync-crypto.ts). The full 256-bit key stays the default.
- */
-export function ShortCodeCheckbox({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, marginBottom: 10 }}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ marginTop: 2 }}
-      />
-      <span>
-        Use a <strong>shorter recovery key</strong> (16 characters instead of ~52). Easier to
-        write down, and still safe to store offline. Recommended only if you'll be typing it
-        by hand rather than saving it in a password manager.
-      </span>
-    </label>
-  );
-}
-
 /** RecoveryKeyPanel as a blocking overlay, for flows that live on a page. */
 export function RecoveryKeyModal({
   recoveryKey,
@@ -149,13 +120,12 @@ export function E2eeEnrollStep({
 }) {
   const addToast = useToastStore((s) => s.addToast);
   const [busy, setBusy] = useState(false);
-  const [shortCode, setShortCode] = useState(false);
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setBusy(true);
     try {
-      const res = await window.api.cloudE2eeSetup(shortCode);
+      const res = await window.api.cloudE2eeSetup();
       setRecoveryKey(res.recoveryKey);
     } catch (err: any) {
       // Matches both E2eeAlreadySetupError messages ("is already set up" and
@@ -204,7 +174,6 @@ export function E2eeEnrollStep({
           </p>
         </>
       )}
-      <ShortCodeCheckbox checked={shortCode} onChange={setShortCode} />
       <div className="modal-actions">
         {onSkip && (
           <button className="btn btn-secondary" disabled={busy} onClick={onSkip}>

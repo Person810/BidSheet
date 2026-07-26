@@ -3,7 +3,7 @@ import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, initCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
 import { CloudAccountSetupModal } from './CloudAccountSetupModal';
 import { CloudSignInModal } from './CloudSignInModal';
-import { RecoveryKeyModal, ShortCodeCheckbox } from './E2eeEnrollment';
+import { RecoveryKeyModal } from './E2eeEnrollment';
 import { formatBytes, formatDateTime } from '../utils/format';
 
 /**
@@ -353,10 +353,6 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const [justJoined, setJustJoined] = useState(false);
   // This device's member-key code, read to the owner before they approve.
   const [myCode, setMyCode] = useState<string | null>(null);
-  // Opt-in: a shorter (80-bit) recovery key, easier to write down. Still safe
-  // offline because the short key is stretched with scrypt before it wraps
-  // anything (see sync-crypto.ts). The full 256-bit key stays the default.
-  const [shortCode, setShortCode] = useState(false);
 
   const load = async () => {
     const [st, bk] = await Promise.all([
@@ -379,7 +375,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const handleSetup = async () => {
     setBusy(true);
     try {
-      const res = await window.api.cloudE2eeSetup(shortCode);
+      const res = await window.api.cloudE2eeSetup();
       setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
     } catch (err: any) {
       addToast(err?.message || 'Could not turn on encrypted sync.', 'error');
@@ -420,7 +416,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const handleJoin = async () => {
     setBusy(true);
     try {
-      const res = await window.api.cloudOrgRedeemInvite(joinToken.trim(), shortCode);
+      const res = await window.api.cloudOrgRedeemInvite(joinToken.trim());
       setJoinToken('');
       setJustJoined(true);
       setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
@@ -508,7 +504,6 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
             way to unlock your data on a new computer, and it is <strong>not</strong> your login
             password.
           </p>
-          <ShortCodeCheckbox checked={shortCode} onChange={setShortCode} />
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleSetup}>
             {busy ? 'Setting up…' : 'Finish Encryption Setup'}
           </button>
