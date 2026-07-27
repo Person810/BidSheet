@@ -258,8 +258,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       jobNumber: job.job_number || '',
       client: job.client || '',
       location: job.location || '',
-      sitePostcode: (job as any).site_postcode || '',
-      siteCountry: (job as any).site_country || '',
+      sitePostcode: job.site_postcode || '',
+      siteCountry: job.site_country || '',
       bidDate: job.bid_date ? job.bid_date.slice(0, 10) : '',
       description: job.description || '',
       overheadPercent: job.overhead_percent ?? 0,
@@ -267,7 +267,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       bondPercent: job.bond_percent ?? 0,
       taxPercent: job.tax_percent ?? 0,
       escalationPercent: job.escalation_percent ?? 0,
-      freight: (job as any).freight ?? 0,
+      freight: job.freight ?? 0,
     });
     setShowEditJob(true);
   };

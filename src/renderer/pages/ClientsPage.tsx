@@ -14,15 +14,6 @@ const CLIENT_SORT_ACCESSORS = {
   job_count: (c: ClientRow) => c.job_count ?? 0,
 };
 
-const EMPTY_FORM = {
-  name: '',
-  address: '',
-  contactName: '',
-  contactPhone: '',
-  contactEmail: '',
-  notes: '',
-};
-
 export function ClientsPage() {
   const addToast = useToastStore((s) => s.addToast);
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -30,8 +21,6 @@ export function ClientsPage() {
   const [showRemoved, setShowRemoved] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<ClientRow | null>(null);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
-  const [isSaving, setIsSaving] = useState(false);
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   const loadClients = useCallback(async () => {
@@ -59,42 +48,12 @@ export function ClientsPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ ...EMPTY_FORM });
     setShowModal(true);
   };
 
   const openEdit = (client: ClientRow) => {
     setEditing(client);
-    setForm({
-      name: client.name,
-      address: client.address || '',
-      contactName: client.contact_name || '',
-      contactPhone: client.contact_phone || '',
-      contactEmail: client.contact_email || '',
-      notes: client.notes || '',
-    });
     setShowModal(true);
-  };
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await window.api.saveClient({
-        id: editing?.id,
-        name: form.name.trim(),
-        address: form.address.trim() || null,
-        contactName: form.contactName.trim() || null,
-        contactPhone: form.contactPhone.trim() || null,
-        contactEmail: form.contactEmail.trim() || null,
-        notes: form.notes.trim() || null,
-      });
-      setShowModal(false);
-      loadClients();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to save client.', 'error');
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const handleDelete = (client: ClientRow) => {
