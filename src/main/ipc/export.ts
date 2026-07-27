@@ -7,7 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { fmtMoney } from '../../shared/calcExplain';
-import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable } from './shared';
 import { grantPathAccess, isPathReadable } from './file-access';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
 import { commitMaterialPriceImport } from './export/material-price-import-service';
@@ -37,7 +37,7 @@ export function registerExportHandlers(db: Database.Database): void {
 
     // Calculate summary (same logic as db:jobs:summary)
     const costRows = getSectionCostRows(db, jobId);
-    const summary = computeBidSummaryFromSections(costRows, job, getIndirectTotal(db, jobId));
+    const summary = computeBidSummaryFromSections(costRows, job, getIndirectTotal(db, jobId), getFreightTaxable(db));
     const hasMarkupOverrides = costRows.some((r) => !r.is_alternate && (
       r.overhead_percent_override != null
       || r.profit_percent_override != null
@@ -119,7 +119,13 @@ export function registerExportHandlers(db: Database.Database): void {
     // indirects are invisible.
     const indirectTotal = getIndirectTotal(db, jobId);
     const jobMarkupPct = ((job.overhead_percent || 0) + (job.profit_percent || 0) + (job.bond_percent || 0)) / 100;
-    const indirectSell = indirectTotal * (1 + jobMarkupPct);
+    // Freight is priced exactly like the indirect pool (bidCalc), plus tax
+    // when the freight-taxable setting says so — and spread the same way,
+    // since an owner-facing schedule shouldn't show a freight line either.
+    const freightTotal = Math.max(job.freight || 0, 0);
+    const freightSell = freightTotal * (1 + jobMarkupPct)
+      + (getFreightTaxable(db) ? freightTotal * taxPct : 0);
+    const indirectSell = indirectTotal * (1 + jobMarkupPct) + freightSell;
     let baseSellSum = 0;
     for (const section of sections.filter((s) => !s.is_alternate)) {
       const items = db.prepare(
@@ -174,8 +180,8 @@ export function registerExportHandlers(db: Database.Database): void {
     }
     lines.push('');
     lines.push(row(
-      indirectTotal > 0
-        ? 'Note: unit prices include overhead, profit, bond, escalation, sales tax, and spread indirect costs. Extensions use rounded unit prices and may differ from the proposal total by cents.'
+      indirectTotal > 0 || freightTotal > 0
+        ? 'Note: unit prices include overhead, profit, bond, escalation, sales tax, and spread indirect/freight costs. Extensions use rounded unit prices and may differ from the proposal total by cents.'
         : 'Note: unit prices include overhead, profit, bond, escalation, and sales tax. Extensions use rounded unit prices and may differ from the proposal total by cents.'
     ));
 
@@ -214,13 +220,14 @@ export function registerExportHandlers(db: Database.Database): void {
       ).all(section.id) as any[];
     }
 
-    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId));
+    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId), getFreightTaxable(db));
 
     return {
       job, settings, sections, lineItemsBySection,
       totals: summary,
       escalation: summary.escalation,
       indirect: summary.indirect_total,
+      freight: summary.freight,
       overhead: summary.overhead, profit: summary.profit,
       bond: summary.bond, tax: summary.tax, grandTotal: summary.grandTotal,
       alternates: summary.alternates,
@@ -468,6 +475,7 @@ interface PdfData {
   totals: any;
   escalation: number;
   indirect: number;
+  freight: number;
   overhead: number;
   profit: number;
   bond: number;
@@ -484,7 +492,7 @@ interface PdfData {
 
 function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   const { job, settings, sections, lineItemsBySection, totals,
-    escalation, indirect, overhead, profit, bond, tax, grandTotal, alternates,
+    escalation, indirect, freight, overhead, profit, bond, tax, grandTotal, alternates,
     escalationPct, overheadPct, profitPct, bondPct, taxPct } = data;
 
   // The template can arrive straight from the renderer (jobs:get-pdf-html,
@@ -556,6 +564,7 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtMoney(totals.direct_cost_total)}</td></tr>`;
   if (escalationPct > 0) summaryRows += `<tr><td class="sum-label">Material Escalation (${escalationPct}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
   if (indirect > 0) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
+  if (freight > 0) summaryRows += `<tr><td class="sum-label">Freight</td><td class="sum-val">${fmtMoney(freight)}</td></tr>`;
   if (overheadPct > 0) summaryRows += `<tr><td class="sum-label">Overhead (${overheadPct}%)</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
   if (profitPct > 0) summaryRows += `<tr><td class="sum-label">Profit (${profitPct}%)</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
   if (bondPct > 0) summaryRows += `<tr><td class="sum-label">Bond (${bondPct}%)</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;

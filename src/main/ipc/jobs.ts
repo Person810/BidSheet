@@ -7,7 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { nextJobNumber } from '../../shared/jobNumbering';
-import { safeHandle, getSectionCostRows, getIndirectTotal, likeContains } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable, likeContains } from './shared';
 import type {
   JobLocationLookupRequest,
   JobLocationLookupResult,
@@ -494,7 +494,7 @@ export function registerJobHandlers(db: Database.Database): void {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job) return null;
 
-    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId));
+    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId), getFreightTaxable(db));
 
     return {
       jobId,
@@ -508,12 +508,13 @@ export function registerJobHandlers(db: Database.Database): void {
 
     const jobs = db.prepare(`SELECT * FROM jobs WHERE id IN (${placeholders})`).all(...jobIds) as any[];
     const jobMap = new Map(jobs.map((j: any) => [j.id, j]));
+    const freightTaxable = getFreightTaxable(db);
 
     return jobIds.map((id) => {
       const job = jobMap.get(id);
       if (!job) return null;
 
-      const summary = computeBidSummaryFromSections(getSectionCostRows(db, id), job, getIndirectTotal(db, id));
+      const summary = computeBidSummaryFromSections(getSectionCostRows(db, id), job, getIndirectTotal(db, id), freightTaxable);
 
       return {
         jobId: id,

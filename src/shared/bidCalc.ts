@@ -27,6 +27,14 @@ export interface BidJobParams {
   tax_percent?: number | null;
   /** Material price escalation for long-lead bids (job-level) */
   escalation_percent?: number | null;
+  /**
+   * Job-level freight dollars. Like the indirect pool it belongs to the base
+   * bid, never to a section — computeBidSummary ignores it on purpose so
+   * per-section math can't double-count it. Tax on it is governed by the
+   * freightTaxable argument to computeBidSummaryFromSections (a setting with
+   * a locale default), not assumed.
+   */
+  freight?: number | null;
 }
 
 export interface BidSummary {
@@ -62,6 +70,13 @@ export interface FullBidSummary extends BidTotals, BidSummary {
    * and escalation don't (it isn't material).
    */
   indirect_total: number;
+  /**
+   * Job-level freight dollars. Priced like the indirect pool (job-level
+   * OH/profit/bond apply, no escalation); taxed only when freight_taxed.
+   */
+  freight: number;
+  /** Whether the job tax rate was applied to freight in this summary. */
+  freight_taxed: boolean;
   /** Each alternate section priced independently with its own markups */
   alternates: AlternateSummary[];
 }
@@ -81,6 +96,10 @@ interface SummaryAmounts {
   grandTotal: number;
   /** Optional: job-level indirect cost pool (alternates never carry one) */
   indirect_total?: number;
+  /** Optional: job-level freight (alternates never carry one) */
+  freight?: number;
+  /** Optional: whether tax was applied to freight */
+  freight_taxed?: boolean;
 }
 
 /** Direct cost = material + labor + equipment + subcontractor (across base sections). */
@@ -119,27 +138,38 @@ export function explainEscalation(s: SummaryAmounts, escalationPct: number): Cal
 export function explainMarkup(
   kind: 'overhead' | 'profit' | 'bond' | 'tax', s: SummaryAmounts, hasOverrides: boolean,
 ): CalcBreakdown {
+  const freight = s.freight || 0;
   if (kind === 'tax') {
-    return explainPercentOf('Sales tax', 'Material + escalation', s.material_total + s.escalation, s.tax);
+    const taxedFreight = s.freight_taxed ? freight : 0;
+    const base = taxedFreight > 0 ? 'Material + escalation + freight' : 'Material + escalation';
+    return explainPercentOf('Sales tax', base, s.material_total + s.escalation + taxedFreight, s.tax);
   }
   const label = kind === 'overhead' ? 'Overhead' : kind === 'profit' ? 'Profit' : 'Bond';
   const note = hasOverrides ? 'Blended rate — some sections override the job markups.' : undefined;
   const indirect = s.indirect_total || 0;
-  const baseLabel = indirect > 0 ? 'Direct cost + escalation + indirects' : 'Direct cost + escalation';
-  return explainPercentOf(label, baseLabel, s.direct_cost_total + s.escalation + indirect, s[kind], note);
+  const extras = [indirect > 0 ? 'indirects' : '', freight > 0 ? 'freight' : ''].filter(Boolean);
+  const baseLabel = extras.length > 0
+    ? `Direct cost + escalation + ${extras.join(' + ')}`
+    : 'Direct cost + escalation';
+  return explainPercentOf(
+    label, baseLabel, s.direct_cost_total + s.escalation + indirect + freight, s[kind], note,
+  );
 }
 
 /** Bid total = direct cost + escalation + overhead + profit + bond + tax. */
 export function explainGrandTotal(s: SummaryAmounts): CalcBreakdown {
   const indirect = s.indirect_total || 0;
+  const freight = s.freight || 0;
+  const extras = [indirect > 0 ? 'indirects' : '', freight > 0 ? 'freight' : ''].filter(Boolean);
   return explainSum(
-    indirect > 0
-      ? 'Bid total = direct cost + escalation + indirects + markups + tax'
+    extras.length > 0
+      ? `Bid total = direct cost + escalation + ${extras.join(' + ')} + markups + tax`
       : 'Bid total = direct cost + escalation + markups + tax',
     [
       { label: 'Direct cost', value: fmtMoney(s.direct_cost_total) },
       { label: 'Escalation', value: fmtMoney(s.escalation) },
       ...(indirect > 0 ? [{ label: 'Indirect costs', value: fmtMoney(indirect) }] : []),
+      ...(freight > 0 ? [{ label: 'Freight', value: fmtMoney(freight) }] : []),
       { label: 'Overhead', value: fmtMoney(s.overhead) },
       { label: 'Profit', value: fmtMoney(s.profit) },
       { label: 'Bond', value: fmtMoney(s.bond) },
@@ -210,6 +240,7 @@ export function computeBidSummaryFromSections(
   rows: SectionCostRow[],
   job: BidJobParams,
   indirectTotal = 0,
+  freightTaxable = false,
 ): FullBidSummary {
   const baseTotals: BidTotals = { ...EMPTY_TOTALS };
   let escalation = 0;
@@ -250,16 +281,30 @@ export function computeBidSummaryFromSections(
   profit += indirect * (job.profit_percent / 100);
   bond += indirect * ((job.bond_percent || 0) / 100);
 
+  // Freight: same job-level treatment as the indirect pool, plus the tax
+  // rate when freightTaxable says so (a setting with a locale default —
+  // GST/VAT regimes tax freight, US state practice varies). No escalation:
+  // freight isn't material.
+  const freight = Math.max(job.freight || 0, 0);
+  overhead += freight * (job.overhead_percent / 100);
+  profit += freight * (job.profit_percent / 100);
+  bond += freight * ((job.bond_percent || 0) / 100);
+  const freightTaxed = freightTaxable && freight > 0;
+  if (freightTaxed) tax += freight * ((job.tax_percent || 0) / 100);
+
   return {
     ...baseTotals,
     escalation,
     indirect_total: indirect,
+    freight,
+    freight_taxed: freightTaxed,
     overhead,
     profit,
     bond,
     tax,
     grandTotal:
-      baseTotals.direct_cost_total + escalation + indirect + overhead + profit + bond + tax,
+      baseTotals.direct_cost_total + escalation + indirect + freight
+      + overhead + profit + bond + tax,
     alternates,
   };
 }
