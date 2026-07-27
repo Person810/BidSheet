@@ -25,70 +25,66 @@ export function resolveLocaleProfile(
   userPreference?: string | null,
 ): LocaleProfile {
   // 1. Try to resolve user preference if provided
-  if (userPreference) {
-    const normalizedPref = userPreference.replace('_', '-').trim();
-    const matchPref = findProfile(normalizedPref);
-    if (matchPref) return matchPref;
-  }
+  const preference = normalizeTag(userPreference);
+  const system = normalizeTag(osLocale);
 
-  // 2. Try to resolve OS locale
-  const normalizedOS = (osLocale || '').replace('_', '-').trim();
-  if (normalizedOS) {
-    const matchOS = findProfile(normalizedOS);
-    if (matchOS) return matchOS;
-  }
+  const matched = findProfile(preference) ?? findProfile(system);
+  if (matched) return matched;
 
-  // 3. Dynamic resolution or fallback using the selected tag
-  const fallbackTag = userPreference || osLocale || DEFAULT_LOCALE;
-  const normalizedFallback = fallbackTag.replace('_', '-').trim();
-  const matchFallback = findProfile(normalizedFallback);
-  if (matchFallback) return matchFallback;
-
+  // No registered profile for this tag. Keep the default labels — we have no
+  // basis for inventing a tax name or a GC title — but resolve the date order
+  // from the tag itself, so at least dates read the way the user expects.
   const defaultProfile = LOCALE_PROFILES[DEFAULT_LOCALE];
-
-  // Dynamically resolve dateFormat using Intl.DateTimeFormat for arbitrary locales
-  let resolvedFormat: 'dmy' | 'mdy' | 'ymd' = defaultProfile.dateFormat;
-  try {
-    if (Intl.DateTimeFormat.supportedLocalesOf([normalizedFallback]).length > 0) {
-      const parts = new Intl.DateTimeFormat(normalizedFallback, {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        timeZone: 'UTC',
-      }).formatToParts(new Date(Date.UTC(2006, 10, 22)));
-      const order = parts
-        .filter((part) => part.type === 'year' || part.type === 'month' || part.type === 'day')
-        .map((part) => part.type[0])
-        .join('');
-      if (order === 'dmy' || order === 'mdy' || order === 'ymd') {
-        resolvedFormat = order;
-      }
-    }
-  } catch {
-    // Fallback
-  }
-
   return {
     ...defaultProfile,
-    dateFormat: resolvedFormat,
+    dateFormat: dateOrderFor(preference || system) ?? defaultProfile.dateFormat,
   };
 }
 
+/** POSIX (`en_AU.UTF-8`) and BCP-47 (`en-AU`) both reduce to `en-AU`. */
+function normalizeTag(localeTag: string | null | undefined): string {
+  return (localeTag ?? '').split('.')[0].replace(/_/g, '-').trim();
+}
+
+/**
+ * BCP-47 lookup: try the whole tag, then drop subtags right to left, so
+ * `en-AU-u-ca-gregory` finds `en-AU`. Deliberately does NOT fall back to
+ * "some other profile sharing the language" — that silently gave every
+ * unregistered English locale (en-IE, en-ZA, en-IN…) US labels and US date
+ * order, and made the Intl resolution below unreachable for them.
+ */
 function findProfile(localeTag: string): LocaleProfile | undefined {
   const keys = Object.keys(LOCALE_PROFILES);
-  // 1. Case-insensitive exact match
-  const exact = keys.find((k) => k.toLowerCase() === localeTag.toLowerCase());
-  if (exact) return LOCALE_PROFILES[exact];
-
-  // 2. Prefix matching (e.g. "en" -> "en-US", "en-au" -> "en-AU")
-  const lang = localeTag.split('-')[0].toLowerCase();
-  const prefixMatches = keys.filter((k) => k.split('-')[0].toLowerCase() === lang);
-  if (prefixMatches.length > 0) {
-    const preferred = prefixMatches.find(
-      (k) => k.toLowerCase() === `${lang}-${lang}` || k === 'en-US'
-    );
-    return LOCALE_PROFILES[preferred || prefixMatches[0]];
+  let candidate = localeTag;
+  while (candidate) {
+    const hit = keys.find((k) => k.toLowerCase() === candidate.toLowerCase());
+    if (hit) return LOCALE_PROFILES[hit];
+    const cut = candidate.lastIndexOf('-');
+    if (cut < 0) return undefined;
+    candidate = candidate.slice(0, cut);
   }
-
   return undefined;
+}
+
+/** Date field order Intl reports for a tag, or undefined if it can't say. */
+function dateOrderFor(localeTag: string): 'dmy' | 'mdy' | 'ymd' | undefined {
+  if (!localeTag) return undefined;
+  try {
+    if (Intl.DateTimeFormat.supportedLocalesOf([localeTag]).length === 0) {
+      return undefined;
+    }
+    const order = new Intl.DateTimeFormat(localeTag, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'UTC',
+    })
+      .formatToParts(new Date(Date.UTC(2006, 10, 22)))
+      .filter((part) => part.type === 'year' || part.type === 'month' || part.type === 'day')
+      .map((part) => part.type[0])
+      .join('');
+    return order === 'dmy' || order === 'mdy' || order === 'ymd' ? order : undefined;
+  } catch {
+    return undefined;
+  }
 }

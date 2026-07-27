@@ -42,6 +42,20 @@ describe('dateFormatting', () => {
     it('returns null on empty input', () => {
       expect(parseBusinessDate('', 'dmy')).toBeNull();
     });
+    it('accepts single-digit day and month in every order', () => {
+      expect(parseBusinessDate('7/4/2026', 'mdy')).toBe('2026-07-04');
+      expect(parseBusinessDate('4/7/2026', 'dmy')).toBe('2026-07-04');
+      expect(parseBusinessDate('2026-7-4', 'ymd')).toBe('2026-07-04');
+    });
+    it('tolerates surrounding whitespace', () => {
+      expect(parseBusinessDate('  10/25/2023  ', 'mdy')).toBe('2023-10-25');
+    });
+    it('still rejects a two-digit year', () => {
+      expect(() => parseBusinessDate('10/25/23', 'mdy')).toThrow();
+    });
+    it('still rejects an out-of-range single-digit date', () => {
+      expect(() => parseBusinessDate('2/30/2026', 'mdy')).toThrow();
+    });
   });
 
   describe('resolveDateOrder', () => {

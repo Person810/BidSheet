@@ -44,6 +44,41 @@ describe('locale profile resolution', () => {
     expect(resolveLocaleProfile('en').id).toBe('en-US');
   });
   
+  it('drops subtags right to left to find a registered profile', () => {
+    expect(resolveLocaleProfile('en-AU-u-ca-gregory').id).toBe('en-AU');
+    expect(resolveLocaleProfile('en-GB-oxendict').id).toBe('en-GB');
+  });
+
+  it('normalizes POSIX locale strings (en_AU.UTF-8 → en-AU)', () => {
+    expect(resolveLocaleProfile('en_AU.UTF-8').id).toBe('en-AU');
+    expect(resolveLocaleProfile('en_CA.utf8').id).toBe('en-CA');
+  });
+
+  it('resolves date order from the tag for unregistered English locales', () => {
+    // Previously every unregistered en-* locale prefix-matched to en-US and
+    // silently inherited US date order. Labels still default (we have no
+    // basis for inventing a tax name), but the date order must be honest.
+    expect(resolveLocaleProfile('en-IE').dateFormat).toBe('dmy');
+    expect(resolveLocaleProfile('en-ZA').dateFormat).toBe('ymd');
+    expect(resolveLocaleProfile('en-IN').dateFormat).toBe('dmy');
+  });
+
+  it('resolves date order for non-English locales too', () => {
+    expect(resolveLocaleProfile('de-DE').dateFormat).toBe('dmy');
+    expect(resolveLocaleProfile('ja-JP').dateFormat).toBe('ymd');
+  });
+
+  it('keeps default labels when only the date order could be resolved', () => {
+    const profile = resolveLocaleProfile('en-IE');
+    expect(profile.taxLabel).toBe(LOCALE_PROFILES['en-US'].taxLabel);
+    expect(profile.currencySymbol).toBe(LOCALE_PROFILES['en-US'].currencySymbol);
+  });
+
+  it('falls back to the default date order when the tag is unusable', () => {
+    expect(resolveLocaleProfile('').dateFormat).toBe('mdy');
+    expect(resolveLocaleProfile('not a locale').dateFormat).toBe('mdy');
+  });
+
   it('all 5 initial profiles have required fields (id, displayName, dateFormat, taxLabel, postalLabel, gcLabel, currencySymbol, thousandsSep, decimalSep)', () => {
     const requiredFields: (keyof LocaleProfile)[] = ['id', 'displayName', 'dateFormat', 'taxLabel', 'postalLabel', 'gcLabel', 'currencySymbol', 'thousandsSep', 'decimalSep'];
     
