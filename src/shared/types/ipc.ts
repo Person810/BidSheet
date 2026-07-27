@@ -213,7 +213,6 @@ export interface SaveJobPayload {
   bidLocked?: boolean | number;
   parentJobId?: number | null;
   changeOrderNumber?: number | null;
-  clientId?: number | null;
   freight?: number | null;
   sitePostcode?: string | null;
   siteCountry?: string | null;

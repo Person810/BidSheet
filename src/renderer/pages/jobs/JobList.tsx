@@ -5,7 +5,7 @@ import { useToastStore } from '../../stores/toast-store';
 import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
 import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
-import { formatDateLocal, statusBadge } from './helpers';
+import { statusBadge } from './helpers';
 import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 import { LocalizedDateField } from '../../components/LocalizedDateField';
@@ -29,7 +29,6 @@ const EMPTY_JOB_FORM = {
   name: '',
   jobNumber: '',
   client: '',
-  clientId: null as number | null,
   location: '',
   postalCode: '',
   country: '',
@@ -123,7 +122,6 @@ export function JobList({ onOpenJob }: JobListProps) {
       name: form.name,
       jobNumber: form.jobNumber || null,
       client: form.client,
-      clientId: selectedClientRow?.id || null,
       location: form.location || null,
       bidDate: form.bidDate || null,
       startDate: null,
