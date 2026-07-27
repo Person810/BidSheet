@@ -86,10 +86,13 @@ export function parseBusinessDate(
 ): string | null {
   if (input.trim() === '') return null;
   const order = resolveDateOrder(preference, locale).order;
+  // Day and month accept one or two digits: estimators type "7/4/2026", and
+  // rejecting that left the Save button disabled with no obvious cause.
+  // Output is always zero-padded canonical, so storage is unaffected.
   const pattern = order === 'ymd'
-    ? /^(\d{4})-(\d{2})-(\d{2})$/
-    : /^(\d{2})\/(\d{2})\/(\d{4})$/;
-  const match = pattern.exec(input);
+    ? /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+    : /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const match = pattern.exec(input.trim());
   if (!match) throw new Error(`Date does not match the required ${order.toUpperCase()} format`);
 
   let year: number;
