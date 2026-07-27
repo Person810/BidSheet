@@ -190,14 +190,16 @@ export function registerJobHandlers(db: Database.Database): void {
 
       const newJob = db
         .prepare(
-          `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, freight, site_postcode, site_country)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           newName || job.name + ' (Copy)', jobNumber, job.client, job.client_id, job.location,
           newBidDate ?? job.bid_date, job.start_date, job.description,
           job.overhead_percent, job.profit_percent, job.bond_percent,
-          job.tax_percent, job.escalation_percent ?? 0, job.notes
+          job.tax_percent, job.escalation_percent ?? 0, job.notes,
+          // A copy is a template of the whole priced job, freight included.
+          job.freight ?? 0, job.site_postcode ?? null, job.site_country ?? null
         );
       const newJobId = Number(newJob.lastInsertRowid);
 
@@ -449,13 +451,17 @@ export function registerJobHandlers(db: Database.Database): void {
     const result = db.prepare(
       `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status,
         overhead_percent, profit_percent, bond_percent, tax_percent, notes,
-        parent_job_id, change_order_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
+        parent_job_id, change_order_number, site_postcode, site_country)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       `CO #${nextCO}`, parent.job_number, parent.client, parent.client_id, parent.location,
       null, null, null, parent.overhead_percent, parent.profit_percent,
       parent.bond_percent, parent.tax_percent, null,
-      parentJobId, nextCO
+      parentJobId, nextCO,
+      // Same dig site as the parent; freight deliberately NOT inherited —
+      // the parent's freight is already priced in the parent's bid, and a
+      // change order carries its own freight cost (default 0).
+      parent.site_postcode ?? null, parent.site_country ?? null
     );
 
     logger.info('jobs', `Created change order #${nextCO} for job ${parentJobId}`);
