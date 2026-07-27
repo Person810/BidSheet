@@ -68,6 +68,10 @@ import type {
   TrenchProfileRow,
   UpdateStatusEvent,
 } from './ipc';
+import type {
+  JobLocationLookupRequest,
+  JobLocationLookupResult,
+} from './ipc/job-locations';
 import type { CrewTemplate, LaborRole } from './labor';
 import type { PdfTemplate } from './pdf';
 
@@ -121,10 +125,9 @@ declare global {
         jobNumber: string,
         excludeJobId?: number
       ) => Promise<{ inUse: boolean; jobId?: number; jobName?: string }>;
-      findJobLocationSuggestions: (request: {
-        postalCode: string;
-        country?: string | null;
-      }) => Promise<{ suggestions: any[]; truncated: boolean }>;
+      findJobLocationSuggestions: (
+        request: JobLocationLookupRequest
+      ) => Promise<JobLocationLookupResult>;
 
       // Clients
       getClients: (includeInactive?: boolean) => Promise<ClientRow[]>;
