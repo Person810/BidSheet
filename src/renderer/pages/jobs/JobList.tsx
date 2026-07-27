@@ -11,7 +11,6 @@ import { dismissOnEscOnly } from '../../components/modalDismiss';
 import { LocalizedDateField } from '../../components/LocalizedDateField';
 import { JobLocationFields } from '../../components/JobLocationFields';
 import { ClientForm } from '../../components/clients/ClientEditorForm';
-import { clientSiteDefaults } from './clientJobDraft';
 import { useLocaleStore } from '../../stores/locale-store';
 import { useDateFormat } from '../../contexts/DateFormatContext';
 import type { ClientRow } from '../../../shared/types/ipc';
@@ -502,20 +501,10 @@ export function JobList({ onOpenJob }: JobListProps) {
                         }
                       }}
                       onSelectClient={(client) => {
-                        setForm((f) => {
-                          const site = clientSiteDefaults(
-                            { location: f.location, sitePostcode: f.postalCode, siteCountry: f.country },
-                            client,
-                            profile,
-                          );
-                          return {
-                            ...f,
-                            client: client.name,
-                            location: site.location,
-                            postalCode: site.sitePostcode,
-                            country: site.siteCountry,
-                          };
-                        });
+                        // Picking a client sets the client, nothing else —
+                        // "Use Builder Address" is the explicit opt-in for
+                        // copying their office address to the site fields.
+                        setForm((f) => ({ ...f, client: client.name }));
                         setSelectedClientRow(client);
                       }}
                     />
@@ -550,20 +539,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                         initialClient={selectedClientRow}
                         onSaved={(client) => {
                           setSelectedClientRow(client);
-                          setForm((f) => {
-                            const site = clientSiteDefaults(
-                              { location: f.location, sitePostcode: f.postalCode, siteCountry: f.country },
-                              client,
-                              profile,
-                            );
-                            return {
-                              ...f,
-                              client: client.name,
-                              location: site.location,
-                              postalCode: site.sitePostcode,
-                              country: site.siteCountry,
-                            };
-                          });
+                          setForm((f) => ({ ...f, client: client.name }));
                           setEditingClient(false);
                         }}
                         onCancel={() => setEditingClient(false)}
