@@ -925,8 +925,15 @@ function migrateV47(db: Database.Database): void {
 }
 
 function migrateV48(db: Database.Database): void {
-  // No-op placeholder to align version numbers with the HDD branch
-  // (which used V48 for trench profile additions)
+  // Intentional no-op. It shipped ahead of the HDD branch, which had already
+  // written its trench-profile DDL as V48 locally.
+  //
+  // DO NOT reclaim this number, and DO NOT renumber V49 to close the gap.
+  // Anyone who has run this build is recorded at schema_version 49, so a
+  // migration numbered 48 or 49 will never execute for them — runMigrations
+  // starts at MAX(version) + 1. The HDD work must land as V50 or later.
+  // Renumbering to tidy this up silently skips the migration on exactly the
+  // machines that already have the feature branch checked out.
   db.exec(`
     INSERT INTO schema_version (version) VALUES (48);
   `);
