@@ -243,6 +243,19 @@ export function adoptExistingClient(
   return clientFormFromClient(match);
 }
 
+/**
+ * A fresh create-mode draft carrying only the typed name. Used when the user
+ * types onward past an adopted client's name ("Boh Bros" -> "Boh Bros
+ * Marine"): the adoption must unwind — keeping the adopted id would turn the
+ * save into a silent rename of the existing client, and the prefilled fields
+ * belong to that client, not the new one.
+ */
+export function detachToNewClientDraft(name: string): ClientFormState {
+  const fresh = clientFormFromClient(null);
+  fresh.values.name = name;
+  return fresh;
+}
+
 export function beginClientSave(
   state: ClientFormState,
 ): { state: ClientFormState; shouldSubmit: boolean } {

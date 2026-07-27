@@ -169,6 +169,14 @@ export function registerExportHandlers(db: Database.Database): void {
     for (const section of sections.filter((s) => !s.is_alternate)) {
       baseTotal += buildSection(section);
     }
+    // With no priced base line items there is nothing to spread the
+    // indirect/freight pool into — emit it as an explicit lump-sum line
+    // rather than silently dropping dollars the bid summary includes.
+    if (baseSellSum <= 0 && indirectSell > 0) {
+      const lump = Math.round(indirectSell * 100) / 100;
+      lines.push(row('', 'General Conditions (indirect & freight)', 'LS', 1, lump.toFixed(2), lump.toFixed(2)));
+      baseTotal += lump;
+    }
     lines.push(row('', 'TOTAL BASE BID', '', '', '', baseTotal.toFixed(2)));
 
     const altSections = sections.filter((s) => s.is_alternate);
@@ -180,7 +188,7 @@ export function registerExportHandlers(db: Database.Database): void {
     }
     lines.push('');
     lines.push(row(
-      indirectTotal > 0 || freightTotal > 0
+      (indirectTotal > 0 || freightTotal > 0) && baseSellSum > 0
         ? 'Note: unit prices include overhead, profit, bond, escalation, sales tax, and spread indirect/freight costs. Extensions use rounded unit prices and may differ from the proposal total by cents.'
         : 'Note: unit prices include overhead, profit, bond, escalation, and sales tax. Extensions use rounded unit prices and may differ from the proposal total by cents.'
     ));

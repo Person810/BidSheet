@@ -4,6 +4,7 @@ import type { ClientRow } from '../../../shared/types/ipc';
 import {
   adoptExistingClient,
   beginClientSave,
+  detachToNewClientDraft,
   canAdoptExistingClient,
   cancelClientForm,
   clientFormFromClient,
@@ -294,6 +295,16 @@ describe('adopting an existing client into a blank draft', () => {
     expect(adopted.values.name).toBe('Boh Bros'); // canonical casing wins
     expect(adopted.values.address).toBe('55 Office Park Dr');
     expect(adopted.values.notes).toBe('net 30');
+  });
+
+
+  it('detaching returns a clean create draft carrying only the typed name', () => {
+    const detached = detachToNewClientDraft('Boh Bros Marine');
+    expect(detached.mode).toBe('create');
+    expect(detached.values.id).toBeUndefined();
+    expect(detached.values.name).toBe('Boh Bros Marine');
+    expect(detached.values.address).toBe('');
+    expect(detached.originalClient).toBeNull();
   });
 
   it('refuses to adopt over a dirty draft', () => {

@@ -78,6 +78,16 @@ describe('db:clients:save', () => {
     expect(row.contact_name).toBe('Sam');
   });
 
+  it('saving by id revives a soft-deleted client', async () => {
+    const id = seedClient();
+    db.prepare('UPDATE clients SET is_active = 0 WHERE id = ?').run(id);
+    await save({ id, name: 'Boh Bros', contactName: 'Pat' });
+    const row = db.prepare('SELECT is_active FROM clients WHERE id = ?').get(id) as any;
+    // Deliberately saving a client means it's current again — otherwise an
+    // adopted-then-deleted record gets updated but stays invisible.
+    expect(row.is_active).toBe(1);
+  });
+
   it('id-less save with a new name creates the client', async () => {
     const result = await save({ name: 'Fresh Contractor', address: '1 New St' });
     const row = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.id) as any;

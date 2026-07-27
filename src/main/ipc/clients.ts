@@ -88,7 +88,8 @@ export function registerClientHandlers(db: Database.Database): void {
         db.prepare(
           `UPDATE clients SET
             name = ?, address = ?, contact_name = ?, contact_phone = ?,
-            contact_email = ?, notes = ?, updated_at = datetime('now', 'localtime')
+            contact_email = ?, notes = ?, is_active = 1,
+            updated_at = datetime('now', 'localtime')
           WHERE id = ?`
         ).run(
           name,

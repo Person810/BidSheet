@@ -31,7 +31,17 @@ export function getFreightTaxable(
     .get() as { freight_taxable: number | null } | undefined;
   const explicit = row?.freight_taxable;
   if (explicit === 0 || explicit === 1) return explicit === 1;
-  return resolveLocaleProfile(localeTag ?? safeSystemLocale()).freightTaxable;
+  const resolved = resolveLocaleProfile(localeTag ?? safeSystemLocale()).freightTaxable;
+  // Materialize the locale default the first time it's needed. Left as NULL,
+  // the flag would resolve against each machine's OS locale — the same
+  // synced job would price differently per seat. Writing the resolved 0/1
+  // makes it a stored, synced company setting the first seat to price a job
+  // fixes for the whole account; Settings can still change it (and choosing
+  // "locale default" there re-resolves through this same path).
+  if (row) {
+    db.prepare('UPDATE app_settings SET freight_taxable = ? WHERE id = 1').run(resolved ? 1 : 0);
+  }
+  return resolved;
 }
 
 /** OS regional locale, or '' when Electron isn't available (unit tests). */

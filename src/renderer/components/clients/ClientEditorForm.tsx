@@ -9,6 +9,7 @@ import {
   cancelClientForm,
   clientFormFromClient,
   completeClientSave,
+  detachToNewClientDraft,
   failClientSave,
   prepareClientPayload,
   type ClientFormTextField,
@@ -25,6 +26,16 @@ export interface ClientFormProps {
 
 const persistClientWithApi = async (payload: SaveClientPayload): Promise<ClientRow> => {
   const result = await window.api.saveClient(payload);
+  // The stored row is authoritative: an id-less save may have merged into an
+  // existing client, so a row fabricated from the payload would misreport
+  // that client's details as blank — and feed the next Edit Details session
+  // nulls that a save would then make real.
+  try {
+    const stored = await window.api.getClient(result.id);
+    if (stored) return stored;
+  } catch {
+    // Fall through to the payload-shaped row below.
+  }
   return {
     id: result.id,
     name: payload.name,
@@ -104,12 +115,26 @@ export function ClientForm({
   }, [typedName, initialClient]);
 
   const update = (field: keyof ClientFormValues, value: string) => {
-    setState((current) => ({
-      ...current,
-      values: { ...current.values, [field]: value },
-      error: null,
-      cancelled: false,
-    }));
+    setState((current) => {
+      // Typing the name onward past an adopted match unwinds the adoption:
+      // the prefilled fields belong to the matched client, and keeping its
+      // id would turn this save into a rename of that client.
+      if (
+        field === 'name' &&
+        !initialClient &&
+        current.mode === 'edit' &&
+        current.originalClient &&
+        value.trim().toLowerCase() !== current.originalClient.name.trim().toLowerCase()
+      ) {
+        return detachToNewClientDraft(value);
+      }
+      return {
+        ...current,
+        values: { ...current.values, [field]: value },
+        error: null,
+        cancelled: false,
+      };
+    });
     setErrors((current) => ({ ...current, [field]: undefined }));
   };
 

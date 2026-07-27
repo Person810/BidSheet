@@ -518,6 +518,8 @@ export interface SaveAssemblyPayload {
 // ================================================================
 
 export interface AppSettingsRow {
+  /** Tri-state freight tax: null follows the locale default, 0/1 overrides. */
+  freight_taxable: number | null;
   id: number;
   company_name: string;
   company_address: string | null;
