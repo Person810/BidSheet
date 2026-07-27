@@ -62,6 +62,11 @@ export function jobToPayload(job: any) {
     notes: job.notes, bidLocked: job.bid_locked === 1,
     parentJobId: job.parent_job_id || null, changeOrderNumber: job.change_order_number || null,
     freight: job.freight ?? 0,
+    // db:jobs:save writes every column it binds, so anything missing here is
+    // written as NULL. Partial saves (status change, bid-lock toggle) spread
+    // this payload — omitting a field silently wipes it.
+    sitePostcode: job.site_postcode ?? null,
+    siteCountry: job.site_country ?? null,
   };
 }
 
