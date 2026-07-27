@@ -4,6 +4,17 @@ import { logger } from '../logger';
 import type { SectionCostRow } from '../../shared/bidCalc';
 
 /**
+ * Build a `LIKE '%…%'` pattern that treats user input as literal text.
+ *
+ * Without this, typing `%` matches every row and `_` matches any character —
+ * search silently stops meaning what the user typed. Pair with `ESCAPE '\'`
+ * in the SQL.
+ */
+export function likeContains(value: string): string {
+  return `%${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}
+
+/**
  * Per-section cost roll-up feeding the section-aware bid summary.
  * Includes empty sections so alternates always appear in summaries.
  */

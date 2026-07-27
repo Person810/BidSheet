@@ -7,7 +7,12 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { nextJobNumber } from '../../shared/jobNumbering';
-import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal, likeContains } from './shared';
+import type {
+  JobLocationLookupRequest,
+  JobLocationLookupResult,
+  JobLocationSuggestion,
+} from '../../shared/types/ipc/job-locations';
 import { findOrCreateClient } from './clients';
 import { removeJobFiles } from './documents';
 
@@ -27,40 +32,32 @@ export function registerJobHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
   });
 
-  safeHandle('db:job-locations:find-suggestions', (_event, request: any) => {
-    const limit = request.limit ?? 20;
-    const postalCode = (request.postalCode || '').trim();
-    const country = (request.country || '').trim();
-    if (!postalCode) {
-      return { suggestions: [], truncated: false };
-    }
-    const suggestions: any[] = [];
-    const clientRows = db.prepare(
-      "SELECT name, address FROM clients WHERE address LIKE ? AND is_active = 1 LIMIT ?"
-    ).all(`%${postalCode}%`, limit) as any[];
-    for (const row of clientRows) {
-      if (row.address) {
-        suggestions.push({
-          location: row.address,
-          postalCode,
-          country: country || null,
-          sourceKind: 'client',
-        });
+  safeHandle(
+    'db:job-locations:find-suggestions',
+    (_event, request: JobLocationLookupRequest): JobLocationLookupResult => {
+      const limit = Math.min(Math.max(Math.trunc(Number(request?.limit) || 20), 1), 50);
+      const postalCode = String(request?.postalCode ?? '').trim();
+      const country = String(request?.country ?? '').trim();
+      if (!postalCode) return { suggestions: [], truncated: false };
+
+      // Over-fetch by one per source so "there are more" is knowable.
+      const probe = limit + 1;
+      const suggestions: JobLocationSuggestion[] = [];
+
+      // Previously-bid sites come first: they are actual dig sites, whereas a
+      // client address is the builder's office and rarely where the work is.
+      let jobQuery =
+        'SELECT location, site_postcode, site_country FROM jobs WHERE site_postcode LIKE ? ESCAPE \'\\\'';
+      const jobParams: unknown[] = [likeContains(postalCode)];
+      if (country) {
+        jobQuery += " AND (site_country LIKE ? ESCAPE '\\' OR site_country IS NULL OR site_country = '')";
+        jobParams.push(likeContains(country));
       }
-    }
+      jobQuery += ' ORDER BY updated_at DESC LIMIT ?';
+      jobParams.push(probe);
 
-    let jobQuery = "SELECT name, location, site_postcode, site_country FROM jobs WHERE site_postcode LIKE ?";
-    const jobParams: any[] = [`%${postalCode}%`];
-    if (country) {
-      jobQuery += " AND (site_country LIKE ? OR site_country IS NULL OR site_country = '')";
-      jobParams.push(`%${country}%`);
-    }
-    jobQuery += " LIMIT ?";
-    jobParams.push(limit);
-
-    const jobRows = db.prepare(jobQuery).all(...jobParams) as any[];
-    for (const row of jobRows) {
-      if (row.location) {
+      for (const row of db.prepare(jobQuery).all(...jobParams) as any[]) {
+        if (!row.location) continue;
         suggestions.push({
           location: row.location,
           postalCode: row.site_postcode || postalCode,
@@ -68,12 +65,28 @@ export function registerJobHandlers(db: Database.Database): void {
           sourceKind: 'job',
         });
       }
+
+      const clientRows = db
+        .prepare(
+          "SELECT address FROM clients WHERE address LIKE ? ESCAPE '\\' AND is_active = 1 LIMIT ?"
+        )
+        .all(likeContains(postalCode), probe) as any[];
+      for (const row of clientRows) {
+        if (!row.address) continue;
+        suggestions.push({
+          location: row.address,
+          postalCode,
+          country: country || null,
+          sourceKind: 'client',
+        });
+      }
+
+      return {
+        suggestions: suggestions.slice(0, limit),
+        truncated: suggestions.length > limit,
+      };
     }
-    return {
-      suggestions: suggestions.slice(0, limit),
-      truncated: suggestions.length > limit,
-    };
-  });
+  );
 
   safeHandle('db:jobs:save', (_event, job: any) => {
     // client_id is re-derived from the typed name on every save (creating

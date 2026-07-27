@@ -397,6 +397,14 @@ export function JobLocationFields({
                 <li key={`${suggestion.location}|${suggestion.postalCode}|${suggestion.country}|${index}`}>
                   <span>{suggestion.location}</span>
                   {suggestion.country && <span> · {suggestion.country}</span>}
+                  {/* A 'client' hit is the builder's office address, not a
+                      site that was ever dug — say so rather than presenting
+                      it as an equivalent job location. */}
+                  <span className="text-muted" style={{ fontSize: 12 }}>
+                    {suggestion.sourceKind === 'client'
+                      ? ' · client address'
+                      : ' · previous job site'}
+                  </span>
                   <button
                     type="button"
                     className="btn btn-sm btn-secondary"

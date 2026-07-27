@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { safeHandle } from './shared';
+import { safeHandle, likeContains } from './shared';
 
 /**
  * Resolve a client name to its row id, creating the record when it's new
@@ -53,16 +53,16 @@ export function registerClientHandlers(db: Database.Database): void {
         .prepare('SELECT * FROM clients WHERE is_active = 1 ORDER BY name COLLATE NOCASE LIMIT ?')
         .all(cap);
     }
-    const pattern = `%${q}%`;
+    const pattern = likeContains(q);
     return db
       .prepare(
         `SELECT * FROM clients
          WHERE is_active = 1
-           AND (name LIKE ? COLLATE NOCASE
-             OR contact_name LIKE ? COLLATE NOCASE
-             OR contact_phone LIKE ? COLLATE NOCASE
-             OR contact_email LIKE ? COLLATE NOCASE
-             OR address LIKE ? COLLATE NOCASE)
+           AND (name LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR contact_name LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR contact_phone LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR contact_email LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR address LIKE ? ESCAPE '\\' COLLATE NOCASE)
          ORDER BY name COLLATE NOCASE
          LIMIT ?`
       )
