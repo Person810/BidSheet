@@ -4,9 +4,9 @@ import { useLocaleStore } from '../../stores/locale-store';
 import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 
 import { LocalizedDateField } from '../../components/LocalizedDateField';
-import { JobLocationFields, formatJobLocation } from '../../components/JobLocationFields';
+import { JobLocationFields } from '../../components/JobLocationFields';
 import { ClientForm } from '../../components/clients/ClientEditorForm';
-import { parseClientAddress } from '../../components/clients/clientForm';
+import { clientSiteDefaults } from './clientJobDraft';
 import type { ClientRow } from '../../../shared/types/ipc';
 import { dismissOnEscOnly } from '../../components/modalDismiss';
 
@@ -96,23 +96,11 @@ export function EditJobModal({
                   }
                 }}
                 onSelectClient={(client) => {
-                  if (profile.id === 'en-AU') {
-                    const parsedAddr = parseClientAddress(client.address);
-                    const jobLoc = formatJobLocation(parsedAddr.street, parsedAddr.suburb, parsedAddr.state, parsedAddr.postcode);
-                    setForm({
-                      ...form,
-                      client: client.name,
-                      location: jobLoc,
-                      sitePostcode: parsedAddr.postcode,
-                      siteCountry: 'Australia',
-                    });
-                  } else {
-                    setForm({
-                      ...form,
-                      client: client.name,
-                      location: client.address || form.location,
-                    });
-                  }
+                  setForm({
+                    ...form,
+                    client: client.name,
+                    ...clientSiteDefaults(form, client, profile),
+                  });
                   setSelectedClientRow(client);
                 }}
                 disabled={false}
@@ -148,23 +136,11 @@ export function EditJobModal({
                   initialClient={selectedClientRow}
                   onSaved={(client) => {
                     setSelectedClientRow(client);
-                    if (profile.id === 'en-AU') {
-                      const parsedAddr = parseClientAddress(client.address);
-                      const jobLoc = formatJobLocation(parsedAddr.street, parsedAddr.suburb, parsedAddr.state, parsedAddr.postcode);
-                      setForm({
-                        ...form,
-                        client: client.name,
-                        location: jobLoc,
-                        sitePostcode: parsedAddr.postcode,
-                        siteCountry: 'Australia',
-                      });
-                    } else {
-                      setForm({
-                        ...form,
-                        client: client.name,
-                        location: client.address || form.location,
-                      });
-                    }
+                    setForm({
+                      ...form,
+                      client: client.name,
+                      ...clientSiteDefaults(form, client, profile),
+                    });
                     setEditingClient(false);
                   }}
                   onCancel={() => setEditingClient(false)}

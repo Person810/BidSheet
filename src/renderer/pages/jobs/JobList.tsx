@@ -9,9 +9,9 @@ import { formatDateLocal, statusBadge } from './helpers';
 import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 import { LocalizedDateField } from '../../components/LocalizedDateField';
-import { JobLocationFields, formatJobLocation } from '../../components/JobLocationFields';
+import { JobLocationFields } from '../../components/JobLocationFields';
 import { ClientForm } from '../../components/clients/ClientEditorForm';
-import { parseClientAddress } from '../../components/clients/clientForm';
+import { clientSiteDefaults } from './clientJobDraft';
 import { useLocaleStore } from '../../stores/locale-store';
 import { useDateFormat } from '../../contexts/DateFormatContext';
 import type { ClientRow } from '../../../shared/types/ipc';
@@ -504,23 +504,20 @@ export function JobList({ onOpenJob }: JobListProps) {
                         }
                       }}
                       onSelectClient={(client) => {
-                        if (profile.id === 'en-AU') {
-                          const parsedAddr = parseClientAddress(client.address);
-                          const jobLoc = formatJobLocation(parsedAddr.street, parsedAddr.suburb, parsedAddr.state, parsedAddr.postcode);
-                          setForm((f) => ({
+                        setForm((f) => {
+                          const site = clientSiteDefaults(
+                            { location: f.location, sitePostcode: f.postalCode, siteCountry: f.country },
+                            client,
+                            profile,
+                          );
+                          return {
                             ...f,
                             client: client.name,
-                            location: jobLoc,
-                            postalCode: parsedAddr.postcode,
-                            country: 'Australia',
-                          }));
-                        } else {
-                          setForm((f) => ({
-                            ...f,
-                            client: client.name,
-                            location: client.address || f.location,
-                          }));
-                        }
+                            location: site.location,
+                            postalCode: site.sitePostcode,
+                            country: site.siteCountry,
+                          };
+                        });
                         setSelectedClientRow(client);
                       }}
                     />
@@ -555,23 +552,20 @@ export function JobList({ onOpenJob }: JobListProps) {
                         initialClient={selectedClientRow}
                         onSaved={(client) => {
                           setSelectedClientRow(client);
-                          if (profile.id === 'en-AU') {
-                            const parsedAddr = parseClientAddress(client.address);
-                            const jobLoc = formatJobLocation(parsedAddr.street, parsedAddr.suburb, parsedAddr.state, parsedAddr.postcode);
-                            setForm((f) => ({
+                          setForm((f) => {
+                            const site = clientSiteDefaults(
+                              { location: f.location, sitePostcode: f.postalCode, siteCountry: f.country },
+                              client,
+                              profile,
+                            );
+                            return {
                               ...f,
                               client: client.name,
-                              location: jobLoc,
-                              postalCode: parsedAddr.postcode,
-                              country: 'Australia',
-                            }));
-                          } else {
-                            setForm((f) => ({
-                              ...f,
-                              client: client.name,
-                              location: client.address || f.location,
-                            }));
-                          }
+                              location: site.location,
+                              postalCode: site.sitePostcode,
+                              country: site.siteCountry,
+                            };
+                          });
                           setEditingClient(false);
                         }}
                         onCancel={() => setEditingClient(false)}

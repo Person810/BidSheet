@@ -164,12 +164,16 @@ export function JobLocationFields({
     const lines = builderAddress.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
 
+    // The suburb/state/postcode split is an AU postal convention, so only
+    // attempt it in that locale — a US address never matches the pattern
+    // anyway, and trying leaves the fields half-populated.
     const lastLine = lines[lines.length - 1];
-    const match = /(?<suburb>[A-Z\s]+)\s+(?<state>[A-Z]{2,3})\s+(?<postcode>\d{4})$/i.exec(lastLine);
+    const match = isAU
+      ? /(?<suburb>[A-Z\s]+)\s+(?<state>[A-Z]{2,3})\s+(?<postcode>\d{4})$/i.exec(lastLine)
+      : null;
 
-    let parsedLocation = '';
+    let parsedLocation: string;
     let parsedPostcode = '';
-    let parsedCountry = 'Australia';
 
     if (match && match.groups) {
       const streetVal = lines.length >= 2 ? lines[lines.length - 2] : '';
@@ -180,12 +184,10 @@ export function JobLocationFields({
       parsedLocation = formatJobLocation(streetVal, suburbVal, stateCode, pc);
       parsedPostcode = pc;
 
-      if (isAU) {
-        setStreet(streetVal);
-        setSuburb(suburbVal);
-        setStateVal(stateCode);
-        lastFormattedRef.current = parsedLocation;
-      }
+      setStreet(streetVal);
+      setSuburb(suburbVal);
+      setStateVal(stateCode);
+      lastFormattedRef.current = parsedLocation;
     } else {
       parsedLocation = lines.join('\n');
       if (isAU) {
@@ -196,9 +198,13 @@ export function JobLocationFields({
       }
     }
 
+    // Copying the address across is the explicit opt-in, so location is
+    // meant to be replaced. Postcode and country are not: only write them
+    // when the address actually yielded one, or clicking this on an address
+    // we can't parse silently blanks fields the estimator filled in.
     onLocationChange(parsedLocation);
-    onPostalCodeChange(parsedPostcode);
-    onCountryChange(parsedCountry);
+    if (parsedPostcode) onPostalCodeChange(parsedPostcode);
+    if (!country.trim()) onCountryChange(profile.displayName);
   };
 
   const findSuggestions = async () => {
