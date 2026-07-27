@@ -212,6 +212,37 @@ export function prepareClientPayload(values: ClientFormValues): PreparedClientPa
   return { ok: true, errors, payload: payload as unknown as SaveClientPayload };
 }
 
+/**
+ * True while a from-scratch draft could still adopt an existing client's
+ * record: create mode, not mid-save, and nothing typed beyond the name.
+ * Once any detail field has content, adoption would clobber the user's
+ * typing, so the draft stays a new-client draft (the backend's merge
+ * semantics still protect the stored record on save).
+ */
+export function canAdoptExistingClient(state: ClientFormState): boolean {
+  if (state.mode !== 'create' || state.saving) return false;
+  const v = state.values;
+  return (
+    !v.contactName.trim() && !v.contactEmail.trim() && !v.contactPhone.trim() &&
+    !v.address.trim() && !v.notes.trim() &&
+    !v.street.trim() && !v.suburb.trim() && !v.state.trim() && !v.postcode.trim()
+  );
+}
+
+/**
+ * Adopt an existing client into the form: prefill every field from the
+ * stored record and switch to edit mode so the save carries the id (and
+ * deliberate clearing works). The typed name is replaced by the record's
+ * canonical casing.
+ */
+export function adoptExistingClient(
+  state: ClientFormState,
+  match: ClientRow,
+): ClientFormState {
+  if (!canAdoptExistingClient(state)) return state;
+  return clientFormFromClient(match);
+}
+
 export function beginClientSave(
   state: ClientFormState,
 ): { state: ClientFormState; shouldSubmit: boolean } {

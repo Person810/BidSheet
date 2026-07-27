@@ -82,20 +82,49 @@ export function registerClientHandlers(db: Database.Database): void {
       if (client.id && !db.prepare('SELECT 1 FROM clients WHERE id = ?').get(client.id)) {
         throw new Error('That client no longer exists.');
       }
-      db.prepare(
-        `UPDATE clients SET
-          name = ?, address = ?, contact_name = ?, contact_phone = ?,
-          contact_email = ?, notes = ?, updated_at = datetime('now', 'localtime')
-        WHERE id = ?`
-      ).run(
-        name,
-        client.address ?? null,
-        client.contactName ?? null,
-        client.contactPhone ?? null,
-        client.contactEmail ?? null,
-        client.notes ?? null,
-        id
-      );
+      if (client.id) {
+        // The caller is editing a record it identified — every field is
+        // authoritative, including nulls (that's how a field is cleared).
+        db.prepare(
+          `UPDATE clients SET
+            name = ?, address = ?, contact_name = ?, contact_phone = ?,
+            contact_email = ?, notes = ?, updated_at = datetime('now', 'localtime')
+          WHERE id = ?`
+        ).run(
+          name,
+          client.address ?? null,
+          client.contactName ?? null,
+          client.contactPhone ?? null,
+          client.contactEmail ?? null,
+          client.notes ?? null,
+          id
+        );
+      } else {
+        // An id-less save is create-or-link, not an edit: typing an existing
+        // client's name into a blank form must never blank that client's
+        // saved details. Provided values win; missing ones keep what's
+        // stored. Clearing a field deliberately goes through the id path —
+        // the editor adopts the record's id as soon as it knows the match.
+        db.prepare(
+          `UPDATE clients SET
+            name = ?,
+            address = COALESCE(?, address),
+            contact_name = COALESCE(?, contact_name),
+            contact_phone = COALESCE(?, contact_phone),
+            contact_email = COALESCE(?, contact_email),
+            notes = COALESCE(?, notes),
+            updated_at = datetime('now', 'localtime')
+          WHERE id = ?`
+        ).run(
+          name,
+          client.address ?? null,
+          client.contactName ?? null,
+          client.contactPhone ?? null,
+          client.contactEmail ?? null,
+          client.notes ?? null,
+          id
+        );
+      }
       db.prepare('UPDATE jobs SET client = ? WHERE client_id = ?').run(name, id);
       return { id };
     });

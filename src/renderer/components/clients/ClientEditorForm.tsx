@@ -1,9 +1,11 @@
-import React, { useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 
 import type { ClientRow, SaveClientPayload } from '../../../shared/types/ipc';
 import { useLocaleStore } from '../../stores/locale-store';
 import {
+  adoptExistingClient,
   beginClientSave,
+  canAdoptExistingClient,
   cancelClientForm,
   clientFormFromClient,
   completeClientSave,
@@ -67,6 +69,39 @@ export function ClientForm({
   const [errors, setErrors] = useState<
     Partial<Record<keyof ClientFormValues, string>>
   >({});
+
+  // A blank "new client" form typed with an existing client's name is the
+  // data-loss path (#110): saving used to null out that client's stored
+  // details. Adopt the existing record instead — prefill everything and
+  // switch to editing it by id. The sequence counter drops stale lookups,
+  // and the functional setState re-checks adoptability at commit time so a
+  // response can never overwrite something the user typed meanwhile.
+  const lookupSeq = useRef(0);
+  const typedName = state.values.name.trim();
+  useEffect(() => {
+    if (initialClient) return; // opened on a known record — nothing to adopt
+    if (!typedName || !canAdoptExistingClient(state)) return;
+    const seq = ++lookupSeq.current;
+    const timer = setTimeout(async () => {
+      try {
+        const matches = await window.api.searchClients(typedName, 20);
+        if (seq !== lookupSeq.current) return; // a newer lookup superseded us
+        const wanted = typedName.toLowerCase();
+        const exact = matches.find((c) => c.name.trim().toLowerCase() === wanted);
+        if (!exact) return;
+        setState((current) =>
+          current.values.name.trim().toLowerCase() === wanted
+            ? adoptExistingClient(current, exact)
+            : current,
+        );
+      } catch {
+        // Best-effort: a failed lookup just means no prefill. The backend's
+        // id-less merge still protects the stored record on save.
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typedName, initialClient]);
 
   const update = (field: keyof ClientFormValues, value: string) => {
     setState((current) => ({
@@ -141,6 +176,11 @@ export function ClientForm({
       <div role={state.error ? 'alert' : 'status'} aria-live="polite" className="form-error">
         {state.error}
       </div>
+      {!initialClient && state.mode === 'edit' && (
+        <div className="text-muted" role="status" style={{ fontSize: 12, marginBottom: 8 }}>
+          Existing client — editing their saved details.
+        </div>
+      )}
 
       {FIELDS.slice(0, 2).map(field)}
       <div className="form-row">{FIELDS.slice(2, 4).map(field)}</div>
