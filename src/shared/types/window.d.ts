@@ -121,10 +121,15 @@ declare global {
         jobNumber: string,
         excludeJobId?: number
       ) => Promise<{ inUse: boolean; jobId?: number; jobName?: string }>;
+      findJobLocationSuggestions: (request: {
+        postalCode: string;
+        country?: string | null;
+      }) => Promise<{ suggestions: any[]; truncated: boolean }>;
 
       // Clients
       getClients: (includeInactive?: boolean) => Promise<ClientRow[]>;
       getClient: (id: number) => Promise<ClientRow | undefined>;
+      searchClients: (query: string, limit?: number) => Promise<ClientRow[]>;
       saveClient: (client: SaveClientPayload) => Promise<{ id: number }>;
       deleteClient: (id: number) => Promise<SqlRunResult>;
       restoreClient: (id: number) => Promise<SqlRunResult>;
@@ -269,6 +274,7 @@ declare global {
 
       // App Info
       getLogDir: () => Promise<string>;
+      getSystemLocale: () => Promise<string>;
 
       // Updates
       checkForUpdate: () => Promise<{ version: string } | null>;

@@ -413,6 +413,8 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV45,
   migrateV46,
   migrateV47,
+  migrateV48,
+  migrateV49,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -919,6 +921,23 @@ function migrateV47(db: Database.Database): void {
   db.exec(`
     ALTER TABLE app_settings ADD COLUMN custom_trades TEXT;
     INSERT INTO schema_version (version) VALUES (47);
+  `);
+}
+
+function migrateV48(db: Database.Database): void {
+  // No-op placeholder to align version numbers with the HDD branch
+  // (which used V48 for trench profile additions)
+  db.exec(`
+    INSERT INTO schema_version (version) VALUES (48);
+  `);
+}
+
+function migrateV49(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE jobs ADD COLUMN freight REAL NOT NULL DEFAULT 0.0;
+    ALTER TABLE jobs ADD COLUMN site_postcode TEXT;
+    ALTER TABLE jobs ADD COLUMN site_country TEXT;
+    INSERT INTO schema_version (version) VALUES (49);
   `);
 }
 

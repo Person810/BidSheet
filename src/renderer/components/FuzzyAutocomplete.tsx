@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { calcCrewCostPerHour } from '../../shared/crewCost';
 
 // ============================================================
@@ -273,6 +274,11 @@ export function FuzzyAutocomplete({
           >
             ×
           </button>
+        )}
+        {!value && (
+          <span className="fuzzy-dropdown-icon">
+            <ChevronDown size={16} />
+          </span>
         )}
       </div>
 

@@ -45,6 +45,30 @@ export function registerClientHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM clients WHERE id = ?').get(id);
   });
 
+  safeHandle('db:clients:search', (_event, query: string, limit?: number) => {
+    const q = String(query ?? '').trim();
+    const cap = Math.min(Math.max(limit ?? 20, 1), 50);
+    if (!q) {
+      return db
+        .prepare('SELECT * FROM clients WHERE is_active = 1 ORDER BY name COLLATE NOCASE LIMIT ?')
+        .all(cap);
+    }
+    const pattern = `%${q}%`;
+    return db
+      .prepare(
+        `SELECT * FROM clients
+         WHERE is_active = 1
+           AND (name LIKE ? COLLATE NOCASE
+             OR contact_name LIKE ? COLLATE NOCASE
+             OR contact_phone LIKE ? COLLATE NOCASE
+             OR contact_email LIKE ? COLLATE NOCASE
+             OR address LIKE ? COLLATE NOCASE)
+         ORDER BY name COLLATE NOCASE
+         LIMIT ?`
+      )
+      .all(pattern, pattern, pattern, pattern, pattern, cap);
+  });
+
   // Upsert. With an id this is a plain update; without one it upserts by
   // name (find-or-create), which is what the job form uses — it never
   // tracks ids, just the typed name. A rename propagates to the

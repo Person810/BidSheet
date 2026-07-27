@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToastStore } from '../stores/toast-store';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
+import { ClientForm } from '../components/clients/ClientEditorForm';
 import type { ClientRow } from '../../shared/types/ipc';
 import { dismissOnEscOnly } from '../components/modalDismiss';
 
@@ -212,54 +213,21 @@ export function ClientsPage() {
 
       {showModal && (
         <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <h3>{editing ? 'Edit Client' : 'Add Client'}</h3>
             {editing && (editing.job_count ?? 0) > 0 && (
               <p className="text-muted" style={{ marginBottom: 12, fontSize: 12 }}>
                 Renaming updates the client name on all {editing.job_count} of their job{(editing.job_count ?? 0) !== 1 ? 's' : ''}.
               </p>
             )}
-            <div className="form-group">
-              <label>Name</label>
-              <input type="text" className="form-control" value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. Smith Construction" autoFocus />
-            </div>
-            <div className="form-group">
-              <label>Address</label>
-              <input type="text" className="form-control" value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })} />
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Contact Name</label>
-                <input type="text" className="form-control" value={form.contactName}
-                  onChange={(e) => setForm({ ...form, contactName: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>Phone</label>
-                <input type="text" className="form-control" value={form.contactPhone}
-                  onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Email</label>
-              <input type="text" className="form-control" value={form.contactEmail}
-                onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label>Notes</label>
-              <input type="text" className="form-control" value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder="e.g. Net-30, prefers email" />
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSave}
-                disabled={!form.name.trim() || isSaving}>
-                {isSaving ? 'Saving...' : editing ? 'Save Changes' : 'Add Client'}
-              </button>
-            </div>
+            <ClientForm
+              initialClient={editing}
+              onSaved={() => {
+                setShowModal(false);
+                loadClients();
+              }}
+              onCancel={() => setShowModal(false)}
+            />
           </div>
         </div>
       )}

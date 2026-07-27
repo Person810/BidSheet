@@ -10,6 +10,7 @@ import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { Walkthrough } from './components/Walkthrough';
 import { useToastStore } from './stores/toast-store';
 import { useUnitsStore } from './stores/units-store';
+import { useLocaleStore } from './stores/locale-store';
 import { useWalkthroughStore, hasSeenWalkthrough } from './stores/walkthrough-store';
 import { parseUnitSystem } from '../shared/unitSystem';
 import { Dashboard } from './pages/Dashboard';
@@ -23,6 +24,7 @@ import { AssembliesPage } from './pages/AssembliesPage';
 import { resolveToolGroups, type ToolGroup } from './modules';
 import { TrenchProfiler } from './modules/underground';
 import { ConcreteCalculator } from './modules/concrete';
+import { DateFormatProvider } from './contexts/DateFormatContext';
 
 // Maps tool route paths to their components.
 // Add new entries here as tools are built.
@@ -84,6 +86,7 @@ export function App() {
   const [companyLogo, setCompanyLogo] = useState('');
   const addToast = useToastStore((s) => s.addToast);
   const openWalkthrough = useWalkthroughStore((s) => s.open);
+  const loadLocale = useLocaleStore((s) => s.loadLocale);
 
   // Global safety net: catch any unhandled IPC rejections and show a toast
   // so errors never vanish silently. Pages can still catch their own errors
@@ -114,7 +117,7 @@ export function App() {
       setCompanyLogo(s?.company_logo || '');
       useUnitsStore.getState().setUnitSystem(parseUnitSystem(s?.unit_system));
       setLoading(false);
-    });
+    }).then(() => loadLocale());
 
   // Esc closes the topmost open dialog, matching what the shortcuts
   // overlay promises. It works by clicking the overlay, which no longer
@@ -198,6 +201,7 @@ export function App() {
   );
 
   return (
+    <DateFormatProvider>
     <HashRouter>
       <div className="app-layout">
         <nav className="sidebar">
@@ -316,5 +320,6 @@ export function App() {
         <Walkthrough />
       </div>
     </HashRouter>
+    </DateFormatProvider>
   );
 }
