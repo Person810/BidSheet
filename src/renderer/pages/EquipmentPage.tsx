@@ -7,6 +7,7 @@ import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToastStore } from '../stores/toast-store';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
+import { dismissOnEscOnly } from '../components/modalDismiss';
 
 interface EquipmentItem {
   id: number;
@@ -333,7 +334,7 @@ export function EquipmentPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? 'Edit Equipment' : 'Add Equipment'}</h3>
             <div className="form-row">

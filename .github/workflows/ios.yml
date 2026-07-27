@@ -7,6 +7,12 @@ name: iOS
 
 on:
   push:
+    # `branches` is here so tag pushes DON'T match. A tag push has no diff base
+    # for GitHub to evaluate `paths` against, so the filter below is ignored and
+    # every `v*` release tag re-ran this job on content the push to main had
+    # already tested seconds earlier.
+    branches:
+      - '**'
     paths:
       - 'ios/**'
       - '.github/workflows/ios.yml'
@@ -22,6 +28,9 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: macos-15
+    # The retry below could otherwise multiply a hung simulator against the
+    # 360-minute default. A healthy run takes 2–4 minutes.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: ios
@@ -34,11 +43,75 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Build and test (iPhone simulator)
+      - name: Wait for CoreSimulator and pick a device
+        id: sim
+        run: |
+          # The simulator runtimes on these images are disk-image-backed and
+          # mounted during boot. A job that starts before that mount lands sees
+          # an empty device set, and xcodebuild's failure mode for that is a
+          # silent 60-second stall followed by "Unable to find a device matching
+          # the provided destination specifier" — which reads like a missing
+          # iPhone model and isn't. Poll until the devices show up, then hand
+          # xcodebuild a concrete UDID rather than a model name that a future
+          # runner image may not ship.
+          udid=""
+          for attempt in $(seq 1 10); do
+            udid=$(xcrun simctl list devices available --json | jq -r '
+              .devices
+              | to_entries
+              | map(select(.key | test("SimRuntime\\.iOS-")))
+              | map(.value[])
+              | map(select(.isAvailable))
+              | sort_by(.name)
+              | ((map(select(.name | startswith("iPhone"))) | last) // last // empty).udid
+            ') || udid=""
+            if [ -n "$udid" ]; then
+              break
+            fi
+            echo "No iOS simulator available yet (attempt $attempt/10); waiting for CoreSimulator..."
+            sleep 15
+          done
+
+          if [ -z "$udid" ]; then
+            echo "::error::CoreSimulator never produced an available iOS device."
+            xcrun simctl list devices || true
+            exit 1
+          fi
+
+          echo "Using simulator $udid"
+          xcrun simctl list devices available | grep -F "$udid" || true
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test (iOS Simulator)
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
         run: |
           set -o pipefail
-          xcodebuild test \
-            -project BidSheetField.xcodeproj \
-            -scheme BidSheetField \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
-            CODE_SIGNING_ALLOWED=NO
+
+          run_tests() {
+            xcodebuild test \
+              -project BidSheetField.xcodeproj \
+              -scheme BidSheetField \
+              -destination "id=$UDID" \
+              CODE_SIGNING_ALLOWED=NO 2>&1 | tee "xcodebuild-$1.log"
+            return "${PIPESTATUS[0]}"
+          }
+
+          if run_tests 1; then
+            exit 0
+          fi
+
+          # Retry ONLY for simulator-infrastructure failures. A failing assertion
+          # must go red on the first pass: these are golden-vector tests over
+          # fixed ciphertexts, and retrying a real crypto regression — or a
+          # genuinely flaky test — until it passes is how you stop trusting them.
+          if grep -qE 'Unable to find a device matching|Failed to boot|Timed out waiting|Unable to boot|request was denied by service delegate' "xcodebuild-1.log"; then
+            echo "::warning::Simulator infrastructure failure, not a test failure — retrying once."
+            if run_tests 2; then
+              exit 0
+            fi
+            exit 1
+          fi
+
+          echo "::error::Tests failed. Not retrying — this is a test failure, not a simulator problem."
+          exit 1

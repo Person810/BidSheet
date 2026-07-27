@@ -93,36 +93,40 @@ final class AppModel: ObservableObject {
 
     // MARK: - E2EE unlock
 
-    /// Unwrap the account DEK with the user's recovery key. Handles both key
-    /// formats: format 1 (recovery key directly wraps the DEK) and format 2
-    /// (recovery key → member private key → sealed DEK).
+    /// Unwrap the account DEK with the user's recovery key:
+    /// recovery key → member private key → sealed DEK.
+    ///
+    /// There is one key format. A "format 1" shape (the recovery key wrapping
+    /// the DEK directly) was removed platform-wide on 2026-07-26 — no account
+    /// ever used it. Dropping the fallback also fixes a real mis-route: the old
+    /// condition was `format >= 2, let wrappedPriv = ...`, so a member with no
+    /// registered private key fell through to the format-1 branch and tried the
+    /// *account* wrap with their own recovery key, failing with a bare
+    /// wrong-key error. That state now reports what it actually is.
     func unlock(recoveryCode: String) async throws {
         guard let accountId else { throw CloudAPIError(message: "Not signed in.", httpStatus: 0, code: nil) }
         guard let material = try await api.keyMaterial() else {
             throw SyncCryptoError.decryptFailed
         }
-        let unwrapped: Data
-        if material.format >= 2, let wrappedPriv = material.my_wrapped_priv {
-            guard let sealedDek = material.my_wrapped_dek else {
-                throw CloudAPIError(
-                    message: "Your seat hasn't been approved yet. Ask the account owner to approve you in BidSheet on their computer.",
-                    httpStatus: 0, code: "pending_approval")
-            }
-            guard let userId = auth.userId else {
-                throw CloudAPIError(message: "Not signed in.", httpStatus: 0, code: nil)
-            }
-            let priv = try SyncCrypto.unwrapPrivateKey(
-                Data(base64Encoded: wrappedPriv) ?? Data(), code: recoveryCode, userId: userId)
-            unwrapped = try SyncCrypto.openDek(
-                Data(base64Encoded: sealedDek) ?? Data(),
-                myPrivRaw: priv,
-                aad: SyncCrypto.sealAad(accountId: accountId, recipientUserId: userId))
-        } else {
-            unwrapped = try SyncCrypto.unwrapWithRecoveryCode(
-                Data(base64Encoded: material.wrapped_dek) ?? Data(),
-                code: recoveryCode,
-                aad: SyncCrypto.syncAad(accountId: accountId, scope: "account", payloadType: "dek-wrap"))
+        guard let wrappedPriv = material.my_wrapped_priv else {
+            throw CloudAPIError(
+                message: "This account hasn't issued you an encryption key. If you were invited, redeem the invite in BidSheet on a computer first; if your access was removed, ask an owner to invite you again.",
+                httpStatus: 0, code: "no_member_key")
         }
+        guard let sealedDek = material.my_wrapped_dek else {
+            throw CloudAPIError(
+                message: "Your seat hasn't been approved yet. Ask the account owner to approve you in BidSheet on their computer.",
+                httpStatus: 0, code: "pending_approval")
+        }
+        guard let userId = auth.userId else {
+            throw CloudAPIError(message: "Not signed in.", httpStatus: 0, code: nil)
+        }
+        let priv = try SyncCrypto.unwrapPrivateKey(
+            Data(base64Encoded: wrappedPriv) ?? Data(), code: recoveryCode, userId: userId)
+        let unwrapped = try SyncCrypto.openDek(
+            Data(base64Encoded: sealedDek) ?? Data(),
+            myPrivRaw: priv,
+            aad: SyncCrypto.sealAad(accountId: accountId, recipientUserId: userId))
         guard SyncCrypto.dekFingerprint(unwrapped) == material.dek_fingerprint else {
             throw SyncCryptoError.decryptFailed
         }

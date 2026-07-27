@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toast-store';
 import type { LaborRole } from '../../../shared/types/labor';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface LaborRolesTabProps {
   roles: LaborRole[];
@@ -156,7 +157,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
       </table>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? 'Edit Labor Role' : 'Add Labor Role'}</h3>
             <div className="form-group">

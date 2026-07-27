@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { MaterialCategoryManager } from '../components/MaterialCategoryManager';
+import { getPostDeleteCategorySelection } from '../components/materialCategoryForm';
 import {
   FuzzyAutocomplete,
   categoriesToAutocomplete,
@@ -58,6 +60,7 @@ const EMPTY_MATERIAL = {
 };
 
 import { unitOptions } from '../../shared/constants/units';
+import { dismissOnEscOnly } from '../components/modalDismiss';
 import { useUnitSystem } from '../stores/units-store';
 
 export function MaterialsPage() {
@@ -74,6 +77,7 @@ export function MaterialsPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   const loadCategories = useCallback(async () => {
     const cats = await window.api.getMaterialCategories();
@@ -209,6 +213,8 @@ export function MaterialsPage() {
       <div className="materials-sidebar">
         <div className="materials-sidebar-header">
           <h3>Categories</h3>
+          <button className="btn btn-sm btn-secondary" onClick={() => setShowCategoryManager(true)}
+            style={{ fontSize: 11, padding: '2px 8px' }}>Manage</button>
         </div>
         <div
           className={`cat-item ${selectedCategory === null ? 'active' : ''}`}
@@ -378,9 +384,18 @@ export function MaterialsPage() {
         />
       )}
 
+      <MaterialCategoryManager
+        open={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
+        onChanged={() => { loadCategories(); loadMaterials(); }}
+        onCategoryDeleted={(deletedId, replacementId) => {
+          setSelectedCategory(prev => getPostDeleteCategorySelection(deletedId, replacementId, prev));
+        }}
+      />
+
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editingMaterial ? 'Edit Material' : 'Add Material'}</h3>
             <div className="form-row">

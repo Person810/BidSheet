@@ -45,8 +45,9 @@ multi-computer sync, and funds development of the free app. Your data always
 lives locally regardless of subscription status, and a local-only mode in
 Settings hides cloud sync entirely for shops that will never use it.
 
-Cloud backups are encrypted on your computer with a passphrase only you know
-before they upload. We store the backup, but we can never read it.
+Cloud backups are encrypted on your computer, under a key only your recovery
+key can unlock, before they upload. We store the backup, but we can never read
+it.
 
 ## Platforms
 

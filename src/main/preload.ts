@@ -19,6 +19,10 @@ function invoke(channel: string, ...args: any[]): Promise<any> {
 contextBridge.exposeInMainWorld('api', {
   // ---- Materials ----
   getMaterialCategories: () => invoke('db:material-categories:list'),
+  getMaterialCategoryManagement: () => invoke('db:material-categories:management'),
+  saveMaterialCategory: (payload: any) => invoke('db:material-categories:save', payload),
+  getMaterialCategoryUsage: (categoryId: number) => invoke('db:material-categories:usage', categoryId),
+  deleteMaterialCategory: (payload: any) => invoke('db:material-categories:delete', payload),
   getMaterials: (categoryId?: number, includeInactive?: boolean) => invoke('db:materials:list', categoryId, includeInactive),
   getMaterial: (id: number) => invoke('db:materials:get', id),
   saveMaterial: (material: any) => invoke('db:materials:save', material),
@@ -58,10 +62,13 @@ contextBridge.exposeInMainWorld('api', {
   getNextJobNumber: () => invoke('db:jobs:next-number'),
   checkJobNumberInUse: (jobNumber: string, excludeJobId?: number) =>
     invoke('db:jobs:number-in-use', jobNumber, excludeJobId),
+  findJobLocationSuggestions: (request: any) =>
+    invoke('db:job-locations:find-suggestions', request),
 
   // ---- Clients ----
   getClients: (includeInactive?: boolean) => invoke('db:clients:list', includeInactive),
   getClient: (id: number) => invoke('db:clients:get', id),
+  searchClients: (query: string, limit?: number) => invoke('db:clients:search', query, limit),
   saveClient: (client: any) => invoke('db:clients:save', client),
   deleteClient: (id: number) => invoke('db:clients:delete', id),
   restoreClient: (id: number) => invoke('db:clients:restore', id),
@@ -218,6 +225,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- App Info ----
   getLogDir: () => invoke('app:log-dir'),
+  getSystemLocale: () => invoke('app:system-locale'),
 
   // ---- Updates ----
   checkForUpdate: () => invoke('updater:check'),
@@ -250,17 +258,15 @@ contextBridge.exposeInMainWorld('api', {
     invoke('cloud:resolve-conflict', jobId, keep),
   cloudRestoreAll: () => invoke('cloud:restore-all'),
   cloudE2eeState: () => invoke('cloud:e2ee-state'),
-  cloudE2eeSetup: (shorter?: boolean) => invoke('cloud:e2ee-setup', shorter),
+  cloudE2eeSetup: () => invoke('cloud:e2ee-setup'),
   cloudE2eeUnlock: (recoveryKey: string) => invoke('cloud:e2ee-unlock', recoveryKey),
-  cloudE2eeRegenerateRecovery: (shorter?: boolean) =>
-    invoke('cloud:e2ee-regenerate-recovery', shorter),
+  cloudE2eeRegenerateRecovery: () => invoke('cloud:e2ee-regenerate-recovery'),
   cloudOrgMembers: () => invoke('cloud:org-members'),
   cloudE2eeSafetyCode: () => invoke('cloud:e2ee-safety-code'),
   cloudOrgCreateInvite: (role?: 'member' | 'owner') => invoke('cloud:org-create-invite', role),
   cloudOrgListInvites: () => invoke('cloud:org-list-invites'),
   cloudOrgRevokeInvite: (id: string) => invoke('cloud:org-revoke-invite', id),
-  cloudOrgRedeemInvite: (token: string, shorter?: boolean) =>
-    invoke('cloud:org-redeem-invite', token, shorter),
+  cloudOrgRedeemInvite: (token: string) => invoke('cloud:org-redeem-invite', token),
   cloudOrgApproveMember: (userId: string) => invoke('cloud:org-approve-member', userId),
   cloudOrgRemoveMember: (userId: string) => invoke('cloud:org-remove-member', userId),
   cloudBackupStatus: () => invoke('cloud:backup-status'),

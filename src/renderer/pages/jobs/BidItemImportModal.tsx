@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useToastStore } from '../../stores/toast-store';
 import { parseImportQuantity } from './helpers';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface BidItemImportModalProps {
   jobId: number;
@@ -109,7 +110,7 @@ export function BidItemImportModal({ jobId, sections, onDone, onClose }: BidItem
   );
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
         <h3>Import Bid Items</h3>
         <p className="text-muted" style={{ fontSize: 12, marginBottom: 14 }}>

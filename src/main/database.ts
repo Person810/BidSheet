@@ -413,7 +413,8 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV45,
   migrateV46,
   migrateV47,
-  migrateV48,
+  migrateV49,
+  migrateV50,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -924,17 +925,49 @@ function migrateV47(db: Database.Database): void {
 }
 
 function migrateV48(db: Database.Database): void {
+  // Intentional no-op. It shipped ahead of the HDD branch, which had already
+  // written its trench-profile DDL as V48 locally.
+  //
+  // DO NOT reclaim this number, and DO NOT renumber V49 to close the gap.
+  // Anyone who has run this build is recorded at schema_version 49, so a
+  // migration numbered 48 or 49 will never execute for them — runMigrations
+  // starts at MAX(version) + 1. The HDD work must land as V50 or later.
+  // Renumbering to tidy this up silently skips the migration on exactly the
+  // machines that already have the feature branch checked out.
   db.exec(`
-    ALTER TABLE app_settings ADD COLUMN hdd_rates_json TEXT;
-    ALTER TABLE trench_profiles ADD COLUMN method TEXT DEFAULT 'open_cut';
-    ALTER TABLE trench_profiles ADD COLUMN hdd_location TEXT;
-    ALTER TABLE trench_profiles ADD COLUMN hdd_include_slurry INTEGER DEFAULT 1;
-    ALTER TABLE trench_profiles ADD COLUMN hdd_include_pits INTEGER DEFAULT 1;
-    ALTER TABLE trench_profiles ADD COLUMN hdd_margin_pct REAL DEFAULT 15.0;
     INSERT INTO schema_version (version) VALUES (48);
   `);
 }
 
+function migrateV49(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE jobs ADD COLUMN freight REAL NOT NULL DEFAULT 0.0;
+    ALTER TABLE jobs ADD COLUMN site_postcode TEXT;
+    ALTER TABLE jobs ADD COLUMN site_country TEXT;
+    INSERT INTO schema_version (version) VALUES (49);
+  `);
+}
+
+function migrateV50(db: Database.Database): void {
+  const addColumn = (table: string, col: string, def: string) => {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+    } catch (e) {
+      // ignore if column already exists
+    }
+  };
+
+  addColumn('app_settings', 'hdd_rates_json', 'TEXT');
+  addColumn('trench_profiles', 'method', "TEXT DEFAULT 'open_cut'");
+  addColumn('trench_profiles', 'hdd_location', 'TEXT');
+  addColumn('trench_profiles', 'hdd_include_slurry', 'INTEGER DEFAULT 1');
+  addColumn('trench_profiles', 'hdd_include_pits', 'INTEGER DEFAULT 1');
+  addColumn('trench_profiles', 'hdd_margin_pct', 'REAL DEFAULT 15.0');
+  addColumn('trench_profiles', 'hdd_bores_per_pit', 'INTEGER DEFAULT 1');
+  addColumn('trench_profiles', 'hdd_additional_pipes_json', 'TEXT');
+
+  db.exec(`INSERT INTO schema_version (version) VALUES (50);`);
+}
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */
 const SQL_RANDOM_UUID = `lower(
@@ -1715,6 +1748,12 @@ function migrateV27(db: Database.Database): void {
   // this machine without re-prompting; the salt also rides in the uploaded
   // file's header so a fresh machine can re-derive the key from the
   // passphrase alone. The passphrase itself is never stored anywhere.
+  //
+  // SUPERSEDED: backups now ride the E2EE DEK, and the passphrase scheme this
+  // describes is gone (backup-crypto.ts was deleted once it had no callers).
+  // backup_salt/backup_key_enc are dead columns kept only because migrations
+  // are forward-only; backup_last_at survives as a display fallback. The text
+  // above is left as-is because it explains why the columns exist.
   db.exec(`
     ALTER TABLE cloud_auth ADD COLUMN backup_salt TEXT;
     ALTER TABLE cloud_auth ADD COLUMN backup_key_enc TEXT;

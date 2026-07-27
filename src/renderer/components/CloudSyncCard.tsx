@@ -3,7 +3,7 @@ import { useToastStore } from '../stores/toast-store';
 import { useCloudStore, initCloudStore, openCheckoutAndAwaitActivation } from '../stores/cloud-store';
 import { CloudAccountSetupModal } from './CloudAccountSetupModal';
 import { CloudSignInModal } from './CloudSignInModal';
-import { RecoveryKeyModal, ShortCodeCheckbox } from './E2eeEnrollment';
+import { RecoveryKeyModal } from './E2eeEnrollment';
 import { formatBytes, formatDateTime } from '../utils/format';
 
 /**
@@ -60,7 +60,28 @@ export function CloudSyncCard() {
     }
   };
 
-  const handleSignOut = () => act(() => window.api.cloudSignOut());
+  // Signing out drops this computer's encryption keys, so getting back in takes
+  // the recovery key, not just the password. For a team member that's worse
+  // than an inconvenience: their key material on the server is wrapped under
+  // their own recovery key, so if they've lost it no owner can let them back in
+  // — they have to be removed and re-invited. Far too much to hang on one
+  // misclick of a button sitting next to Sync Now.
+  const handleSignOut = async () => {
+    let warnAboutKeys = false;
+    try {
+      const state = await window.api.cloudE2eeState();
+      warnAboutKeys = state === 'unlocked' || state === 'locked' || state === 'pending_approval';
+    } catch {
+      // Can't tell (offline, or the state call failed) — warn anyway. A
+      // needless caution costs a click; a silent sign-out can cost the data.
+      warnAboutKeys = true;
+    }
+    const prompt = warnAboutKeys
+      ? 'Sign out of cloud sync?\n\nThis computer will forget your encryption keys. To use cloud sync here again you will need your recovery key — your password alone will not unlock it.'
+      : 'Sign out of cloud sync?';
+    if (!confirm(prompt)) return;
+    return act(() => window.api.cloudSignOut());
+  };
 
   const usedFrac =
     account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;
@@ -332,10 +353,6 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const [justJoined, setJustJoined] = useState(false);
   // This device's member-key code, read to the owner before they approve.
   const [myCode, setMyCode] = useState<string | null>(null);
-  // Opt-in: a shorter (80-bit) recovery key, easier to write down. Still safe
-  // offline because the short key is stretched with scrypt before it wraps
-  // anything (see sync-crypto.ts). The full 256-bit key stays the default.
-  const [shortCode, setShortCode] = useState(false);
 
   const load = async () => {
     const [st, bk] = await Promise.all([
@@ -358,7 +375,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const handleSetup = async () => {
     setBusy(true);
     try {
-      const res = await window.api.cloudE2eeSetup(shortCode);
+      const res = await window.api.cloudE2eeSetup();
       setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
     } catch (err: any) {
       addToast(err?.message || 'Could not turn on encrypted sync.', 'error');
@@ -399,7 +416,7 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
   const handleJoin = async () => {
     setBusy(true);
     try {
-      const res = await window.api.cloudOrgRedeemInvite(joinToken.trim(), shortCode);
+      const res = await window.api.cloudOrgRedeemInvite(joinToken.trim());
       setJoinToken('');
       setJustJoined(true);
       setRecoveryKey(res.recoveryKey); // opens the un-skippable save-it modal
@@ -487,7 +504,6 @@ function BackupSection({ lastCheckAt }: { lastCheckAt: string | null }) {
             way to unlock your data on a new computer, and it is <strong>not</strong> your login
             password.
           </p>
-          <ShortCodeCheckbox checked={shortCode} onChange={setShortCode} />
           <button className="btn btn-sm btn-primary" disabled={busy} onClick={handleSetup}>
             {busy ? 'Setting up…' : 'Finish Encryption Setup'}
           </button>
@@ -630,6 +646,8 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       key_status: 'pending' | 'active' | null;
       pubkey: string | null;
       safety_code: string | null;
+      /** Whether their key was proven to be theirs. See window.d.ts. */
+      binding_status: 'verified' | 'unchecked' | 'suspect';
     }[];
     me: { user_id: string; role: string };
   } | null>(null);
@@ -672,19 +690,50 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       setNewInvite(token);
     }, 'Could not create an invite.');
 
-  const handleApprove = (userId: string, memberLabel: string, safetyCode: string | null) => {
-    // Out-of-band key verification: approving seals the account's encryption
-    // key to whatever public key the server presented for this member. Having
-    // the owner confirm the code the teammate reads off their own screen is
-    // what keeps a tampered server from substituting its own key.
-    const prompt = safetyCode
-      ? `Approve ${memberLabel}?\n\nBefore approving, ask them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
-      : `Approve ${memberLabel}? They have no encryption key registered yet.`;
+  const handleApprove = async (
+    userId: string,
+    memberLabel: string,
+    safetyCode: string | null,
+    bindingStatus: 'verified' | 'unchecked' | 'suspect'
+  ) => {
+    // Approving seals the account's encryption key to whatever public key the
+    // server presented for this member, so that key has to be proven theirs.
+    if (bindingStatus === 'suspect') {
+      alert(
+        `Do not approve ${memberLabel}.\n\nThe encryption key this server is offering for them does not match the invite they used, which means it is not the key they generated. Revoke their invite, send a new one, and get in touch — this should not happen.`
+      );
+      return;
+    }
+    // 'unchecked' is deliberately NOT presented as "they're on an old version".
+    // That is the usual cause, but a server withholding the binding to force
+    // the weaker path looks exactly the same from here, so the owner is asked
+    // to do the out-of-band check either way.
+    const prompt =
+      bindingStatus === 'verified'
+        ? `Approve ${memberLabel}?\n\nTheir encryption key has been checked against the invite they used, and it matches.`
+        : safetyCode
+          ? `Approve ${memberLabel}?\n\nTheir key could NOT be checked against their invite automatically — usually that just means they joined from an older version of BidSheet.\n\nAsk them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
+          : `Approve ${memberLabel}? They have no encryption key registered yet.`;
     if (!confirm(prompt)) return;
-    return run(async () => {
-      await window.api.cloudOrgApproveMember(userId);
-      addToast('Teammate approved. They can now decrypt the shared data.', 'success');
-    }, 'Could not approve that member.');
+
+    // Deliberately not run()/addToast: approving is rare and deliberate, and
+    // the failure that matters here is "this key isn't theirs". That must not
+    // scroll away after eight seconds, so failures block instead.
+    setBusy(true);
+    try {
+      const { verified } = await window.api.cloudOrgApproveMember(userId);
+      await load();
+      addToast(
+        verified
+          ? 'Teammate approved — their encryption key matched their invite. They can now decrypt the shared data.'
+          : 'Teammate approved. They can now decrypt the shared data.',
+        'success'
+      );
+    } catch (err: any) {
+      alert(`Could not approve ${memberLabel}.\n\n${err?.message || 'Unknown error.'}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleRemove = (userId: string, label: string) => {
@@ -744,7 +793,7 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
               <button
                 className="btn btn-sm btn-primary"
                 disabled={busy}
-                onClick={() => handleApprove(m.user_id, label(m), m.safety_code)}>
+                onClick={() => handleApprove(m.user_id, label(m), m.safety_code, m.binding_status)}>
                 Approve
               </button>
             </div>

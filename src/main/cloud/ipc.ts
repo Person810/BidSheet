@@ -108,7 +108,22 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     logger.info('cloud:verify-totp', `Verify result: aal=${status.aal}`);
     return status;
   });
-  handle('cloud:sign-out', () => auth.signOut());
+  handle('cloud:sign-out', async () => {
+    // Revoke server-side first — best-effort, never throws, so a dead network
+    // can't block a sign-out the user asked for.
+    await auth.revokeRemoteSession();
+    // Then drop all local state in ONE transaction: the cached DEK + member
+    // private key, and the stored session. Two separate writes could land
+    // half-applied (SQLITE_BUSY, full disk) leaving the keys gone but the
+    // refresh token still on disk — and the next launch would silently restore
+    // the session on exactly the shared computer this protects. All-or-nothing
+    // means a failure leaves the user signed in with a visible error instead.
+    // The next sign-in re-unlocks with the recovery key, as a fresh device would.
+    db.transaction(() => {
+      e2ee.lockLocal();
+      auth.clearLocalSession();
+    })();
+  });
   handle('cloud:me', () => api.me());
 
   // ---- billing ----
@@ -143,12 +158,9 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   // and the backup. setup/regenerate return the recovery key to show exactly
   // once; the renderer forces the user to confirm they saved it.
   handle('cloud:e2ee-state', () => e2ee.state());
-  handle('cloud:e2ee-setup', async (shorter?: boolean) => {
-    logger.info(
-      'cloud:e2ee-setup',
-      `Enabling encrypted sync (generating DEK + ${shorter ? 'short' : 'full'} recovery key)`
-    );
-    const res = await e2ee.setup(!!shorter);
+  handle('cloud:e2ee-setup', async () => {
+    logger.info('cloud:e2ee-setup', 'Enabling encrypted sync (generating DEK + recovery key)');
+    const res = await e2ee.setup();
     // Re-encrypt anything a pre-E2EE client already pushed: the next sync pass
     // (kicked off after the user saves the recovery key) re-uploads every job,
     // the catalog, and the backup as ciphertext, overwriting the plaintext.
@@ -159,9 +171,9 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     logger.info('cloud:e2ee-unlock', 'Unlocking encrypted sync on this device');
     await e2ee.unlock(recoveryKey);
   });
-  handle('cloud:e2ee-regenerate-recovery', async (shorter?: boolean) => {
+  handle('cloud:e2ee-regenerate-recovery', async () => {
     logger.info('cloud:e2ee-regenerate-recovery', 'Regenerating recovery key (re-wrapping DEK)');
-    return e2ee.regenerateRecoveryKey(!!shorter);
+    return e2ee.regenerateRecoveryKey();
   });
 
   // ---- organizations / multi-user ----
@@ -175,34 +187,52 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
   // own key and receiving a sealed DEK it can open.
   handle('cloud:org-members', async () => {
     const res = await api.listMembers();
+    // The binding check runs here, not in the renderer: it needs the DEK, and
+    // key_binding / invite_enc_token have no business crossing into the UI
+    // layer. The renderer gets the verdict only — enough to choose the right
+    // approval prompt, and nothing key-adjacent.
+    const statuses = await e2ee.memberBindingStatuses(res.members);
     return {
       ...res,
-      members: res.members.map((m) => ({
+      members: res.members.map(({ key_binding, invite_enc_token, invite_id, ...m }) => ({
         ...m,
         safety_code: m.pubkey ? pubkeySafetyCode(Buffer.from(m.pubkey, 'base64')) : null,
+        binding_status: statuses[m.user_id] ?? 'unchecked',
       })),
     };
   });
   handle('cloud:e2ee-safety-code', () => e2ee.mySafetyCode());
+  // Invite creation routes through E2eeManager, not the API client: the token
+  // is minted here and stored server-side encrypted under the account DEK, so
+  // an owner can recover it at approve time to verify the joiner's key binding.
   handle('cloud:org-create-invite', (role?: 'member' | 'owner') => {
     logger.info('cloud:org-create-invite', `Creating ${role ?? 'member'} invite`);
-    return api.createInvite(role);
+    return e2ee.createInvite(role ?? 'member');
   });
-  handle('cloud:org-list-invites', () => api.listInvites());
+  // enc_token is stripped for the same reason it is on the members list: the
+  // renderer has no use for the sealed invite token, and key-adjacent material
+  // shouldn't cross into the UI layer just because it happens to be in the row.
+  handle('cloud:org-list-invites', async () =>
+    (await api.listInvites()).map(({ enc_token, ...inv }) => inv)
+  );
   handle('cloud:org-revoke-invite', (id: string) => api.revokeInvite(id));
-  handle('cloud:org-redeem-invite', async (token: string, shorter?: boolean) => {
+  handle('cloud:org-redeem-invite', async (token: string) => {
     logger.info('cloud:org-redeem-invite', 'Redeeming invite and joining account');
     // The sync-state wipe rides inside joinWithInvite's transaction: switching
     // the stored account id bypasses the engine's account-switch detector, so
     // wiping the stale cloud ids afterwards (as this handler used to) left a
     // crash window where the next pass pushed private solo jobs into the org.
-    const res = await e2ee.joinWithInvite(token, !!shorter, () => engine.resetSyncStateForJoin());
+    const res = await e2ee.joinWithInvite(token, () => engine.resetSyncStateForJoin());
     engine.refreshRenderer();
     return res;
   });
+  // Returns whether the member's key binding could be checked automatically.
+  // `verified: false` means they joined from a client that predates the binding,
+  // so the renderer must still ask the owner to compare device codes out of
+  // band. A binding that is present and *wrong* throws instead.
   handle('cloud:org-approve-member', async (userId: string) => {
     logger.info('cloud:org-approve-member', `Approving member ${userId}`);
-    await e2ee.approveMember(userId);
+    return e2ee.approveMember(userId);
   });
   handle('cloud:org-remove-member', (userId: string) => api.removeMember(userId));
 

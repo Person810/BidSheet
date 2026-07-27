@@ -3,7 +3,8 @@ import { Lock, Unlock } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { LineItemModal } from './LineItemModal';
 import { EditJobModal, type EditJobForm } from './EditJobModal';
-import { commitClientDetails, type ClientDetailsDraft } from '../../components/ClientField';
+import { clientSummaryParts } from '../../components/clientSummary';
+import type { ClientRow } from '../../../shared/types/ipc';
 import { ChangeOrdersTab } from './ChangeOrdersTab';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
@@ -51,6 +52,9 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [changeOrders, setChangeOrders] = useState<any[]>([]);
   const [coSummaries, setCoSummaries] = useState<Record<number, any>>({});
   const [parentJob, setParentJob] = useState<any>(null);
+  // The client's saved contact details for the header (#110); the job row
+  // carries only the denormalized name.
+  const [client, setClient] = useState<ClientRow | null>(null);
   const [activeTab, setActiveTab] = useState<'estimate' | 'profiles' | 'quotes' | 'documents' | 'changes'>('estimate');
   const [showCostCodeReport, setShowCostCodeReport] = useState(false);
   const [showBidAnalysis, setShowBidAnalysis] = useState(false);
@@ -85,10 +89,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; onNo?: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
   const [showEditJob, setShowEditJob] = useState(false);
   const [editJobForm, setEditJobForm] = useState<EditJobForm>({
-    name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
+    name: '', jobNumber: '', client: '', location: '', sitePostcode: '', siteCountry: '',
+    bidDate: '', description: '',
     overheadPercent: 0, profitPercent: 0, bondPercent: 0, taxPercent: 0, escalationPercent: 0,
+    freight: 0,
   });
-  const [editClientDetails, setEditClientDetails] = useState<ClientDetailsDraft | null>(null);
   const [lockBypassed, setLockBypassed] = useState(false);
 
   // Derived: bid is effectively locked when job is won or lost, bid_locked=1, and user hasn't bypassed this session
@@ -142,6 +147,13 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       setEquipment(eq);
       setSettings(set);
       setAssemblies(asm);
+      // Header detail only, so a lookup failure costs the contact line and
+      // not the estimate below it.
+      const cl = j.client_id
+        ? await window.api.getClient(j.client_id).catch(() => null)
+        : null;
+      if (!isCurrent()) return;
+      setClient(cl ?? null);
       const items: Record<number, any[]> = {};
       for (const sec of s) {
         items[sec.id] = await window.api.getBidLineItems(sec.id);
@@ -246,6 +258,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       jobNumber: job.job_number || '',
       client: job.client || '',
       location: job.location || '',
+      sitePostcode: job.site_postcode || '',
+      siteCountry: job.site_country || '',
       bidDate: job.bid_date ? job.bid_date.slice(0, 10) : '',
       description: job.description || '',
       overheadPercent: job.overhead_percent ?? 0,
@@ -253,16 +267,13 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       bondPercent: job.bond_percent ?? 0,
       taxPercent: job.tax_percent ?? 0,
       escalationPercent: job.escalation_percent ?? 0,
+      freight: job.freight ?? 0,
     });
-    setEditClientDetails(null);
     setShowEditJob(true);
   };
 
   const saveJobInfo = async () => {
     if (!job || !editJobForm.name.trim()) return;
-    // Edited client details land on the client record first; saveJob then
-    // re-links the job to that record by name.
-    await commitClientDetails(editJobForm.client, editClientDetails);
     await window.api.saveJob({
       ...jobToPayload(job),
       name: editJobForm.name.trim(),
@@ -270,6 +281,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       // jobs.client is NOT NULL — binding null throws a constraint error
       client: editJobForm.client || '',
       location: editJobForm.location || null,
+      sitePostcode: editJobForm.sitePostcode || null,
+      siteCountry: editJobForm.siteCountry || null,
       bidDate: editJobForm.bidDate || null,
       description: editJobForm.description || null,
       overheadPercent: editJobForm.overheadPercent,
@@ -277,6 +290,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       bondPercent: editJobForm.bondPercent,
       taxPercent: editJobForm.taxPercent,
       escalationPercent: editJobForm.escalationPercent,
+      freight: editJobForm.freight,
     });
     setShowEditJob(false);
     loadJob();
@@ -817,6 +831,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
   if (!job) return <p className="text-muted">Loading job...</p>;
 
+  const clientSummary = clientSummaryParts(client);
+
   return (
     <div className="job-detail-page">
       <div className="page-header no-print">
@@ -843,6 +859,11 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             {job.location && <span> &middot; {job.location}</span>}
             {job.bid_date && <span> &middot; Due {formatDateLocal(job.bid_date)}</span>}
           </div>
+          {clientSummary.length > 0 && (
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
+              {clientSummary.join(' · ')}
+            </div>
+          )}
         </div>
         <div className="flex gap-8">
           <button
@@ -1085,8 +1106,6 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           onSave={saveJobInfo}
           onClose={() => setShowEditJob(false)}
           jobId={job?.id}
-          clientDetails={editClientDetails}
-          onClientDetailsChange={setEditClientDetails}
         />
       )}
 

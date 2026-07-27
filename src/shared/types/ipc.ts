@@ -30,6 +30,33 @@ export interface MaterialCategoryRow {
   description: string | null;
 }
 
+export interface SaveMaterialCategoryPayload {
+  id?: number;
+  name: string;
+  description?: string | null;
+}
+
+export interface MaterialCategoryUsage {
+  categoryId: number;
+  materialCount: number;
+}
+
+export interface MaterialCategoryManagementRow extends MaterialCategoryRow {
+  materialCount: number;
+}
+
+export interface DeleteMaterialCategoryPayload {
+  categoryId: number;
+  replacementCategoryId: number | null;
+  expectedMaterialCount: number;
+}
+
+export interface DeleteMaterialCategoryResult {
+  deletedCategoryId: number;
+  replacementCategoryId: number | null;
+  reassignedMaterialCount: number;
+}
+
 export interface MaterialRow {
   id: number;
   category_id: number;
@@ -160,6 +187,9 @@ export interface JobRow {
   bid_locked: number;
   parent_job_id: number | null;
   change_order_number: number | null;
+  freight?: number;
+  site_postcode?: string | null;
+  site_country?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -183,6 +213,9 @@ export interface SaveJobPayload {
   bidLocked?: boolean | number;
   parentJobId?: number | null;
   changeOrderNumber?: number | null;
+  freight?: number | null;
+  sitePostcode?: string | null;
+  siteCountry?: string | null;
 }
 
 export interface ClientRow {

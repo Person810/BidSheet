@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { formatCurrency, formatDateLocal } from './helpers';
 import { useToastStore } from '../../stores/toast-store';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface QuoteForm {
   id?: number;
@@ -268,7 +269,7 @@ export function QuotesTab({ jobId, onSendToBid }: {
       )}
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
             <h3>{form.id ? 'Edit Quote' : 'New Quote'}</h3>
             <div className="form-row">

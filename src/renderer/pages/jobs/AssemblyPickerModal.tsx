@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface AssemblyPickerModalProps {
   assemblies: any[];
@@ -17,7 +18,7 @@ export function AssemblyPickerModal({ assemblies, onAdd, onClose }: AssemblyPick
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)}>
       <div className="modal" onClick={(e) => e.stopPropagation()} tabIndex={-1} style={{ width: 500, outline: 'none' }}>
         <h3>Add Assembly</h3>
         <div className="form-group">

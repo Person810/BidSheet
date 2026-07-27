@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { safeHandle } from './shared';
+import { safeHandle, likeContains } from './shared';
 
 /**
  * Resolve a client name to its row id, creating the record when it's new
@@ -43,6 +43,30 @@ export function registerClientHandlers(db: Database.Database): void {
 
   safeHandle('db:clients:get', (_event, id: number) => {
     return db.prepare('SELECT * FROM clients WHERE id = ?').get(id);
+  });
+
+  safeHandle('db:clients:search', (_event, query: string, limit?: number) => {
+    const q = String(query ?? '').trim();
+    const cap = Math.min(Math.max(limit ?? 20, 1), 50);
+    if (!q) {
+      return db
+        .prepare('SELECT * FROM clients WHERE is_active = 1 ORDER BY name COLLATE NOCASE LIMIT ?')
+        .all(cap);
+    }
+    const pattern = likeContains(q);
+    return db
+      .prepare(
+        `SELECT * FROM clients
+         WHERE is_active = 1
+           AND (name LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR contact_name LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR contact_phone LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR contact_email LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR address LIKE ? ESCAPE '\\' COLLATE NOCASE)
+         ORDER BY name COLLATE NOCASE
+         LIMIT ?`
+      )
+      .all(pattern, pattern, pattern, pattern, pattern, cap);
   });
 
   // Upsert. With an id this is a plain update; without one it upserts by

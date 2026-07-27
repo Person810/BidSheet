@@ -2,17 +2,18 @@
  * Encrypted cloud backup of the whole database (Phase 3a).
  *
  * The promise this makes true: wipe a laptop, sign in on a new one, enter
- * the passphrase, and everything is back. The whole SQLite file is
- * encrypted client-side (scrypt + AES-256-GCM, see backup-crypto.ts) before
- * upload — the server stores ciphertext it cannot read.
+ * the recovery key, and everything is back. The whole SQLite file is
+ * encrypted client-side (AES-256-GCM under the account DEK, the same BSE1
+ * envelope every synced payload uses) before upload — the server stores
+ * ciphertext it cannot read.
  *
- * Key handling: when the user sets the passphrase, the derived key is
- * wrapped with OS safeStorage and kept in the cloud_auth row, so routine
- * backups (after each successful sync pass, plus a manual button — never a
- * timer) run without prompting. The passphrase itself is never stored;
- * restoring on a fresh machine re-derives the key from the passphrase and
- * the salt carried in the blob's header. Lose every machine AND the
- * passphrase, and the backup is unreadable — by the user and by us.
+ * Key handling: backups ride the E2EE DEK, so there is no separate backup
+ * passphrase. Once encrypted sync is unlocked on a machine the DEK is cached
+ * with OS safeStorage, and routine backups (after each successful sync pass,
+ * plus a manual button — never a timer) run without prompting. Restoring on a
+ * fresh machine unlocks the DEK from the recovery key first. Lose every
+ * machine AND the recovery key, and the backup is unreadable — by the user
+ * and by us.
  */
 
 import fs from 'fs';
@@ -24,9 +25,8 @@ import { logger } from '../logger';
 import { getDbPath } from '../database';
 import { CloudAuth } from './supabase-auth';
 import { CloudApiClient, CloudBackupMeta } from './api-client';
-import { decryptBackupWithPassphrase } from './backup-crypto';
 import { E2eeManager } from './e2ee';
-import { encryptForSync, decryptForSync, syncAad, isEncryptedPayload } from './sync-crypto';
+import { encryptForSync, decryptForSync, syncAad } from './sync-crypto';
 
 export interface BackupStatus {
   /** Encrypted sync is unlocked on this machine — backups run automatically. */
@@ -117,7 +117,7 @@ export class BackupEngine {
    * Download, decrypt, validate, and swap in the cloud backup, then
    * relaunch. Everything currently on this machine is replaced — the
    * renderer confirms loudly before calling. Mirrors db:restore in
-   * ipc-handlers.ts: a wrong passphrase or invalid file fails before
+   * ipc-handlers.ts: a wrong recovery key or invalid file fails before
    * anything local is touched, and a failed swap restores the safety copy.
    */
   async restore(recoveryKey: string): Promise<void> {
@@ -128,11 +128,7 @@ export class BackupEngine {
     const accountId = await this.accountId();
 
     const blob = await this.api.getBackup();
-    const plaintext = isEncryptedPayload(blob)
-      ? decryptForSync(blob, dek, syncAad(accountId, 'account', 'backup'))
-      : // Legacy/dev backups predate the DEK and were passphrase-encrypted
-        // (BSBK). Transitional only — cloud was never deployed with them.
-        await decryptBackupWithPassphrase(blob, recoveryKey);
+    const plaintext = decryptForSync(blob, dek, syncAad(accountId, 'account', 'backup'));
 
     // The decrypted copy stays under userData (next to the live DB), never
     // the world-readable temp dir, and is removed before the relaunch.

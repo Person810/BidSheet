@@ -6,6 +6,7 @@ import {
 } from '../../../components/FuzzyAutocomplete';
 import { parsePipeSizeFromName } from '../trenchCalc';
 import type { TakeoffItem } from './types';
+import { dismissOnEscOnly } from '../../../components/modalDismiss';
 
 interface ItemPickerModalProps {
   onSelect: (material: { id: number; name: string }) => void;
@@ -71,7 +72,7 @@ export default function ItemPickerModal({ onSelect, onCancel, items, contextPipe
   };
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onCancel)}>
       <div className="modal" style={{ maxWidth: 480, minHeight: 400, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
         onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 4px 0', fontSize: 15, flexShrink: 0 }}>Add Fitting</h3>

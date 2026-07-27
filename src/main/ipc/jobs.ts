@@ -7,7 +7,12 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { nextJobNumber } from '../../shared/jobNumbering';
-import { safeHandle, getSectionCostRows, getIndirectTotal } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal, likeContains } from './shared';
+import type {
+  JobLocationLookupRequest,
+  JobLocationLookupResult,
+  JobLocationSuggestion,
+} from '../../shared/types/ipc/job-locations';
 import { findOrCreateClient } from './clients';
 import { removeJobFiles } from './documents';
 
@@ -27,6 +32,62 @@ export function registerJobHandlers(db: Database.Database): void {
     return db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
   });
 
+  safeHandle(
+    'db:job-locations:find-suggestions',
+    (_event, request: JobLocationLookupRequest): JobLocationLookupResult => {
+      const limit = Math.min(Math.max(Math.trunc(Number(request?.limit) || 20), 1), 50);
+      const postalCode = String(request?.postalCode ?? '').trim();
+      const country = String(request?.country ?? '').trim();
+      if (!postalCode) return { suggestions: [], truncated: false };
+
+      // Over-fetch by one per source so "there are more" is knowable.
+      const probe = limit + 1;
+      const suggestions: JobLocationSuggestion[] = [];
+
+      // Previously-bid sites come first: they are actual dig sites, whereas a
+      // client address is the builder's office and rarely where the work is.
+      let jobQuery =
+        'SELECT location, site_postcode, site_country FROM jobs WHERE site_postcode LIKE ? ESCAPE \'\\\'';
+      const jobParams: unknown[] = [likeContains(postalCode)];
+      if (country) {
+        jobQuery += " AND (site_country LIKE ? ESCAPE '\\' OR site_country IS NULL OR site_country = '')";
+        jobParams.push(likeContains(country));
+      }
+      jobQuery += ' ORDER BY updated_at DESC LIMIT ?';
+      jobParams.push(probe);
+
+      for (const row of db.prepare(jobQuery).all(...jobParams) as any[]) {
+        if (!row.location) continue;
+        suggestions.push({
+          location: row.location,
+          postalCode: row.site_postcode || postalCode,
+          country: row.site_country || country || null,
+          sourceKind: 'job',
+        });
+      }
+
+      const clientRows = db
+        .prepare(
+          "SELECT address FROM clients WHERE address LIKE ? ESCAPE '\\' AND is_active = 1 LIMIT ?"
+        )
+        .all(likeContains(postalCode), probe) as any[];
+      for (const row of clientRows) {
+        if (!row.address) continue;
+        suggestions.push({
+          location: row.address,
+          postalCode,
+          country: country || null,
+          sourceKind: 'client',
+        });
+      }
+
+      return {
+        suggestions: suggestions.slice(0, limit),
+        truncated: suggestions.length > limit,
+      };
+    }
+  );
+
   safeHandle('db:jobs:save', (_event, job: any) => {
     // client_id is re-derived from the typed name on every save (creating
     // the client record when it's new — that's how "add a client without
@@ -41,6 +102,7 @@ export function registerJobHandlers(db: Database.Database): void {
               bid_date = ?, start_date = ?, description = ?, status = ?,
               overhead_percent = ?, profit_percent = ?, bond_percent = ?,
               tax_percent = ?, escalation_percent = ?, notes = ?, bid_locked = ?,
+              freight = ?, site_postcode = ?, site_country = ?,
               updated_at = datetime('now', 'localtime')
             WHERE id = ?`
           )
@@ -48,20 +110,22 @@ export function registerJobHandlers(db: Database.Database): void {
             job.name, job.jobNumber, job.client, clientId, job.location,
             job.bidDate, job.startDate, job.description, job.status,
             job.overheadPercent, job.profitPercent, job.bondPercent,
-            job.taxPercent, job.escalationPercent ?? 0, job.notes, job.bidLocked ? 1 : 0, job.id
+            job.taxPercent, job.escalationPercent ?? 0, job.notes, job.bidLocked ? 1 : 0,
+            job.freight ?? 0.0, job.sitePostcode ?? null, job.siteCountry ?? null, job.id
           );
       } else {
         return db
           .prepare(
-            `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, parent_job_id, change_order_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, parent_job_id, change_order_number, freight, site_postcode, site_country)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             job.name, job.jobNumber, job.client, clientId, job.location,
             job.bidDate, job.startDate, job.description,
             job.overheadPercent, job.profitPercent, job.bondPercent,
             job.taxPercent, job.escalationPercent ?? 0, job.notes,
-            job.parentJobId || null, job.changeOrderNumber || null
+            job.parentJobId || null, job.changeOrderNumber || null,
+            job.freight ?? 0.0, job.sitePostcode ?? null, job.siteCountry ?? null
           );
       }
     });

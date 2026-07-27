@@ -8,6 +8,7 @@ import { useToastStore } from '../../stores/toast-store';
 import { defaultUnit, unitOptions } from '../../../shared/constants/units';
 import { useUnitSystem } from '../../stores/units-store';
 import type { CrewMember, CrewTemplate } from '../../../shared/types/labor';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
 
 interface ProductionRate {
   id: number;
@@ -168,7 +169,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
       </table>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setShowModal(false))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{editing ? 'Edit Production Rate' : 'Add Production Rate'}</h3>
             <div className="form-group">

@@ -4,8 +4,17 @@ import { SortableTh, useSortableRows } from '../../components/SortableTable';
 import { useToastStore } from '../../stores/toast-store';
 import { useCloudStore, initCloudStore, CloudJobSync } from '../../stores/cloud-store';
 import { useJobNumberWarning } from '../../hooks/useJobNumberWarning';
-import { ClientField, commitClientDetails, type ClientDetailsDraft } from '../../components/ClientField';
-import { formatDateLocal, statusBadge } from './helpers';
+import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
+import { statusBadge } from './helpers';
+import { dismissOnEscOnly } from '../../components/modalDismiss';
+
+import { LocalizedDateField } from '../../components/LocalizedDateField';
+import { JobLocationFields } from '../../components/JobLocationFields';
+import { ClientForm } from '../../components/clients/ClientEditorForm';
+import { clientSiteDefaults } from './clientJobDraft';
+import { useLocaleStore } from '../../stores/locale-store';
+import { useDateFormat } from '../../contexts/DateFormatContext';
+import type { ClientRow } from '../../../shared/types/ipc';
 
 const JOB_SORT_ACCESSORS = {
   name: (j: any) => j.name,
@@ -17,7 +26,15 @@ const JOB_SORT_ACCESSORS = {
 };
 
 const EMPTY_JOB_FORM = {
-  name: '', jobNumber: '', client: '', location: '', bidDate: '', description: '',
+  name: '',
+  jobNumber: '',
+  client: '',
+  location: '',
+  postalCode: '',
+  country: '',
+  bidDate: '',
+  description: '',
+  freight: 0,
 };
 
 interface JobListProps {
@@ -31,11 +48,15 @@ export function JobList({ onOpenJob }: JobListProps) {
   const [filter, setFilter] = useState<string>('');
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_JOB_FORM });
+  const [editingClient, setEditingClient] = useState(false);
+  const [selectedClientRow, setSelectedClientRow] = useState<ClientRow | null>(null);
+  const [isDateValid, setIsDateValid] = useState(true);
+  const { profile } = useLocaleStore();
+  const { format: formatDate } = useDateFormat();
+
   // The auto-suggested number currently sitting in the field (so the hint
   // disappears as soon as the user types their own).
   const [suggestedNumber, setSuggestedNumber] = useState<string | null>(null);
-  // Client details draft, when the user opens "Add/Edit details" (#94).
-  const [clientDetails, setClientDetails] = useState<ClientDetailsDraft | null>(null);
   const numberWarning = useJobNumberWarning(showCreate ? form.jobNumber : '');
 
   const openCreate = async () => {
@@ -65,7 +86,9 @@ export function JobList({ onOpenJob }: JobListProps) {
     setShowCreate(false);
     setForm({ ...EMPTY_JOB_FORM });
     setSuggestedNumber(null);
-    setClientDetails(null);
+    setSelectedClientRow(null);
+    setEditingClient(false);
+    setIsDateValid(true);
   };
 
   // Staleness guard: switching the status filter quickly can leave a slow
@@ -95,20 +118,26 @@ export function JobList({ onOpenJob }: JobListProps) {
 
   const handleCreate = async () => {
     const settings = await window.api.getSettings();
-    // Any edited client details go to the client record first; saveJob then
-    // links the job to that record by name.
-    await commitClientDetails(form.client, clientDetails);
     const result = await window.api.saveJob({
-      name: form.name, jobNumber: form.jobNumber || null, client: form.client,
-      location: form.location || null, bidDate: form.bidDate || null, startDate: null,
-      description: form.description || null, status: 'draft',
+      name: form.name,
+      jobNumber: form.jobNumber || null,
+      client: form.client,
+      location: form.location || null,
+      bidDate: form.bidDate || null,
+      startDate: null,
+      description: form.description || null,
+      status: 'draft',
       overheadPercent: settings?.default_overhead_percent || 10,
       profitPercent: settings?.default_profit_percent || 10,
       bondPercent: settings?.default_bond_percent || 0,
-      taxPercent: settings?.default_tax_percent || 0, notes: null,
+      taxPercent: settings?.default_tax_percent || 0,
+      escalationPercent: 0,
+      freight: form.freight || 0,
+      sitePostcode: form.postalCode || null,
+      siteCountry: form.country || null,
+      notes: null,
     });
     closeCreate();
-    // Drop the user straight into the job they just created
     if (result?.lastInsertRowid) {
       onOpenJob(Number(result.lastInsertRowid));
     } else {
@@ -288,7 +317,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                   <td className="text-muted">{job.job_number || '--'}</td>
                   <td>{job.client || '--'}</td>
                   <td className="text-muted">
-                    {job.bid_date ? formatDateLocal(job.bid_date) : '--'}
+                    {job.bid_date ? formatDate(job.bid_date) : '--'}
                   </td>
                   <td>{statusBadge(job.status)}</td>
                   {cloudReady && <td>{cloudCell(job.id)}</td>}
@@ -363,7 +392,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {conflictJobId !== null && (
-        <div className="modal-overlay" onClick={() => setConflictJobId(null)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setConflictJobId(null))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Sync Conflict</h3>
             <p className="text-muted" style={{ marginBottom: 16 }}>
@@ -399,7 +428,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {dupState && (
-        <div className="modal-overlay" onClick={() => setDupState(null)}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(() => setDupState(null))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Copy Job as Template</h3>
             <p className="text-muted" style={{ marginBottom: 16 }}>All sections, line items, markups, and trench profiles will be copied. The original job stays untouched.</p>
@@ -436,7 +465,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       )}
 
       {showCreate && (
-        <div className="modal-overlay" onClick={closeCreate}>
+        <div className="modal-overlay" onClick={dismissOnEscOnly(closeCreate)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>New Job</h3>
             <div className="form-row">
@@ -461,31 +490,123 @@ export function JobList({ onOpenJob }: JobListProps) {
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label>Client / GC</label>
-                <ClientField value={form.client}
-                  onChange={(client) => setForm({ ...form, client })}
-                  details={clientDetails} onDetailsChange={setClientDetails}
-                  placeholder="General contractor or owner" />
+                <label>{profile.gcLabel}</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <SavedClientPicker
+                      value={form.client}
+                      onChange={(name) => {
+                        setForm((f) => ({ ...f, client: name }));
+                        if (!name) {
+                          setSelectedClientRow(null);
+                        }
+                      }}
+                      onSelectClient={(client) => {
+                        setForm((f) => {
+                          const site = clientSiteDefaults(
+                            { location: f.location, sitePostcode: f.postalCode, siteCountry: f.country },
+                            client,
+                            profile,
+                          );
+                          return {
+                            ...f,
+                            client: client.name,
+                            location: site.location,
+                            postalCode: site.sitePostcode,
+                            country: site.siteCountry,
+                          };
+                        });
+                        setSelectedClientRow(client);
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', height: '38px', whiteSpace: 'nowrap' }}
+                    onClick={() => {
+                      setSelectedClientRow(null);
+                      setEditingClient(true);
+                    }}
+                  >
+                    + New Client
+                  </button>
+                  {selectedClientRow && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', height: '38px', whiteSpace: 'nowrap' }}
+                      onClick={() => setEditingClient(true)}
+                    >
+                      Edit Details
+                    </button>
+                  )}
+                </div>
+                {editingClient && (
+                  <div className="modal-overlay" onClick={dismissOnEscOnly(() => setEditingClient(false))} style={{ zIndex: 1100 }}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                      <h3>{selectedClientRow ? 'Edit Client' : 'Add Client'}</h3>
+                      <ClientForm
+                        initialClient={selectedClientRow}
+                        onSaved={(client) => {
+                          setSelectedClientRow(client);
+                          setForm((f) => {
+                            const site = clientSiteDefaults(
+                              { location: f.location, sitePostcode: f.postalCode, siteCountry: f.country },
+                              client,
+                              profile,
+                            );
+                            return {
+                              ...f,
+                              client: client.name,
+                              location: site.location,
+                              postalCode: site.sitePostcode,
+                              country: site.siteCountry,
+                            };
+                          });
+                          setEditingClient(false);
+                        }}
+                        onCancel={() => setEditingClient(false)}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="form-group">
-                <label>Bid Date</label>
-                <input type="date" className="form-control" value={form.bidDate}
-                  onChange={(e) => setForm({ ...form, bidDate: e.target.value })} />
+                <LocalizedDateField
+                  label="Bid Date"
+                  value={form.bidDate || null}
+                  onChange={(date) => setForm({ ...form, bidDate: date || '' })}
+                  onValidityChange={setIsDateValid}
+                />
               </div>
             </div>
             <div className="form-group">
-              <label>Location</label>
-              <input type="text" className="form-control" value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="City, State or address" />
+              <JobLocationFields
+                location={form.location}
+                postalCode={form.postalCode}
+                country={form.country}
+                onLocationChange={(loc) => setForm((f) => ({ ...f, location: loc }))}
+                onPostalCodeChange={(pc) => setForm((f) => ({ ...f, postalCode: pc }))}
+                onCountryChange={(c) => setForm((f) => ({ ...f, country: c }))}
+                builderAddress={selectedClientRow?.address}
+              />
             </div>
-            <div className="form-group">
-              <label>Description</label>
-              <input type="text" className="form-control" value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Description</label>
+                <input type="text" className="form-control" value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>Freight ($)</label>
+                <input type="number" className="form-control" value={form.freight}
+                  onChange={(e) => setForm({ ...form, freight: parseFloat(e.target.value) || 0 })} />
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={closeCreate}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreate} disabled={!form.name.trim()}>Create Job</button>
+              <button className="btn btn-primary" onClick={handleCreate} disabled={!form.name.trim() || !isDateValid}>Create Job</button>
             </div>
           </div>
         </div>
