@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { MagnifierLoupe } from './MagnifierLoupe';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
@@ -59,6 +60,8 @@ interface PdfViewerProps {
   resetPanKey?: number;
   /** When false, mouse-drag panning is disabled (e.g. during calibration). Defaults to true. */
   panEnabled?: boolean;
+  /** Show the magnifier loupe following the cursor. */
+  loupeActive?: boolean;
   /** Fires when pan/zoom state changes so sibling overlays can stay in sync. */
   onViewportChange?: (info: { panX: number; panY: number; renderedScale: number; cssZoom: number }) => void;
   onDocLoaded: (totalPages: number) => void;
@@ -71,7 +74,8 @@ function clampScale(s: number): number {
 }
 
 export function PdfViewer({
-  pdfData, pageNumber, scale, rotation = 0, resetPanKey, panEnabled = true, onViewportChange,
+  pdfData, pageNumber, scale, rotation = 0, resetPanKey, panEnabled = true,
+  loupeActive = false, onViewportChange,
   onDocLoaded, onPageSizeKnown, onScaleChange,
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -306,6 +310,17 @@ export function PdfViewer({
           transformOrigin: 'center center',
           boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
         }}
+      />
+      <MagnifierLoupe
+        active={loupeActive}
+        doc={docRef.current}
+        docVersion={docVersion}
+        pageNumber={pageNumber}
+        rotation={rotation}
+        scale={scale}
+        panX={panX}
+        panY={panY}
+        containerRef={containerRef}
       />
     </div>
   );
