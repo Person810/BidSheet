@@ -415,6 +415,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV47,
   migrateV48,
   migrateV49,
+  migrateV50,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -945,6 +946,17 @@ function migrateV49(db: Database.Database): void {
     ALTER TABLE jobs ADD COLUMN site_postcode TEXT;
     ALTER TABLE jobs ADD COLUMN site_country TEXT;
     INSERT INTO schema_version (version) VALUES (49);
+  `);
+}
+
+function migrateV50(db: Database.Database): void {
+  // Whether the job tax rate applies to freight. Tri-state on purpose:
+  // NULL = follow the locale profile's default (GST/VAT locales tax
+  // freight, en-US doesn't), 0/1 = explicit user override. No backfill —
+  // existing installs keep locale-default behavior.
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN freight_taxable INTEGER;
+    INSERT INTO schema_version (version) VALUES (50);
   `);
 }
 

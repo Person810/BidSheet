@@ -80,7 +80,7 @@ describe('locale profile resolution', () => {
   });
 
   it('all 5 initial profiles have required fields (id, displayName, dateFormat, taxLabel, postalLabel, gcLabel, currencySymbol, thousandsSep, decimalSep)', () => {
-    const requiredFields: (keyof LocaleProfile)[] = ['id', 'displayName', 'dateFormat', 'taxLabel', 'postalLabel', 'gcLabel', 'currencySymbol', 'thousandsSep', 'decimalSep'];
+    const requiredFields: (keyof LocaleProfile)[] = ['id', 'displayName', 'dateFormat', 'taxLabel', 'postalLabel', 'gcLabel', 'currencySymbol', 'thousandsSep', 'decimalSep', 'freightTaxable'];
     
     const initialLocales = ['en-US', 'en-AU', 'en-GB', 'en-NZ', 'en-CA'];
     for (const locale of initialLocales) {
@@ -98,6 +98,7 @@ describe('locale profile resolution', () => {
       displayName: 'Test New',
       dateFormat: 'dmy',
       taxLabel: 'TAX',
+      freightTaxable: false,
       postalLabel: 'POST',
       gcLabel: 'GC',
       currencySymbol: '¤',

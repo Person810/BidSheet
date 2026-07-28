@@ -6,7 +6,6 @@ import { SavedClientPicker } from '../../components/clients/SavedClientPicker';
 import { LocalizedDateField } from '../../components/LocalizedDateField';
 import { JobLocationFields } from '../../components/JobLocationFields';
 import { ClientForm } from '../../components/clients/ClientEditorForm';
-import { clientSiteDefaults } from './clientJobDraft';
 import type { ClientRow } from '../../../shared/types/ipc';
 import { dismissOnEscOnly } from '../../components/modalDismiss';
 
@@ -96,11 +95,10 @@ export function EditJobModal({
                   }
                 }}
                 onSelectClient={(client) => {
-                  setForm({
-                    ...form,
-                    client: client.name,
-                    ...clientSiteDefaults(form, client, profile),
-                  });
+                  // Picking a client sets the client, nothing else — "Use
+                  // Builder Address" is the explicit opt-in for copying
+                  // their office address to the site fields.
+                  setForm({ ...form, client: client.name });
                   setSelectedClientRow(client);
                 }}
                 disabled={false}
@@ -136,11 +134,7 @@ export function EditJobModal({
                   initialClient={selectedClientRow}
                   onSaved={(client) => {
                     setSelectedClientRow(client);
-                    setForm({
-                      ...form,
-                      client: client.name,
-                      ...clientSiteDefaults(form, client, profile),
-                    });
+                    setForm({ ...form, client: client.name });
                     setEditingClient(false);
                   }}
                   onCancel={() => setEditingClient(false)}

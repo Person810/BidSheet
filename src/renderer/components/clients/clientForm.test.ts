@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { ClientRow } from '../../../shared/types/ipc';
 
 import {
+  adoptExistingClient,
   beginClientSave,
+  detachToNewClientDraft,
+  canAdoptExistingClient,
   cancelClientForm,
   clientFormFromClient,
   completeClientSave,
@@ -253,5 +256,61 @@ describe('client form edit state', () => {
         contactEmail: 'quotes@acme.test',
       },
     });
+  });
+});
+
+
+describe('adopting an existing client into a blank draft', () => {
+  const stored = {
+    id: 42, name: 'Boh Bros', contact_name: 'Pat', contact_email: 'pat@boh.example',
+    contact_phone: '555-0100', address: '55 Office Park Dr', notes: 'net 30',
+    is_active: 1, uuid: 'u', created_at: '', updated_at: '',
+  } as any;
+
+  it('is allowed only while nothing beyond the name is typed', () => {
+    const blank = clientFormFromClient(null);
+    blank.values.name = 'Boh Bros';
+    expect(canAdoptExistingClient(blank)).toBe(true);
+
+    const dirty = clientFormFromClient(null);
+    dirty.values.name = 'Boh Bros';
+    dirty.values.contactPhone = '555-9999';
+    expect(canAdoptExistingClient(dirty)).toBe(false);
+  });
+
+  it('never fires in edit mode or mid-save', () => {
+    expect(canAdoptExistingClient(clientFormFromClient(stored))).toBe(false);
+    const saving = clientFormFromClient(null);
+    saving.values.name = 'Boh Bros';
+    saving.saving = true;
+    expect(canAdoptExistingClient(saving)).toBe(false);
+  });
+
+  it('adoption prefills every field and switches to an id-carrying edit', () => {
+    const blank = clientFormFromClient(null);
+    blank.values.name = 'boh bros';
+    const adopted = adoptExistingClient(blank, stored);
+    expect(adopted.mode).toBe('edit');
+    expect(adopted.values.id).toBe(42);
+    expect(adopted.values.name).toBe('Boh Bros'); // canonical casing wins
+    expect(adopted.values.address).toBe('55 Office Park Dr');
+    expect(adopted.values.notes).toBe('net 30');
+  });
+
+
+  it('detaching returns a clean create draft carrying only the typed name', () => {
+    const detached = detachToNewClientDraft('Boh Bros Marine');
+    expect(detached.mode).toBe('create');
+    expect(detached.values.id).toBeUndefined();
+    expect(detached.values.name).toBe('Boh Bros Marine');
+    expect(detached.values.address).toBe('');
+    expect(detached.originalClient).toBeNull();
+  });
+
+  it('refuses to adopt over a dirty draft', () => {
+    const dirty = clientFormFromClient(null);
+    dirty.values.name = 'Boh Bros';
+    dirty.values.address = 'half-typed address';
+    expect(adoptExistingClient(dirty, stored)).toBe(dirty);
   });
 });

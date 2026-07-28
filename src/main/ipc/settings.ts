@@ -253,6 +253,10 @@ export function registerSettingsHandlers(db: Database.Database): void {
           auto_lock_on_close = ?, local_only_mode = ?,
           job_number_auto = ?, job_number_format = ?, job_number_start = ?,
           unit_system = ?,
+          -- Tri-state: NULL follows the locale default, 0/1 is an explicit
+          -- choice. Only written when the caller sent the field, so older
+          -- callers can't silently reset it.
+          freight_taxable = CASE WHEN ? THEN ? ELSE freight_taxable END,
           -- Left alone unless the caller actually sent a value: null ("follow
           -- my trades") and '' ("no tools") are both meaningful, so an
           -- omitted field must not silently reset someone's picks.
@@ -271,6 +275,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
         settings.jobNumberFormat || 'YYYY-NNN',
         Math.max(1, Math.floor(Number(settings.jobNumberStart)) || 1),
         parseUnitSystem(settings.unitSystem),
+        'freightTaxable' in (settings ?? {}) ? 1 : 0,
+        settings.freightTaxable === 0 || settings.freightTaxable === 1 ? settings.freightTaxable : null,
         'enabledTools' in (settings ?? {}) ? 1 : 0,
         settings.enabledTools ?? null,
         'customTrades' in (settings ?? {}) ? 1 : 0,

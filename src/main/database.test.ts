@@ -181,6 +181,19 @@ describe('migration v49 — freight and site location fields', () => {
   });
 });
 
+describe('migration v50 — freight_taxable setting', () => {
+  it('adds a tri-state freight_taxable column defaulting to NULL (follow locale)', () => {
+    const db = dbAtVersion(49);
+
+    db.transaction(() => MIGRATIONS[49](db))();
+
+    const cols = (db.prepare('PRAGMA table_info(app_settings)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('freight_taxable');
+    const row = db.prepare('SELECT freight_taxable FROM app_settings WHERE id = 1').get() as any;
+    expect(row.freight_taxable).toBeNull();
+  });
+});
+
 describe('sample-catalog management', () => {
   const freshDb = () => dbAtVersion(MIGRATIONS.length);
 

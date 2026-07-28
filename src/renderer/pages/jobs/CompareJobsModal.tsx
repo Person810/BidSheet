@@ -155,6 +155,7 @@ export function CompareJobsModal({ baseJobId, onClose }: {
                 {summaryRow('Direct Cost', 'direct_cost_total')}
                 {summaryRow('Material Escalation', 'escalation')}
                 {summaryRow('Indirect Costs', 'indirect_total')}
+                {summaryRow('Freight', 'freight')}
                 {summaryRow('Overhead', 'overhead')}
                 {summaryRow('Profit', 'profit')}
                 {summaryRow('Bond', 'bond')}

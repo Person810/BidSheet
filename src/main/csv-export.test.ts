@@ -53,6 +53,27 @@ const baseData = (): CSVExportData => ({
 });
 
 describe('generateEstimateCSV', () => {
+  it('emits a Freight row so the exported rows still sum to the grand total', () => {
+    const data = baseData();
+    data.summary = { ...data.summary, freight: 1000, overhead: 425, profit: 212.5 };
+    const csv = generateEstimateCSV(data);
+    const freightLine = csv.split('\r\n').find((l) => l.includes('Freight'));
+    expect(freightLine).toBeTruthy();
+    expect(freightLine).toContain('1000.00');
+    // Rows must reconcile: line items + escalation + indirects + freight +
+    // markups + tax = the bid's grand total (the file's own invariant).
+    // Amount is the 3rd-from-last field (ItemTaxCode and ServiceDate trail).
+    const amounts = csv
+      .split('\r\n')
+      .slice(1)
+      .filter(Boolean)
+      .map((l) => parseFloat(l.split(',').at(-3) || '0'))
+      .filter((n) => !Number.isNaN(n));
+    const rowSum = amounts.reduce((a, b) => a + b, 0);
+    const grand = 3250 + 1000 + 425 + 212.5 + 32.5 + 227.5;
+    expect(rowSum).toBeCloseTo(grand, 2);
+  });
+
   it('emits a BOM, header row, and CRLF line endings', () => {
     const csv = generateEstimateCSV(baseData());
     expect(csv.startsWith('\uFEFF' + '*Customer,')).toBe(true);

@@ -439,6 +439,16 @@ export function BidGrid({
               <td colSpan={2}></td>
             </tr>
           )}
+          {/* Freight (conditional) */}
+          {(summary.freight || 0) > 0 && (
+            <tr>
+              <td colSpan={6} className="text-right" title={`Job-level freight. Markups apply on top; the ${summary.freight_taxed ? 'tax rate applies too' : 'tax rate does not apply'} (Settings → freight tax).`}>
+                Freight
+              </td>
+              <td className="text-right">{formatCurrency(summary.freight)}</td>
+              <td colSpan={2}></td>
+            </tr>
+          )}
           {/* Overhead */}
           <tr>
             <td colSpan={6} className="text-right">Overhead{hasMarkupOverrides ? '*' : ` (${job.overhead_percent}%)`}</td>

@@ -1,7 +1,8 @@
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import type Database from 'better-sqlite3';
 import { logger } from '../logger';
 import type { SectionCostRow } from '../../shared/bidCalc';
+import { resolveLocaleProfile } from '../../shared/localeProfiles';
 
 /**
  * Build a `LIKE '%…%'` pattern that treats user input as literal text.
@@ -12,6 +13,45 @@ import type { SectionCostRow } from '../../shared/bidCalc';
  */
 export function likeContains(value: string): string {
   return `%${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}
+
+/**
+ * Effective "does the job tax rate apply to freight" flag, feeding
+ * computeBidSummaryFromSections. app_settings.freight_taxable (0/1) is the
+ * user's explicit choice; NULL means follow the locale profile's default
+ * (GST/VAT locales tax freight, en-US doesn't). `localeTag` is injectable
+ * for tests; production callers omit it and get the OS locale.
+ */
+export function getFreightTaxable(
+  db: Database.Database,
+  localeTag?: string,
+): boolean {
+  const row = db
+    .prepare('SELECT freight_taxable FROM app_settings WHERE id = 1')
+    .get() as { freight_taxable: number | null } | undefined;
+  const explicit = row?.freight_taxable;
+  if (explicit === 0 || explicit === 1) return explicit === 1;
+  const resolved = resolveLocaleProfile(localeTag ?? safeSystemLocale()).freightTaxable;
+  // Materialize the locale default the first time it's needed. Left as NULL,
+  // the flag would resolve against each machine's OS locale — the same
+  // synced job would price differently per seat. Writing the resolved 0/1
+  // makes it a stored, synced company setting the first seat to price a job
+  // fixes for the whole account; Settings can still change it (and choosing
+  // "locale default" there re-resolves through this same path).
+  if (row) {
+    db.prepare('UPDATE app_settings SET freight_taxable = ? WHERE id = 1').run(resolved ? 1 : 0);
+  }
+  return resolved;
+}
+
+/** OS regional locale, or '' when Electron isn't available (unit tests). */
+function safeSystemLocale(): string {
+  try {
+    // Handlers only run after app.whenReady(), so the sync read is safe.
+    return app.getSystemLocale();
+  } catch {
+    return '';
+  }
 }
 
 /**
