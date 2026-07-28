@@ -4,8 +4,8 @@ import * as pdfjsLib from 'pdfjs-dist';
 /* ---- Constants ---- */
 
 /** Loupe window size in CSS px. */
-const LOUPE_W = 280;
-const LOUPE_H = 190;
+const LOUPE_W = 400;
+const LOUPE_H = 270;
 /** Gap between the cursor and the loupe's near corner. */
 const CURSOR_GAP = 22;
 

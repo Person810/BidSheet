@@ -297,7 +297,13 @@ export function PdfViewer({
       onMouseLeave={handleMouseUp}
       style={{
         flex: 1, overflow: 'hidden',
-        cursor: isPanning ? 'grabbing' : (panEnabled ? 'grab' : 'default'),
+        // An active drag still reads as grabbing; otherwise the magnifier
+        // owns the cursor while it's on. Point placement keeps its crosshair
+        // (set on the overlay) — a zoom cursor's hotspot is too vague to
+        // trace a run with.
+        cursor: isPanning ? 'grabbing'
+          : loupeActive ? 'zoom-in'
+            : (panEnabled ? 'grab' : 'default'),
         background: 'var(--bg-secondary, #f0f0f0)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         position: 'relative', userSelect: 'none',
