@@ -154,7 +154,13 @@ export function safeHandle(
 ): void {
   ipcMain.handle(channel, async (event, ...args) => {
     try {
-      return fn(event, ...args);
+      // `await` is load-bearing, not stylistic: most handlers here are async,
+      // and returning the promise unawaited settles it OUTSIDE this try, so a
+      // rejection escapes to the renderer as the raw errno string
+      // ('ENOSPC: no space left on device') with nothing written to the log.
+      // Awaiting pulls async failures back into the catch below, which is the
+      // only thing that translates and logs them.
+      return await fn(event, ...args);
     } catch (err: any) {
       // Errors thrown deliberately (no .code) already have user-friendly
       // messages -- pass them through. System errors (SQLite, fs) carry a

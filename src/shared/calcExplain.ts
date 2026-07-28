@@ -25,13 +25,30 @@ export interface CalcBreakdown {
 // ---- Formatting (shared, renderer-independent) -----------------------------
 
 /** USD, mirroring renderer formatCurrency so popovers match the grid. */
+/**
+ * Coerce anything to a finite number, defaulting to 0.
+ *
+ * These formatters are typed `number` but are fed values that came off a
+ * sync snapshot, a CSV import, or a JSON column — a string reaches
+ * `(n).toLocaleString()` and String.prototype.toLocaleString hands it
+ * straight back, unformatted and unescaped. That is how a crafted
+ * `total_cost` ends up interpolated verbatim into the generated PDF
+ * document. Coercing here means every caller prints a number or prints
+ * "$0.00"; it never prints its input.
+ */
+function toFinite(n: unknown): number {
+  if (typeof n === 'number') return Number.isFinite(n) ? n : 0;
+  const v = Number(n);
+  return Number.isFinite(v) ? v : 0;
+}
+
 export function fmtMoney(n: number, opts?: { maximumFractionDigits?: number }): string {
-  return (n ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', ...opts });
+  return toFinite(n).toLocaleString('en-US', { style: 'currency', currency: 'USD', ...opts });
 }
 
 /** Plain number with thousands separators, up to `maxFrac` decimals. */
 export function fmtNum(n: number, maxFrac = 2): string {
-  return (n ?? 0).toLocaleString('en-US', { maximumFractionDigits: maxFrac });
+  return toFinite(n).toLocaleString('en-US', { maximumFractionDigits: maxFrac });
 }
 
 /** A number with a trailing unit, e.g. "1,250 LF" or "6.5 ft". */

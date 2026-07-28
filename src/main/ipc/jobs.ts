@@ -455,13 +455,19 @@ export function registerJobHandlers(db: Database.Database): void {
 
     const result = db.prepare(
       `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status,
-        overhead_percent, profit_percent, bond_percent, tax_percent, notes,
+        overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes,
         parent_job_id, change_order_number, site_postcode, site_country)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       `CO #${nextCO}`, parent.job_number, parent.client, parent.client_id, parent.location,
       null, null, null, parent.overhead_percent, parent.profit_percent,
-      parent.bond_percent, parent.tax_percent, null,
+      parent.bond_percent, parent.tax_percent,
+      // Escalation is a market condition on the parent's material prices, and
+      // a change order is priced in the same market — a CO off a job carrying
+      // 12% long-lead steel escalation must carry it too, or it goes out
+      // ~11% light. Inherited like the other markup percentages; freight
+      // below is the deliberate exception (it's a booked cost, not a rate).
+      parent.escalation_percent, null,
       parentJobId, nextCO,
       // Same dig site as the parent; freight deliberately NOT inherited —
       // the parent's freight is already priced in the parent's bid, and a
