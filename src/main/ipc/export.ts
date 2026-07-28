@@ -6,7 +6,7 @@ import { getDbPath, isSetupComplete, seedDatabase } from '../database';
 import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
-import { fmtMoney } from '../../shared/calcExplain';
+import { fmtMoney, fmtNum } from '../../shared/calcExplain';
 import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable } from './shared';
 import { grantPathAccess, isPathReadable } from './file-access';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
@@ -597,16 +597,36 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   // The rate label has the same problem once a section overrides it: the
   // job percentage is no longer the rate that produced the dollars, so it
   // degrades to the `*` footnote the grid and the QuickBooks CSV use.
-  const markupRate = (pct: number) => (hasMarkupOverrides ? ' *' : ` (${pct}%)`);
+  // Two things every row below depends on, both learned the hard way:
+  //
+  // `has(amount)` — the gate is "carries money", and NaN is not money.
+  // A plain `amount !== 0` is TRUE for NaN, and a job column can hold a NaN-
+  // producing value: validate-snapshot accepts any string for any column
+  // (validate-snapshot.ts:38), the serializer binds it verbatim, and SQLite's
+  // REAL affinity stores a non-numeric string as TEXT. bidCalc's `|| 0`
+  // doesn't catch it either — a non-empty string is truthy. The OLD
+  // percentage gate blocked this by accident; gating on dollars removed that
+  // accident, so the check has to be explicit.
+  //
+  // `pctLabel` — escape and coerce the percentage. These are the only
+  // interpolations of stored data in this builder that were not escaped;
+  // every other one goes through escHtml. Unescaped, a crafted
+  // escalation_percent injects markup into the proposal a colleague prints
+  // and hands to a GC — a fabricated discount row, or a hidden .total-row.
+  // The document's CSP stops script, but not markup or inline style, and it
+  // is meant to be the backstop rather than the only defense.
+  const has = (amount: number) => Number.isFinite(amount) && amount !== 0;
+  const pctLabel = (pct: number) => escHtml(fmtNum(pct, 4));
+  const markupRate = (pct: number) => (hasMarkupOverrides ? ' *' : ` (${pctLabel(pct)}%)`);
   let summaryRows = '';
   summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtMoney(totals.direct_cost_total)}</td></tr>`;
-  if (escalation !== 0) summaryRows += `<tr><td class="sum-label">Material Escalation (${escalationPct}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
-  if (indirect !== 0) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
-  if (freight !== 0) summaryRows += `<tr><td class="sum-label">Freight</td><td class="sum-val">${fmtMoney(freight)}</td></tr>`;
-  if (overhead !== 0) summaryRows += `<tr><td class="sum-label">Overhead${markupRate(overheadPct)}</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
-  if (profit !== 0) summaryRows += `<tr><td class="sum-label">Profit${markupRate(profitPct)}</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
-  if (bond !== 0) summaryRows += `<tr><td class="sum-label">Bond${markupRate(bondPct)}</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;
-  if (tax !== 0) summaryRows += `<tr><td class="sum-label">Sales Tax (${taxPct}%)</td><td class="sum-val">${fmtMoney(tax)}</td></tr>`;
+  if (has(escalation)) summaryRows += `<tr><td class="sum-label">Material Escalation (${pctLabel(escalationPct)}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
+  if (has(indirect)) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
+  if (has(freight)) summaryRows += `<tr><td class="sum-label">Freight</td><td class="sum-val">${fmtMoney(freight)}</td></tr>`;
+  if (has(overhead)) summaryRows += `<tr><td class="sum-label">Overhead${markupRate(overheadPct)}</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
+  if (has(profit)) summaryRows += `<tr><td class="sum-label">Profit${markupRate(profitPct)}</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
+  if (has(bond)) summaryRows += `<tr><td class="sum-label">Bond${markupRate(bondPct)}</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;
+  if (has(tax)) summaryRows += `<tr><td class="sum-label">Sales Tax (${pctLabel(taxPct)}%)</td><td class="sum-val">${fmtMoney(tax)}</td></tr>`;
   if (hasMarkupOverrides) summaryRows += `<tr><td class="sum-label sum-note" colspan="2">* Rates vary by section; the amount shown is the total across all sections.</td></tr>`;
   const totalLabel = altSections.length > 0 ? 'TOTAL BASE BID' : 'TOTAL BID AMOUNT';
   summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtMoney(grandTotal)}</td></tr>`;
