@@ -100,6 +100,12 @@ interface TakeoffToolbarProps {
   // Pages
   pageNum: number;
   totalPages: number;
+  /**
+   * True while a shape is being drawn. Page navigation is refused in that
+   * state (a shape cannot span two calibrations), so the controls say so
+   * instead of silently doing nothing.
+   */
+  pageNavLocked?: boolean;
   onPrevPage: () => void;
   onNextPage: () => void;
   onSetPage: (page: number) => void;
@@ -164,7 +170,7 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
   const {
     onBack,
     onLoadPlan, loading,
-    pageNum, totalPages, onPrevPage, onNextPage, onSetPage,
+    pageNum, totalPages, pageNavLocked, onPrevPage, onNextPage, onSetPage,
     zoomPercent, onZoomIn, onZoomOut, onFitToWidth,
     calibrating, onToggleCalibrate, canCalibrate, scaleDisplay,
     canAddRun, onAddRun, isDrawing,
@@ -231,21 +237,32 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       <ToolBtn icon={Icons.redo} title="Redo (Ctrl+Y)" onClick={onRedo} disabled={!canRedo} />
       <Separator />
 
-      <ToolBtn icon={Icons.prev} title="Previous page (←)" onClick={onPrevPage} disabled={pageNum <= 1} />
+      <ToolBtn
+        icon={Icons.prev}
+        title={pageNavLocked ? 'Finish or cancel the shape you are drawing first' : 'Previous page (←)'}
+        onClick={onPrevPage}
+        disabled={pageNavLocked || pageNum <= 1}
+      />
       <input
         className="tk-page-input"
         value={pageDraft}
+        disabled={pageNavLocked}
         onChange={(e) => setPageDraft(e.target.value.replace(/[^0-9]/g, ''))}
         onBlur={commitPageDraft}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           if (e.key === 'Escape') { setPageDraft(String(pageNum)); (e.target as HTMLInputElement).blur(); }
         }}
-        title="Go to page"
+        title={pageNavLocked ? 'Finish or cancel the shape you are drawing first' : 'Go to page'}
         aria-label="Page number"
       />
       <span className="tk-readout">/ {totalPages || '—'}</span>
-      <ToolBtn icon={Icons.next} title="Next page (→)" onClick={onNextPage} disabled={pageNum >= totalPages} />
+      <ToolBtn
+        icon={Icons.next}
+        title={pageNavLocked ? 'Finish or cancel the shape you are drawing first' : 'Next page (→)'}
+        onClick={onNextPage}
+        disabled={pageNavLocked || pageNum >= totalPages}
+      />
       <Separator />
 
       <ToolBtn icon={Icons.zoomOut} title="Zoom out (-)" onClick={onZoomOut} />
