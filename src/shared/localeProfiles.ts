@@ -16,14 +16,28 @@ export interface LocaleProfile {
    * off and the setting is the way to turn it on.
    */
   freightTaxable: boolean;
+  /**
+   * How a postal address is captured and rendered.
+   *
+   * 'structured' — the address is entered as separate street / suburb /
+   * state / postcode fields and composed into the stored block. Australia
+   * Post style, and the shape Australian builders expect on a quote.
+   *
+   * 'freeform' — the address is one multi-line text field, stored as typed.
+   *
+   * This replaces a hardcoded `profile.id === 'en-AU'` test. The behaviour is
+   * a property of the locale, so a country that needs the structured form
+   * should get it by adding a profile, not by editing a component.
+   */
+  addressFormat: 'structured' | 'freeform';
 }
 
 export const LOCALE_PROFILES: Record<string, LocaleProfile> = {
-  'en-US': { id: 'en-US', displayName: 'United States', dateFormat: 'mdy', taxLabel: 'Sales Tax', postalLabel: 'Zip Code', gcLabel: 'GC / Owner', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: false },
-  'en-AU': { id: 'en-AU', displayName: 'Australia', dateFormat: 'dmy', taxLabel: 'GST', postalLabel: 'Postcode', gcLabel: 'Builder', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: true },
-  'en-GB': { id: 'en-GB', displayName: 'United Kingdom', dateFormat: 'dmy', taxLabel: 'VAT', postalLabel: 'Postcode', gcLabel: 'Main Contractor', currencySymbol: '£', thousandsSep: ',', decimalSep: '.', freightTaxable: true },
-  'en-NZ': { id: 'en-NZ', displayName: 'New Zealand', dateFormat: 'dmy', taxLabel: 'GST', postalLabel: 'Postcode', gcLabel: 'Main Contractor', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: true },
-  'en-CA': { id: 'en-CA', displayName: 'Canada', dateFormat: 'ymd', taxLabel: 'HST', postalLabel: 'Postal Code', gcLabel: 'GC / Owner', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: true },
+  'en-US': { id: 'en-US', displayName: 'United States', dateFormat: 'mdy', taxLabel: 'Sales Tax', postalLabel: 'Zip Code', gcLabel: 'GC / Owner', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: false, addressFormat: 'freeform' },
+  'en-AU': { id: 'en-AU', displayName: 'Australia', dateFormat: 'dmy', taxLabel: 'GST', postalLabel: 'Postcode', gcLabel: 'Builder', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: true, addressFormat: 'structured' },
+  'en-GB': { id: 'en-GB', displayName: 'United Kingdom', dateFormat: 'dmy', taxLabel: 'VAT', postalLabel: 'Postcode', gcLabel: 'Main Contractor', currencySymbol: '£', thousandsSep: ',', decimalSep: '.', freightTaxable: true, addressFormat: 'freeform' },
+  'en-NZ': { id: 'en-NZ', displayName: 'New Zealand', dateFormat: 'dmy', taxLabel: 'GST', postalLabel: 'Postcode', gcLabel: 'Main Contractor', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: true, addressFormat: 'freeform' },
+  'en-CA': { id: 'en-CA', displayName: 'Canada', dateFormat: 'ymd', taxLabel: 'HST', postalLabel: 'Postal Code', gcLabel: 'GC / Owner', currencySymbol: '$', thousandsSep: ',', decimalSep: '.', freightTaxable: true, addressFormat: 'freeform' },
 };
 
 export const DEFAULT_LOCALE = 'en-US';

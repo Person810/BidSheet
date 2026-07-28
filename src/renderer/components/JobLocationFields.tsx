@@ -82,7 +82,10 @@ export function JobLocationFields({
   const id = useId();
   const requestId = useRef(0);
   const { profile } = useLocaleStore();
-  const isAU = profile.id === 'en-AU';
+  // Structured (street/suburb/state/postcode) vs one free-form location
+  // field. A locale capability, not a country check — a country that needs
+  // the structured form is a new profile, not an edit to this component.
+  const isAU = profile.addressFormat === 'structured';
 
   const [street, setStreet] = useState('');
   const [suburb, setSuburb] = useState('');
