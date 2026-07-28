@@ -61,6 +61,7 @@ const SYNCED_SETTINGS = [
   'job_number_format',
   'job_number_start',
   'unit_system',
+  'hdd_rates_json',
 ] as const;
 
 /** Intra-catalog FKs: column → referenced table. All are NOT NULL columns. */

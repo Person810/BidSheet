@@ -28,6 +28,8 @@ interface FormData extends TrenchInput {
   hddIncludeSlurry?: boolean;
   hddIncludePits?: boolean;
   hddMarginPct?: number;
+  hddBoresPerPit?: number;
+  hddAdditionalPipesJson?: string;
 }
 
 interface Props {
@@ -44,11 +46,12 @@ interface Props {
   pageScales: Record<number, number>;
   /** The job's surveyed-terrain surface, if any, so a linked run can ground against real elevations. */
   surface: TakeoffSurface | null;
+  customRates?: any;
 }
 
 export function TrenchProfileForm({
   form, onChange, onSave, onCancel, errors, pipeMaterials, beddingMaterials,
-  takeoffRuns, pageScales, surface,
+  takeoffRuns, pageScales, surface, customRates,
 }: Props) {
   const system = useUnitSystem();
   const isMetric = system === 'metric';
@@ -59,17 +62,18 @@ export function TrenchProfileForm({
   const isHDD = form.method === 'hdd';
 
   const additionalPipes = useMemo(() => {
-    if (form.backfillType && form.backfillType.startsWith('[')) {
+    const jsonStr = form.hddAdditionalPipesJson || (form.backfillType && form.backfillType.startsWith('[') ? form.backfillType : '');
+    if (jsonStr) {
       try {
-        return JSON.parse(form.backfillType) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+        return JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
       } catch {
         return [];
       }
     }
     return [];
-  }, [form.backfillType]);
+  }, [form.hddAdditionalPipesJson, form.backfillType]);
 
-  const boresCount = Math.max(1, form.compactionPct || 1);
+  const boresCount = Math.max(1, form.hddBoresPerPit !== undefined && form.hddBoresPerPit !== null ? form.hddBoresPerPit : (form.compactionPct || 1));
   const normalizedAdditionalPipes = useMemo(() => {
     const list = [...additionalPipes];
     const targetLen = boresCount - 1;
@@ -86,7 +90,7 @@ export function TrenchProfileForm({
   const onChangeAdditionalPipe = (index: number, field: 'pipeSizeIn' | 'pipeMaterialId', value: any) => {
     const newList = [...normalizedAdditionalPipes];
     newList[index] = { ...newList[index], [field]: value };
-    onChange('backfillType', JSON.stringify(newList));
+    onChange('hddAdditionalPipesJson', JSON.stringify(newList));
   };
 
   const depthZones = useMemo(
@@ -117,14 +121,15 @@ export function TrenchProfileForm({
         includePits: form.backfillType !== 'bundle' && form.hddIncludePits !== false,
         marginPct: form.hddMarginPct ?? 15,
         locale: isMetric ? 'en-AU' : 'en-US',
-        boresPerPit: form.compactionPct || 1,
+        boresPerPit: form.hddBoresPerPit ?? 1,
         isBundle: form.backfillType === 'bundle',
         additionalPipes: normalizedAdditionalPipes,
+        customRates,
       });
     } catch (e) {
       return null;
     }
-  }, [form, errors, isHDD, isMetric, normalizedAdditionalPipes]);
+  }, [form, errors, isHDD, isMetric, normalizedAdditionalPipes, customRates]);
 
   return (
     <div style={{ padding: '12px 0' }}>
@@ -402,10 +407,10 @@ export function TrenchProfileForm({
               <div className="form-group">
                 <label>Bores Sharing Pit</label>
                 <input type="number" className="form-control"
-                  value={form.compactionPct || 1} min={1} step={1}
+                  value={form.hddBoresPerPit ?? 1} min={1} step={1}
                   onChange={(e) => {
                     const newBores = Math.max(1, parseInt(e.target.value) || 1);
-                    onChange('compactionPct', newBores);
+                    onChange('hddBoresPerPit', newBores);
                     
                     const newList = [...normalizedAdditionalPipes];
                     const targetLen = newBores - 1;
@@ -416,7 +421,7 @@ export function TrenchProfileForm({
                     } else if (newList.length > targetLen) {
                       newList.splice(targetLen);
                     }
-                    onChange('backfillType', JSON.stringify(newList));
+                    onChange('hddAdditionalPipesJson', JSON.stringify(newList));
                   }} />
               </div>
             </div>

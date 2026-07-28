@@ -64,6 +64,8 @@ const DEFAULTS = {
   hddIncludeSlurry: true,
   hddIncludePits: true,
   hddMarginPct: 15,
+  hddBoresPerPit: 1,
+  hddAdditionalPipesJson: '',
 };
 
 /** Metric prefills: round metres (1.2 m deep, 30 m long, 1 m wide, 150 mm
@@ -95,6 +97,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   const system = useUnitSystem();
   const defaults = system === 'metric' ? METRIC_DEFAULTS : DEFAULTS;
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...defaults });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
@@ -115,6 +118,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       rows.forEach((r) => { map[r.page_number] = r.scale_px_per_ft; });
       setPageScales(map);
     });
+    window.api.getSettings().then(setSettings);
   }, [jobId]);
 
   const loadProfiles = useCallback(async () => {
@@ -126,6 +130,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
   const computed = useMemo(() => {
+    const customRates = settings?.hdd_rates_json ? JSON.parse(settings.hdd_rates_json) : undefined;
     return profiles.map((row) => {
       const isHDD = row.method === 'hdd';
       if (isHDD) {
@@ -137,9 +142,10 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
         if (errors.length > 0) return null;
         try {
           let additionalPipes: Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }> = [];
-          if (row.backfill_type && row.backfill_type.startsWith('[')) {
+          const jsonStr = row.hdd_additional_pipes_json || (row.backfill_type && row.backfill_type.startsWith('[') ? row.backfill_type : '');
+          if (jsonStr) {
             try {
-              additionalPipes = JSON.parse(row.backfill_type);
+              additionalPipes = JSON.parse(jsonStr);
             } catch {}
           }
           const calc = calculateHDD({
@@ -150,9 +156,10 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
             includePits: row.backfill_type !== 'bundle' && row.hdd_include_pits !== 0,
             marginPct: row.hdd_margin_pct ?? 15,
             locale: system === 'metric' ? 'en-AU' : 'en-US',
-            boresPerPit: row.compaction_pct || 1,
+            boresPerPit: row.hdd_bores_per_pit !== undefined && row.hdd_bores_per_pit !== null ? row.hdd_bores_per_pit : (row.compaction_pct || 1),
             isBundle: row.backfill_type === 'bundle',
             additionalPipes,
+            customRates,
           });
           return {
             method: 'hdd',
@@ -174,7 +181,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
         return errors.length === 0 ? calculateTrench(input) : null;
       }
     }) as any[];
-  }, [profiles, system]);
+  }, [profiles, system, settings]);
 
   const totals = useMemo(() => {
     const t = { pipeLF: 0, excavationCY: 0, beddingCY: 0, backfillCY: 0, tracerWireLF: 0, warningTapeLF: 0, hddTotal: 0 };
@@ -261,6 +268,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       hddIncludeSlurry: row.hdd_include_slurry !== 0,
       hddIncludePits: row.hdd_include_pits !== 0,
       hddMarginPct: row.hdd_margin_pct ?? 15,
+      hddBoresPerPit: row.hdd_bores_per_pit !== undefined && row.hdd_bores_per_pit !== null ? row.hdd_bores_per_pit : (row.compaction_pct || 1),
+      hddAdditionalPipesJson: row.hdd_additional_pipes_json || (row.backfill_type && row.backfill_type.startsWith('[') ? row.backfill_type : ''),
     });
     setEditingId(row.id);
   };
@@ -271,6 +280,9 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     // Derive text labels for backward compat storage
     const beddingLabel = beddingMaterials.find((m) => m.id === form.beddingMaterialId)?.label || '';
     const backfillLabel = form.backfillType || '';
+
+    // If method is open_cut, clear/ignore the HDD specific columns
+    const isHDD = form.method === 'hdd';
 
     await window.api.saveTrenchProfile({
       id: editingId,
@@ -284,9 +296,9 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       trenchWidthFt: form.trenchWidthFt,
       benchWidthFt: form.benchWidthFt,
       beddingType: beddingLabel,
-      backfillType: backfillLabel,
+      backfillType: isHDD ? null : backfillLabel,
       beddingDepthFt: form.beddingDepthFt,
-      compactionPct: form.compactionPct,
+      compactionPct: isHDD ? 0 : form.compactionPct,
       pipeMaterialId: typeof form.pipeMaterialId === 'number' ? form.pipeMaterialId : null,
       beddingMaterialId: typeof form.beddingMaterialId === 'number' ? form.beddingMaterialId : null,
       backfillMaterialId: typeof form.backfillMaterialId === 'number' ? form.backfillMaterialId : null,
@@ -295,6 +307,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       hddIncludeSlurry: form.hddIncludeSlurry !== false,
       hddIncludePits: form.hddIncludePits !== false,
       hddMarginPct: form.hddMarginPct ?? 15,
+      hddBoresPerPit: isHDD ? ((form as any).hddBoresPerPit ?? 1) : 1,
+      hddAdditionalPipesJson: isHDD ? ((form as any).hddAdditionalPipesJson || null) : null,
     });
     setEditingId(null);
     await loadProfiles();
@@ -461,7 +475,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                       <TrenchProfileForm form={form} onChange={handleChange}
                         onSave={saveProfile} onCancel={() => setEditingId(null)} errors={formErrors}
                         pipeMaterials={pipeMaterials} beddingMaterials={beddingMaterials}
-                        takeoffRuns={takeoffRuns} pageScales={pageScales} surface={surface} />
+                        takeoffRuns={takeoffRuns} pageScales={pageScales} surface={surface}
+                        customRates={settings?.hdd_rates_json ? JSON.parse(settings.hdd_rates_json) : undefined} />
                     </td></tr>
                   )}
                 </React.Fragment>

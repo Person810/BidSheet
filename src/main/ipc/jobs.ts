@@ -246,8 +246,9 @@ export function registerJobHandlers(db: Database.Database): void {
           grade_pct, run_length_lf, trench_width_ft, bench_width_ft,
           bedding_type, backfill_type, sort_order,
           pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft,
-          compaction_pct
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          compaction_pct, method, hdd_location, hdd_include_slurry, hdd_include_pits, hdd_margin_pct,
+          hdd_bores_per_pit, hdd_additional_pipes_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const p of profiles) {
         insertProfile.run(
@@ -255,7 +256,9 @@ export function registerJobHandlers(db: Database.Database): void {
           p.grade_pct, p.run_length_lf, p.trench_width_ft, p.bench_width_ft,
           p.bedding_type, p.backfill_type, p.sort_order,
           p.pipe_material_id, p.bedding_material_id, p.backfill_material_id, p.bedding_depth_ft,
-          p.compaction_pct ?? 0
+          p.compaction_pct ?? 0, p.method ?? 'open_cut', p.hdd_location ?? null,
+          p.hdd_include_slurry ?? 1, p.hdd_include_pits ?? 1, p.hdd_margin_pct ?? 15.0,
+          p.hdd_bores_per_pit ?? 1, p.hdd_additional_pipes_json ?? null
         );
       }
 

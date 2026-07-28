@@ -29,6 +29,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
           bedding_type = ?, backfill_type = ?, sort_order = ?,
           pipe_material_id = ?, bedding_material_id = ?, backfill_material_id = ?, bedding_depth_ft = ?,
           compaction_pct = ?, method = ?, hdd_location = ?, hdd_include_slurry = ?, hdd_include_pits = ?, hdd_margin_pct = ?,
+          hdd_bores_per_pit = ?, hdd_additional_pipes_json = ?,
           updated_at = datetime('now', 'localtime')
         WHERE id = ?`
       ).run(
@@ -43,6 +44,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         profile.hddIncludeSlurry === undefined ? null : (profile.hddIncludeSlurry ? 1 : 0),
         profile.hddIncludePits === undefined ? null : (profile.hddIncludePits ? 1 : 0),
         profile.hddMarginPct ?? null,
+        profile.hddBoresPerPit ?? 1,
+        profile.hddAdditionalPipesJson ?? null,
         profile.id
       );
       return { id: profile.id };
@@ -51,8 +54,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         `INSERT INTO trench_profiles (job_id, label, pipe_size_in, pipe_material, start_depth_ft,
           grade_pct, run_length_lf, trench_width_ft, bench_width_ft, bedding_type, backfill_type, sort_order,
           pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft, compaction_pct,
-          method, hdd_location, hdd_include_slurry, hdd_include_pits, hdd_margin_pct)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          method, hdd_location, hdd_include_slurry, hdd_include_pits, hdd_margin_pct, hdd_bores_per_pit, hdd_additional_pipes_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         profile.jobId, profile.label ?? '', profile.pipeSizeIn, profile.pipeMaterial ?? '', profile.startDepthFt,
         profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
@@ -64,7 +67,9 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         profile.hddLocation ?? null,
         profile.hddIncludeSlurry === undefined ? null : (profile.hddIncludeSlurry ? 1 : 0),
         profile.hddIncludePits === undefined ? null : (profile.hddIncludePits ? 1 : 0),
-        profile.hddMarginPct ?? null
+        profile.hddMarginPct ?? null,
+        profile.hddBoresPerPit ?? 1,
+        profile.hddAdditionalPipesJson ?? null
       );
       return { id: Number(result.lastInsertRowid) };
     }

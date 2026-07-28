@@ -108,7 +108,8 @@ export function calculateHDD(input: HDDInput): HDDOutput {
   const tableSet = input.customRates?.[activeLocale] || DEFAULT_RATES[activeLocale];
 
   const dn = input.dn;
-  const length = input.length;
+  const rawLengthFt = input.length;
+  const length = isMetric ? rawLengthFt * 0.3048 : rawLengthFt;
   const location = input.location;
   const includeSlurry = input.includeSlurry ?? true;
   const includePits = input.includePits ?? true;
@@ -135,7 +136,7 @@ export function calculateHDD(input: HDDInput): HDDOutput {
     const limit = isMetric ? 300 : 1000;
     const limit2 = isMetric ? 500 : 1600;
     const prodFactor = length <= limit ? 1.0 : length <= limit2 ? 1.3 : 1.6;
-    const effectiveRate = baseProdRate * prodFactor;
+    const effectiveRate = baseProdRate / prodFactor;
     const days = Math.ceil(length / effectiveRate);
 
     const crew = lookup(targetDN, tableSet.crewSize);

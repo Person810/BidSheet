@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { calculateHDD } from './hddCalc';
+import { calculateHDD, DEFAULT_RATES } from './hddCalc';
+
+// Helper to convert meters to feet for en-AU tests
+const mToFt = (m: number) => m / 0.3048;
 
 describe('HDD Calculator', () => {
   describe('Metric (en-AU)', () => {
-    it('calculates a metro 90mm bore run of 100m with no slurry and no pits', () => {
+    it('calculates a metro 90mm bore run of 100m (passed as feet) with no slurry and no pits', () => {
       const res = calculateHDD({
         location: 'metro',
         dn: 90,
-        length: 100,
+        length: mToFt(100),
         includeSlurry: false,
         includePits: false,
         marginPct: 15,
@@ -25,7 +28,7 @@ describe('HDD Calculator', () => {
       const res = calculateHDD({
         location: 'metro',
         dn: 90,
-        length: 100,
+        length: mToFt(100),
         includeSlurry: true,
         includePits: true,
         marginPct: 15,
@@ -40,7 +43,7 @@ describe('HDD Calculator', () => {
       const res1 = calculateHDD({
         location: 'metro',
         dn: 90,
-        length: 100,
+        length: mToFt(100),
         includePits: true,
         locale: 'en-AU',
         boresPerPit: 1,
@@ -48,7 +51,7 @@ describe('HDD Calculator', () => {
       const res3 = calculateHDD({
         location: 'metro',
         dn: 90,
-        length: 100,
+        length: mToFt(100),
         includePits: true,
         locale: 'en-AU',
         boresPerPit: 3,
@@ -60,7 +63,7 @@ describe('HDD Calculator', () => {
       const res = calculateHDD({
         location: 'metro',
         dn: 90,
-        length: 100,
+        length: mToFt(100),
         locale: 'en-AU',
         isBundle: true,
       });
@@ -73,7 +76,7 @@ describe('HDD Calculator', () => {
       const baseRes = calculateHDD({
         location: 'metro',
         dn: 90,
-        length: 100,
+        length: mToFt(100),
         includePits: true,
         locale: 'en-AU',
         boresPerPit: 1,
@@ -82,7 +85,7 @@ describe('HDD Calculator', () => {
       const multiRes = calculateHDD({
         location: 'metro',
         dn: 90,
-        length: 100,
+        length: mToFt(100),
         includePits: true,
         locale: 'en-AU',
         boresPerPit: 1,
@@ -126,6 +129,30 @@ describe('HDD Calculator', () => {
 
       expect(res.breakdown.slurryDisposal).toBe(0);
       expect(res.breakdown.excavatorAllowance).toBe(0);
+    });
+  });
+
+  describe('Custom Rates Integration', () => {
+    it('uses custom rates if provided in input', () => {
+      // Create a modified copy of default rates with highly visible changes
+      const customRates = JSON.parse(JSON.stringify(DEFAULT_RATES));
+      
+      // Triple the metro establishment rate for 90mm in en-AU
+      customRates['en-AU'].establishment.metro = [[90, 21000]]; // default was 7000
+
+      const res = calculateHDD({
+        location: 'metro',
+        dn: 90,
+        length: mToFt(100),
+        includeSlurry: false,
+        includePits: false,
+        marginPct: 15,
+        locale: 'en-AU',
+        customRates,
+      });
+
+      // establishment should be 21000 * 1.15 = 24150
+      expect(res.breakdown.establishment).toBe(24150);
     });
   });
 });

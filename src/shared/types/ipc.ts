@@ -442,6 +442,8 @@ export interface TrenchProfileRow {
   hdd_include_slurry?: number | null;
   hdd_include_pits?: number | null;
   hdd_margin_pct?: number | null;
+  hdd_bores_per_pit?: number | null;
+  hdd_additional_pipes_json?: string | null;
 }
 
 export interface SaveTrenchProfilePayload {
@@ -470,6 +472,8 @@ export interface SaveTrenchProfilePayload {
   hddIncludeSlurry?: boolean | null;
   hddIncludePits?: boolean | null;
   hddMarginPct?: number | null;
+  hddBoresPerPit?: number | null;
+  hddAdditionalPipesJson?: string | null;
 }
 
 // ================================================================

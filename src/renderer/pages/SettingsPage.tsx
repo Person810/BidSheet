@@ -473,9 +473,32 @@ export function SettingsPage() {
               <span className="text-success" style={{ fontWeight: 'bold', fontSize: 13 }}>✓ Custom Rates Active</span>
               <button
                 className="btn btn-sm btn-secondary"
-                onClick={() => {
+                onClick={async () => {
                   if (confirm('Are you sure you want to reset all HDD rates back to standard system defaults?')) {
-                    update('hddRatesJson', '');
+                    const updated = { ...settings, hddRatesJson: '' };
+                    setSettings(updated);
+                    await window.api.saveSettings({
+                      companyName: updated.companyName,
+                      companyAddress: updated.companyAddress || null,
+                      companyPhone: updated.companyPhone || null,
+                      companyEmail: updated.companyEmail || null,
+                      companyTagline: updated.companyTagline || null,
+                      companyLogo: updated.companyLogo || null,
+                      defaultOverheadPercent: updated.defaultOverheadPercent,
+                      defaultProfitPercent: updated.defaultProfitPercent,
+                      defaultTaxPercent: updated.defaultTaxPercent,
+                      defaultBondPercent: updated.defaultBondPercent,
+                      autoLockOnClose: updated.autoLockOnClose,
+                      localOnlyMode: updated.localOnlyMode,
+                      jobNumberAuto: updated.jobNumberAuto,
+                      jobNumberFormat: updated.jobNumberFormat,
+                      jobNumberStart: updated.jobNumberStart,
+                      unitSystem: updated.unitSystem,
+                      enabledTools: updated.enabledTools,
+                      customTrades: serializeCustomTrades(updated.customTrades),
+                      hddRatesJson: null,
+                    });
+                    addToast('HDD rates reset to system defaults!', 'success');
                   }
                 }}
               >
@@ -490,10 +513,32 @@ export function SettingsPage() {
         {showHddRatesModal && (
           <HDDRatesModal
             initialRatesJson={settings.hddRatesJson}
-            onSave={(json) => {
-              update('hddRatesJson', json);
+            onSave={async (json) => {
+              const updated = { ...settings, hddRatesJson: json };
+              setSettings(updated);
+              await window.api.saveSettings({
+                companyName: updated.companyName,
+                companyAddress: updated.companyAddress || null,
+                companyPhone: updated.companyPhone || null,
+                companyEmail: updated.companyEmail || null,
+                companyTagline: updated.companyTagline || null,
+                companyLogo: updated.companyLogo || null,
+                defaultOverheadPercent: updated.defaultOverheadPercent,
+                defaultProfitPercent: updated.defaultProfitPercent,
+                defaultTaxPercent: updated.defaultTaxPercent,
+                defaultBondPercent: updated.defaultBondPercent,
+                autoLockOnClose: updated.autoLockOnClose,
+                localOnlyMode: updated.localOnlyMode,
+                jobNumberAuto: updated.jobNumberAuto,
+                jobNumberFormat: updated.jobNumberFormat,
+                jobNumberStart: updated.jobNumberStart,
+                unitSystem: updated.unitSystem,
+                enabledTools: updated.enabledTools,
+                customTrades: serializeCustomTrades(updated.customTrades),
+                hddRatesJson: updated.hddRatesJson || null,
+              });
               setShowHddRatesModal(false);
-              addToast('Custom HDD rates updated successfully!', 'success');
+              addToast('Custom HDD rates saved successfully!', 'success');
             }}
             onClose={() => setShowHddRatesModal(false)}
           />

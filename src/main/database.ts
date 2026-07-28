@@ -413,6 +413,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV45,
   migrateV46,
   migrateV47,
+  migrateV48,
   migrateV49,
   migrateV50,
 ];

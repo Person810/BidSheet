@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { DEFAULT_RATES } from '../modules/underground/hddCalc';
 import { lookupTableValue, updateTableValues } from '../modules/underground/hddRatesHelper';
+import { dismissOnEscOnly } from './modalDismiss';
+import { useUnitSystem } from '../stores/units-store';
 
 interface Props {
   initialRatesJson: string;
@@ -11,7 +13,8 @@ interface Props {
 type LocaleKey = 'en-AU' | 'en-US';
 
 export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
-  const [locale, setLocale] = useState<LocaleKey>('en-AU');
+  const system = useUnitSystem();
+  const [locale, setLocale] = useState<LocaleKey>(system === 'metric' ? 'en-AU' : 'en-US');
   const [activeTab, setActiveTab] = useState<'production' | 'establishment' | 'fluids' | 'excavator'>('production');
 
   // Parse rates state
@@ -79,7 +82,7 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
   const isMetric = locale === 'en-AU';
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+    <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)} style={{ zIndex: 9999 }}>
       <div className="modal" style={{ width: 850, maxWidth: '95vw', height: '90vh', display: 'flex', flexDirection: 'column', padding: 24 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ margin: 0 }}>Configure HDD Rates</h2>
