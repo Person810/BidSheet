@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'path';
-import { assertCloudId } from './sync-engine';
+import { assertCloudId } from './cloud-id';
 
 /**
  * Cloud job ids arrive from GET /jobs — from the Worker, which this codebase
