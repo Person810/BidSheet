@@ -17,6 +17,7 @@ const TAKEOFF_SHORTCUTS: ShortcutRow[] = [
   { keys: ['Esc'], action: 'Finish drawing / cancel tool' },
   { keys: ['Shift'], action: 'Hold for straight (ortho) lines while drawing or dragging' },
   { keys: ['Space'], action: 'Hold to pan' },
+  { keys: ['M'], action: 'Toggle the magnifier for reading small plan text' },
   { keys: ['←', '→'], action: 'Previous / next page' },
   { keys: ['+', '−'], action: 'Zoom in / out' },
   { keys: ['Ctrl', '0'], action: 'Fit page to width' },

@@ -3,7 +3,7 @@ import {
   ArrowLeft, FolderOpen, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2,
   RotateCw, Undo2, Redo2, Ruler, MousePointer2, Waypoints, Pentagon, Spline,
   Pencil, Layers, Download, Triangle, Grid2x2, Mountain, Type, ArrowUpRight,
-  Cloud, ChevronDown,
+  Cloud, ChevronDown, Search,
 } from 'lucide-react';
 import { UTILITY_COLORS, AREA_COLORS, ANNOTATION_COLOR, WALL_COLOR, type UtilityType, type AnnotationKind } from './types';
 
@@ -43,6 +43,7 @@ const Icons = {
   undo: <Undo2 size={SZ} strokeWidth={SW} />,
   redo: <Redo2 size={SZ} strokeWidth={SW} />,
   ruler: <Ruler size={SZ} strokeWidth={SW} />,
+  loupe: <Search size={SZ} strokeWidth={SW} />,
   select: <MousePointer2 size={SZ} strokeWidth={SW} />,
   run: <Waypoints size={SZ} strokeWidth={SW} />,
   area: <Pentagon size={SZ} strokeWidth={SW} />,
@@ -141,6 +142,8 @@ interface TakeoffToolbarProps {
   selectMode: boolean;
   onToggleSelectMode: () => void;
   canSelect: boolean;
+  loupeOn: boolean;
+  onToggleLoupe: () => void;
   // Rotation
   onRotatePage: () => void;
   canRotate: boolean;
@@ -171,6 +174,7 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
     canCaptureElev, captureElev, onToggleCaptureElev, surfacePointCount,
     showHeatmap, onToggleHeatmap, canSendEarthwork, onSendEarthworkToBid,
     selectMode, onToggleSelectMode, canSelect,
+    loupeOn, onToggleLoupe,
     onRotatePage, canRotate,
     canUndo, canRedo, onUndo, onRedo,
     hiddenLayers, onToggleLayer,
@@ -254,6 +258,11 @@ export default function TakeoffToolbar(props: TakeoffToolbarProps) {
       <ToolBtn icon={Icons.ruler} label="Scale" title={scaleDisplay
         ? `Recalibrate plan scale (current: ${scaleDisplay})` : 'Calibrate the plan scale'}
         onClick={onToggleCalibrate} disabled={!canCalibrate} active={calibrating} />
+      <Separator />
+
+      <ToolBtn icon={Icons.loupe} label="Magnify" active={loupeOn}
+        title="Magnifier: read small plan text without changing zoom (M)"
+        onClick={onToggleLoupe} />
       <Separator />
 
       <ToolBtn icon={Icons.select} label="Select" active={selectMode} disabled={!canSelect}
