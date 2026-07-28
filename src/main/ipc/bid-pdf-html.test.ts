@@ -96,6 +96,13 @@ describe('bid proposal PDF summary', () => {
     return { jobId, sectionId };
   };
 
+  const addLineItem = (jobId: number, sectionId: number, total: unknown, sortOrder: number) =>
+    db.prepare(
+      `INSERT INTO bid_line_items (job_id, section_id, description, unit, quantity, sort_order,
+                                   material_total, total_cost)
+       VALUES (?, ?, 'Extra', 'LF', 1, ?, 0, ?)`
+    ).run(jobId, sectionId, sortOrder, total);
+
   it('rows sum to the total when markup is priced per section', async () => {
     // The reported case: job percentages are 0, the section carries the rates.
     const { jobId } = makeJob({}, { overhead: 12, profit: 8 });
@@ -196,14 +203,19 @@ describe('bid proposal PDF summary', () => {
     }
   });
 
-  it('escapes a percentage that carries markup but still computes', async () => {
-    // '10' is numeric to SQLite but the label is built from the raw column,
-    // so anything stored alongside it must not reach the document as markup.
-    const { jobId } = makeJob({ overhead: 10 });
-    db.prepare('UPDATE jobs SET tax_percent = ? WHERE id = ?').run('8<img src=x onerror=alert(1)>', jobId);
+  it('keeps the section subtotal numeric when one line item is poisoned', async () => {
+    // The single-item fixture above cannot tell `+= Number(x) || 0` apart from
+    // `+= x` — both render $0.00. With a good line either side, string
+    // concatenation would swallow BOTH real values; the subtotal must still be
+    // the sum of the ones that are actually numbers.
+    const { jobId, sectionId } = makeJob({}, {}, 1000);
+    addLineItem(jobId, sectionId, '<img src=x onerror=alert(1)>', 1);
+    addLineItem(jobId, sectionId, 2500, 2);
+
     const html = await getHtml(jobId);
-    expect(html).not.toContain('<img src=x');
     expect(html).not.toContain('onerror');
+    const subtotal = html.match(/<td class="right subtotal-val">([^<]*)<\/td>/)?.[1];
+    expect(subtotal).toBe('$3,500.00');
   });
 
   it('sends a policy that forbids script and network access', async () => {

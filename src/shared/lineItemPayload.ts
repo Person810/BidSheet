@@ -21,7 +21,19 @@ export function laborHoursForQuantity(opts: {
   currentLaborHours: number;
   rate: { rate_per_hour?: number | null } | null | undefined;
   manualFields: string[];
+  /**
+   * The quantity before this edit. When supplied and unchanged, hours are left
+   * alone: the rule is "recompute WHEN QUANTITY CHANGES", which is what the
+   * modal does (it fires only from onQuantityChange). Without this, a
+   * price-only edit in the grid re-derived hours from quantity/rate and
+   * silently overwrote a value that had drifted — after someone edited the
+   * production rate in the Labor page, say. Omit it to force the rule.
+   */
+  previousQuantity?: number;
 }): number {
+  if (opts.previousQuantity !== undefined && opts.previousQuantity === opts.quantity) {
+    return opts.currentLaborHours;
+  }
   const perHour = opts.rate?.rate_per_hour ?? 0;
   if (!(perHour > 0)) return opts.currentLaborHours;
   if (isManual(opts.manualFields, 'laborHours')) return opts.currentLaborHours;

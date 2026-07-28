@@ -56,3 +56,61 @@ describe('laborHoursForQuantity', () => {
     ).toBe(8);
   });
 });
+
+/**
+ * The grid's inline Qty cell and the modal must agree, and the modal's rule is
+ * "recompute WHEN QUANTITY CHANGES" — not "recompute on every save". Two
+ * reviewers independently read the first version of the grid wiring as
+ * repricing labor on a price-only edit, so the gate lives in the helper where
+ * it can be tested rather than in the caller where it could not.
+ */
+describe('previousQuantity gates the recompute', () => {
+  const rate = { rate_per_hour: 25 };
+
+  it('leaves drifted hours alone when the quantity did not change', () => {
+    // Stored hours have drifted from quantity/rate — realistically because
+    // someone edited the production rate in the Labor page after this line
+    // was priced. A material-price edit must not quietly re-derive them.
+    expect(
+      laborHoursForQuantity({
+        quantity: 200,
+        previousQuantity: 200,
+        currentLaborHours: 4,
+        rate,
+        manualFields: [],
+      })
+    ).toBe(4);
+  });
+
+  it('recomputes when the quantity is what changed', () => {
+    expect(
+      laborHoursForQuantity({
+        quantity: 200,
+        previousQuantity: 100,
+        currentLaborHours: 4,
+        rate,
+        manualFields: [],
+      })
+    ).toBe(8);
+  });
+
+  it('still recomputes when no previous quantity is supplied', () => {
+    // The modal passes none: it only calls this from onQuantityChange, so the
+    // change is implied by the call site.
+    expect(
+      laborHoursForQuantity({ quantity: 200, currentLaborHours: 4, rate, manualFields: [] })
+    ).toBe(8);
+  });
+
+  it('a manual override still wins over a real quantity change', () => {
+    expect(
+      laborHoursForQuantity({
+        quantity: 200,
+        previousQuantity: 100,
+        currentLaborHours: 4,
+        rate,
+        manualFields: ['laborHours'],
+      })
+    ).toBe(4);
+  });
+});

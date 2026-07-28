@@ -608,13 +608,16 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   // percentage gate blocked this by accident; gating on dollars removed that
   // accident, so the check has to be explicit.
   //
-  // `pctLabel` — escape and coerce the percentage. These are the only
-  // interpolations of stored data in this builder that were not escaped;
-  // every other one goes through escHtml. Unescaped, a crafted
-  // escalation_percent injects markup into the proposal a colleague prints
-  // and hands to a GC — a fabricated discount row, or a hidden .total-row.
-  // The document's CSP stops script, but not markup or inline style, and it
-  // is meant to be the backstop rather than the only defense.
+  // `pctLabel` — coerce and escape the percentage. Belt and braces, and
+  // deliberately untested, because with `has()` above there is currently no
+  // input that reaches it carrying markup: SQLite's REAL affinity converts a
+  // fully-numeric string to a REAL, so any value that survives as TEXT is
+  // non-numeric, which makes the amount NaN, which `has()` now suppresses.
+  // It stays because it costs nothing and because these were the only
+  // interpolations of stored data in this builder not going through escHtml —
+  // if a future change makes a row emit on a non-finite amount, the label is
+  // already safe. The document's CSP stops script but not markup or inline
+  // style, so this should not be the last line of defense.
   const has = (amount: number) => Number.isFinite(amount) && amount !== 0;
   const pctLabel = (pct: number) => escHtml(fmtNum(pct, 4));
   const markupRate = (pct: number) => (hasMarkupOverrides ? ' *' : ` (${pctLabel(pct)}%)`);

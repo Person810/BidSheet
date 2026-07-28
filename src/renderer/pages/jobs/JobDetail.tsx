@@ -516,8 +516,12 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       // The grid edits the same line the modal does, so it applies the same
       // production-rate rule — otherwise scaling Qty here scaled material and
       // silently left labor behind (see laborHoursForQuantity).
+      //
+      // previousQuantity gates the recompute on the quantity actually
+      // changing — the modal's rule, which fires only from onQuantityChange.
       const laborHours = laborHoursForQuantity({
         quantity,
+        previousQuantity: item.quantity,
         currentLaborHours: item.labor_hours,
         rate: productionRates.find((r: any) => r.id === item.production_rate_id),
         manualFields,

@@ -21,10 +21,16 @@ document.addEventListener('keydown', (e) => {
 // The main process now refuses that navigation, but the drop should be inert
 // in the first place — a mis-aimed drag is a slip, not a command.
 //
+// Scoped to FILE drags only. Cancelling every drop would also break dragging
+// selected text into an input or textarea, which is ordinary editing and has
+// nothing to do with the navigation hazard.
+//
 // These run on the bubble phase, so a dropzone that handled the event already
 // read its files by the time this fires; all this suppresses is the default.
-window.addEventListener('dragover', (e) => e.preventDefault());
-window.addEventListener('drop', (e) => e.preventDefault());
+const isFileDrag = (e: DragEvent) =>
+  Array.from(e.dataTransfer?.types ?? []).includes('Files');
+window.addEventListener('dragover', (e) => { if (isFileDrag(e)) e.preventDefault(); });
+window.addEventListener('drop', (e) => { if (isFileDrag(e)) e.preventDefault(); });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
