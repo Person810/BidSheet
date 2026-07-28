@@ -1,5 +1,32 @@
 import type { SaveBidLineItemPayload } from './types/ipc';
-import { parseManualFields } from './manualFields';
+import { parseManualFields, isManual } from './manualFields';
+import { roundHours } from './round';
+
+/**
+ * Labor hours implied by a quantity and a production rate.
+ *
+ * This is a pricing rule, so it belongs in one place. It used to live only in
+ * the line-item modal, which meant the grid's inline Qty cell — the advertised
+ * spreadsheet-style edit — scaled material and left labor where it was:
+ * doubling a 100 LF line's quantity doubled the pipe but kept 4 hours of
+ * crew, and the shortfall flowed through section totals, overhead, profit,
+ * bond and the grand total with no override marker to explain it.
+ *
+ * Returns `currentLaborHours` unchanged when there is no usable rate, or when
+ * the user has pinned hours by typing them (`manual_fields` carries
+ * 'laborHours') — an explicit override outranks the rule.
+ */
+export function laborHoursForQuantity(opts: {
+  quantity: number;
+  currentLaborHours: number;
+  rate: { rate_per_hour?: number | null } | null | undefined;
+  manualFields: string[];
+}): number {
+  const perHour = opts.rate?.rate_per_hour ?? 0;
+  if (!(perHour > 0)) return opts.currentLaborHours;
+  if (isManual(opts.manualFields, 'laborHours')) return opts.currentLaborHours;
+  return roundHours(opts.quantity / perHour);
+}
 
 /**
  * Build a bid line-item save payload, defaulting every cost field to zero/null.

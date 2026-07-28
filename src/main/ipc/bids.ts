@@ -261,6 +261,18 @@ export function registerBidHandlers(db: Database.Database): void {
     const sections: any[] = state?.sections || [];
     const lineItemsBySection: Record<number, any[]> = state?.lineItems || {};
 
+    // This handler DELETEs everything under `jobId` and re-inserts whatever it
+    // is handed, so a snapshot captured from a different job is a destructive
+    // write with no undo entry of its own. The renderer scopes its history
+    // stacks per job now; this refuses the write regardless, because the cost
+    // of being wrong is one job's whole estimate.
+    const foreign = sections.find((s) => s.job_id != null && s.job_id !== jobId);
+    if (foreign) {
+      throw new Error(
+        `Refusing to restore a snapshot from job ${foreign.job_id} onto job ${jobId}.`
+      );
+    }
+
     const insertSection = db.prepare(
       `INSERT INTO bid_sections
         (id, uuid, job_id, name, sort_order, is_alternate,

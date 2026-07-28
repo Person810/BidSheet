@@ -12,6 +12,7 @@ import { effectiveMaterialUnitCost, isCubicMeters, isCubicYards, isMassUnit } fr
 import { roundHours } from '../../../shared/round';
 import { parseNumericInput } from '../../../shared/parseNumericInput';
 import { computeLineItemCost } from '../../../shared/lineItemCost';
+import { laborHoursForQuantity } from '../../../shared/lineItemPayload';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
 import { isManual, withManual, type OverridableField } from '../../../shared/manualFields';
@@ -181,15 +182,16 @@ export function LineItemModal({
   // Recalculate labor hours when quantity changes and a production rate is
   // selected — unless the user has overridden hours, which now stays put.
   const onQuantityChange = (qty: number) => {
-    setLineForm((prev: any) => {
-      const rate = productionRates.find((r: any) => r.id === prev.productionRateId);
-      const recompute = rate && rate.rate_per_hour > 0 && !isManual(prev.manualFields || [], 'laborHours');
-      return {
-        ...prev,
+    setLineForm((prev: any) => ({
+      ...prev,
+      quantity: qty,
+      laborHours: laborHoursForQuantity({
         quantity: qty,
-        laborHours: recompute ? roundHours(qty / rate.rate_per_hour) : prev.laborHours,
-      };
-    });
+        currentLaborHours: prev.laborHours,
+        rate: productionRates.find((r: any) => r.id === prev.productionRateId),
+        manualFields: prev.manualFields || [],
+      }),
+    }));
   };
 
   // ---- Equipment picker handler ----
