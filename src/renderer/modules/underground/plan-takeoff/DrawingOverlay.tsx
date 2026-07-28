@@ -6,6 +6,7 @@ import AnnotationLayer from './AnnotationLayer';
 import {
   getMaxDepthFt, SHORING_DEPTH_THRESHOLD_FT,
   computePolygonAreaSF, polygonCentroid,
+  cappedLabelSize, LABEL_BG,
 } from './takeoffUtils';
 import { squareFeetToYards } from '../../../../shared/constants/units';
 import { formatQty } from '../../../../shared/unitSystem';
@@ -223,6 +224,10 @@ export function DrawingOverlay({
   // labels CSS-scale slightly with cssZoom — imperceptible for ~300 ms.
   const labelSize = Math.max(6, pageWidth / 80) / (renderedScale > 0 ? renderedScale : 1);
 
+  // Text labels hold a fixed on-screen height; labelSize itself stays
+  // sheet-proportional so vertex handles and symbols remain easy to hit.
+  const calloutSize = cappedLabelSize(labelSize, renderedScale);
+
   // Drawings are stored in the unrotated page frame; this group maps them
   // into the rotated frame the canvas was rendered in.
   const rotateGroup = rotationTransform(rotation, pageWidth, pageHeight);
@@ -256,6 +261,7 @@ export function DrawingOverlay({
           isActive={area.id === activeAreaId}
           interactive={!isActive}
           labelSize={labelSize}
+          calloutSize={calloutSize}
           scalePxPerFt={scalePxPerFt ?? 1}
           mousePosition={area.id === activeAreaId ? mousePosition : null}
           onSelect={onAreaSelect}
@@ -273,6 +279,7 @@ export function DrawingOverlay({
           isActive={run.id === activeRunId}
           interactive={!isActive}
           labelSize={labelSize}
+          calloutSize={calloutSize}
           scalePxPerFt={scalePxPerFt ?? 1}
           mousePosition={run.id === activeRunId ? mousePosition : null}
           onSelect={onRunSelect}
@@ -344,6 +351,8 @@ interface AreaPolygonProps {
    *  fill region doesn't swallow point-placement clicks. */
   interactive: boolean;
   labelSize: number;
+  /** Capped text size for the centroid label — see cappedLabelSize. */
+  calloutSize: number;
   scalePxPerFt: number;
   mousePosition?: PdfPoint | null;
   onSelect?: (id: number | null) => void;
@@ -354,7 +363,7 @@ interface AreaPolygonProps {
 }
 
 const AreaPolygon = React.memo(function AreaPolygon({
-  area, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
+  area, isSelected, isActive, interactive, labelSize, calloutSize, scalePxPerFt, mousePosition,
   onSelect, onContextMenu, draggable, onVertexMouseDown,
 }: AreaPolygonProps) {
   const system = useUnitSystem();
@@ -386,7 +395,8 @@ const AreaPolygon = React.memo(function AreaPolygon({
     ? formatQty(areaSF, 'sf', system, 0)
     : `${Math.round(areaSF).toLocaleString()} SF`;
   const syLabel = system === 'metric' ? null : `${squareFeetToYards(areaSF).toFixed(1)} SY`;
-  const labelWidth = Math.max(sfLabel.length, syLabel?.length ?? 0) * labelSize * 0.55;
+  const labelWidth = Math.max(sfLabel.length, syLabel?.length ?? 0) * calloutSize * 0.55;
+  const labelBoxH = calloutSize * (syLabel ? 2.5 : 1.6);
 
   return (
     <g style={{ pointerEvents: interactive && !isActive ? 'auto' : 'none' }}>
@@ -428,20 +438,25 @@ const AreaPolygon = React.memo(function AreaPolygon({
         <g transform={`translate(${centroid.x}, ${centroid.y})`} style={{ pointerEvents: 'none' }}
           opacity={isActive ? 0.85 : 1}>
           <rect
-            x={-labelWidth / 2 - labelSize * 0.3}
-            y={syLabel ? -labelSize * 1.35 : -labelSize * 0.85}
-            width={labelWidth + labelSize * 0.6}
-            height={labelSize * (syLabel ? 2.7 : 1.7)}
-            fill="rgba(0,0,0,0.65)" rx={2}
+            x={-labelWidth / 2 - calloutSize * 0.55}
+            y={-labelBoxH / 2}
+            width={labelWidth + calloutSize * 1.1}
+            height={labelBoxH}
+            fill={LABEL_BG}
+            stroke={area.color}
+            strokeWidth={1.25}
+            strokeOpacity={0.7}
+            rx={Math.min(labelBoxH * 0.32, calloutSize * 0.75)}
+            vectorEffect="non-scaling-stroke"
           />
-          <text x={0} y={syLabel ? -labelSize * 0.25 : labelSize * 0.35} textAnchor="middle" fontSize={labelSize}
+          <text x={0} y={syLabel ? -calloutSize * 0.15 : calloutSize * 0.35} textAnchor="middle" fontSize={calloutSize}
             fill="#fff" fontFamily="system-ui, sans-serif" fontWeight={600}
             style={{ userSelect: 'none' }}>
             {sfLabel}
           </text>
           {syLabel && (
-            <text x={0} y={labelSize * 0.95} textAnchor="middle" fontSize={labelSize * 0.85}
-              fill="#ddd" fontFamily="system-ui, sans-serif"
+            <text x={0} y={calloutSize * 1.0} textAnchor="middle" fontSize={calloutSize * 0.85}
+              fill="rgba(255,255,255,0.72)" fontFamily="system-ui, sans-serif"
               style={{ userSelect: 'none' }}>
               {syLabel}
             </text>
@@ -471,6 +486,8 @@ interface RunLinesProps {
    *  don't swallow point-placement clicks. */
   interactive: boolean;
   labelSize: number;
+  /** Capped text size for segment callouts — see cappedLabelSize. */
+  calloutSize: number;
   scalePxPerFt: number;
   mousePosition?: PdfPoint | null;
   onSelect?: (id: number | null) => void;
@@ -490,7 +507,7 @@ interface RunLinesProps {
 }
 
 const RunLines = React.memo(function RunLines({
-  run, isSelected, isActive, interactive, labelSize, scalePxPerFt, mousePosition,
+  run, isSelected, isActive, interactive, labelSize, calloutSize, scalePxPerFt, mousePosition,
   onSelect, onVertexContextMenu, onSegmentContextMenu,
   renderedScale, rotation = 0, movingVertexIndex, movePreviewPos, draggable, onVertexMouseDown,
 }: RunLinesProps) {
@@ -547,7 +564,7 @@ const RunLines = React.memo(function RunLines({
             />
             <RunCalloutLabel
               p1={prev} p2={p} scalePxPerFt={scalePxPerFt}
-              fontSize={labelSize} color={run.color}
+              fontSize={calloutSize} color={run.color}
               segmentIndex={segIdx} scale={renderedScale} rotation={rotation}
               isActive={isActive}
             />

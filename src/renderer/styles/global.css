@@ -1886,6 +1886,13 @@ body {
   border-right: none;
 }
 
+/* Lights up while the pan modifier is actually held, so the key registering
+   is visible feedback rather than a guess. */
+.tk-status-cell-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .tk-status-hint {
   flex: 1;
   min-width: 0;

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { ArrowLeft, FileText, Ruler } from 'lucide-react';
+import { ArrowLeft, FileText, Hand, Ruler } from 'lucide-react';
 import { PdfViewer, MIN_SCALE, MAX_SCALE } from './PdfViewer';
 import { DrawingOverlay, screenToPdf } from './DrawingOverlay';
 import { useScaleCalibration, formatScale } from './ScaleCalibration';
@@ -1119,11 +1119,17 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       if (e.key === ' ') setSpaceHeld(false);
       if (e.key === 'Shift') setShiftHeld(false);
     };
+    // Alt-tabbing away mid-hold swallows the keyup, which would strand the
+    // canvas in pan mode (overlay inert, clicks dead) until the key is tapped
+    // again. Drop both modifiers whenever focus leaves.
+    const handleBlur = () => { setSpaceHeld(false); setShiftHeld(false); };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [totalPages, handleFitToWidth, rm, am, wm, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, finishActiveWall, pendingItemPlacement, contextMenu, captureElev, pendingElev]);
 
@@ -1161,22 +1167,24 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const pdfFilename = pdfPath ? pdfPath.split(/[\\/]/).pop() || '' : '';
 
   // The status bar surfaces the active mode like desktop CAD/takeoff apps do.
+  // Every mode below takes over the canvas, so each one repeats the hold-Space
+  // escape hatch — otherwise the view reads as locked mid-draw.
   let statusHint: React.ReactNode = 'Ready';
   let statusHintActive = false;
   if (calibrating) {
-    statusHint = 'Calibrating scale: click two points a known distance apart';
+    statusHint = 'Calibrating scale: click two points a known distance apart · hold Space to pan';
     statusHintActive = true;
   } else if (rm.isDrawing || am.isDrawing) {
-    statusHint = 'Drawing: click to place points · hold Shift for straight lines · right-click to undo · Esc to finish';
+    statusHint = 'Drawing: click to place points · hold Shift for straight lines · hold Space to pan · right-click to undo · Esc to finish';
     statusHintActive = true;
   } else if (anm.isDrawing) {
-    statusHint = 'Markup: click to place · Esc to cancel';
+    statusHint = 'Markup: click to place · hold Space to pan · Esc to cancel';
     statusHintActive = true;
   } else if (selectMode) {
-    statusHint = 'Select: drag a rectangle around objects · Esc to exit';
+    statusHint = 'Select: drag a rectangle around objects · hold Space to pan · Esc to exit';
     statusHintActive = true;
   } else if (captureElev) {
-    statusHint = 'Capturing existing grade — click the plan to drop a spot elevation · Esc to finish';
+    statusHint = 'Capturing existing grade — click the plan to drop a spot elevation · hold Space to pan · Esc to finish';
     statusHintActive = true;
   } else if (!pageScalePxPerFt) {
     statusHint = <span className="tk-status-warn">Page not calibrated. Use the Scale tool to start measuring.</span>;
@@ -1394,6 +1402,13 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       <div className="tk-statusbar">
         <span className={`tk-status-hint${statusHintActive ? ' tk-status-hint-active' : ''}`}>
           {statusHint}
+        </span>
+        <span
+          className={`tk-status-cell${spaceHeld ? ' tk-status-cell-active' : ''}`}
+          title="Hold Space and drag to pan the plan — works while drawing, calibrating, or placing markup"
+        >
+          <Hand size={11} strokeWidth={2} />
+          {spaceHeld ? 'Panning — drag to move' : 'Space + drag to pan'}
         </span>
         <span className="tk-status-cell" title="Plan scale">
           <Ruler size={11} strokeWidth={2} />

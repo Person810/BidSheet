@@ -150,43 +150,56 @@ export function perpendicularOffset(
   return { x: mid.x + nx * distance, y: mid.y + ny * distance };
 }
 
-/**
- * Compute the 3 vertices of a triangular pointer from a box edge to an anchor point.
- * Returns [baseLeft, baseRight, tip] where tip is the anchor point and
- * the base sits on the nearest edge of the bounding box.
+/* ---- Label chrome ----
+ * Run callouts and area labels are annotation, not drawing content, so they
+ * share one look and one on-screen size. Handles and symbols deliberately do
+ * NOT use these — those stay proportional to the sheet so they remain easy to
+ * grab on a large plan.
  */
-export function trianglePointerVertices(
+
+/** Pill fill behind label text. */
+export const LABEL_BG = 'rgba(22,24,28,0.82)';
+
+/** Ceiling on label text height, in CSS px. */
+export const LABEL_MAX_PX = 13;
+
+/**
+ * Clamp a page-relative label size to a fixed on-screen height.
+ *
+ * `rawSize` is in page units and `pxPerUnit` is the rendered scale, so
+ * `rawSize * pxPerUnit` is what the user actually sees. Sizes derived from
+ * page width balloon on large civil sheets (~30px) while sitting near 8px on
+ * a letter page; capping keeps big sheets readable and leaves small ones as
+ * they were. Falls back to `rawSize` for a non-positive scale.
+ */
+export function cappedLabelSize(rawSize: number, pxPerUnit: number): number {
+  if (!(pxPerUnit > 0)) return rawSize;
+  return Math.min(rawSize, LABEL_MAX_PX / pxPerUnit);
+}
+
+/**
+ * Where a leader line from `boxCenter` toward `anchorPoint` crosses the box
+ * border. Unlike snapping to the midpoint of the nearest edge, this exits at
+ * the true angle of the leader, so the line reads as one straight run from
+ * label to measurement instead of kinking at the box.
+ *
+ * Returns the center itself for a degenerate (zero-length) direction.
+ */
+export function calloutEdgePoint(
   boxCenter: PdfPoint, anchorPoint: PdfPoint,
-  boxHalfW: number, boxHalfH: number, baseWidth: number,
-): [PdfPoint, PdfPoint, PdfPoint] {
+  boxHalfW: number, boxHalfH: number,
+): PdfPoint {
   const dx = anchorPoint.x - boxCenter.x;
   const dy = anchorPoint.y - boxCenter.y;
-  const angle = Math.atan2(dy, dx);
-  const absAngle = Math.abs(angle);
+  if (dx === 0 && dy === 0) return boxCenter;
 
-  // Determine which edge the pointer exits from
-  let edgeX: number, edgeY: number;
-  if (absAngle < Math.PI / 4 || absAngle > (3 * Math.PI) / 4) {
-    // Left or right edge
-    edgeX = boxCenter.x + (dx > 0 ? boxHalfW : -boxHalfW);
-    edgeY = boxCenter.y;
-    // Base perpendicular to horizontal = vertical offsets
-    return [
-      { x: edgeX, y: edgeY - baseWidth / 2 },
-      { x: edgeX, y: edgeY + baseWidth / 2 },
-      anchorPoint,
-    ];
-  } else {
-    // Top or bottom edge
-    edgeX = boxCenter.x;
-    edgeY = boxCenter.y + (dy > 0 ? boxHalfH : -boxHalfH);
-    // Base perpendicular to vertical = horizontal offsets
-    return [
-      { x: edgeX - baseWidth / 2, y: edgeY },
-      { x: edgeX + baseWidth / 2, y: edgeY },
-      anchorPoint,
-    ];
-  }
+  // Largest t where center + d*t still sits inside the half-extents; the
+  // limiting axis is whichever border the ray reaches first.
+  const tx = dx === 0 ? Infinity : boxHalfW / Math.abs(dx);
+  const ty = dy === 0 ? Infinity : boxHalfH / Math.abs(dy);
+  const t = Math.min(tx, ty);
+
+  return { x: boxCenter.x + dx * t, y: boxCenter.y + dy * t };
 }
 
 /** If distance from origin to target exceeds maxRadius, clamp to the circle edge. */
