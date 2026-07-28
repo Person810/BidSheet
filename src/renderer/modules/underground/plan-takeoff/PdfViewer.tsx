@@ -9,6 +9,46 @@ export const MAX_SCALE = 5.0;
 const ZOOM_STEP = 0.1;
 const RENDER_DEBOUNCE_MS = 300;
 
+/* ---- Supersampling ----
+ * Rasterizing a plan sheet at its display size puts hairlines and small text
+ * below one pixel, where antialiasing smears them into grey mush — the
+ * zoomed-out "blurry PDF" problem. Rendering above display size and letting
+ * the browser downscale recovers most of that detail.
+ */
+
+/** Device pixels per PDF point we aim to rasterize at. Deliberately just
+ *  above 1:1 — the goal is to claw back the zoomed-out case without inflating
+ *  bitmaps at high zoom, where a full-page render is already expensive. */
+const TARGET_DENSITY = 1.25;
+/** Ceiling on the multiplier, so a very low zoom can't ask for a huge bitmap. */
+const MAX_SUPERSAMPLE = 2.5;
+/** Device-pixel budget for one page bitmap (~24M px ≈ 96 MB at RGBA). */
+const MAX_CANVAS_PX = 24_000_000;
+
+/**
+ * How much to oversample a page render.
+ *
+ * `displayScale * dpr` is the density the page would rasterize at natively;
+ * anything below TARGET_DENSITY gets scaled up toward it, then clamped so the
+ * bitmap stays inside the pixel budget. Returns 1 when the native density is
+ * already sufficient (zoomed in), making this a no-op at high zoom.
+ */
+export function supersampleFactor(
+  displayScale: number, dpr: number, pageW: number, pageH: number,
+  budgetPx: number = MAX_CANVAS_PX,
+): number {
+  const density = displayScale * dpr;
+  if (!(density > 0) || !(pageW > 0) || !(pageH > 0)) return 1;
+
+  const wanted = Math.min(MAX_SUPERSAMPLE, Math.max(1, TARGET_DENSITY / density));
+
+  // Clamp against the budget: pixels grow with the square of the factor.
+  const basePx = pageW * displayScale * dpr * pageH * displayScale * dpr;
+  if (basePx <= 0) return wanted;
+  const maxByBudget = Math.sqrt(budgetPx / basePx);
+  return Math.max(1, Math.min(wanted, maxByBudget));
+}
+
 interface PdfViewerProps {
   pdfData: Uint8Array;
   pageNumber: number;
@@ -105,18 +145,26 @@ export function PdfViewer({
       onPageSizeKnown(baseVp.width, baseVp.height);
 
       const dpr = window.devicePixelRatio || 1;
+      // Display geometry — what the canvas occupies on screen.
       const viewport = page.getViewport({ scale: targetScale, rotation: totalRotation });
+
+      // Raster geometry — may be larger; the browser downscales it into the
+      // display box, which is what keeps thin linework legible when zoomed out.
+      const ss = supersampleFactor(targetScale, dpr, baseVp.width, baseVp.height);
+      const renderVp = ss === 1
+        ? viewport
+        : page.getViewport({ scale: targetScale * ss, rotation: totalRotation });
 
       // Render onto an offscreen canvas
       const offscreen = document.createElement('canvas');
-      offscreen.width = Math.floor(viewport.width * dpr);
-      offscreen.height = Math.floor(viewport.height * dpr);
+      offscreen.width = Math.floor(renderVp.width * dpr);
+      offscreen.height = Math.floor(renderVp.height * dpr);
 
       const offCtx = offscreen.getContext('2d');
       if (!offCtx) return;
       offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const task = page.render({ canvasContext: offCtx, viewport });
+      const task = page.render({ canvasContext: offCtx, viewport: renderVp });
       renderTaskRef.current = task;
       await task.promise;
 
@@ -124,6 +172,9 @@ export function PdfViewer({
       // so the browser never paints the cleared-but-not-yet-drawn state.
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => {
+          // Backing store carries the full raster (dpr * supersample); the CSS
+          // box stays at display size. The gap between them is the downscale
+          // that sharpens thin linework — keep these two independent.
           visibleCanvas.width = offscreen.width;
           visibleCanvas.height = offscreen.height;
           visibleCanvas.style.width = `${viewport.width}px`;
