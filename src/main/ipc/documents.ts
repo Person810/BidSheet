@@ -25,6 +25,16 @@ import {
 
 /** Root of the managed store for one job. Exported for the delete hook in jobs.ts. */
 export function jobFilesDir(jobId: number): string {
+  // jobId is an IPC-boundary value that flows straight into fs operations
+  // (mkdir/read and, in removeJobFiles, a recursive rmSync). The parameter is
+  // typed `number`, but a compromised renderer can pass anything — a string
+  // like '../..' would let path.join escape the store and delete or read
+  // arbitrary directories under userData. Pin it to a positive integer id
+  // (job ids are AUTOINCREMENT rowids) so the target can only ever be one
+  // job's own folder.
+  if (!Number.isInteger(jobId) || jobId <= 0) {
+    throw new Error(`Invalid job id: ${JSON.stringify(jobId)}`);
+  }
   return path.join(app.getPath('userData'), 'job-files', String(jobId));
 }
 

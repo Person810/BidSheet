@@ -168,6 +168,11 @@ export function registerJobHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:jobs:delete', (_event, id: number) => {
+    // Renderer-supplied id feeds removeJobFiles -> fs.rmSync below; reject
+    // anything that isn't a real rowid before it can reach the filesystem.
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('Invalid job id.');
+    }
     // Change orders are child jobs that cascade away with the parent —
     // collect their ids first so their document folders get cleaned too.
     const childIds = (db.prepare('SELECT id FROM jobs WHERE parent_job_id = ?').all(id) as any[])
