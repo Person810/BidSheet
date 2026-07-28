@@ -76,6 +76,13 @@ export class CloudAuthError extends Error {
  * project: reaching them needs a session that has genuinely expired, rotated,
  * or been banned, which can't be provoked with a throwaway request.
  */
+/**
+ * How long sign-out waits for the server to acknowledge the revoke before
+ * wiping local state anyway. Long enough for a healthy network, short enough
+ * that a captive portal doesn't strand a user on a shared machine.
+ */
+const LOGOUT_TIMEOUT_MS = 5000;
+
 const DEAD_REFRESH_CODES = new Set([
   'refresh_token_not_found', // verified live: well-formed token, no such session
   'validation_failed', // verified live: malformed token — can never succeed
@@ -220,6 +227,21 @@ export class CloudAuth {
   private email: string | null = null;
   private userId: string | null = null;
   private refreshing: Promise<void> | null = null;
+  /**
+   * Bumped by clearLocalSession. A refresh captures it when it starts and
+   * discards its result if it no longer matches.
+   *
+   * Sign-out on a shared machine used to be undoable by timing: a cloud call
+   * already in flight (the window-focus sync pass, the card's cloudMe()
+   * effect, backup-status) refreshes the access token, the user signs out, and
+   * the refresh then resolves into adoptSession → persist, writing a
+   * freshly-rotated VALID refresh token back to disk. status().signedIn goes
+   * true again and the next launch restores the session on exactly the
+   * computer the user just signed out of. The nastier variant: sign out, sign
+   * in as someone else, and the late adoptSession overwrites email/user_id
+   * with the previous user's — authenticated as A while the UI says B.
+   */
+  private sessionEpoch = 0;
 
   constructor(private db: Database.Database) {}
 
@@ -244,7 +266,9 @@ export class CloudAuth {
 
   private hasVerifiedTotp = false;
 
-  private adoptSession(session: SupabaseSession): void {
+  private adoptSession(session: SupabaseSession, epoch = this.sessionEpoch): void {
+    // A result from before the session was cleared is not ours to adopt.
+    if (epoch !== this.sessionEpoch) return;
     this.accessToken = session.access_token;
     this.refreshToken = session.refresh_token;
     this.email = session.user?.email ?? this.email;
@@ -404,7 +428,10 @@ export class CloudAuth {
     // Single-flight: refresh tokens rotate on use, so concurrent refreshes
     // would invalidate each other.
     if (!this.refreshing) {
-      this.refreshing = gotrue('/token?grant_type=refresh_token', {
+      // Captured before the request goes out; adoptSession drops the result if
+      // clearLocalSession bumped it in the meantime.
+      const epoch = this.sessionEpoch;
+      const pending = gotrue('/token?grant_type=refresh_token', {
         refresh_token: this.refreshToken,
       })
         .then((data) => {
@@ -421,11 +448,14 @@ export class CloudAuth {
               0
             );
           }
-          this.adoptSession(data as SupabaseSession);
+          this.adoptSession(data as SupabaseSession, epoch);
         })
         .finally(() => {
-          this.refreshing = null;
+          // Only clear the slot if it is still ours — clearLocalSession may
+          // have nulled it and a later refresh may already have claimed it.
+          if (this.refreshing === pending) this.refreshing = null;
         });
+      this.refreshing = pending;
     }
     await this.refreshing;
   }
@@ -445,9 +475,17 @@ export class CloudAuth {
    * able to block a sign-out the user asked for.
    */
   async revokeRemoteSession(): Promise<void> {
-    if (this.accessToken) {
-      await gotrue('/logout', {}, this.accessToken).catch(() => {});
-    }
+    if (!this.accessToken) return;
+    // Time-bounded. Captive-portal wifi that blackholes TCP used to hang this
+    // call indefinitely; the user saw a spinner, gave up, closed the lid, and
+    // the local wipe that was queued behind it never ran — DEK, member private
+    // key and refresh token all still on disk on a shared laptop, with the
+    // user believing they had signed out. Revoking is best-effort by design;
+    // the wipe is the part that was actually asked for.
+    await Promise.race([
+      gotrue('/logout', {}, this.accessToken).catch(() => {}),
+      new Promise<void>((resolve) => setTimeout(resolve, LOGOUT_TIMEOUT_MS)),
+    ]);
   }
 
   /**
@@ -474,6 +512,10 @@ export class CloudAuth {
     this.email = null;
     this.userId = null;
     this.hasVerifiedTotp = false;
+    // Invalidate anything in flight: a refresh that resolves after this point
+    // must not resurrect the session it just cleared.
+    this.sessionEpoch += 1;
+    this.refreshing = null;
   }
 
   private requireSession(): void {
