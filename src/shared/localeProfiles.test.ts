@@ -103,7 +103,8 @@ describe('locale profile resolution', () => {
       gcLabel: 'GC',
       currencySymbol: '¤',
       thousandsSep: ',',
-      decimalSep: '.'
+      decimalSep: '.',
+      addressFormat: 'freeform'
     };
     
     expect(resolveLocaleProfile('test-NEW').id).toBe('test-NEW');

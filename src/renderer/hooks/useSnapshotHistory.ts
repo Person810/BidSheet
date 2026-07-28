@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 const MAX_HISTORY = 50;
 
@@ -25,6 +25,20 @@ interface SnapshotHistoryOptions<T> {
    * never-saved (negative-ID) rows. Defaults to identity.
    */
   normalize?: (state: T) => T;
+  /**
+   * What these snapshots belong to — a job id, a takeoff id. When it changes,
+   * both stacks are dropped.
+   *
+   * A snapshot is only meaningful against the thing it was captured from.
+   * The bid grid kept one component instance across a switch from a parent
+   * job to its change order, so Undo (still enabled, still holding the parent
+   * job's rows) wrote the parent's sections and line items over the change
+   * order's: the CO's estimate gone with no undo entry of its own, and its
+   * total silently replaced by the parent's old numbers. Where ids collided
+   * it failed instead with a raw 'UNIQUE constraint failed' toast from an
+   * Undo that appeared to do nothing.
+   */
+  scope?: string | number | null;
 }
 
 /**
@@ -39,7 +53,7 @@ interface SnapshotHistoryOptions<T> {
  * error reporter, and optional normalize.
  */
 export function useSnapshotHistory<T>({
-  getState, reloadAll, persist, onError, normalize,
+  getState, reloadAll, persist, onError, normalize, scope,
 }: SnapshotHistoryOptions<T>): SnapshotHistory {
   const undoStack = useRef<T[]>([]);
   const redoStack = useRef<T[]>([]);
@@ -50,6 +64,12 @@ export function useSnapshotHistory<T>({
   const busy = useRef(false);
   // Stack sizes mirrored into state so button disabled-states re-render.
   const [, setVersion] = useState(0);
+
+  useEffect(() => {
+    undoStack.current = [];
+    redoStack.current = [];
+    setVersion((v) => v + 1);
+  }, [scope]);
 
   const capture = useCallback((): T => {
     const state = getState();

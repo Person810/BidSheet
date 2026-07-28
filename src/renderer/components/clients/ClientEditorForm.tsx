@@ -75,8 +75,10 @@ export function ClientForm({
   const idPrefix = useId();
   const savingRef = useRef(false);
   const { profile } = useLocaleStore();
-  const isAU = profile.id === 'en-AU';
-  const [state, setState] = useState(() => clientFormFromClient(initialClient));
+  // Structured (street/suburb/state/postcode) vs one free-form address
+  // field — a locale capability, not a country check.
+  const isAU = profile.addressFormat === 'structured';
+  const [state, setState] = useState(() => clientFormFromClient(initialClient, profile));
   const [errors, setErrors] = useState<
     Partial<Record<keyof ClientFormValues, string>>
   >({});
@@ -126,7 +128,7 @@ export function ClientForm({
         current.originalClient &&
         value.trim().toLowerCase() !== current.originalClient.name.trim().toLowerCase()
       ) {
-        return detachToNewClientDraft(value);
+        return detachToNewClientDraft(value, current);
       }
       return {
         ...current,
@@ -167,7 +169,7 @@ export function ClientForm({
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    const prepared = prepareClientPayload(state.values);
+    const prepared = prepareClientPayload(state.values, profile);
     setErrors(prepared.errors);
     if (!prepared.ok || !prepared.payload || savingRef.current) return;
 

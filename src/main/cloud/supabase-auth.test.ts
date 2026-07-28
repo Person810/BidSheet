@@ -363,3 +363,119 @@ describe('provesRefreshTokenDead', () => {
     expect(provesRefreshTokenDead(new Error('unexpected'))).toBe(false);
   });
 });
+
+/**
+ * Sign-out has to survive two things it did not: a refresh already in flight,
+ * and a network that never answers. Both left a shared machine holding a live
+ * session the user believed they had ended.
+ */
+describe('sign-out is not undone by an in-flight refresh', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = initializeDatabase(':memory:');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    db.close();
+  });
+
+  it('drops a refresh that resolves after clearLocalSession', async () => {
+    const auth = await signedInAuth(db);
+    expect(auth.status().signedIn).toBe(true);
+
+    // A refresh is in flight (window-focus sync pass, cloudMe(), backup-status)
+    // and will resolve with a freshly ROTATED refresh token.
+    let releaseRefresh: (r: Response) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => { releaseRefresh = resolve; }))
+    );
+    (auth as any).accessToken = fakeJwt({ aal: 'aal2', exp: Math.floor(Date.now() / 1000) - 1 });
+    const inFlight = auth.getAccessToken().catch(() => 'rejected');
+
+    // The user signs out while it is outstanding.
+    auth.clearLocalSession();
+    expect(auth.status().signedIn).toBe(false);
+    expect(storedToken(db)).toBeNull();
+
+    releaseRefresh(
+      new Response(
+        JSON.stringify({
+          access_token: fakeJwt({ aal: 'aal2', exp: Math.floor(Date.now() / 1000) + 3600 }),
+          refresh_token: 'refresh-rotated-after-signout',
+          user: { id: 'user-1', email: 'e@example.com' },
+        }),
+        { status: 200 }
+      )
+    );
+    await inFlight;
+
+    // The late result must not resurrect the session, in memory or on disk.
+    expect(auth.status().signedIn).toBe(false);
+    expect(storedToken(db)).toBeNull();
+  });
+
+  it('does not overwrite a NEW user session with the previous user\'s late refresh', async () => {
+    const auth = await signedInAuth(db);
+
+    let releaseRefresh: (r: Response) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => { releaseRefresh = resolve; }))
+    );
+    (auth as any).accessToken = fakeJwt({ aal: 'aal2', exp: Math.floor(Date.now() / 1000) - 1 });
+    const inFlight = auth.getAccessToken().catch(() => 'rejected');
+
+    auth.clearLocalSession();
+
+    // Someone else signs in on the shared machine.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: fakeJwt({ aal: 'aal2', exp: Math.floor(Date.now() / 1000) + 3600 }),
+            refresh_token: 'refresh-user-2',
+            user: { id: 'user-2', email: 'second@example.com' },
+          }),
+          { status: 200 }
+        )
+      )
+    );
+    await auth.signIn('second@example.com', 'pw');
+
+    // Now user 1's refresh finally lands.
+    releaseRefresh(
+      new Response(
+        JSON.stringify({
+          access_token: fakeJwt({ aal: 'aal2', exp: Math.floor(Date.now() / 1000) + 3600 }),
+          refresh_token: 'refresh-user-1-late',
+          user: { id: 'user-1', email: 'e@example.com' },
+        }),
+        { status: 200 }
+      )
+    );
+    await inFlight;
+
+    // The app must not be authenticated as user 1 while showing user 2.
+    expect(auth.status().email).toBe('second@example.com');
+    const row = db.prepare('SELECT email, user_id FROM cloud_auth WHERE id = 1').get() as any;
+    expect(row).toEqual({ email: 'second@example.com', user_id: 'user-2' });
+  });
+
+  it('gives up on a hung /logout instead of blocking sign-out forever', async () => {
+    const auth = await signedInAuth(db);
+    // Captive portal: the request never settles.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
+    vi.useFakeTimers();
+    try {
+      const revoke = auth.revokeRemoteSession();
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(revoke).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

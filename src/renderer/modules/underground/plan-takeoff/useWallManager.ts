@@ -129,6 +129,14 @@ export function useWallManager({ jobId, pageNum }: UseWallManagerOptions): WallM
       return;
     }
 
+    // Starting a second wall while one is still being drawn used to orphan
+    // the first: it stayed in `walls` with its points but never reached the
+    // database, so it vanished from the canvas on reload while sendWallsToBid
+    // still measured and billed it. The toolbar now refuses the click, but
+    // finish (or discard, for a <2-point stub) rather than abandon — any
+    // other route into this function gets the same guarantee.
+    finishActiveWall();
+
     const id = globalNextLocalId--;
     const newWall: TakeoffWall = {
       id,
@@ -142,7 +150,7 @@ export function useWallManager({ jobId, pageNum }: UseWallManagerOptions): WallM
     setActiveWallId(id);
     setSelectedWallId(null);
     setShowConfigModal(false);
-  }, [editingWallId, pageNum, jobId]);
+  }, [editingWallId, pageNum, jobId, finishActiveWall]);
 
   const handleConfigCancel = useCallback(() => {
     setShowConfigModal(false);

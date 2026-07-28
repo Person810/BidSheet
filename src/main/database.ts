@@ -194,8 +194,9 @@ export function seedTradeCatalog(
     }
   }
 
-  // Seeded TON aggregates get ballpark densities for CY conversion
-  applyDefaultDensities(db);
+  // Seeded TON aggregates get ballpark densities for CY conversion. Scoped to
+  // seed rows: adding a trade must not reprice the user's own materials.
+  applyDefaultDensities(db, { seedRowsOnly: true });
 
   const insertRole = db.prepare(
     'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, is_seed, uuid) VALUES (?, ?, ?, ?, 1, ?)'
@@ -1033,23 +1034,40 @@ function migrateV28(db: Database.Database): void {
  * loose-material figures -- both the density and the per-CY price are
  * editable per material in the catalog.
  */
-export function applyDefaultDensities(db: Database.Database): void {
+export function applyDefaultDensities(
+  db: Database.Database,
+  opts: { seedRowsOnly?: boolean } = {}
+): void {
+  // seedRowsOnly: restrict the sweep to rows this app created (is_seed = 1).
+  //
+  // Adding a trade from Settings runs the seeder, which used to call this
+  // unrestricted. A contractor who created "Blue Rock Special" (TON, $30) and
+  // deliberately left its density blank — so CY lines bill at the raw catalog
+  // price — had 1.4 t/CY and $42/CY written onto it months later by an action
+  // that was supposed to add somebody else's catalog: a 40% jump on every
+  // CY line for that material, with no message and no price-history entry.
+  //
+  // The two migration callers keep the unrestricted sweep on purpose. They
+  // run once, at the moment the columns come into existence, so there is no
+  // user choice to overwrite — leaving a value blank is only a decision once
+  // the field is there to leave blank.
+  const scope = opts.seedRowsOnly ? 'AND is_seed = 1' : '';
   db.exec(`
     UPDATE materials SET tons_per_cy = 1.4
-      WHERE unit = 'TON' AND tons_per_cy IS NULL AND (
+      WHERE unit = 'TON' AND tons_per_cy IS NULL ${scope} AND (
         lower(name) LIKE '%stone%' OR lower(name) LIKE '%gravel%' OR
         lower(name) LIKE '%rip rap%' OR lower(name) LIKE '%riprap%' OR
         lower(name) LIKE '%rock%' OR lower(name) LIKE '%limestone%'
       );
     UPDATE materials SET tons_per_cy = 1.35
-      WHERE unit = 'TON' AND tons_per_cy IS NULL AND lower(name) LIKE '%sand%';
+      WHERE unit = 'TON' AND tons_per_cy IS NULL ${scope} AND lower(name) LIKE '%sand%';
     UPDATE materials SET tons_per_cy = 1.3
-      WHERE unit = 'TON' AND tons_per_cy IS NULL AND (
+      WHERE unit = 'TON' AND tons_per_cy IS NULL ${scope} AND (
         lower(name) LIKE '%fill%' OR lower(name) LIKE '%base%' OR
         lower(name) LIKE '%borrow%'
       );
     UPDATE materials SET cost_per_cy = round(default_unit_cost * tons_per_cy, 2)
-      WHERE unit = 'TON' AND cost_per_cy IS NULL
+      WHERE unit = 'TON' AND cost_per_cy IS NULL ${scope}
         AND tons_per_cy IS NOT NULL AND default_unit_cost > 0;
   `);
 }

@@ -6,7 +6,7 @@ import { getDbPath, isSetupComplete, seedDatabase } from '../database';
 import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
-import { fmtMoney } from '../../shared/calcExplain';
+import { fmtMoney, fmtNum } from '../../shared/calcExplain';
 import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable } from './shared';
 import { grantPathAccess, isPathReadable } from './file-access';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
@@ -228,7 +228,8 @@ export function registerExportHandlers(db: Database.Database): void {
       ).all(section.id) as any[];
     }
 
-    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId), getFreightTaxable(db));
+    const costRows = getSectionCostRows(db, jobId);
+    const summary = computeBidSummaryFromSections(costRows, job, getIndirectTotal(db, jobId), getFreightTaxable(db));
 
     return {
       job, settings, sections, lineItemsBySection,
@@ -244,6 +245,11 @@ export function registerExportHandlers(db: Database.Database): void {
       profitPct: job.profit_percent || 0,
       bondPct: job.bond_percent || 0,
       taxPct: job.tax_percent || 0,
+      hasMarkupOverrides: costRows.some((r) => !r.is_alternate && (
+        r.overhead_percent_override != null
+        || r.profit_percent_override != null
+        || r.bond_percent_override != null
+      )),
     };
   };
 
@@ -496,12 +502,19 @@ interface PdfData {
   profitPct: number;
   bondPct: number;
   taxPct: number;
+  /**
+   * True when any base section overrides a job markup percentage. The job
+   * percentage is then not the rate that produced the dollars, so the rate
+   * label is replaced with a footnote marker — same convention the bid grid
+   * and the QuickBooks CSV already use.
+   */
+  hasMarkupOverrides: boolean;
 }
 
 function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   const { job, settings, sections, lineItemsBySection, totals,
     escalation, indirect, freight, overhead, profit, bond, tax, grandTotal, alternates,
-    escalationPct, overheadPct, profitPct, bondPct, taxPct } = data;
+    escalationPct, overheadPct, profitPct, bondPct, taxPct, hasMarkupOverrides } = data;
 
   // The template can arrive straight from the renderer (jobs:get-pdf-html,
   // jobs:export-pdf) and these two values land unescaped inside the <style>
@@ -542,7 +555,11 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
       let sectionTotal = 0;
       items.forEach((item: any, idx: number) => {
         const rowClass = idx % 2 === 1 ? ' class="stripe"' : '';
-        sectionTotal += item.total_cost || 0;
+        // Number(): `+=` on a string total_cost concatenates instead of
+        // adding, so one non-numeric value from a sync snapshot turned the
+        // printed subtotal into garbage. fmtMoney coerces for display; the
+        // running total has to coerce for arithmetic.
+        sectionTotal += Number(item.total_cost) || 0;
         itemNumber++;
         const unitPriceCell = template.showUnitPrices
           ? `<td class="right">${fmtMoney(item.unit_cost)}</td>` : '';
@@ -567,16 +584,53 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   const baseRows = buildSectionRows(baseSections, 0);
   const tableRows = baseRows.html;
 
-  // Summary rows
+  // Summary rows.
+  //
+  // Gate each row on the DOLLARS it carries, never on the job-level
+  // percentage. A contractor who prices markup per section leaves the job
+  // percentages at 0 and overrides them on each section: the dollars are
+  // real and are inside grandTotal, but every `pct > 0` test is false, so
+  // gating on the rate printed a proposal whose rows did not add up to its
+  // own total. It fails the other way too — job overhead 10% with every
+  // section overriding to 0% printed "Overhead (10%) $0.00".
+  //
+  // The rate label has the same problem once a section overrides it: the
+  // job percentage is no longer the rate that produced the dollars, so it
+  // degrades to the `*` footnote the grid and the QuickBooks CSV use.
+  // Two things every row below depends on, both learned the hard way:
+  //
+  // `has(amount)` — the gate is "carries money", and NaN is not money.
+  // A plain `amount !== 0` is TRUE for NaN, and a job column can hold a NaN-
+  // producing value: validate-snapshot accepts any string for any column
+  // (validate-snapshot.ts:38), the serializer binds it verbatim, and SQLite's
+  // REAL affinity stores a non-numeric string as TEXT. bidCalc's `|| 0`
+  // doesn't catch it either — a non-empty string is truthy. The OLD
+  // percentage gate blocked this by accident; gating on dollars removed that
+  // accident, so the check has to be explicit.
+  //
+  // `pctLabel` — coerce and escape the percentage. Belt and braces, and
+  // deliberately untested, because with `has()` above there is currently no
+  // input that reaches it carrying markup: SQLite's REAL affinity converts a
+  // fully-numeric string to a REAL, so any value that survives as TEXT is
+  // non-numeric, which makes the amount NaN, which `has()` now suppresses.
+  // It stays because it costs nothing and because these were the only
+  // interpolations of stored data in this builder not going through escHtml —
+  // if a future change makes a row emit on a non-finite amount, the label is
+  // already safe. The document's CSP stops script but not markup or inline
+  // style, so this should not be the last line of defense.
+  const has = (amount: number) => Number.isFinite(amount) && amount !== 0;
+  const pctLabel = (pct: number) => escHtml(fmtNum(pct, 4));
+  const markupRate = (pct: number) => (hasMarkupOverrides ? ' *' : ` (${pctLabel(pct)}%)`);
   let summaryRows = '';
   summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtMoney(totals.direct_cost_total)}</td></tr>`;
-  if (escalationPct > 0) summaryRows += `<tr><td class="sum-label">Material Escalation (${escalationPct}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
-  if (indirect > 0) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
-  if (freight > 0) summaryRows += `<tr><td class="sum-label">Freight</td><td class="sum-val">${fmtMoney(freight)}</td></tr>`;
-  if (overheadPct > 0) summaryRows += `<tr><td class="sum-label">Overhead (${overheadPct}%)</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
-  if (profitPct > 0) summaryRows += `<tr><td class="sum-label">Profit (${profitPct}%)</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
-  if (bondPct > 0) summaryRows += `<tr><td class="sum-label">Bond (${bondPct}%)</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;
-  if (taxPct > 0) summaryRows += `<tr><td class="sum-label">Sales Tax (${taxPct}%)</td><td class="sum-val">${fmtMoney(tax)}</td></tr>`;
+  if (has(escalation)) summaryRows += `<tr><td class="sum-label">Material Escalation (${pctLabel(escalationPct)}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
+  if (has(indirect)) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
+  if (has(freight)) summaryRows += `<tr><td class="sum-label">Freight</td><td class="sum-val">${fmtMoney(freight)}</td></tr>`;
+  if (has(overhead)) summaryRows += `<tr><td class="sum-label">Overhead${markupRate(overheadPct)}</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
+  if (has(profit)) summaryRows += `<tr><td class="sum-label">Profit${markupRate(profitPct)}</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
+  if (has(bond)) summaryRows += `<tr><td class="sum-label">Bond${markupRate(bondPct)}</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;
+  if (has(tax)) summaryRows += `<tr><td class="sum-label">Sales Tax (${pctLabel(taxPct)}%)</td><td class="sum-val">${fmtMoney(tax)}</td></tr>`;
+  if (hasMarkupOverrides) summaryRows += `<tr><td class="sum-label sum-note" colspan="2">* Rates vary by section; the amount shown is the total across all sections.</td></tr>`;
   const totalLabel = altSections.length > 0 ? 'TOTAL BASE BID' : 'TOTAL BID AMOUNT';
   summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtMoney(grandTotal)}</td></tr>`;
 
@@ -686,6 +740,16 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
 <html>
 <head>
 <meta charset="utf-8"/>
+<!--
+  This document is rendered in a real Chromium window to print it. Its
+  numbers and text can originate from a sync snapshot pushed by another
+  org member, which the platform treats as untrusted. Everything is escaped
+  or coerced on the way in; this policy is the backstop that keeps a future
+  escape from reaching the network. The logo is a data: URI and the styles
+  are inline, hence those two allowances — nothing else is permitted, and
+  script is not allowed at all.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"/>
 <style>
   :root {
     --accent: ${accentColor};
@@ -737,6 +801,7 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   .summary-table td { padding: 4px 8px; font-size: 9px; }
   .sum-label { text-align: right; color: #424949; }
   .sum-val { text-align: right; font-weight: 500; }
+  .sum-note { font-size: 7.5px; font-style: italic; color: #6b6b6b; padding-top: 0; }
   .summary-table .total-row td { background: var(--header); color: #fff; font-weight: bold; font-size: 11px; border-top: 2px solid var(--accent); padding: 7px 8px; }
 
   .cb-title { font-size: 8px; font-weight: bold; color: #424949; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; border-bottom: 1px solid #D5D8DC; padding-bottom: 3px; }

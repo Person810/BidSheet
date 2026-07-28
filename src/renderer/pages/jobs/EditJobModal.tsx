@@ -28,7 +28,19 @@ export interface EditJobForm {
 
 interface EditJobModalProps {
   form: EditJobForm;
-  setForm: (form: EditJobForm) => void;
+  /**
+   * Accepts a functional updater, and every callback below uses one.
+   *
+   * JobLocationFields fires two or three of these in a single handler ("Use
+   * Builder Address" writes location, postcode and country; the AU postcode
+   * field writes postcode then location). With object literals built from a
+   * captured `form`, each write starts from the same stale snapshot and the
+   * last one wins: the parsed address was silently dropped and the button
+   * appeared to fill only Country, and the AU Postcode input reverted on
+   * every keystroke. JobList already passes updaters — this is the same
+   * contract.
+   */
+  setForm: (updater: EditJobForm | ((prev: EditJobForm) => EditJobForm)) => void;
   onSave: () => void;
   onClose: () => void;
   /** Excluded from the duplicate-number warning (a job matches itself). */
@@ -69,13 +81,13 @@ export function EditJobModal({
           <div className="form-group">
             <label>Job Name</label>
             <input type="text" className="form-control" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               autoFocus />
           </div>
           <div className="form-group">
             <label>Job Number</label>
             <input type="text" className="form-control" value={form.jobNumber}
-              onChange={(e) => setForm({ ...form, jobNumber: e.target.value })}
+              onChange={(e) => setForm((f) => ({ ...f, jobNumber: e.target.value }))}
               placeholder="optional" />
             {numberWarning && (
               <div className="text-warning" style={{ fontSize: 12, marginTop: 4 }}>{numberWarning}</div>
@@ -89,7 +101,7 @@ export function EditJobModal({
               <SavedClientPicker
                 value={form.client}
                 onChange={(clientName) => {
-                  setForm({ ...form, client: clientName });
+                  setForm((f) => ({ ...f, client: clientName }));
                   if (!clientName.trim()) {
                     setSelectedClientRow(null);
                   }
@@ -98,7 +110,7 @@ export function EditJobModal({
                   // Picking a client sets the client, nothing else — "Use
                   // Builder Address" is the explicit opt-in for copying
                   // their office address to the site fields.
-                  setForm({ ...form, client: client.name });
+                  setForm((f) => ({ ...f, client: client.name }));
                   setSelectedClientRow(client);
                 }}
                 disabled={false}
@@ -134,7 +146,7 @@ export function EditJobModal({
                   initialClient={selectedClientRow}
                   onSaved={(client) => {
                     setSelectedClientRow(client);
-                    setForm({ ...form, client: client.name });
+                    setForm((f) => ({ ...f, client: client.name }));
                     setEditingClient(false);
                   }}
                   onCancel={() => setEditingClient(false)}
@@ -148,7 +160,7 @@ export function EditJobModal({
             <LocalizedDateField
               label="Bid Date"
               value={form.bidDate || null}
-              onChange={(date) => setForm({ ...form, bidDate: date || '' })}
+              onChange={(date) => setForm((f) => ({ ...f, bidDate: date || '' }))}
               onValidityChange={setIsDateValid}
             />
           </div>
@@ -158,48 +170,48 @@ export function EditJobModal({
             location={form.location}
             postalCode={form.sitePostcode}
             country={form.siteCountry}
-            onLocationChange={(loc) => setForm({ ...form, location: loc })}
-            onPostalCodeChange={(pc) => setForm({ ...form, sitePostcode: pc })}
-            onCountryChange={(c) => setForm({ ...form, siteCountry: c })}
+            onLocationChange={(loc) => setForm((f) => ({ ...f, location: loc }))}
+            onPostalCodeChange={(pc) => setForm((f) => ({ ...f, sitePostcode: pc }))}
+            onCountryChange={(c) => setForm((f) => ({ ...f, siteCountry: c }))}
             builderAddress={selectedClientRow?.address}
           />
         </div>
         <div className="form-group">
           <label>Description</label>
           <input type="text" className="form-control" value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
         </div>
         <div style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 8px' }}>Markups &amp; Escalation</div>
         <div className="form-row">
           <div className="form-group">
             <label>Overhead %</label>
             <input type="number" className="form-control" value={form.overheadPercent} step="0.5"
-              onChange={(e) => setForm({ ...form, overheadPercent: parseFloat(e.target.value) || 0 })} />
+              onChange={(e) => setForm((f) => ({ ...f, overheadPercent: parseFloat(e.target.value) || 0 }))} />
           </div>
           <div className="form-group">
             <label>Profit %</label>
             <input type="number" className="form-control" value={form.profitPercent} step="0.5"
-              onChange={(e) => setForm({ ...form, profitPercent: parseFloat(e.target.value) || 0 })} />
+              onChange={(e) => setForm((f) => ({ ...f, profitPercent: parseFloat(e.target.value) || 0 }))} />
           </div>
           <div className="form-group">
             <label>Bond %</label>
             <input type="number" className="form-control" value={form.bondPercent} step="0.1"
-              onChange={(e) => setForm({ ...form, bondPercent: parseFloat(e.target.value) || 0 })} />
+              onChange={(e) => setForm((f) => ({ ...f, bondPercent: parseFloat(e.target.value) || 0 }))} />
           </div>
           <div className="form-group">
             <label>{profile.taxLabel} %</label>
             <input type="number" className="form-control" value={form.taxPercent} step="0.1"
-              onChange={(e) => setForm({ ...form, taxPercent: parseFloat(e.target.value) || 0 })} />
+              onChange={(e) => setForm((f) => ({ ...f, taxPercent: parseFloat(e.target.value) || 0 }))} />
           </div>
           <div className="form-group">
             <label title="Material price escalation for long-lead bids. Raises material direct cost before markups.">Escalation %</label>
             <input type="number" className="form-control" value={form.escalationPercent} step="0.5"
-              onChange={(e) => setForm({ ...form, escalationPercent: parseFloat(e.target.value) || 0 })} />
+              onChange={(e) => setForm((f) => ({ ...f, escalationPercent: parseFloat(e.target.value) || 0 }))} />
           </div>
           <div className="form-group">
             <label>Freight ($)</label>
             <input type="number" className="form-control" value={form.freight}
-              onChange={(e) => setForm({ ...form, freight: parseFloat(e.target.value) || 0 })} />
+              onChange={(e) => setForm((f) => ({ ...f, freight: parseFloat(e.target.value) || 0 }))} />
           </div>
         </div>
         <div className="modal-actions">

@@ -39,8 +39,10 @@ describe('job copy semantics for freight and site fields', () => {
     sourceId = Number(
       db
         .prepare(
-          `INSERT INTO jobs (name, client, location, freight, site_postcode, site_country, overhead_percent, profit_percent)
-           VALUES ('Canal St Sewer', 'Boh Bros', '1400 Canal St', 350, '70112', 'United States', 10, 10)`
+          `INSERT INTO jobs (name, client, location, freight, site_postcode, site_country,
+                             overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent)
+           VALUES ('Canal St Sewer', 'Boh Bros', '1400 Canal St', 350, '70112', 'United States',
+                   10, 10, 2, 8, 12)`
         )
         .run().lastInsertRowid
     );
@@ -66,5 +68,32 @@ describe('job copy semantics for freight and site fields', () => {
     expect(co.site_country).toBe('United States');
     // The parent's freight is priced in the parent's bid; the CO starts at 0.
     expect(co.freight).toBe(0);
+  });
+
+  it('a change order inherits every markup rate, escalation included', async () => {
+    const { newJobId } = await call('db:jobs:create-change-order', sourceId);
+    const co = db
+      .prepare(
+        `SELECT overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent
+         FROM jobs WHERE id = ?`
+      )
+      .get(newJobId) as any;
+    expect(co).toEqual({
+      overhead_percent: 10,
+      profit_percent: 10,
+      bond_percent: 2,
+      tax_percent: 8,
+      // A CO is priced in the same market as the parent. Dropping this
+      // under-prices every CO on a long-lead job by the escalation rate.
+      escalation_percent: 12,
+    });
+  });
+
+  it('duplicating a job inherits every markup rate, escalation included', async () => {
+    const { newJobId } = await call('db:jobs:duplicate', sourceId, 'Copied Job');
+    const copy = db
+      .prepare('SELECT escalation_percent FROM jobs WHERE id = ?')
+      .get(newJobId) as any;
+    expect(copy.escalation_percent).toBe(12);
   });
 });

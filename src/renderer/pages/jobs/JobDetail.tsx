@@ -9,7 +9,7 @@ import { ChangeOrdersTab } from './ChangeOrdersTab';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
 import { buildAssemblyLineItems } from '../../../shared/assemblyExpansion';
-import { buildLineItemPayload, lineItemRowToPayload } from '../../../shared/lineItemPayload';
+import { buildLineItemPayload, lineItemRowToPayload, laborHoursForQuantity } from '../../../shared/lineItemPayload';
 import { parseManualFields, withManual } from '../../../shared/manualFields';
 import { effectiveMaterialUnitCost } from '../../../shared/unitConversion';
 import { bidLineQty, metricUnitPrice } from '../../../shared/unitSystem';
@@ -512,9 +512,24 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       const manualFields = merged.materialUnitCost != null
         ? withManual(parseManualFields(item.manual_fields), 'materialUnitCost', true)
         : parseManualFields(item.manual_fields);
+      const quantity = merged.quantity ?? item.quantity;
+      // The grid edits the same line the modal does, so it applies the same
+      // production-rate rule — otherwise scaling Qty here scaled material and
+      // silently left labor behind (see laborHoursForQuantity).
+      //
+      // previousQuantity gates the recompute on the quantity actually
+      // changing — the modal's rule, which fires only from onQuantityChange.
+      const laborHours = laborHoursForQuantity({
+        quantity,
+        previousQuantity: item.quantity,
+        currentLaborHours: item.labor_hours,
+        rate: productionRates.find((r: any) => r.id === item.production_rate_id),
+        manualFields,
+      });
       await window.api.saveBidLineItem(lineItemRowToPayload(item, {
         jobId,
-        quantity: merged.quantity ?? item.quantity,
+        quantity,
+        laborHours,
         materialUnitCost: merged.materialUnitCost ?? item.material_unit_cost,
         manualFields,
       }));

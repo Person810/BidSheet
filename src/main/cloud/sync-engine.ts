@@ -45,6 +45,29 @@ import {
 /** Back-to-back window focuses don't re-sync; Sync Now always does. */
 const FOREGROUND_SYNC_THROTTLE_MS = 2 * 60 * 1000;
 
+const CLOUD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A cloud job id is a `crypto.randomUUID()` this machine minted — but only
+ * for jobs this machine pushed. Ids also arrive from GET /jobs, i.e. from the
+ * Worker, which this codebase deliberately models as untrusted (see the
+ * validate-snapshot header), and from any org member running a patched
+ * client. `pullJob` builds a directory from that id, so an id of
+ * `../../..` walks out of the plan store and a plan filename of `.bashrc`
+ * then lands wherever it points — code execution on next login, from one
+ * click on a job in the sync list.
+ *
+ * Assert the shape once, at every boundary the id enters through, rather than
+ * sanitizing at each use: an id that is not a canonical UUID is not a job
+ * this system can have produced, so there is nothing to salvage.
+ */
+export function assertCloudId(cloudId: unknown): string {
+  if (typeof cloudId !== 'string' || !CLOUD_ID_RE.test(cloudId)) {
+    throw new Error(`Invalid cloud job id: ${JSON.stringify(cloudId)}`);
+  }
+  return cloudId;
+}
+
 export interface JobSyncInfo {
   jobId: number;
   cloudId: string;
@@ -157,7 +180,7 @@ export class SyncEngine {
     const dek = this.e2ee.getDek(); // throws cleanly if encrypted sync is locked
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job?.cloud_id) throw new Error('Job has no cloud id. Enable sync first.');
-    const cloudId = job.cloud_id as string;
+    const cloudId = assertCloudId(job.cloud_id);
 
     try {
       const snapshot = exportJob(this.db, jobId);
@@ -287,6 +310,7 @@ export class SyncEngine {
 
   /** Pull a cloud job down, creating or replacing its local copy. */
   async pullJob(cloudId: string): Promise<number> {
+    assertCloudId(cloudId);
     const accountId = await this.requireAccountId();
     const dek = this.e2ee.getDek();
     // Decrypt, then validate — the decrypted snapshot is still untrusted input
@@ -318,7 +342,14 @@ export class SyncEngine {
           this.objectKey(accountId, cloudId, dek, `plan:${snapshot.plan.filename}`)
         );
         const bytes = decryptForSync(blob, dek, syncAad(accountId, cloudId, `plan:${snapshot.plan.sha256}`));
-        const dir = path.join(app.getPath('userData'), 'cloud-plans', cloudId);
+        const planRoot = path.resolve(app.getPath('userData'), 'cloud-plans');
+        const dir = path.resolve(planRoot, cloudId);
+        // assertCloudId already makes this unreachable. It stays because the
+        // cost of the check is nothing and the cost of the next refactor
+        // re-opening the hole is someone's home directory.
+        if (!dir.startsWith(planRoot + path.sep)) {
+          throw new Error('Refusing to write a cloud plan outside the plan store.');
+        }
         fs.mkdirSync(dir, { recursive: true });
         // basename: validation already rejects separators in plan.filename,
         // but a server-supplied name never gets to pick the directory.
@@ -636,7 +667,9 @@ export class SyncEngine {
    * mapping is stored anywhere.
    */
   private objectKey(accountId: string, cloudId: string, dek: Buffer, logical: string): string {
-    return `${accountId}/${cloudId}/${fileObjectKey(dek, cloudId, logical)}`;
+    // Belt and braces: the id is asserted where it enters, but this is the
+    // one function that puts it in a path-shaped string, so it re-checks.
+    return `${accountId}/${assertCloudId(cloudId)}/${fileObjectKey(dek, cloudId, logical)}`;
   }
 
   /**

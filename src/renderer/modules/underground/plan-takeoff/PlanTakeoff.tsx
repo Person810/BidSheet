@@ -234,11 +234,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const handleSendAreasToBid = useCallback(async () => {
     setShowSendAreasConfirm(false);
     try {
-      const count = await sendAreasToBid(am.areas, jobId, system);
-      if (count === 0) {
-        addToast('No areas on calibrated pages to send.', 'error');
+      const { created, warnings } = await sendAreasToBid(am.areas, jobId, system);
+      for (const w of warnings) addToast(w, 'warn');
+      if (created === 0) {
+        if (warnings.length === 0) addToast('No areas on calibrated pages to send.', 'error');
       } else {
-        addToast(`Created ${count} line items in "Surface Restoration" section.`, 'success');
+        addToast(`Created ${created} line items in "Surface Restoration" section.`, 'success');
       }
     } catch (err) {
       console.error('Send areas to bid failed:', err);
@@ -369,19 +370,26 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   // calibration) to a run/area anchored on the old page, silently mixing two
   // sheets' coordinate spaces and corrupting lengths/areas. Block nav while any
   // shape is being drawn — finish or Esc first.
-  const drawingLocksPage = rm.isDrawing || am.isDrawing || anm.isDrawing;
+  //
+  // `wm` (walls) was missing from this guard. A wall started on sheet 1 and
+  // continued after paging to sheet 2 kept routing clicks to the wall manager
+  // while disappearing from the canvas (pageWalls filters on pdfPage), then
+  // saved with page 1's calibration and a point list spanning both sheets'
+  // coordinate origins — LF, SF and CY all wrong by an arbitrary amount, with
+  // no visual feedback that anything was happening.
+  const drawingLocksPage = rm.isDrawing || am.isDrawing || anm.isDrawing || wm.isDrawing;
   const prevPage = useCallback(() => {
-    if (rm.isDrawing || am.isDrawing || anm.isDrawing) return;
+    if (drawingLocksPage) return;
     setPageNum((p) => Math.max(1, p - 1));
-  }, [rm.isDrawing, am.isDrawing, anm.isDrawing]);
+  }, [drawingLocksPage]);
   const nextPage = useCallback(() => {
-    if (rm.isDrawing || am.isDrawing || anm.isDrawing) return;
+    if (drawingLocksPage) return;
     setPageNum((p) => Math.min(totalPages, p + 1));
-  }, [totalPages, rm.isDrawing, am.isDrawing, anm.isDrawing]);
+  }, [totalPages, drawingLocksPage]);
   const goToPage = useCallback((page: number) => {
-    if (rm.isDrawing || am.isDrawing || anm.isDrawing) return;
+    if (drawingLocksPage) return;
     setPageNum(page);
-  }, [rm.isDrawing, am.isDrawing, anm.isDrawing]);
+  }, [drawingLocksPage]);
   const zoomIn = useCallback(() => setScale((s) => Math.min(MAX_SCALE, s + 0.1)), []);
   const zoomOut = useCallback(() => setScale((s) => Math.max(MIN_SCALE, s - 0.1)), []);
   const handleFitToWidth = useCallback(() => {
@@ -1014,7 +1022,12 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const noOtherTool = !anm.isDrawing && !selectMode && !wm.isDrawing;
   const canAddRun = rm.canAddRun && !am.isDrawing && noOtherTool && !!pageScalePxPerFt;
   const canAddArea = !calibrating && !rm.isDrawing && !am.isDrawing && noOtherTool && !!pageScalePxPerFt;
-  const canAddWall = !calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing && !selectMode && !!pageScalePxPerFt;
+  // !wm.isDrawing: clicking the (highlighted) Wall button mid-draw reopened
+  // the config modal and started a second wall, orphaning the first as an
+  // unsaved shape that sendWallsToBid still measured and billed — concrete,
+  // formwork and rebar for geometry that never reached the database.
+  const canAddWall = !calibrating && !rm.isDrawing && !am.isDrawing && !anm.isDrawing
+    && !selectMode && !wm.isDrawing && !!pageScalePxPerFt;
   const canAnnotate = !calibrating && !rm.isDrawing && !am.isDrawing && !wm.isDrawing && !selectMode;
   const canSelect = !calibrating && !rm.isDrawing && !am.isDrawing && !wm.isDrawing && !anm.isDrawing;
   const showPanel = rm.runs.length > 0 || rm.isDrawing || im.items.length > 0
@@ -1118,8 +1131,10 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         }
       }
 
-      // Page nav is blocked mid-draw — see prevPage/nextPage.
-      const lockPage = rm.isDrawing || am.isDrawing || wm.isDrawing || anm.isDrawing;
+      // Page nav is blocked mid-draw — see prevPage/nextPage. One source of
+      // truth: the keyboard path already covered walls while the toolbar
+      // memo did not, which is exactly how the wall case slipped through.
+      const lockPage = drawingLocksPage;
       switch (e.key) {
         case 'ArrowLeft': if (!lockPage) setPageNum((p) => Math.max(1, p - 1)); break;
         case 'ArrowRight': if (!lockPage) setPageNum((p) => Math.min(totalPages, p + 1)); break;
@@ -1146,14 +1161,14 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [totalPages, handleFitToWidth, rm, am, wm, anm, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, finishActiveWall, pendingItemPlacement, contextMenu, captureElev, pendingElev, loupeOn]);
+  }, [totalPages, handleFitToWidth, rm, am, wm, anm, drawingLocksPage, selectMode, exitSelectMode, history, finishActiveRun, finishActiveArea, finishActiveWall, pendingItemPlacement, contextMenu, captureElev, pendingElev, loupeOn]);
 
   const scaleDisplay = pageScalePxPerFt ? formatScale(pageScalePxPerFt, system) : null;
   const anyDrawing = rm.isDrawing || am.isDrawing || wm.isDrawing;
   const toolbarProps = {
     onBack: handleBack,
     onLoadPlan: handleLoadPlan, loading, pageNum, totalPages, onPrevPage: prevPage,
-    onNextPage: nextPage, onSetPage: goToPage, zoomPercent,
+    onNextPage: nextPage, onSetPage: goToPage, pageNavLocked: drawingLocksPage, zoomPercent,
     onZoomIn: zoomIn, onZoomOut: zoomOut, onFitToWidth: handleFitToWidth, calibrating,
     onToggleCalibrate: () => setCalibrating(!calibrating), canCalibrate: true,
     scaleDisplay, canAddRun, onAddRun: rm.handleAddRun, isDrawing: rm.isDrawing,

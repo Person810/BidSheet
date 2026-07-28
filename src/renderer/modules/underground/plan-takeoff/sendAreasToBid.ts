@@ -22,13 +22,22 @@ export interface AreaGroup {
 }
 
 /**
- * Pick the area measure that matches a catalog/assembly unit. Defaults to SY
- * (the unit this send flow bills in). Mirrors measureForUnit in
- * sendWallsToBid: unit-driven, not system-driven — a per-SF assembly expands
- * by SF whatever the active setting is (it used to get the SY quantity, a 9x
- * underbill). Exported for tests.
+ * Pick the area measure that matches a catalog/assembly unit. Unit-driven,
+ * not system-driven — a per-SF assembly expands by SF whatever the active
+ * setting is (it used to get the SY quantity, a 9x underbill).
+ *
+ * Returns null when the unit maps to NO area measure, exactly like
+ * measureForUnit in sendWallsToBid. It used to fall through to SY, so an
+ * 'Asphalt patch' assembly priced per TON was billed the square-YARD figure
+ * as tons: 900 SF of 2" patch is ~8.3 tons and went out as 100, roughly a
+ * 12x overstatement of mix, crew hours and paver hours, under a green
+ * "Created N line items" toast. An empty unit still means the flow's own
+ * billing unit; anything else this function doesn't recognise is a question
+ * for the estimator, not a number to guess at.
+ *
+ * Exported for tests.
  */
-export function areaMeasureForUnit(unit: string | null | undefined, g: AreaGroup): number {
+export function areaMeasureForUnit(unit: string | null | undefined, g: AreaGroup): number | null {
   switch ((unit || '').trim().toUpperCase()) {
     case 'SF': return g.totalSF;
     case 'CY':
@@ -36,8 +45,16 @@ export function areaMeasureForUnit(unit: string | null | undefined, g: AreaGroup
     case 'M²': return convertQty(g.totalSY, 'sy', 'metric');
     case 'M³': return convertQty(g.totalCY, 'cy', 'metric');
     case 'SY':
-    default: return g.totalSY;
+    case '': return g.totalSY;
+    default: return null;
   }
+}
+
+export interface SendAreasResult {
+  /** Line items created. */
+  created: number;
+  /** Non-fatal skips the caller should surface to the user. */
+  warnings: string[];
 }
 
 /**
@@ -50,12 +67,12 @@ export async function sendAreasToBid(
   areas: TakeoffArea[],
   jobId: number,
   system: UnitSystem = DEFAULT_UNIT_SYSTEM,
-): Promise<number> {
+): Promise<SendAreasResult> {
   // Earthwork regions (gradeMode set) are billed as cut/fill by
   // sendEarthworkToBid; including them here too would emit a phantom
   // surface-restoration line for each and double-bill the same polygon.
   const valid = areas.filter((a) => a.gradeMode == null && a.points.length >= 3);
-  if (valid.length === 0) return 0;
+  if (valid.length === 0) return { created: 0, warnings: [] };
 
   // Per-page scales — area math needs each polygon's own page calibration
   const scaleByPage = await loadPageScaleMap(jobId);
@@ -89,7 +106,7 @@ export async function sendAreasToBid(
       });
     }
   }
-  if (groups.size === 0) return 0;
+  if (groups.size === 0) return { created: 0, warnings: [] };
 
   // Look up catalog unit costs, assemblies, and crews for expansion
   const needsAssemblies = Array.from(groups.values()).some((g) => g.assemblyId != null);
@@ -98,6 +115,24 @@ export async function sendAreasToBid(
     needsAssemblies ? (window.api.getAssemblies() as Promise<any[]>) : Promise.resolve([]),
     needsAssemblies ? (window.api.getCrewTemplates() as Promise<any[]>) : Promise.resolve([]),
   ]);
+
+  // Drop any assembly-linked group whose unit has no area measure BEFORE
+  // creating the section, so a send that turns out to be entirely
+  // un-billable doesn't leave an empty "Surface Restoration" behind.
+  const warnings: string[] = [];
+  const sendable: AreaGroup[] = [];
+  for (const g of groups.values()) {
+    const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
+    if (assembly && areaMeasureForUnit(assembly.unit, g) == null) {
+      const which = g.labels.length ? ` (${g.labels.join('; ')})` : '';
+      warnings.push(
+        `Skipped area${which}: assembly "${assembly.name}" is priced per ${assembly.unit}, which has no area measure (SF/SY/CY). Re-link it or add the line manually.`,
+      );
+      continue;
+    }
+    sendable.push(g);
+  }
+  if (sendable.length === 0) return { created: 0, warnings };
 
   // Get existing section count for sort_order
   const sections: any[] = await window.api.getBidSections(jobId);
@@ -111,14 +146,16 @@ export async function sendAreasToBid(
 
   let sortOrder = 0;
   let createdCount = 0;
-  for (const g of groups.values()) {
+  for (const g of sendable) {
     // Assembly-linked areas expand the full assembly (materials + labor +
     // equipment) scaled by the measured area in the assembly's own unit —
     // SF, SY, CY of the depth volume, or their metric spellings (unit-driven,
     // not system-driven: identities don't flip with the setting).
     const assembly = g.assemblyId ? assemblies.find((a: any) => a.id === g.assemblyId) : null;
     if (assembly) {
-      const qty = roundTo(areaMeasureForUnit(assembly.unit, g), 1);
+      // Non-null: the pre-filter above dropped every group whose unit has
+      // no area measure.
+      const qty = roundTo(areaMeasureForUnit(assembly.unit, g)!, 1);
       const noteSuffix = g.labels.length ? ` (${g.labels.join('; ')})` : ' (from plan takeoff)';
       const payloads = buildAssemblyLineItems(assembly, qty, crews, noteSuffix);
       for (const payload of payloads) {
@@ -174,5 +211,5 @@ export async function sendAreasToBid(
     createdCount += 1;
   }
 
-  return createdCount;
+  return { created: createdCount, warnings };
 }
