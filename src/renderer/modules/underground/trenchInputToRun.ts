@@ -41,5 +41,6 @@ export function trenchInputToTakeoffRun(input: TrenchInput, label = ''): Takeoff
       { x: 0, y: 0 },
       { x: lengthPx, y: 0 },
     ],
+    hddAdditionalPipesJson: (input as any).hddAdditionalPipesJson || null,
   };
 }

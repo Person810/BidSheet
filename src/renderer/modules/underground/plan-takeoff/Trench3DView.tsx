@@ -423,9 +423,10 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520, i
   const benchWidthFt = run.benchWidthFt;
 
   const additionalPipes3D = useMemo(() => {
-    if (!run.backfillType || !run.backfillType.startsWith('[')) return [];
+    const jsonStr = run.hddAdditionalPipesJson || run.backfillType;
+    if (!jsonStr || !jsonStr.startsWith('[')) return [];
     try {
-      const list = JSON.parse(run.backfillType) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+      const list = JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
       return list.map((item) => {
         const sizeIn = item.pipeSizeIn || 3.0;
         const sizeFt = metric ? (sizeIn / 25.4) / 12 : sizeIn / 12;
@@ -437,7 +438,7 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520, i
     } catch {
       return [];
     }
-  }, [run.backfillType, metric]);
+  }, [run.hddAdditionalPipesJson, run.backfillType, metric]);
 
   return (
     <div>

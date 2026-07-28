@@ -568,7 +568,8 @@ export function TrenchProfileForm({
           ...form,
           pipeSizeIn: isHDD && isMetric ? form.pipeSizeIn / 25.4 : form.pipeSizeIn,
           startDepthFt: form.startDepthFt || (isHDD ? 5 : 0),
-        }, form.label);
+          hddAdditionalPipesJson: form.hddAdditionalPipesJson || null,
+        } as any, form.label);
         const run = linkedRun ?? synthesizedRun;
         const scalePxPerFt = linkedRun ? (pageScales[linkedRun.pdfPage] || TRENCH_PREVIEW_SCALE_PX_PER_FT) : TRENCH_PREVIEW_SCALE_PX_PER_FT;
         return (

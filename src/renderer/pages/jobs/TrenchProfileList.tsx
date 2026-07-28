@@ -496,8 +496,13 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           <tfoot className="bid-grid-footer">
             <tr>
               <td colSpan={8} className="text-muted" style={{ fontSize: 11 }}>
-                Open-Cut: Tracer Wire: {lf(totals.tracerWireLF)} {unitLabel('lf', system)} &middot; Warning Tape: {lf(totals.warningTapeLF)} {unitLabel('lf', system)}
-                {totals.hddTotal > 0 && <> &middot; HDD Total: {formatCurrency(totals.hddTotal)}</>}
+                {profiles.some((p) => (p.method || 'open_cut') !== 'hdd') && (
+                  <>
+                    Open-Cut: Tracer Wire: {lf(totals.tracerWireLF)} {unitLabel('lf', system)} &middot; Warning Tape: {lf(totals.warningTapeLF)} {unitLabel('lf', system)}
+                    {totals.hddTotal > 0 && <> &middot; </>}
+                  </>
+                )}
+                {totals.hddTotal > 0 && <>HDD Total: {formatCurrency(totals.hddTotal)}</>}
               </td>
             </tr>
           </tfoot>
