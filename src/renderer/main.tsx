@@ -15,6 +15,17 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// A file dropped anywhere but a real dropzone must do nothing at all.
+// Chromium's default action for a drop on a page is to NAVIGATE to that file,
+// which for a plan PDF means losing the open bid to the built-in PDF viewer.
+// The main process now refuses that navigation, but the drop should be inert
+// in the first place — a mis-aimed drag is a slip, not a command.
+//
+// These run on the bubble phase, so a dropzone that handled the event already
+// read its files by the time this fires; all this suppresses is the default.
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => e.preventDefault());
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
