@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { supersampleFactor } from './PdfViewer';
+import { supersampleFactor } from './pdfSupersample';
 
 // A large civil sheet (ARCH-D, 36x24in at 72pt/in) — the case where
 // zoomed-out rendering falls apart.
