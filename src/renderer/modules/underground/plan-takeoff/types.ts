@@ -91,6 +91,7 @@ export interface TakeoffRun {
   color: string;
   pdfPage: number;
   points: TakeoffVertex[];
+  hddAdditionalPipesJson?: string | null;
 }
 
 /** Config fields shared between new-run and edit-run modals */

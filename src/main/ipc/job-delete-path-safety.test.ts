@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import path from 'path';
 import fs from 'fs';
 import type Database from 'better-sqlite3';
 
@@ -30,7 +31,7 @@ const call = (channel: string, ...args: any[]) => {
 
 describe('jobFilesDir id validation', () => {
   it('returns a path scoped under job-files for a real rowid', () => {
-    expect(jobFilesDir(42)).toBe('/tmp/bidsheet-test-userdata/job-files/42');
+    expect(jobFilesDir(42)).toBe(path.join('/tmp/bidsheet-test-userdata', 'job-files', '42'));
   });
 
   it.each([

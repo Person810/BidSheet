@@ -19,6 +19,8 @@ interface Trench3DViewProps {
   scalePxPerFt: number;
   groundSampler?: GroundSampler;
   height?: number;
+  isHDD?: boolean;
+  includePits?: boolean;
 }
 
 const EARTH = '#7a5c32';
@@ -87,25 +89,38 @@ function PipeSegment({
  * are sharp at the vertex (matching a fitting joint). A slightly larger sphere
  * sits at each interior bend to represent the fitting coupling.
  */
-function PipeRun({ model, color }: { model: Trench3DModel; color: string }) {
-  const radius = Math.max(model.pipeDiaFt / 2, 0.05);
+function PipeRun({ model, color, additionalPipes = [] }: { model: Trench3DModel; color: string; additionalPipes?: Array<{ radius: number; color: string }> }) {
+  const mainRadius = Math.max(model.pipeDiaFt / 2, 0.05);
   const cl = model.pipeCenterline;
+
+  const totalBores = 1 + additionalPipes.length;
+  const spacing = Math.max(model.pipeDiaFt * 2.0, 0.3); // space by 2x diameter, min 0.3 ft
 
   return (
     <>
-      {cl.map((pt, i) => {
-        if (i === 0) return null;
+      {Array.from({ length: totalBores }).map((_, b) => {
+        const offsetZ = (b - (totalBores - 1) / 2) * spacing;
+        const radius = b === 0 ? mainRadius : additionalPipes[b - 1].radius;
+        const pipeColor = b === 0 ? color : additionalPipes[b - 1].color;
+
         return (
-          <PipeSegment key={i} from={cl[i - 1]} to={pt} radius={radius} color={color} />
+          <group key={b} position={[0, 0, offsetZ]}>
+            {cl.map((pt, i) => {
+              if (i === 0) return null;
+              return (
+                <PipeSegment key={i} from={cl[i - 1]} to={pt} radius={radius} color={pipeColor} />
+              );
+            })}
+            {/* Fitting ball at each interior vertex */}
+            {cl.slice(1, -1).map((pt, i) => (
+              <mesh key={i} position={[pt.x, pt.y, pt.z]}>
+                <sphereGeometry args={[radius * 1.18, 14, 10]} />
+                <meshStandardMaterial color={pipeColor} roughness={0.3} metalness={0.2} />
+              </mesh>
+            ))}
+          </group>
         );
       })}
-      {/* Fitting ball at each interior vertex */}
-      {cl.slice(1, -1).map((pt, i) => (
-        <mesh key={i} position={[pt.x, pt.y, pt.z]}>
-          <sphereGeometry args={[radius * 1.18, 14, 10]} />
-          <meshStandardMaterial color={color} roughness={0.3} metalness={0.2} />
-        </mesh>
-      ))}
     </>
   );
 }
@@ -118,6 +133,34 @@ function Structure({ x, z, ground, invert }: { x: number; z: number; ground: num
       <cylinderGeometry args={[1.0, 1.0, h, 20]} />
       <meshStandardMaterial color={STRUCTURE} roughness={0.7} metalness={0.2} />
     </mesh>
+  );
+}
+
+/** Rectangular Launch / Exit pit for HDD */
+function Pit({ x, ground, z, width, length, depth, color }: { x: number; ground: number; z: number; width: number; length: number; depth: number; color: string }) {
+  const h = Math.max(depth, 0.1);
+  const edgesGeom = useMemo(() => {
+    const box = new THREE.BoxGeometry(length, h, width);
+    return new THREE.EdgesGeometry(box);
+  }, [width, h, length]);
+
+  return (
+    <group position={[x, ground - h / 2, z]}>
+      <mesh>
+        <boxGeometry args={[length, h, width]} />
+        <meshStandardMaterial
+          color={color}
+          transparent
+          opacity={0.35}
+          side={THREE.DoubleSide}
+          roughness={0.95}
+          metalness={0.0}
+        />
+      </mesh>
+      <lineSegments geometry={edgesGeom}>
+        <lineBasicMaterial color="#ffffff" opacity={0.3} transparent />
+      </lineSegments>
+    </group>
   );
 }
 
@@ -194,10 +237,13 @@ function TerrainMesh({
   );
 }
 
-function Scene({ model, run, groundSampler, scalePxPerFt, hasBench }: {
+function Scene({ model, run, groundSampler, scalePxPerFt, hasBench, isHDD, includePits, additionalPipes }: {
   model: Trench3DModel; run: TakeoffRun;
   groundSampler?: GroundSampler; scalePxPerFt: number;
   hasBench: boolean;
+  isHDD?: boolean;
+  includePits?: boolean;
+  additionalPipes?: Array<{ radius: number; color: string }>;
 }) {
   const offset: [number, number, number] = [-model.center.x, -model.center.y, -model.center.z];
   const floorY = -model.radius;
@@ -218,7 +264,7 @@ function Scene({ model, run, groundSampler, scalePxPerFt, hasBench }: {
       )}
 
       <group position={offset}>
-        {model.segments.map((seg, i) => (
+        {!isHDD && model.segments.map((seg, i) => (
           <React.Fragment key={i}>
             {/*
              * Stair-step bench geometry:
@@ -249,7 +295,39 @@ function Scene({ model, run, groundSampler, scalePxPerFt, hasBench }: {
           </React.Fragment>
         ))}
 
-        <PipeRun model={model} color={run.color} />
+        <PipeRun model={model} color={run.color} additionalPipes={additionalPipes} />
+
+        {isHDD && includePits && model.segments.length > 0 && (() => {
+          const startSeg = model.segments[0];
+          const endSeg = model.segments[model.segments.length - 1];
+          const pitW = run.trenchWidthFt || 3.0;
+          const pitL = run.benchWidthFt || 6.0;
+          const startPitD = run.startDepthFt || 5.0;
+          const endPitD = (model as any).endPitDepthFt ?? (startPitD / 3);
+
+          return (
+            <>
+              <Pit
+                x={startSeg.ax}
+                ground={startSeg.groundA}
+                z={startSeg.az}
+                width={pitW}
+                length={pitL}
+                depth={startPitD}
+                color="#8c6c47"
+              />
+              <Pit
+                x={endSeg.bx}
+                ground={endSeg.groundB}
+                z={endSeg.bz}
+                width={pitW}
+                length={pitL}
+                depth={endPitD}
+                color="#8c6c47"
+              />
+            </>
+          );
+        })()}
 
         {model.structures.map((s, i) => (
           <Structure key={i} x={s.x} z={s.z} ground={s.ground} invert={s.invert} />
@@ -288,15 +366,42 @@ function LegendSwatch({ color, opacity, label }: { color: string; opacity: numbe
   );
 }
 
-export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }: Trench3DViewProps) {
+export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520, isHDD = false, includePits = false }: Trench3DViewProps) {
   const system = useUnitSystem();
   const metric = system === 'metric';
   const [resetKey, setResetKey] = useState(0);
 
-  const model = useMemo(
-    () => buildRunGeometry(run, scalePxPerFt, groundSampler),
-    [run, scalePxPerFt, groundSampler],
-  );
+  const model = useMemo(() => {
+    const m = buildRunGeometry(run, scalePxPerFt, groundSampler);
+    if (m && isHDD) {
+      const startPitD = run.startDepthFt || 5.0;
+      const hasGrade = run.gradePct && run.gradePct !== 0;
+
+      if (m.segments.length > 0) {
+        const startSeg = m.segments[0];
+        const endSeg = m.segments[m.segments.length - 1];
+
+        startSeg.invertA = startSeg.groundA - startPitD;
+        startSeg.bottomA = startSeg.invertA - m.beddingDepthFt;
+
+        let endPitD = startPitD / 3;
+        if (hasGrade) {
+          endPitD = Math.max(endSeg.groundB - endSeg.invertB, 0.1);
+        } else {
+          endSeg.invertB = endSeg.groundB - endPitD;
+          endSeg.bottomB = endSeg.invertB - m.beddingDepthFt;
+        }
+        (m as any).endPitDepthFt = endPitD;
+      }
+
+      const pipeRadiusFt = m.pipeDiaFt / 2;
+      if (m.pipeCenterline.length > 0 && m.segments.length > 0) {
+        m.pipeCenterline[0].y = (m.segments[0].groundA - startPitD) + pipeRadiusFt;
+        m.pipeCenterline[m.pipeCenterline.length - 1].y = (m.segments[m.segments.length - 1].groundB - (m as any).endPitDepthFt) + pipeRadiusFt;
+      }
+    }
+    return m;
+  }, [run, scalePxPerFt, groundSampler, isHDD]);
 
   if (!model) {
     return <p className="text-muted">This run has no measurable length yet.</p>;
@@ -317,12 +422,29 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }:
   const hasBench = run.benchWidthFt > 0;
   const benchWidthFt = run.benchWidthFt;
 
+  const additionalPipes3D = useMemo(() => {
+    const jsonStr = run.hddAdditionalPipesJson || run.backfillType;
+    if (!jsonStr || !jsonStr.startsWith('[')) return [];
+    try {
+      const list = JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+      return list.map((item) => {
+        const sizeIn = item.pipeSizeIn || 3.0;
+        const sizeFt = metric ? (sizeIn / 25.4) / 12 : sizeIn / 12;
+        return {
+          radius: Math.max(sizeFt / 2, 0.05),
+          color: '#e28743', // orange shade for additional bores to contrast with green main
+        };
+      });
+    } catch {
+      return [];
+    }
+  }, [run.hddAdditionalPipesJson, run.backfillType, metric]);
+
   return (
     <div>
       <div style={{ position: 'relative', height, borderRadius: 6, overflow: 'hidden', background: '#0e1116' }}>
         <Canvas
           key={resetKey}
-          // Lower elevation (≈25°) so cross-section side faces are clearly visible
           camera={{ position: [dist * 0.6, dist * 0.4, dist * 0.6] as [number, number, number], fov: 45, near: 0.1, far: dist * 50 }}
           dpr={[1, 2]}
         >
@@ -333,10 +455,12 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }:
             groundSampler={groundSampler}
             scalePxPerFt={scalePxPerFt}
             hasBench={hasBench}
+            isHDD={isHDD}
+            includePits={includePits}
+            additionalPipes={additionalPipes3D}
           />
         </Canvas>
 
-        {/* Legend */}
         <div style={{
           position: 'absolute', bottom: 12, left: 12,
           background: 'rgba(14,17,22,0.82)',
@@ -347,13 +471,20 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }:
           backdropFilter: 'blur(4px)',
           pointerEvents: 'none',
         }}>
-          <LegendSwatch color={EARTH} opacity={0.85} label={hasBench
-            ? `Excavation (benched ${metric ? formatQty(benchWidthFt, 'ft', system) : `${benchWidthFt}′`} ea side)`
-            : 'Excavation cut'} />
-          <LegendSwatch color={BEDDING} opacity={1}
-            label={`Bedding (${metric ? formatQty(run.beddingDepthFt, 'ft', system) : `${run.beddingDepthFt}′`} depth)`} />
-          <LegendSwatch color={run.color} opacity={1} label={`${formatPipeSize(run.pipeSizeIn, system)} ${run.pipeMaterial}`} />
-          {model.structures.length > 0 && (
+          {!isHDD && (
+            <>
+              <LegendSwatch color={EARTH} opacity={0.85} label={hasBench
+                ? `Excavation (benched ${metric ? formatQty(benchWidthFt, 'ft', system) : `${benchWidthFt}′`} ea side)`
+                : 'Excavation cut'} />
+              <LegendSwatch color={BEDDING} opacity={1}
+                label={`Bedding (${metric ? formatQty(run.beddingDepthFt, 'ft', system) : `${run.beddingDepthFt}′`} depth)`} />
+            </>
+          )}
+          <LegendSwatch color={run.color} opacity={1} label={isHDD ? `HDD Bore: ${formatPipeSize(run.pipeSizeIn, system)} ${run.pipeMaterial || ''}` : `${formatPipeSize(run.pipeSizeIn, system)} ${run.pipeMaterial}`} />
+          {includePits && isHDD && (
+            <LegendSwatch color="#8c6c47" opacity={0.5} label="Launch/Exit Pits" />
+          )}
+          {model.structures.length > 0 && !isHDD && (
             <LegendSwatch color={STRUCTURE} opacity={1} label="Structures" />
           )}
           {groundSampler && (
@@ -380,22 +511,26 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520 }:
 
       <div className="flex gap-8" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
         <span>{metric ? formatQty(model.totalLengthFt, 'lf', system, 1) : `${model.totalLengthFt.toFixed(1)} LF`}</span>
-        <span>·</span>
-        <span>trench {metric ? formatQty(model.trenchWidthFt, 'ft', system) : `${model.trenchWidthFt}′`} wide</span>
-        {hasBench && (
+        {!isHDD && (
           <>
             <span>·</span>
-            <span>
-              bench {metric ? formatQty(benchWidthFt, 'ft', system) : `${benchWidthFt}′`} each side
-              {' → '}{metric ? formatQty(model.totalWidthFt, 'ft', system) : `${model.totalWidthFt}′`} total cut
-            </span>
+            <span>trench {metric ? formatQty(model.trenchWidthFt, 'ft', system) : `${model.trenchWidthFt}′`} wide</span>
+            {hasBench && (
+              <>
+                <span>·</span>
+                <span>
+                  bench {metric ? formatQty(benchWidthFt, 'ft', system) : `${benchWidthFt}′`} each side
+                  {' → '}{metric ? formatQty(model.totalWidthFt, 'ft', system) : `${model.totalWidthFt}′`} total cut
+                </span>
+              </>
+            )}
           </>
         )}
         <span>·</span>
         <span>true 1:1 scale</span>
         <span>·</span>
         <span>drag to orbit · scroll to zoom</span>
-        {model.mode === 'depth' && (
+        {model.mode === 'depth' && !isHDD && (
           <>
             <span>·</span>
             <span>depths estimated from start depth + grade</span>

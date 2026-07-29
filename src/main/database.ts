@@ -417,6 +417,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV48,
   migrateV49,
   migrateV50,
+  migrateV51,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -959,6 +960,27 @@ function migrateV50(db: Database.Database): void {
     ALTER TABLE app_settings ADD COLUMN freight_taxable INTEGER;
     INSERT INTO schema_version (version) VALUES (50);
   `);
+}
+
+function migrateV51(db: Database.Database): void {
+  const addColumn = (table: string, col: string, def: string) => {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+    } catch (e) {
+      // ignore if column already exists
+    }
+  };
+
+  addColumn('app_settings', 'hdd_rates_json', 'TEXT');
+  addColumn('trench_profiles', 'method', "TEXT DEFAULT 'open_cut'");
+  addColumn('trench_profiles', 'hdd_location', 'TEXT');
+  addColumn('trench_profiles', 'hdd_include_slurry', 'INTEGER DEFAULT 1');
+  addColumn('trench_profiles', 'hdd_include_pits', 'INTEGER DEFAULT 1');
+  addColumn('trench_profiles', 'hdd_margin_pct', 'REAL DEFAULT 15.0');
+  addColumn('trench_profiles', 'hdd_bores_per_pit', 'INTEGER DEFAULT 1');
+  addColumn('trench_profiles', 'hdd_additional_pipes_json', 'TEXT');
+
+  db.exec(`INSERT INTO schema_version (version) VALUES (51);`);
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */

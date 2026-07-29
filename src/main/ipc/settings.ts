@@ -261,7 +261,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
           -- my trades") and '' ("no tools") are both meaningful, so an
           -- omitted field must not silently reset someone's picks.
           enabled_tools = CASE WHEN ? THEN ? ELSE enabled_tools END,
-          custom_trades = CASE WHEN ? THEN ? ELSE custom_trades END
+          custom_trades = CASE WHEN ? THEN ? ELSE custom_trades END,
+          hdd_rates_json = CASE WHEN ? THEN ? ELSE hdd_rates_json END
         WHERE id = 1`
       )
       .run(
@@ -280,7 +281,9 @@ export function registerSettingsHandlers(db: Database.Database): void {
         'enabledTools' in (settings ?? {}) ? 1 : 0,
         settings.enabledTools ?? null,
         'customTrades' in (settings ?? {}) ? 1 : 0,
-        serializeCustomTrades(parseCustomTrades(settings.customTrades))
+        serializeCustomTrades(parseCustomTrades(settings.customTrades)),
+        'hddRatesJson' in (settings ?? {}) ? 1 : 0,
+        settings.hddRatesJson ?? null
       );
   });
 

@@ -3,6 +3,7 @@ import {
   calculateTrench, validateInput,
   type TrenchInput,
 } from '../../modules/underground/trenchCalc';
+import { calculateHDD, validateHDDInput } from '../../modules/underground/hddCalc';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TrenchProfileForm } from './TrenchProfileForm';
 import { useTrenchMaterials } from '../../modules/underground/useTrenchMaterials';
@@ -10,6 +11,7 @@ import { useSurfaceManager } from '../../modules/underground/plan-takeoff/useSur
 import type { TakeoffRun } from '../../modules/underground/plan-takeoff/types';
 import { useUnitSystem } from '../../stores/units-store';
 import { unitLabel, convertQty, formatPipeSize, fromDisplay } from '../../../shared/unitSystem';
+import { formatCurrency } from './helpers';
 
 export interface ConvertToBidProfile {
   label: string;
@@ -27,6 +29,13 @@ export interface ConvertToBidProfile {
   backfillMaterialId: number | null;
   backfillMaterialName: string;
   backfillMaterialUnit: string;
+  method?: string;
+  hddLocation?: string;
+  hddIncludeSlurry?: boolean;
+  hddIncludePits?: boolean;
+  hddMarginPct?: number;
+  totalEstimate?: number;
+  additionalPipes?: Array<{ pipeLF: number; pipeMaterialId: number | null; pipeMaterialName: string }>;
 }
 
 interface Props {
@@ -50,6 +59,13 @@ const DEFAULTS = {
   pipeMaterialId: null as number | string | null,
   beddingMaterialId: null as number | string | null,
   backfillMaterialId: 'native' as number | string | null,
+  method: 'open_cut',
+  hddLocation: 'metro',
+  hddIncludeSlurry: true,
+  hddIncludePits: true,
+  hddMarginPct: 15,
+  hddBoresPerPit: 1,
+  hddAdditionalPipesJson: '',
 };
 
 /** Metric prefills: round metres (1.2 m deep, 30 m long, 1 m wide, 150 mm
@@ -81,6 +97,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   const system = useUnitSystem();
   const defaults = system === 'metric' ? METRIC_DEFAULTS : DEFAULTS;
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...defaults });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
@@ -101,6 +118,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       rows.forEach((r) => { map[r.page_number] = r.scale_px_per_ft; });
       setPageScales(map);
     });
+    window.api.getSettings().then(setSettings);
   }, [jobId]);
 
   const loadProfiles = useCallback(async () => {
@@ -112,23 +130,73 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
   const computed = useMemo(() => {
+    const customRates = settings?.hdd_rates_json ? JSON.parse(settings.hdd_rates_json) : undefined;
     return profiles.map((row) => {
-      const input = rowToInput(row);
-      const errors = validateInput(input);
-      return errors.length === 0 ? calculateTrench(input) : null;
-    });
-  }, [profiles]);
+      const isHDD = row.method === 'hdd';
+      if (isHDD) {
+        const errors = validateHDDInput({
+          pipeSizeIn: row.pipe_size_in,
+          runLengthLF: row.run_length_lf,
+          hddMarginPct: row.hdd_margin_pct,
+        });
+        if (errors.length > 0) return null;
+        try {
+          let additionalPipes: Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }> = [];
+          const jsonStr = row.hdd_additional_pipes_json || (row.backfill_type && row.backfill_type.startsWith('[') ? row.backfill_type : '');
+          if (jsonStr) {
+            try {
+              additionalPipes = JSON.parse(jsonStr);
+            } catch {}
+          }
+          const calc = calculateHDD({
+            location: row.hdd_location || 'metro',
+            dn: row.pipe_size_in,
+            length: row.run_length_lf,
+            includeSlurry: row.backfill_type !== 'bundle' && row.hdd_include_slurry !== 0,
+            includePits: row.backfill_type !== 'bundle' && row.hdd_include_pits !== 0,
+            marginPct: row.hdd_margin_pct ?? 15,
+            locale: system === 'metric' ? 'en-AU' : 'en-US',
+            boresPerPit: row.hdd_bores_per_pit !== undefined && row.hdd_bores_per_pit !== null ? row.hdd_bores_per_pit : (row.compaction_pct || 1),
+            isBundle: row.backfill_type === 'bundle',
+            additionalPipes,
+            customRates,
+          });
+          return {
+            method: 'hdd',
+            pipeLF: row.run_length_lf,
+            excavationCY: 0,
+            beddingCY: 0,
+            backfillCY: 0,
+            tracerWireLF: 0,
+            warningTapeLF: 0,
+            avgDepthFt: 0,
+            totalEstimate: calc.summary.totalEstimate,
+          };
+        } catch {
+          return null;
+        }
+      } else {
+        const input = rowToInput(row);
+        const errors = validateInput(input);
+        return errors.length === 0 ? calculateTrench(input) : null;
+      }
+    }) as any[];
+  }, [profiles, system, settings]);
 
   const totals = useMemo(() => {
-    const t = { pipeLF: 0, excavationCY: 0, beddingCY: 0, backfillCY: 0, tracerWireLF: 0, warningTapeLF: 0 };
+    const t = { pipeLF: 0, excavationCY: 0, beddingCY: 0, backfillCY: 0, tracerWireLF: 0, warningTapeLF: 0, hddTotal: 0 };
     for (const out of computed) {
       if (!out) continue;
       t.pipeLF += out.pipeLF;
-      t.excavationCY += out.excavationCY;
-      t.beddingCY += out.beddingCY;
-      t.backfillCY += out.backfillCY;
-      t.tracerWireLF += out.tracerWireLF;
-      t.warningTapeLF += out.warningTapeLF;
+      if (out.method === 'hdd') {
+        t.hddTotal += (out as any).totalEstimate || 0;
+      } else {
+        t.excavationCY += out.excavationCY;
+        t.beddingCY += out.beddingCY;
+        t.backfillCY += out.backfillCY;
+        t.tracerWireLF += out.tracerWireLF;
+        t.warningTapeLF += out.warningTapeLF;
+      }
     }
     return t;
   }, [computed]);
@@ -147,7 +215,13 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     backfillType: form.backfillType,
     compactionPct: form.compactionPct,
   };
-  const formErrors = editingId !== null ? validateInput(formInput) : [];
+  const formErrors = editingId !== null ? (
+    form.method === 'hdd' ? validateHDDInput({
+      pipeSizeIn: form.pipeSizeIn,
+      runLengthLF: form.runLengthLF,
+      hddMarginPct: form.hddMarginPct,
+    }) : validateInput(formInput)
+  ) : [];
 
   const addNew = async () => {
     const maxSort = profiles.reduce((m: number, p: any) => Math.max(m, p.sort_order ?? 0), 0);
@@ -155,9 +229,21 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       jobId,
       ...defaults,
       sortOrder: maxSort + 1,
+      method: 'open_cut',
+      hddLocation: 'metro',
+      hddIncludeSlurry: true,
+      hddIncludePits: true,
+      hddMarginPct: 15,
     });
     await loadProfiles();
-    setForm({ ...defaults });
+    setForm({
+      ...defaults,
+      method: 'open_cut',
+      hddLocation: 'metro',
+      hddIncludeSlurry: true,
+      hddIncludePits: true,
+      hddMarginPct: 15,
+    });
     setEditingId(result.id);
   };
 
@@ -177,6 +263,13 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       pipeMaterialId: row.pipe_material_id ?? null,
       beddingMaterialId: row.bedding_material_id ?? null,
       backfillMaterialId: row.backfill_material_id ?? (row.backfill_type === 'Native Material' ? 'native' : null),
+      method: row.method || 'open_cut',
+      hddLocation: row.hdd_location || 'metro',
+      hddIncludeSlurry: row.hdd_include_slurry !== 0,
+      hddIncludePits: row.hdd_include_pits !== 0,
+      hddMarginPct: row.hdd_margin_pct ?? 15,
+      hddBoresPerPit: row.hdd_bores_per_pit !== undefined && row.hdd_bores_per_pit !== null ? row.hdd_bores_per_pit : (row.compaction_pct || 1),
+      hddAdditionalPipesJson: row.hdd_additional_pipes_json || (row.backfill_type && row.backfill_type.startsWith('[') ? row.backfill_type : ''),
     });
     setEditingId(row.id);
   };
@@ -187,6 +280,9 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     // Derive text labels for backward compat storage
     const beddingLabel = beddingMaterials.find((m) => m.id === form.beddingMaterialId)?.label || '';
     const backfillLabel = form.backfillType || '';
+
+    // If method is open_cut, clear/ignore the HDD specific columns
+    const isHDD = form.method === 'hdd';
 
     await window.api.saveTrenchProfile({
       id: editingId,
@@ -200,12 +296,19 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       trenchWidthFt: form.trenchWidthFt,
       benchWidthFt: form.benchWidthFt,
       beddingType: beddingLabel,
-      backfillType: backfillLabel,
+      backfillType: isHDD ? null : backfillLabel,
       beddingDepthFt: form.beddingDepthFt,
-      compactionPct: form.compactionPct,
+      compactionPct: isHDD ? 0 : form.compactionPct,
       pipeMaterialId: typeof form.pipeMaterialId === 'number' ? form.pipeMaterialId : null,
       beddingMaterialId: typeof form.beddingMaterialId === 'number' ? form.beddingMaterialId : null,
       backfillMaterialId: typeof form.backfillMaterialId === 'number' ? form.backfillMaterialId : null,
+      method: form.method || 'open_cut',
+      hddLocation: form.hddLocation || 'metro',
+      hddIncludeSlurry: form.hddIncludeSlurry !== false,
+      hddIncludePits: form.hddIncludePits !== false,
+      hddMarginPct: form.hddMarginPct ?? 15,
+      hddBoresPerPit: isHDD ? ((form as any).hddBoresPerPit ?? 1) : 1,
+      hddAdditionalPipesJson: isHDD ? ((form as any).hddAdditionalPipesJson || null) : null,
     });
     setEditingId(null);
     await loadProfiles();
@@ -230,6 +333,9 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   const cy = (n: number) => r2(convertQty(n, 'cy', system));
 
   const pipeDisplay = (row: any) => {
+    if (row.method === 'hdd') {
+      return system === 'metric' ? `DN${row.pipe_size_in} (HDD)` : `${row.pipe_size_in}" (HDD)`;
+    }
     if (row.pipe_material_id) {
       const mat = pipeMaterials.find((m) => m.id === row.pipe_material_id);
       if (mat) return mat.label;
@@ -254,6 +360,21 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           const pipeMat = pipeMaterials.find((m) => m.id === row.pipe_material_id);
           const beddingMat = beddingMaterials.find((m) => m.id === row.bedding_material_id);
           const backfillMat = beddingMaterials.find((m) => m.id === row.backfill_material_id);
+          let additionalPipes: Array<{ pipeLF: number; pipeMaterialId: number | null; pipeMaterialName: string }> = [];
+          if (row.method === 'hdd' && row.backfill_type && row.backfill_type.startsWith('[')) {
+            try {
+              const list = JSON.parse(row.backfill_type) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+              additionalPipes = list.map((item) => {
+                const mat = pipeMaterials.find((m) => m.id === item.pipeMaterialId);
+                return {
+                  pipeLF: row.run_length_lf,
+                  pipeMaterialId: typeof item.pipeMaterialId === 'number' ? item.pipeMaterialId : null,
+                  pipeMaterialName: mat?.label || 'Pipe',
+                };
+              });
+            } catch {}
+          }
+
           data.push({
             label: row.label || `Run ${idx + 1}`,
             pipeLF: out.pipeLF,
@@ -270,6 +391,13 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
             backfillMaterialId: row.backfill_material_id ?? null,
             backfillMaterialName: backfillMat?.label || row.backfill_type || 'Backfill',
             backfillMaterialUnit: backfillMat?.detailSub || '',
+            method: row.method || 'open_cut',
+            hddLocation: row.hdd_location || 'metro',
+            hddIncludeSlurry: row.hdd_include_slurry !== 0,
+            hddIncludePits: row.hdd_include_pits !== 0,
+            hddMarginPct: row.hdd_margin_pct ?? 15,
+            totalEstimate: (out as any).totalEstimate,
+            additionalPipes: additionalPipes.length > 0 ? additionalPipes : undefined,
           });
         });
         await onConvertToBid(data);
@@ -311,6 +439,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           <tbody>
             {profiles.map((row, idx) => {
               const out = computed[idx];
+              const isHDD = row.method === 'hdd';
               return (
                 <React.Fragment key={row.id}>
                   <tr>
@@ -322,10 +451,18 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                     </td>
                     <td className="text-right">{out ? lf(out.pipeLF) : '--'}</td>
                     <td className="text-right">{pipeDisplay(row)}</td>
-                    <td className="text-right">{out ? r2(convertQty(out.avgDepthFt, 'ft', system)) : '--'}</td>
-                    <td className="text-right">{out ? cy(out.excavationCY) : '--'}</td>
-                    <td className="text-right">{out ? cy(out.beddingCY) : '--'}</td>
-                    <td className="text-right">{out ? cy(out.backfillCY) : '--'}</td>
+                    {isHDD ? (
+                      <td colSpan={4} className="text-right" style={{ fontWeight: 600, color: 'var(--accent)' }}>
+                        HDD Estimate: {out ? formatCurrency((out as any).totalEstimate) : '--'}
+                      </td>
+                    ) : (
+                      <>
+                        <td className="text-right">{out ? r2(convertQty(out.avgDepthFt, 'ft', system)) : '--'}</td>
+                        <td className="text-right">{out ? cy(out.excavationCY) : '--'}</td>
+                        <td className="text-right">{out ? cy(out.beddingCY) : '--'}</td>
+                        <td className="text-right">{out ? cy(out.backfillCY) : '--'}</td>
+                      </>
+                    )}
                     <td className="no-print">
                       <div className="flex gap-8">
                         <button className="btn btn-sm btn-secondary" onClick={() => startEdit(row)}>Edit</button>
@@ -338,7 +475,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                       <TrenchProfileForm form={form} onChange={handleChange}
                         onSave={saveProfile} onCancel={() => setEditingId(null)} errors={formErrors}
                         pipeMaterials={pipeMaterials} beddingMaterials={beddingMaterials}
-                        takeoffRuns={takeoffRuns} pageScales={pageScales} surface={surface} />
+                        takeoffRuns={takeoffRuns} pageScales={pageScales} surface={surface}
+                        customRates={settings?.hdd_rates_json ? JSON.parse(settings.hdd_rates_json) : undefined} />
                     </td></tr>
                   )}
                 </React.Fragment>
@@ -358,7 +496,13 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           <tfoot className="bid-grid-footer">
             <tr>
               <td colSpan={8} className="text-muted" style={{ fontSize: 11 }}>
-                Tracer Wire: {lf(totals.tracerWireLF)} {unitLabel('lf', system)} &middot; Warning Tape: {lf(totals.warningTapeLF)} {unitLabel('lf', system)}
+                {profiles.some((p) => (p.method || 'open_cut') !== 'hdd') && (
+                  <>
+                    Open-Cut: Tracer Wire: {lf(totals.tracerWireLF)} {unitLabel('lf', system)} &middot; Warning Tape: {lf(totals.warningTapeLF)} {unitLabel('lf', system)}
+                    {totals.hddTotal > 0 && <> &middot; </>}
+                  </>
+                )}
+                {totals.hddTotal > 0 && <>HDD Total: {formatCurrency(totals.hddTotal)}</>}
               </td>
             </tr>
           </tfoot>

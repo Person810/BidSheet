@@ -18,7 +18,10 @@ import {
   serializeCustomTrades,
 } from '../../shared/customTrades';
 
+import { HDDRatesModal } from '../components/HDDRatesModal';
+
 export function SettingsPage() {
+  const [showHddRatesModal, setShowHddRatesModal] = useState(false);
   const addToast = useToastStore((s) => s.addToast);
   const { profile } = useLocaleStore();
   const openWalkthrough = useWalkthroughStore((s) => s.open);
@@ -47,6 +50,7 @@ export function SettingsPage() {
     enabledTools: null as string | null,
     // Free-text trades with no seed catalog, named at setup.
     customTrades: [] as string[],
+    hddRatesJson: '',
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -84,6 +88,7 @@ export function SettingsPage() {
           freightTaxable: s.freight_taxable === 0 || s.freight_taxable === 1 ? s.freight_taxable : null,
           enabledTools: s.enabled_tools ?? null,
           customTrades: parseCustomTrades(s.custom_trades),
+          hddRatesJson: s.hdd_rates_json || '',
         });
       }
     }).finally(() => setLoading(false));
@@ -111,6 +116,7 @@ export function SettingsPage() {
       freightTaxable: settings.freightTaxable,
       enabledTools: settings.enabledTools,
       customTrades: serializeCustomTrades(settings.customTrades),
+      hddRatesJson: settings.hddRatesJson || null,
     });
     // Calculators read the store, so the change applies without a restart
     setUnitSystem(settings.unitSystem);
@@ -472,6 +478,95 @@ export function SettingsPage() {
               </div>
             </div>
           </>
+        )}
+      </div>
+
+      <div className="card mb-24">
+        <h3 style={{ marginBottom: 16 }}>Horizontal Directional Drilling (HDD) Custom Rates</h3>
+        <p className="text-muted mb-16">
+          Configure custom equipment, labor crew sizes, and production rates for Horizontal Directional Drilling.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowHddRatesModal(true)}
+          >
+            Configure HDD Rates...
+          </button>
+          {settings.hddRatesJson && settings.hddRatesJson.trim() !== '' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className="text-success" style={{ fontWeight: 'bold', fontSize: 13 }}>✓ Custom Rates Active</span>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={async () => {
+                  if (confirm('Are you sure you want to reset all HDD rates back to standard system defaults?')) {
+                    const updated = { ...settings, hddRatesJson: '' };
+                    setSettings(updated);
+                    await window.api.saveSettings({
+                      companyName: updated.companyName,
+                      companyAddress: updated.companyAddress || null,
+                      companyPhone: updated.companyPhone || null,
+                      companyEmail: updated.companyEmail || null,
+                      companyTagline: updated.companyTagline || null,
+                      companyLogo: updated.companyLogo || null,
+                      defaultOverheadPercent: updated.defaultOverheadPercent,
+                      defaultProfitPercent: updated.defaultProfitPercent,
+                      defaultTaxPercent: updated.defaultTaxPercent,
+                      defaultBondPercent: updated.defaultBondPercent,
+                      autoLockOnClose: updated.autoLockOnClose,
+                      localOnlyMode: updated.localOnlyMode,
+                      jobNumberAuto: updated.jobNumberAuto,
+                      jobNumberFormat: updated.jobNumberFormat,
+                      jobNumberStart: updated.jobNumberStart,
+                      unitSystem: updated.unitSystem,
+                      enabledTools: updated.enabledTools,
+                      customTrades: serializeCustomTrades(updated.customTrades),
+                      hddRatesJson: null,
+                    });
+                    addToast('HDD rates reset to system defaults!', 'success');
+                  }
+                }}
+              >
+                Reset to System Defaults
+              </button>
+            </div>
+          ) : (
+            <span className="text-muted" style={{ fontSize: 13 }}>Using system default rates (Australia/US standard sets)</span>
+          )}
+        </div>
+
+        {showHddRatesModal && (
+          <HDDRatesModal
+            initialRatesJson={settings.hddRatesJson}
+            onSave={async (json) => {
+              const updated = { ...settings, hddRatesJson: json };
+              setSettings(updated);
+              await window.api.saveSettings({
+                companyName: updated.companyName,
+                companyAddress: updated.companyAddress || null,
+                companyPhone: updated.companyPhone || null,
+                companyEmail: updated.companyEmail || null,
+                companyTagline: updated.companyTagline || null,
+                companyLogo: updated.companyLogo || null,
+                defaultOverheadPercent: updated.defaultOverheadPercent,
+                defaultProfitPercent: updated.defaultProfitPercent,
+                defaultTaxPercent: updated.defaultTaxPercent,
+                defaultBondPercent: updated.defaultBondPercent,
+                autoLockOnClose: updated.autoLockOnClose,
+                localOnlyMode: updated.localOnlyMode,
+                jobNumberAuto: updated.jobNumberAuto,
+                jobNumberFormat: updated.jobNumberFormat,
+                jobNumberStart: updated.jobNumberStart,
+                unitSystem: updated.unitSystem,
+                enabledTools: updated.enabledTools,
+                customTrades: serializeCustomTrades(updated.customTrades),
+                hddRatesJson: updated.hddRatesJson || null,
+              });
+              setShowHddRatesModal(false);
+              addToast('Custom HDD rates saved successfully!', 'success');
+            }}
+            onClose={() => setShowHddRatesModal(false)}
+          />
         )}
       </div>
 

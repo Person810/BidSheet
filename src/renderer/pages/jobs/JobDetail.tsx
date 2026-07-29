@@ -612,6 +612,20 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         pipeByKey.set(pipeKey, { qty: p.pipeLF, materialId: p.pipeMaterialId, name: p.pipeMaterialName, labels: [p.label] });
       }
 
+      // Additional pipes in the same run/bundle
+      if ((p as any).additionalPipes && (p as any).additionalPipes.length > 0) {
+        for (const addPipe of (p as any).additionalPipes) {
+          const addKey = addPipe.pipeMaterialId != null ? String(addPipe.pipeMaterialId) : addPipe.pipeMaterialName;
+          const addEntry = pipeByKey.get(addKey);
+          if (addEntry) {
+            addEntry.qty += addPipe.pipeLF;
+            addEntry.labels.push(p.label);
+          } else {
+            pipeByKey.set(addKey, { qty: addPipe.pipeLF, materialId: addPipe.pipeMaterialId, name: addPipe.pipeMaterialName, labels: [p.label] });
+          }
+        }
+      }
+
       totalExcavationCY += p.excavationCY;
 
       // Bedding -- group by material ID
