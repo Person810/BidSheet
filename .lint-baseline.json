@@ -1,0 +1,19 @@
+{
+  "@typescript-eslint/no-explicit-any": 681,
+  "@typescript-eslint/no-require-imports": 2,
+  "@typescript-eslint/no-unused-expressions": 1,
+  "@typescript-eslint/no-unused-vars": 90,
+  "jsx-a11y/click-events-have-key-events": 129,
+  "jsx-a11y/interactive-supports-focus": 1,
+  "jsx-a11y/label-has-associated-control": 148,
+  "jsx-a11y/mouse-events-have-key-events": 2,
+  "jsx-a11y/no-autofocus": 35,
+  "jsx-a11y/no-noninteractive-element-interactions": 8,
+  "jsx-a11y/no-static-element-interactions": 122,
+  "no-alert": 5,
+  "no-control-regex": 2,
+  "no-empty": 15,
+  "no-restricted-syntax": 55,
+  "prefer-const": 1,
+  "react-hooks/exhaustive-deps": 7
+}

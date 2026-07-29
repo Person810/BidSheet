@@ -31,7 +31,6 @@ describe('parseNumericInput', () => {
     expect(parseNumericInput('   ')).toBeNaN();
     expect(parseNumericInput('-')).toBeNaN();
     expect(parseNumericInput('.')).toBeNaN();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(parseNumericInput(undefined as any)).toBeNaN();
   });
 
