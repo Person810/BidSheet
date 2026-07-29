@@ -28,6 +28,8 @@
     "lint:fix": "eslint \"src/**/*.{ts,tsx}\" \"test/**/*.ts\" --fix",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "lint:baseline": "node scripts/lint-ratchet.mjs --update",
+    "check:ipc": "node scripts/check-ipc-wiring.mjs",
+    "check:ipc:baseline": "node scripts/check-ipc-wiring.mjs --update",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "electron .",

@@ -1,5 +1,6 @@
 {
   "@typescript-eslint/no-explicit-any": 681,
+  "@typescript-eslint/no-floating-promises": 116,
   "@typescript-eslint/no-require-imports": 2,
   "@typescript-eslint/no-unused-expressions": 1,
   "@typescript-eslint/no-unused-vars": 90,

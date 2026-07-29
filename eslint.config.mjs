@@ -117,6 +117,43 @@ export default tseslint.config(
   },
 
   // ---------------------------------------------------------------------
+  // Type-aware rules. These need the TypeScript program, so they cost real
+  // time — measured on this repo, they roughly double the lint run. Worth it
+  // for these two specifically, and nothing else is enabled here.
+  //
+  // PATTERN 3 + 5 — F40 was exactly a floating promise: safeHandle returned the
+  // handler's promise without awaiting it, so EVERY async IPC handler settled
+  // outside the try/catch. The renderer got "ENOSPC: no space left on device"
+  // instead of "Disk is full.", and nothing reached the log. One missing
+  // `await`, invisible to tsc, across the whole handler surface.
+  // ---------------------------------------------------------------------
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        // BOTH tsconfigs, explicitly. `projectService: true` finds only the
+        // nearest tsconfig.json, whose `include` is renderer + shared — so all
+        // 35 files under src/main (sync-engine, e2ee, backup, api-client…)
+        // failed to parse and got NO type-aware linting while still appearing
+        // in the run. That is the highest-risk code in the repo; silently
+        // skipping it would have been worse than not enabling the rules.
+        project: ['./tsconfig.json', './tsconfig.main.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': [
+        'error',
+        // Passing an async function to onClick is idiomatic React and not the
+        // bug this rule is here to catch.
+        { checksVoidReturn: false },
+      ],
+    },
+  },
+
+  // ---------------------------------------------------------------------
   // Main process — no DOM, and console IS the logger of last resort
   // ---------------------------------------------------------------------
   {
