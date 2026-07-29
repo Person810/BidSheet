@@ -5,6 +5,7 @@ import { registerIpcHandlers } from './ipc-handlers';
 import { registerCloudHandlers, registerLocalOnlyCloudStub } from './cloud/ipc';
 import { initAutoUpdater } from './updater';
 import { logger } from './logger';
+import { appEntryUrl, isAllowedNavigation } from './window-policy';
 import type Database from 'better-sqlite3';
 
 let mainWindow: BrowserWindow | null = null;
@@ -61,9 +62,18 @@ function createWindow(): void {
   // like a browser tab. The app is a single local page: any navigation away
   // from it is a bug or an exploit attempt, and new windows only ever mean
   // external links, which belong in the system browser.
+  //
+  // Pin the exact URL rather than the scheme. Allowing every `file://` meant
+  // that dragging any file onto the window navigated to it: a plan PDF
+  // replaced the whole app with Chromium's PDF viewer (unsaved bid edits
+  // gone, and with no application menu there is no way back), and a GC's
+  // 'bid-form.html' dropped by mistake would execute WITH THE PRELOAD
+  // INJECTED — window.api.getClients(), getJob(), deleteJob() — and no CSP
+  // to stop it phoning home. No renderer exploit needed; one mis-aimed drag
+  // was the whole attack.
+  const allowedUrl = appEntryUrl(isDev, __dirname);
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const allowedDev = isDev && url.startsWith('http://localhost:5173');
-    if (!allowedDev && !url.startsWith('file://')) {
+    if (!isAllowedNavigation(url, allowedUrl)) {
       logger.warn('security', `Blocked navigation to ${url}`);
       event.preventDefault();
     }

@@ -37,6 +37,8 @@ interface ExportSummary {
   escalation?: number;
   /** Job-level indirect-cost pool (mobilization, traffic control, …) */
   indirect_total?: number;
+  /** Job-level freight — part of the grand total, so it must export too */
+  freight?: number;
   overhead: number;
   profit: number;
   bond: number;
@@ -168,6 +170,12 @@ export function generateEstimateCSV(data: CSVExportData): string {
     lines.push(buildRow(
       customer, invoiceNo, date, location, memo,
       'Indirect Costs', 1, fmt(summary.indirect_total!), fmt(summary.indirect_total!),
+    ));
+  }
+  if ((summary.freight || 0) !== 0) {
+    lines.push(buildRow(
+      customer, invoiceNo, date, location, memo,
+      'Freight', 1, fmt(summary.freight!), fmt(summary.freight!),
     ));
   }
   if (summary.overhead !== 0) {

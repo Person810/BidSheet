@@ -194,8 +194,9 @@ export function seedTradeCatalog(
     }
   }
 
-  // Seeded TON aggregates get ballpark densities for CY conversion
-  applyDefaultDensities(db);
+  // Seeded TON aggregates get ballpark densities for CY conversion. Scoped to
+  // seed rows: adding a trade must not reprice the user's own materials.
+  applyDefaultDensities(db, { seedRowsOnly: true });
 
   const insertRole = db.prepare(
     'INSERT OR IGNORE INTO labor_roles (name, default_hourly_rate, burden_multiplier, notes, is_seed, uuid) VALUES (?, ?, ?, ?, 1, ?)'
@@ -416,6 +417,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV48,
   migrateV49,
   migrateV50,
+  migrateV51,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -950,6 +952,17 @@ function migrateV49(db: Database.Database): void {
 }
 
 function migrateV50(db: Database.Database): void {
+  // Whether the job tax rate applies to freight. Tri-state on purpose:
+  // NULL = follow the locale profile's default (GST/VAT locales tax
+  // freight, en-US doesn't), 0/1 = explicit user override. No backfill —
+  // existing installs keep locale-default behavior.
+  db.exec(`
+    ALTER TABLE app_settings ADD COLUMN freight_taxable INTEGER;
+    INSERT INTO schema_version (version) VALUES (50);
+  `);
+}
+
+function migrateV51(db: Database.Database): void {
   const addColumn = (table: string, col: string, def: string) => {
     try {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
@@ -967,7 +980,7 @@ function migrateV50(db: Database.Database): void {
   addColumn('trench_profiles', 'hdd_bores_per_pit', 'INTEGER DEFAULT 1');
   addColumn('trench_profiles', 'hdd_additional_pipes_json', 'TEXT');
 
-  db.exec(`INSERT INTO schema_version (version) VALUES (50);`);
+  db.exec(`INSERT INTO schema_version (version) VALUES (51);`);
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */
@@ -1043,23 +1056,40 @@ function migrateV28(db: Database.Database): void {
  * loose-material figures -- both the density and the per-CY price are
  * editable per material in the catalog.
  */
-export function applyDefaultDensities(db: Database.Database): void {
+export function applyDefaultDensities(
+  db: Database.Database,
+  opts: { seedRowsOnly?: boolean } = {}
+): void {
+  // seedRowsOnly: restrict the sweep to rows this app created (is_seed = 1).
+  //
+  // Adding a trade from Settings runs the seeder, which used to call this
+  // unrestricted. A contractor who created "Blue Rock Special" (TON, $30) and
+  // deliberately left its density blank — so CY lines bill at the raw catalog
+  // price — had 1.4 t/CY and $42/CY written onto it months later by an action
+  // that was supposed to add somebody else's catalog: a 40% jump on every
+  // CY line for that material, with no message and no price-history entry.
+  //
+  // The two migration callers keep the unrestricted sweep on purpose. They
+  // run once, at the moment the columns come into existence, so there is no
+  // user choice to overwrite — leaving a value blank is only a decision once
+  // the field is there to leave blank.
+  const scope = opts.seedRowsOnly ? 'AND is_seed = 1' : '';
   db.exec(`
     UPDATE materials SET tons_per_cy = 1.4
-      WHERE unit = 'TON' AND tons_per_cy IS NULL AND (
+      WHERE unit = 'TON' AND tons_per_cy IS NULL ${scope} AND (
         lower(name) LIKE '%stone%' OR lower(name) LIKE '%gravel%' OR
         lower(name) LIKE '%rip rap%' OR lower(name) LIKE '%riprap%' OR
         lower(name) LIKE '%rock%' OR lower(name) LIKE '%limestone%'
       );
     UPDATE materials SET tons_per_cy = 1.35
-      WHERE unit = 'TON' AND tons_per_cy IS NULL AND lower(name) LIKE '%sand%';
+      WHERE unit = 'TON' AND tons_per_cy IS NULL ${scope} AND lower(name) LIKE '%sand%';
     UPDATE materials SET tons_per_cy = 1.3
-      WHERE unit = 'TON' AND tons_per_cy IS NULL AND (
+      WHERE unit = 'TON' AND tons_per_cy IS NULL ${scope} AND (
         lower(name) LIKE '%fill%' OR lower(name) LIKE '%base%' OR
         lower(name) LIKE '%borrow%'
       );
     UPDATE materials SET cost_per_cy = round(default_unit_cost * tons_per_cy, 2)
-      WHERE unit = 'TON' AND cost_per_cy IS NULL
+      WHERE unit = 'TON' AND cost_per_cy IS NULL ${scope}
         AND tons_per_cy IS NOT NULL AND default_unit_cost > 0;
   `);
 }

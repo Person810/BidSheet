@@ -33,6 +33,23 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Ratchet, not a clean-tree gate. ESLint was adopted onto ~25k lines of
+      # existing code, so .lint-baseline.json grandfathers the current per-rule
+      # counts and this step fails only when a count RISES. Gating on zero would
+      # have meant one enormous refactor PR before anything else could merge;
+      # gating on nothing lets the count grow quietly. `npm run lint:baseline`
+      # re-locks the floor after you fix things — it only moves down.
+      - name: Lint (ratchet)
+        run: npm run lint:ratchet
+
+      # Makes section E ("backend built, UI never calls it") mechanical. Also
+      # catches the one wiring bug tsc structurally cannot: window.d.ts is
+      # hand-written, so a method declared there but never exposed by preload
+      # type-checks fine and is undefined at runtime. Allowlisted like the lint
+      # baseline — gates NEW breakage without demanding the backlog be cleared.
+      - name: Check IPC wiring
+        run: npm run check:ipc
+
       - name: Test
         run: npm test
 

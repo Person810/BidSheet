@@ -27,6 +27,10 @@ export type BidHistory = SnapshotHistory;
 export function useBidHistory({ jobId, getState, reloadAll }: UseBidHistoryOptions): BidHistory {
   const addToast = useToastStore((s) => s.addToast);
   return useSnapshotHistory<BidSnapshot>({
+    // JobDetail is reused across a job switch (parent job → change order via
+    // the Changes tab), so the stacks must be scoped to the job they were
+    // captured from — see the `scope` note on useSnapshotHistory.
+    scope: jobId,
     getState,
     reloadAll,
     persist: useCallback((snapshot) => window.api.replaceBidState(jobId, snapshot), [jobId]),

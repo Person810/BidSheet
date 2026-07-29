@@ -2,22 +2,19 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { PdfPoint } from './types';
 import {
   segmentMidpoint, segmentLengthPx, perpendicularOffset,
-  trianglePointerVertices,
+  calloutEdgePoint, LABEL_BG,
 } from './takeoffUtils';
 import { formatQty } from '../../../../shared/unitSystem';
 import { useUnitSystem } from '../../../stores/units-store';
 
 /* ---- Constants ---- */
 
-const CALLOUT_BG = 'rgba(30,30,30,0.85)';
-const CALLOUT_BORDER = 'rgba(255,255,255,0.15)';
 const SNAP_BACK_MS = 250;        // animation duration
 
 // Spatial constants as multiples of fontSize (so they scale with zoom)
 const OFFSET_RATIO = 4.5;        // perpendicular offset = fontSize * this
 const MAX_DRAG_RATIO = 22;       // snap-back threshold = fontSize * this
-const TRI_BASE_RATIO = 1;        // triangle base width = fontSize * this
-const MIN_TRI_RATIO = 1;         // hide triangle if dist < fontSize * this
+const MIN_LEADER_RATIO = 1;      // hide leader if dist < fontSize * this
 
 interface RunCalloutLabelProps {
   p1: PdfPoint;
@@ -37,34 +34,18 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
   p1, p2, scalePxPerFt, fontSize, color, segmentIndex, scale, rotation = 0, isActive,
 }: RunCalloutLabelProps) {
   const system = useUnitSystem();
-  const distPx = segmentLengthPx(p1, p2);
-  if (distPx < 1) return null;
-  const distFt = distPx / scalePxPerFt;
-  if (distFt < 1.5) return null;
 
-  const label = system === 'metric' ? formatQty(distFt, 'ft', system, 1) : `${distFt.toFixed(1)}'`;
-
-  // Sizing
-  const padH = fontSize * 0.5;
-  const padV = fontSize * 0.25;
-  const textW = label.length * fontSize * 0.55;
-  const boxW = textW + padH * 2;
-  const boxH = fontSize + padV * 2;
-  const halfW = boxW / 2;
-  const halfH = boxH / 2;
+  // EVERY hook must run before the short-segment early returns below. They used
+  // to sit above this block, which meant a segment crossing the 1.5 ft
+  // threshold — routine while dragging a vertex or zooming out — changed this
+  // component's hook count between renders and threw "Rendered fewer hooks than
+  // expected". Nothing here depends on the measured length, so hoisting is
+  // free. Keep it that way: new hooks go above the returns, not below.
 
   // Derive spatial constants from fontSize (scales with zoom)
   const labelOffset = fontSize * OFFSET_RATIO;
   const maxDragRadius = fontSize * MAX_DRAG_RATIO;
-  const triBase = fontSize * TRI_BASE_RATIO;
-  const minTriLen = fontSize * MIN_TRI_RATIO;
-
-  // Anchor = midpoint on the pipe segment (triangle tip points here)
-  const anchor = segmentMidpoint(p1, p2);
-
-  // Default label center = offset perpendicular to segment
-  const side: 'left' | 'right' = segmentIndex % 2 === 0 ? 'left' : 'right';
-  const defaultCenter = perpendicularOffset(p1, p2, labelOffset, side);
+  const minLeaderLen = fontSize * MIN_LEADER_RATIO;
 
   // Drag state
   const [dragOffset, setDragOffset] = useState<PdfPoint | null>(null);
@@ -83,18 +64,6 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
       if (animFrameRef.current != null) cancelAnimationFrame(animFrameRef.current);
     };
   }, []);
-
-  // Resolved label center
-  const labelCenter: PdfPoint = dragOffset
-    ? { x: defaultCenter.x + dragOffset.x, y: defaultCenter.y + dragOffset.y }
-    : defaultCenter;
-
-  // Triangle geometry
-  const triDist = segmentLengthPx(labelCenter, anchor);
-  const showTriangle = triDist > minTriLen;
-  const triVerts = showTriangle
-    ? trianglePointerVertices(labelCenter, anchor, halfW, halfH, triBase)
-    : null;
 
   /* ---- Snap-back animation ---- */
 
@@ -182,35 +151,85 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
     window.addEventListener('mouseup', handleMouseUp);
   }, [isActive, scale, rotation, dragOffset, startSnapBack, maxDragRadius]);
 
+  /* ---- Below here is render-only: no hooks past this point ---- */
+
+  const distPx = segmentLengthPx(p1, p2);
+  if (distPx < 1) return null;
+  const distFt = distPx / scalePxPerFt;
+  if (distFt < 1.5) return null;
+
+  const label = system === 'metric' ? formatQty(distFt, 'ft', system, 1) : `${distFt.toFixed(1)}'`;
+
+  // Sizing (fontSize arrives already capped — see DrawingOverlay)
+  const padH = fontSize * 0.55;
+  const padV = fontSize * 0.3;
+  const textW = label.length * fontSize * 0.55;
+  const boxW = textW + padH * 2;
+  const boxH = fontSize + padV * 2;
+  const halfW = boxW / 2;
+  const halfH = boxH / 2;
+
+  // Anchor = midpoint on the pipe segment (triangle tip points here)
+  const anchor = segmentMidpoint(p1, p2);
+
+  // Default label center = offset perpendicular to segment
+  const side: 'left' | 'right' = segmentIndex % 2 === 0 ? 'left' : 'right';
+  const defaultCenter = perpendicularOffset(p1, p2, labelOffset, side);
+
+  // Resolved label center
+  const labelCenter: PdfPoint = dragOffset
+    ? { x: defaultCenter.x + dragOffset.x, y: defaultCenter.y + dragOffset.y }
+    : defaultCenter;
+
+  // Leader geometry — a hairline from the box border to the measured segment
+  const leaderDist = segmentLengthPx(labelCenter, anchor);
+  const showLeader = leaderDist > minLeaderLen;
+  const leaderStart = showLeader
+    ? calloutEdgePoint(labelCenter, anchor, halfW, halfH)
+    : null;
+
   /* ---- Render ---- */
 
   const pointerEvents = isActive ? 'none' as const : 'auto' as const;
   const cursor = isDraggingRef.current ? 'grabbing' : 'grab';
 
   return (
-    <g style={{ pointerEvents: 'none' }}>
-      {/* Triangle pointer */}
-      {triVerts && (
-        <polygon
-          points={triVerts.map((v) => `${v.x},${v.y}`).join(' ')}
-          fill={CALLOUT_BG}
-          stroke={CALLOUT_BORDER}
-          strokeWidth={1}
-          vectorEffect="non-scaling-stroke"
-          style={{ pointerEvents: 'none' }}
-        />
+    <g style={{ pointerEvents: 'none' }} opacity={isActive ? 0.75 : 1}>
+      {/* Leader — a hairline in the run's color rather than a filled cone, so
+          it points at the segment without masking the plan underneath. */}
+      {leaderStart && (
+        <>
+          <line
+            x1={leaderStart.x} y1={leaderStart.y}
+            x2={anchor.x} y2={anchor.y}
+            stroke={color}
+            strokeWidth={1.25}
+            strokeLinecap="round"
+            opacity={0.85}
+            vectorEffect="non-scaling-stroke"
+            style={{ pointerEvents: 'none' }}
+          />
+          {/* Dot marks exactly which point the measurement belongs to */}
+          <circle
+            cx={anchor.x} cy={anchor.y} r={fontSize * 0.16}
+            fill={color}
+            style={{ pointerEvents: 'none' }}
+          />
+        </>
       )}
 
-      {/* Background box (interactive — receives drag) */}
+      {/* Pill (interactive — receives drag). Border picks up the run color to
+          tie the number to its geometry. */}
       <rect
         x={labelCenter.x - halfW}
         y={labelCenter.y - halfH}
         width={boxW}
         height={boxH}
-        fill={CALLOUT_BG}
-        stroke={CALLOUT_BORDER}
-        strokeWidth={1}
-        rx={4}
+        fill={LABEL_BG}
+        stroke={color}
+        strokeWidth={1.25}
+        strokeOpacity={0.7}
+        rx={boxH * 0.32}
         vectorEffect="non-scaling-stroke"
         style={{ pointerEvents, cursor }}
         onMouseDown={handleMouseDown}
@@ -224,7 +243,8 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
         fontSize={fontSize}
         fill="#fff"
         fontFamily="system-ui, sans-serif"
-        fontWeight={500}
+        fontWeight={600}
+        letterSpacing={fontSize * 0.01}
         style={{ userSelect: 'none', pointerEvents: 'none' }}
       >
         {label}

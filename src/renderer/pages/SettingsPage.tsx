@@ -6,6 +6,7 @@ import { useWalkthroughStore } from '../stores/walkthrough-store';
 import { CloudSyncCard } from '../components/CloudSyncCard';
 import { nextJobNumber } from '../../shared/jobNumbering';
 import { useUnitsStore } from '../stores/units-store';
+import { useLocaleStore } from '../stores/locale-store';
 import { parseUnitSystem, type UnitSystem } from '../../shared/unitSystem';
 import { getAllTools, currentToolSelection, normalizeToolSelection } from '../modules';
 import {
@@ -22,6 +23,7 @@ import { HDDRatesModal } from '../components/HDDRatesModal';
 export function SettingsPage() {
   const [showHddRatesModal, setShowHddRatesModal] = useState(false);
   const addToast = useToastStore((s) => s.addToast);
+  const { profile } = useLocaleStore();
   const openWalkthrough = useWalkthroughStore((s) => s.open);
   const setUnitSystem = useUnitsStore((s) => s.setUnitSystem);
   const [settings, setSettings] = useState({
@@ -42,6 +44,8 @@ export function SettingsPage() {
     jobNumberFormat: 'YYYY-NNN',
     jobNumberStart: 1,
     unitSystem: 'imperial' as UnitSystem,
+    // null = follow the locale default; 0/1 = explicit override.
+    freightTaxable: null as number | null,
     // null = follow the trades; a string (even '') = the user's own picks.
     enabledTools: null as string | null,
     // Free-text trades with no seed catalog, named at setup.
@@ -81,6 +85,7 @@ export function SettingsPage() {
           jobNumberFormat: s.job_number_format || 'YYYY-NNN',
           jobNumberStart: s.job_number_start || 1,
           unitSystem: parseUnitSystem(s.unit_system),
+          freightTaxable: s.freight_taxable === 0 || s.freight_taxable === 1 ? s.freight_taxable : null,
           enabledTools: s.enabled_tools ?? null,
           customTrades: parseCustomTrades(s.custom_trades),
           hddRatesJson: s.hdd_rates_json || '',
@@ -108,6 +113,7 @@ export function SettingsPage() {
       jobNumberFormat: settings.jobNumberFormat,
       jobNumberStart: settings.jobNumberStart,
       unitSystem: settings.unitSystem,
+      freightTaxable: settings.freightTaxable,
       enabledTools: settings.enabledTools,
       customTrades: serializeCustomTrades(settings.customTrades),
       hddRatesJson: settings.hddRatesJson || null,
@@ -372,6 +378,25 @@ export function SettingsPage() {
               onChange={(e) => update('defaultTaxPercent', parseFloat(e.target.value) || 0)}
               step={0.25}
             />
+          </div>
+          <div className="form-group">
+            <label>{profile.taxLabel} on Freight</label>
+            <select
+              className="form-control"
+              value={settings.freightTaxable === null ? 'default' : String(settings.freightTaxable)}
+              onChange={(e) =>
+                update('freightTaxable', e.target.value === 'default' ? null : Number(e.target.value))
+              }
+            >
+              <option value="default">
+                Locale default — {profile.freightTaxable ? 'taxed' : 'not taxed'} ({profile.displayName})
+              </option>
+              <option value="1">Taxed</option>
+              <option value="0">Not taxed</option>
+            </select>
+            <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>
+              Whether the job tax rate applies to freight in bid totals.
+            </div>
           </div>
         </div>
       </div>

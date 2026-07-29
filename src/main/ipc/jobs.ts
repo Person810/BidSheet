@@ -7,7 +7,7 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { nextJobNumber } from '../../shared/jobNumbering';
-import { safeHandle, getSectionCostRows, getIndirectTotal, likeContains } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable, likeContains } from './shared';
 import type {
   JobLocationLookupRequest,
   JobLocationLookupResult,
@@ -168,6 +168,11 @@ export function registerJobHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:jobs:delete', (_event, id: number) => {
+    // Renderer-supplied id feeds removeJobFiles -> fs.rmSync below; reject
+    // anything that isn't a real rowid before it can reach the filesystem.
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('Invalid job id.');
+    }
     // Change orders are child jobs that cascade away with the parent —
     // collect their ids first so their document folders get cleaned too.
     const childIds = (db.prepare('SELECT id FROM jobs WHERE parent_job_id = ?').all(id) as any[])
@@ -190,14 +195,16 @@ export function registerJobHandlers(db: Database.Database): void {
 
       const newJob = db
         .prepare(
-          `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, freight, site_postcode, site_country)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           newName || job.name + ' (Copy)', jobNumber, job.client, job.client_id, job.location,
           newBidDate ?? job.bid_date, job.start_date, job.description,
           job.overhead_percent, job.profit_percent, job.bond_percent,
-          job.tax_percent, job.escalation_percent ?? 0, job.notes
+          job.tax_percent, job.escalation_percent ?? 0, job.notes,
+          // A copy is a template of the whole priced job, freight included.
+          job.freight ?? 0, job.site_postcode ?? null, job.site_country ?? null
         );
       const newJobId = Number(newJob.lastInsertRowid);
 
@@ -451,14 +458,24 @@ export function registerJobHandlers(db: Database.Database): void {
 
     const result = db.prepare(
       `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status,
-        overhead_percent, profit_percent, bond_percent, tax_percent, notes,
-        parent_job_id, change_order_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
+        overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes,
+        parent_job_id, change_order_number, site_postcode, site_country)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       `CO #${nextCO}`, parent.job_number, parent.client, parent.client_id, parent.location,
       null, null, null, parent.overhead_percent, parent.profit_percent,
-      parent.bond_percent, parent.tax_percent, null,
-      parentJobId, nextCO
+      parent.bond_percent, parent.tax_percent,
+      // Escalation is a market condition on the parent's material prices, and
+      // a change order is priced in the same market — a CO off a job carrying
+      // 12% long-lead steel escalation must carry it too, or it goes out
+      // ~11% light. Inherited like the other markup percentages; freight
+      // below is the deliberate exception (it's a booked cost, not a rate).
+      parent.escalation_percent, null,
+      parentJobId, nextCO,
+      // Same dig site as the parent; freight deliberately NOT inherited —
+      // the parent's freight is already priced in the parent's bid, and a
+      // change order carries its own freight cost (default 0).
+      parent.site_postcode ?? null, parent.site_country ?? null
     );
 
     logger.info('jobs', `Created change order #${nextCO} for job ${parentJobId}`);
@@ -497,7 +514,7 @@ export function registerJobHandlers(db: Database.Database): void {
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job) return null;
 
-    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId));
+    const summary = computeBidSummaryFromSections(getSectionCostRows(db, jobId), job, getIndirectTotal(db, jobId), getFreightTaxable(db));
 
     return {
       jobId,
@@ -511,12 +528,13 @@ export function registerJobHandlers(db: Database.Database): void {
 
     const jobs = db.prepare(`SELECT * FROM jobs WHERE id IN (${placeholders})`).all(...jobIds) as any[];
     const jobMap = new Map(jobs.map((j: any) => [j.id, j]));
+    const freightTaxable = getFreightTaxable(db);
 
     return jobIds.map((id) => {
       const job = jobMap.get(id);
       if (!job) return null;
 
-      const summary = computeBidSummaryFromSections(getSectionCostRows(db, id), job, getIndirectTotal(db, id));
+      const summary = computeBidSummaryFromSections(getSectionCostRows(db, id), job, getIndirectTotal(db, id), freightTaxable);
 
       return {
         jobId: id,

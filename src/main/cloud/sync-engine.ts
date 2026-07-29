@@ -34,6 +34,7 @@ import {
 import { validateSnapshot } from './validate-snapshot';
 import { exportCatalog, importCatalog, catalogHash, CatalogSnapshot } from './catalog-sync';
 import { E2eeManager } from './e2ee';
+import { assertCloudId } from './cloud-id';
 import {
   encryptForSync,
   decryptForSync,
@@ -44,6 +45,7 @@ import {
 
 /** Back-to-back window focuses don't re-sync; Sync Now always does. */
 const FOREGROUND_SYNC_THROTTLE_MS = 2 * 60 * 1000;
+
 
 export interface JobSyncInfo {
   jobId: number;
@@ -157,7 +159,7 @@ export class SyncEngine {
     const dek = this.e2ee.getDek(); // throws cleanly if encrypted sync is locked
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
     if (!job?.cloud_id) throw new Error('Job has no cloud id. Enable sync first.');
-    const cloudId = job.cloud_id as string;
+    const cloudId = assertCloudId(job.cloud_id);
 
     try {
       const snapshot = exportJob(this.db, jobId);
@@ -287,6 +289,7 @@ export class SyncEngine {
 
   /** Pull a cloud job down, creating or replacing its local copy. */
   async pullJob(cloudId: string): Promise<number> {
+    assertCloudId(cloudId);
     const accountId = await this.requireAccountId();
     const dek = this.e2ee.getDek();
     // Decrypt, then validate — the decrypted snapshot is still untrusted input
@@ -318,7 +321,14 @@ export class SyncEngine {
           this.objectKey(accountId, cloudId, dek, `plan:${snapshot.plan.filename}`)
         );
         const bytes = decryptForSync(blob, dek, syncAad(accountId, cloudId, `plan:${snapshot.plan.sha256}`));
-        const dir = path.join(app.getPath('userData'), 'cloud-plans', cloudId);
+        const planRoot = path.resolve(app.getPath('userData'), 'cloud-plans');
+        const dir = path.resolve(planRoot, cloudId);
+        // assertCloudId already makes this unreachable. It stays because the
+        // cost of the check is nothing and the cost of the next refactor
+        // re-opening the hole is someone's home directory.
+        if (!dir.startsWith(planRoot + path.sep)) {
+          throw new Error('Refusing to write a cloud plan outside the plan store.');
+        }
         fs.mkdirSync(dir, { recursive: true });
         // basename: validation already rejects separators in plan.filename,
         // but a server-supplied name never gets to pick the directory.
@@ -636,7 +646,9 @@ export class SyncEngine {
    * mapping is stored anywhere.
    */
   private objectKey(accountId: string, cloudId: string, dek: Buffer, logical: string): string {
-    return `${accountId}/${cloudId}/${fileObjectKey(dek, cloudId, logical)}`;
+    // Belt and braces: the id is asserted where it enters, but this is the
+    // one function that puts it in a path-shaped string, so it re-checks.
+    return `${accountId}/${assertCloudId(cloudId)}/${fileObjectKey(dek, cloudId, logical)}`;
   }
 
   /**

@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { MagnifierLoupe } from './MagnifierLoupe';
+import { supersampleFactor } from './pdfSupersample';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
@@ -19,6 +21,8 @@ interface PdfViewerProps {
   resetPanKey?: number;
   /** When false, mouse-drag panning is disabled (e.g. during calibration). Defaults to true. */
   panEnabled?: boolean;
+  /** Show the magnifier loupe following the cursor. */
+  loupeActive?: boolean;
   /** Fires when pan/zoom state changes so sibling overlays can stay in sync. */
   onViewportChange?: (info: { panX: number; panY: number; renderedScale: number; cssZoom: number }) => void;
   onDocLoaded: (totalPages: number) => void;
@@ -31,7 +35,8 @@ function clampScale(s: number): number {
 }
 
 export function PdfViewer({
-  pdfData, pageNumber, scale, rotation = 0, resetPanKey, panEnabled = true, onViewportChange,
+  pdfData, pageNumber, scale, rotation = 0, resetPanKey, panEnabled = true,
+  loupeActive = false, onViewportChange,
   onDocLoaded, onPageSizeKnown, onScaleChange,
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,18 +110,26 @@ export function PdfViewer({
       onPageSizeKnown(baseVp.width, baseVp.height);
 
       const dpr = window.devicePixelRatio || 1;
+      // Display geometry — what the canvas occupies on screen.
       const viewport = page.getViewport({ scale: targetScale, rotation: totalRotation });
+
+      // Raster geometry — may be larger; the browser downscales it into the
+      // display box, which is what keeps thin linework legible when zoomed out.
+      const ss = supersampleFactor(targetScale, dpr, baseVp.width, baseVp.height);
+      const renderVp = ss === 1
+        ? viewport
+        : page.getViewport({ scale: targetScale * ss, rotation: totalRotation });
 
       // Render onto an offscreen canvas
       const offscreen = document.createElement('canvas');
-      offscreen.width = Math.floor(viewport.width * dpr);
-      offscreen.height = Math.floor(viewport.height * dpr);
+      offscreen.width = Math.floor(renderVp.width * dpr);
+      offscreen.height = Math.floor(renderVp.height * dpr);
 
       const offCtx = offscreen.getContext('2d');
       if (!offCtx) return;
       offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const task = page.render({ canvasContext: offCtx, viewport });
+      const task = page.render({ canvasContext: offCtx, viewport: renderVp });
       renderTaskRef.current = task;
       await task.promise;
 
@@ -124,6 +137,9 @@ export function PdfViewer({
       // so the browser never paints the cleared-but-not-yet-drawn state.
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => {
+          // Backing store carries the full raster (dpr * supersample); the CSS
+          // box stays at display size. The gap between them is the downscale
+          // that sharpens thin linework — keep these two independent.
           visibleCanvas.width = offscreen.width;
           visibleCanvas.height = offscreen.height;
           visibleCanvas.style.width = `${viewport.width}px`;
@@ -242,7 +258,13 @@ export function PdfViewer({
       onMouseLeave={handleMouseUp}
       style={{
         flex: 1, overflow: 'hidden',
-        cursor: isPanning ? 'grabbing' : (panEnabled ? 'grab' : 'default'),
+        // An active drag still reads as grabbing; otherwise the magnifier
+        // owns the cursor while it's on. Point placement keeps its crosshair
+        // (set on the overlay) — a zoom cursor's hotspot is too vague to
+        // trace a run with.
+        cursor: isPanning ? 'grabbing'
+          : loupeActive ? 'zoom-in'
+            : (panEnabled ? 'grab' : 'default'),
         background: 'var(--bg-secondary, #f0f0f0)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         position: 'relative', userSelect: 'none',
@@ -255,6 +277,17 @@ export function PdfViewer({
           transformOrigin: 'center center',
           boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
         }}
+      />
+      <MagnifierLoupe
+        active={loupeActive}
+        doc={docRef.current}
+        docVersion={docVersion}
+        pageNumber={pageNumber}
+        rotation={rotation}
+        scale={scale}
+        panX={panX}
+        panY={panY}
+        containerRef={containerRef}
       />
     </div>
   );

@@ -195,4 +195,74 @@ describe('computeBidSummaryFromSections', () => {
     expect(s.indirect_total).toBe(0);
     expect(s.grandTotal).toBeCloseTo(120);
   });
+
+  describe('freight', () => {
+    const jobWithEverything: BidJobParams = {
+      overhead_percent: 10,
+      profit_percent: 10,
+      bond_percent: 2,
+      tax_percent: 7,
+      escalation_percent: 3,
+      freight: 400,
+    };
+
+    it('prices job-level freight like the indirect pool: markups, no escalation', () => {
+      const base = computeBidSummaryFromSections(
+        [section({ material_total: 1000, direct_cost_total: 1000 })],
+        { ...jobWithEverything, freight: 0 },
+      );
+      const withFreight = computeBidSummaryFromSections(
+        [section({ material_total: 1000, direct_cost_total: 1000 })], jobWithEverything,
+      );
+
+      expect(withFreight.freight).toBe(400);
+      expect(withFreight.overhead).toBeCloseTo(base.overhead + 40);
+      expect(withFreight.profit).toBeCloseTo(base.profit + 40);
+      expect(withFreight.bond).toBeCloseTo(base.bond + 8);
+      expect(withFreight.escalation).toBeCloseTo(base.escalation);
+      // Untaxed by default: tax base unchanged
+      expect(withFreight.tax).toBeCloseTo(base.tax);
+      expect(withFreight.freight_taxed).toBe(false);
+      expect(withFreight.grandTotal).toBeCloseTo(base.grandTotal + 400 + 40 + 40 + 8);
+    });
+
+    it('applies the job tax rate to freight only when freightTaxable is set', () => {
+      const untaxed = computeBidSummaryFromSections(
+        [section({ material_total: 1000, direct_cost_total: 1000 })], jobWithEverything, 0, false,
+      );
+      const taxed = computeBidSummaryFromSections(
+        [section({ material_total: 1000, direct_cost_total: 1000 })], jobWithEverything, 0, true,
+      );
+      expect(taxed.freight_taxed).toBe(true);
+      expect(taxed.tax).toBeCloseTo(untaxed.tax + 400 * 0.07);
+      expect(taxed.grandTotal).toBeCloseTo(untaxed.grandTotal + 400 * 0.07);
+    });
+
+    it('never leaks freight into per-section or alternate math', () => {
+      const s = computeBidSummaryFromSections(
+        [
+          section({ section_id: 1, name: 'Base', direct_cost_total: 100 }),
+          section({ section_id: 2, name: 'Alt', is_alternate: 1, direct_cost_total: 100 }),
+        ],
+        { ...job, freight: 1000 },
+        0,
+        true,
+      );
+      // Alternate priced without any freight share
+      expect(s.alternates[0].grandTotal).toBeCloseTo(120);
+      // Base carries the freight exactly once
+      expect(s.grandTotal).toBeCloseTo(120 + 1000 + 100 + 100);
+    });
+
+    it('treats negative or missing freight as zero', () => {
+      const negative = computeBidSummaryFromSections(
+        [section({ direct_cost_total: 100 })], { ...job, freight: -25 },
+      );
+      expect(negative.freight).toBe(0);
+      expect(negative.grandTotal).toBeCloseTo(120);
+      const missing = computeBidSummaryFromSections([section({ direct_cost_total: 100 })], job);
+      expect(missing.freight).toBe(0);
+      expect(missing.freight_taxed).toBe(false);
+    });
+  });
 });

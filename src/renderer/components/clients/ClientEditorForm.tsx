@@ -1,12 +1,15 @@
-import React, { useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 
 import type { ClientRow, SaveClientPayload } from '../../../shared/types/ipc';
 import { useLocaleStore } from '../../stores/locale-store';
 import {
+  adoptExistingClient,
   beginClientSave,
+  canAdoptExistingClient,
   cancelClientForm,
   clientFormFromClient,
   completeClientSave,
+  detachToNewClientDraft,
   failClientSave,
   prepareClientPayload,
   type ClientFormTextField,
@@ -23,6 +26,16 @@ export interface ClientFormProps {
 
 const persistClientWithApi = async (payload: SaveClientPayload): Promise<ClientRow> => {
   const result = await window.api.saveClient(payload);
+  // The stored row is authoritative: an id-less save may have merged into an
+  // existing client, so a row fabricated from the payload would misreport
+  // that client's details as blank — and feed the next Edit Details session
+  // nulls that a save would then make real.
+  try {
+    const stored = await window.api.getClient(result.id);
+    if (stored) return stored;
+  } catch {
+    // Fall through to the payload-shaped row below.
+  }
   return {
     id: result.id,
     name: payload.name,
@@ -62,19 +75,68 @@ export function ClientForm({
   const idPrefix = useId();
   const savingRef = useRef(false);
   const { profile } = useLocaleStore();
-  const isAU = profile.id === 'en-AU';
-  const [state, setState] = useState(() => clientFormFromClient(initialClient));
+  // Structured (street/suburb/state/postcode) vs one free-form address
+  // field — a locale capability, not a country check.
+  const isAU = profile.addressFormat === 'structured';
+  const [state, setState] = useState(() => clientFormFromClient(initialClient, profile));
   const [errors, setErrors] = useState<
     Partial<Record<keyof ClientFormValues, string>>
   >({});
 
+  // A blank "new client" form typed with an existing client's name is the
+  // data-loss path (#110): saving used to null out that client's stored
+  // details. Adopt the existing record instead — prefill everything and
+  // switch to editing it by id. The sequence counter drops stale lookups,
+  // and the functional setState re-checks adoptability at commit time so a
+  // response can never overwrite something the user typed meanwhile.
+  const lookupSeq = useRef(0);
+  const typedName = state.values.name.trim();
+  useEffect(() => {
+    if (initialClient) return; // opened on a known record — nothing to adopt
+    if (!typedName || !canAdoptExistingClient(state)) return;
+    const seq = ++lookupSeq.current;
+    const timer = setTimeout(async () => {
+      try {
+        const matches = await window.api.searchClients(typedName, 20);
+        if (seq !== lookupSeq.current) return; // a newer lookup superseded us
+        const wanted = typedName.toLowerCase();
+        const exact = matches.find((c) => c.name.trim().toLowerCase() === wanted);
+        if (!exact) return;
+        setState((current) =>
+          current.values.name.trim().toLowerCase() === wanted
+            ? adoptExistingClient(current, exact)
+            : current,
+        );
+      } catch {
+        // Best-effort: a failed lookup just means no prefill. The backend's
+        // id-less merge still protects the stored record on save.
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typedName, initialClient]);
+
   const update = (field: keyof ClientFormValues, value: string) => {
-    setState((current) => ({
-      ...current,
-      values: { ...current.values, [field]: value },
-      error: null,
-      cancelled: false,
-    }));
+    setState((current) => {
+      // Typing the name onward past an adopted match unwinds the adoption:
+      // the prefilled fields belong to the matched client, and keeping its
+      // id would turn this save into a rename of that client.
+      if (
+        field === 'name' &&
+        !initialClient &&
+        current.mode === 'edit' &&
+        current.originalClient &&
+        value.trim().toLowerCase() !== current.originalClient.name.trim().toLowerCase()
+      ) {
+        return detachToNewClientDraft(value, current);
+      }
+      return {
+        ...current,
+        values: { ...current.values, [field]: value },
+        error: null,
+        cancelled: false,
+      };
+    });
     setErrors((current) => ({ ...current, [field]: undefined }));
   };
 
@@ -107,7 +169,7 @@ export function ClientForm({
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    const prepared = prepareClientPayload(state.values);
+    const prepared = prepareClientPayload(state.values, profile);
     setErrors(prepared.errors);
     if (!prepared.ok || !prepared.payload || savingRef.current) return;
 
@@ -141,6 +203,11 @@ export function ClientForm({
       <div role={state.error ? 'alert' : 'status'} aria-live="polite" className="form-error">
         {state.error}
       </div>
+      {!initialClient && state.mode === 'edit' && (
+        <div className="text-muted" role="status" style={{ fontSize: 12, marginBottom: 8 }}>
+          Existing client — editing their saved details.
+        </div>
+      )}
 
       {FIELDS.slice(0, 2).map(field)}
       <div className="form-row">{FIELDS.slice(2, 4).map(field)}</div>

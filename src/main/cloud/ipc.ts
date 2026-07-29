@@ -109,20 +109,33 @@ export function registerCloudHandlers(db: Database.Database): SyncEngine {
     return status;
   });
   handle('cloud:sign-out', async () => {
-    // Revoke server-side first — best-effort, never throws, so a dead network
-    // can't block a sign-out the user asked for.
-    await auth.revokeRemoteSession();
-    // Then drop all local state in ONE transaction: the cached DEK + member
-    // private key, and the stored session. Two separate writes could land
-    // half-applied (SQLITE_BUSY, full disk) leaving the keys gone but the
-    // refresh token still on disk — and the next launch would silently restore
-    // the session on exactly the shared computer this protects. All-or-nothing
-    // means a failure leaves the user signed in with a visible error instead.
-    // The next sign-in re-unlocks with the recovery key, as a fresh device would.
-    db.transaction(() => {
-      e2ee.lockLocal();
-      auth.clearLocalSession();
-    })();
+    // Revoke server-side first — best-effort, never throws, and now
+    // time-bounded (see LOGOUT_TIMEOUT_MS). It used to be unbounded, so
+    // captive-portal wifi that blackholes TCP left the user watching a spinner
+    // until they closed the lid, at which point the wipe below had never run:
+    // DEK, member private key and refresh token all still on a shared laptop
+    // the user believed they had signed out of.
+    try {
+      await auth.revokeRemoteSession();
+    } finally {
+      // Drop all local state in ONE transaction: the cached DEK + member
+      // private key, and the stored session. Two separate writes could land
+      // half-applied (SQLITE_BUSY, full disk) leaving the keys gone but the
+      // refresh token still on disk — and the next launch would silently
+      // restore the session on exactly the shared computer this protects.
+      // All-or-nothing means a failure leaves the user signed in with a
+      // visible error instead. The next sign-in re-unlocks with the recovery
+      // key, as a fresh device would.
+      //
+      // In a `finally`: whatever the revoke did, the local wipe is the part
+      // the user actually asked for and the part that protects the machine.
+      // clearLocalSession also bumps the session epoch, so a token refresh
+      // still in flight cannot write a fresh refresh token back over this.
+      db.transaction(() => {
+        e2ee.lockLocal();
+        auth.clearLocalSession();
+      })();
+    }
   });
   handle('cloud:me', () => api.me());
 

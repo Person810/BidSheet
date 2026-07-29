@@ -704,16 +704,27 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
       );
       return;
     }
-    // 'unchecked' is deliberately NOT presented as "they're on an old version".
-    // That is the usual cause, but a server withholding the binding to force
-    // the weaker path looks exactly the same from here, so the owner is asked
-    // to do the out-of-band check either way.
-    const prompt =
+    // The device code is shown for 'verified' too, not just 'unchecked'.
+    //
+    // The automatic check is an HMAC of the member's public key under the
+    // invite token — but the desktop sends that token to the Worker in the
+    // very request the Worker uses to record the key. A compromised Worker
+    // therefore has everything it needs to store its OWN public key with a
+    // matching binding, and 'verified' would be exactly what an interception
+    // looks like. Until the redeem call stops handing the server that secret
+    // (see the platform audit, F04), 'verified' is worth showing and not
+    // worth skipping a human check for.
+    //
+    // 'unchecked' is deliberately NOT presented as "they're on an old
+    // version". That is the usual cause, but a server withholding the binding
+    // to force the weaker path looks the same from here.
+    const preamble =
       bindingStatus === 'verified'
-        ? `Approve ${memberLabel}?\n\nTheir encryption key has been checked against the invite they used, and it matches.`
-        : safetyCode
-          ? `Approve ${memberLabel}?\n\nTheir key could NOT be checked against their invite automatically — usually that just means they joined from an older version of BidSheet.\n\nAsk them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
-          : `Approve ${memberLabel}? They have no encryption key registered yet.`;
+        ? `Approve ${memberLabel}?\n\nTheir encryption key matches the invite they used. That check runs against the server's own record, so it is not proof on its own.`
+        : `Approve ${memberLabel}?\n\nTheir key could NOT be checked against their invite automatically — usually that just means they joined from an older version of BidSheet.`;
+    const prompt = safetyCode
+      ? `${preamble}\n\nAsk them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
+      : `Approve ${memberLabel}? They have no encryption key registered yet.`;
     if (!confirm(prompt)) return;
 
     // Deliberately not run()/addToast: approving is rare and deliberate, and
