@@ -34,33 +34,18 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
   p1, p2, scalePxPerFt, fontSize, color, segmentIndex, scale, rotation = 0, isActive,
 }: RunCalloutLabelProps) {
   const system = useUnitSystem();
-  const distPx = segmentLengthPx(p1, p2);
-  if (distPx < 1) return null;
-  const distFt = distPx / scalePxPerFt;
-  if (distFt < 1.5) return null;
 
-  const label = system === 'metric' ? formatQty(distFt, 'ft', system, 1) : `${distFt.toFixed(1)}'`;
-
-  // Sizing (fontSize arrives already capped — see DrawingOverlay)
-  const padH = fontSize * 0.55;
-  const padV = fontSize * 0.3;
-  const textW = label.length * fontSize * 0.55;
-  const boxW = textW + padH * 2;
-  const boxH = fontSize + padV * 2;
-  const halfW = boxW / 2;
-  const halfH = boxH / 2;
+  // EVERY hook must run before the short-segment early returns below. They used
+  // to sit above this block, which meant a segment crossing the 1.5 ft
+  // threshold — routine while dragging a vertex or zooming out — changed this
+  // component's hook count between renders and threw "Rendered fewer hooks than
+  // expected". Nothing here depends on the measured length, so hoisting is
+  // free. Keep it that way: new hooks go above the returns, not below.
 
   // Derive spatial constants from fontSize (scales with zoom)
   const labelOffset = fontSize * OFFSET_RATIO;
   const maxDragRadius = fontSize * MAX_DRAG_RATIO;
   const minLeaderLen = fontSize * MIN_LEADER_RATIO;
-
-  // Anchor = midpoint on the pipe segment (triangle tip points here)
-  const anchor = segmentMidpoint(p1, p2);
-
-  // Default label center = offset perpendicular to segment
-  const side: 'left' | 'right' = segmentIndex % 2 === 0 ? 'left' : 'right';
-  const defaultCenter = perpendicularOffset(p1, p2, labelOffset, side);
 
   // Drag state
   const [dragOffset, setDragOffset] = useState<PdfPoint | null>(null);
@@ -79,18 +64,6 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
       if (animFrameRef.current != null) cancelAnimationFrame(animFrameRef.current);
     };
   }, []);
-
-  // Resolved label center
-  const labelCenter: PdfPoint = dragOffset
-    ? { x: defaultCenter.x + dragOffset.x, y: defaultCenter.y + dragOffset.y }
-    : defaultCenter;
-
-  // Leader geometry — a hairline from the box border to the measured segment
-  const leaderDist = segmentLengthPx(labelCenter, anchor);
-  const showLeader = leaderDist > minLeaderLen;
-  const leaderStart = showLeader
-    ? calloutEdgePoint(labelCenter, anchor, halfW, halfH)
-    : null;
 
   /* ---- Snap-back animation ---- */
 
@@ -177,6 +150,43 @@ const RunCalloutLabel = React.memo(function RunCalloutLabel({
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   }, [isActive, scale, rotation, dragOffset, startSnapBack, maxDragRadius]);
+
+  /* ---- Below here is render-only: no hooks past this point ---- */
+
+  const distPx = segmentLengthPx(p1, p2);
+  if (distPx < 1) return null;
+  const distFt = distPx / scalePxPerFt;
+  if (distFt < 1.5) return null;
+
+  const label = system === 'metric' ? formatQty(distFt, 'ft', system, 1) : `${distFt.toFixed(1)}'`;
+
+  // Sizing (fontSize arrives already capped — see DrawingOverlay)
+  const padH = fontSize * 0.55;
+  const padV = fontSize * 0.3;
+  const textW = label.length * fontSize * 0.55;
+  const boxW = textW + padH * 2;
+  const boxH = fontSize + padV * 2;
+  const halfW = boxW / 2;
+  const halfH = boxH / 2;
+
+  // Anchor = midpoint on the pipe segment (triangle tip points here)
+  const anchor = segmentMidpoint(p1, p2);
+
+  // Default label center = offset perpendicular to segment
+  const side: 'left' | 'right' = segmentIndex % 2 === 0 ? 'left' : 'right';
+  const defaultCenter = perpendicularOffset(p1, p2, labelOffset, side);
+
+  // Resolved label center
+  const labelCenter: PdfPoint = dragOffset
+    ? { x: defaultCenter.x + dragOffset.x, y: defaultCenter.y + dragOffset.y }
+    : defaultCenter;
+
+  // Leader geometry — a hairline from the box border to the measured segment
+  const leaderDist = segmentLengthPx(labelCenter, anchor);
+  const showLeader = leaderDist > minLeaderLen;
+  const leaderStart = showLeader
+    ? calloutEdgePoint(labelCenter, anchor, halfW, halfH)
+    : null;
 
   /* ---- Render ---- */
 

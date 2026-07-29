@@ -1,0 +1,17 @@
+{
+  "UNWIRED": [
+    "deleteTakeoffSurface",
+    "dismissBackupReminder",
+    "getAssembly",
+    "getCrewTemplate",
+    "getLogDir",
+    "getMaterial",
+    "getMaterialCategoryUsage",
+    "getNodeConnectedRuns",
+    "reorderTrenchProfiles",
+    "updateJobDocument"
+  ],
+  "ORPHANED": [],
+  "BROKEN": [],
+  "UNDECLARED": []
+}

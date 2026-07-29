@@ -4,14 +4,14 @@ import { createDateFormatController } from './DateFormatContext';
 describe('DateFormatController', () => {
   it('loads preference and system locale', async () => {
     const api = {
-      getSettings: vi.fn().mockResolvedValue({ date_format_preference: 'iso' }),
+      getSettings: vi.fn().mockResolvedValue({ date_format_preference: 'ymd' }),
       getSystemLocale: vi.fn().mockResolvedValue('en-AU')
     };
 
     const controller = createDateFormatController(api);
     const state = await controller.load();
 
-    expect(state.preference).toBe('iso');
+    expect(state.preference).toBe('ymd');
     expect(state.systemLocale).toBe('en-AU');
   });
 
@@ -36,10 +36,10 @@ describe('DateFormatController', () => {
     const controller = createDateFormatController(api);
     await controller.load();
 
-    api.getSettings.mockResolvedValue({ date_format_preference: 'iso' });
+    api.getSettings.mockResolvedValue({ date_format_preference: 'ymd' });
     const newState = await controller.reloadPreference();
 
-    expect(newState.preference).toBe('iso');
+    expect(newState.preference).toBe('ymd');
     expect(newState.systemLocale).toBe('en-AU');
   });
 });
