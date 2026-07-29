@@ -8,3 +8,13 @@ release/
 .env
 .env.local
 .claude/settings.local.json
+
+# Local agent/spec tooling. Not part of the build -- nothing in src, CI, or
+# package.json references any of it, and it has leaked into main twice now
+# (specs/001 with the material-category work, then .agents + .specify + specs/024
+# with the HDD branch). Ignored here so a contributor running these tools
+# locally can't sweep them in again. Note this only stops NEW commits: a clone
+# that already tracks them needs `git rm -r --cached .agents .specify specs`.
+.agents/
+.specify/
+specs/

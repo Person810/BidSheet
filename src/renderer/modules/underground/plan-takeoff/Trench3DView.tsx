@@ -403,6 +403,29 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520, i
     return m;
   }, [run, scalePxPerFt, groundSampler, isHDD]);
 
+  // Sits above the `!model` early return on purpose. A hook called after a
+  // conditional return changes the hook count when `model` flips from null
+  // (a run with no measurable length yet) to non-null — the estimator types a
+  // length and React throws "Rendered more hooks than during the previous
+  // render". Nothing in here reads `model`, so it belongs above the guard.
+  const additionalPipes3D = useMemo(() => {
+    const jsonStr = run.hddAdditionalPipesJson || run.backfillType;
+    if (!jsonStr || !jsonStr.startsWith('[')) return [];
+    try {
+      const list = JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+      return list.map((item) => {
+        const sizeIn = item.pipeSizeIn || 3.0;
+        const sizeFt = metric ? (sizeIn / 25.4) / 12 : sizeIn / 12;
+        return {
+          radius: Math.max(sizeFt / 2, 0.05),
+          color: '#e28743', // orange shade for additional bores to contrast with green main
+        };
+      });
+    } catch {
+      return [];
+    }
+  }, [run.hddAdditionalPipesJson, run.backfillType, metric]);
+
   if (!model) {
     return <p className="text-muted">This run has no measurable length yet.</p>;
   }
@@ -421,24 +444,6 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520, i
 
   const hasBench = run.benchWidthFt > 0;
   const benchWidthFt = run.benchWidthFt;
-
-  const additionalPipes3D = useMemo(() => {
-    const jsonStr = run.hddAdditionalPipesJson || run.backfillType;
-    if (!jsonStr || !jsonStr.startsWith('[')) return [];
-    try {
-      const list = JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
-      return list.map((item) => {
-        const sizeIn = item.pipeSizeIn || 3.0;
-        const sizeFt = metric ? (sizeIn / 25.4) / 12 : sizeIn / 12;
-        return {
-          radius: Math.max(sizeFt / 2, 0.05),
-          color: '#e28743', // orange shade for additional bores to contrast with green main
-        };
-      });
-    } catch {
-      return [];
-    }
-  }, [run.hddAdditionalPipesJson, run.backfillType, metric]);
 
   return (
     <div>

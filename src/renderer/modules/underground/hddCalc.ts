@@ -3,7 +3,16 @@ import type { CalcBreakdown } from '../../../shared/calcExplain';
 export interface HDDInput {
   location: 'metro' | 'regional';
   dn: number; // pipe size in mm for AU, inches for US
-  length: number; // meters for AU, feet for US
+  /**
+   * ALWAYS canonical feet, in every locale — not meters for AU. Lengths are
+   * stored imperial throughout the app and converted for display, so a 100 m
+   * run reaches here as 328.084. calculateHDD does the metric conversion
+   * itself; passing meters prices that run as a 328 m bore.
+   *
+   * The `dn` comment above is genuinely locale-dependent. This one is not,
+   * and used to claim it was.
+   */
+  length: number;
   includeSlurry?: boolean;
   includePits?: boolean;
   marginPct?: number;

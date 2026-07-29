@@ -963,12 +963,26 @@ function migrateV50(db: Database.Database): void {
 }
 
 function migrateV51(db: Database.Database): void {
+  // Per-column existence check, not a swallowed catch. These columns first
+  // shipped as V48 on the HDD feature branch, so a machine that ran that
+  // branch before it merged already has them and a bare ALTER would throw
+  // (see migrateV48 for why the number was reserved rather than reused).
+  //
+  // Catching every error to paper over that is what the original did, and it
+  // defeats the guarantee runMigrations provides: each migration runs inside a
+  // transaction so it either fully applies or rolls back to be retried next
+  // launch. With the errors swallowed, an ALTER that failed for any other
+  // reason still fell through to the schema_version insert below — recording
+  // the migration as applied with the column missing, so it never retried and
+  // every later read of that column failed. PRAGMA skips only what's genuinely
+  // already there and lets real failures roll the transaction back.
+  const hasColumn = (table: string, col: string): boolean =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+      .some((c) => c.name === col);
+
   const addColumn = (table: string, col: string, def: string) => {
-    try {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
-    } catch (e) {
-      // ignore if column already exists
-    }
+    if (hasColumn(table, col)) return;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
   };
 
   addColumn('app_settings', 'hdd_rates_json', 'TEXT');

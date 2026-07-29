@@ -317,5 +317,33 @@ describe('migration v51 — HDD columns and rates', () => {
       ])
     );
   });
+
+  // Machines that ran the HDD branch before it merged already have these
+  // columns (the DDL originally shipped as V48), so V51 has to tolerate them.
+  it('is a no-op on a database that already has the columns', () => {
+    const db = dbAtVersion(50);
+    db.exec("ALTER TABLE trench_profiles ADD COLUMN method TEXT DEFAULT 'open_cut'");
+    db.exec('ALTER TABLE trench_profiles ADD COLUMN hdd_bores_per_pit INTEGER DEFAULT 1');
+
+    expect(() => db.transaction(() => MIGRATIONS[50](db))()).not.toThrow();
+    expect(
+      (db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as any).v
+    ).toBe(51);
+  });
+
+  // The failure mode this guards is silent and unrecoverable: swallowing the
+  // ALTER error let the migration still record itself at 51, so runMigrations
+  // (which starts at MAX(version) + 1) never retried it and every read of the
+  // missing column failed forever. A real failure must roll the whole
+  // migration back, version row included, so the next launch retries it.
+  it('does not record itself as applied when an ALTER genuinely fails', () => {
+    const db = dbAtVersion(50);
+    db.exec('DROP TABLE trench_profiles');
+
+    expect(() => db.transaction(() => MIGRATIONS[50](db))()).toThrow();
+    expect(
+      (db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as any).v
+    ).toBe(50);
+  });
 });
 
