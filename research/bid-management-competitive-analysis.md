@@ -3,6 +3,12 @@
 *Research date: 2026-06-28. Updated 2026-07-17 (added §4.6 job document
 management and roadmap item 5). Audience: BidSheet product/engineering.*
 
+> **Companion doc:** Methvin and STACK — the two products this one leaves as a
+> single table row and a blank — are covered in `bidsheet-cloud` →
+> `docs/methvin-stack-analysis.md` (2026-07-30). It lives cloud-side because its
+> conclusion about the pay-item/resource split touches the sync snapshot
+> contract.
+
 This document contrasts the bid-management feature set of **HCSS HeavyBid** and the
 broader heavy-civil estimating market against **what BidSheet actually does today
 in code** — not what the README advertises, but what is wired up and working. It
