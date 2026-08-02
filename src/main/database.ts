@@ -176,6 +176,19 @@ export function seedTradeCatalog(
     insertCat.run(name, desc, seedUuid('material_categories', name));
   }
 
+  // Un-hide any category this trade is about to file materials into. INSERT OR
+  // IGNORE leaves a previously hidden category (v52 soft delete) exactly as it
+  // was, and seeding materials into a hidden category drops them out of the
+  // sidebar the moment they arrive. Adding a trade is an explicit ask for its
+  // catalog, so the categories that catalog needs come back with it.
+  if (categoryMap.size > 0) {
+    const names = [...categoryMap.keys()];
+    db.prepare(
+      `UPDATE material_categories SET is_active = 1
+       WHERE is_active = 0 AND name IN (${names.map(() => '?').join(', ')})`
+    ).run(...names);
+  }
+
   const catRows = db.prepare('SELECT id, name FROM material_categories').all() as { id: number; name: string }[];
   const catIdByName = new Map(catRows.map((r) => [r.name, r.id]));
 
@@ -418,6 +431,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV49,
   migrateV50,
   migrateV51,
+  migrateV52,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -995,6 +1009,35 @@ function migrateV51(db: Database.Database): void {
   addColumn('trench_profiles', 'hdd_additional_pipes_json', 'TEXT');
 
   db.exec(`INSERT INTO schema_version (version) VALUES (51);`);
+}
+
+// V52: make both kinds of catalog category manageable (#107).
+//
+// material_categories.is_active — material categories were the only synced
+// catalog table without it, so the category CRUD added in #115 had to hard
+// DELETE. A hard delete can't propagate through catalog sync (that merge is
+// per-row upsert by uuid, and a row that's simply gone locally is silently
+// re-added by the next push from another machine), and it left no restore
+// path while every sibling table has one. Soft delete fixes both: the
+// tombstone is an ordinary column update that merges like any other.
+//
+// app_settings.equipment_categories — equipment categories were a hardcoded
+// list in the Equipment page with nothing behind them; equipment.category is
+// free text. The managed vocabulary lives in settings rather than a table of
+// its own for two reasons: it's a list of names with no other attributes (the
+// same shape as custom_trades and enabled_tools), and settings columns ride
+// inside the catalog snapshot's `settings` record, which older clients parse
+// permissively — a new *table* would be a new top-level snapshot key, and
+// validate-snapshot is deliberately strict, so every client on an older build
+// would reject the whole catalog document. NULL means "use the built-in
+// defaults" and '' means "I've cleared them all", the same tri-state as
+// enabled_tools; no backfill, so nobody's picker changes until they edit it.
+function migrateV52(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE material_categories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE app_settings ADD COLUMN equipment_categories TEXT;
+    INSERT INTO schema_version (version) VALUES (52);
+  `);
 }
 
 /** UUIDv4 as a SQLite expression — evaluated fresh per row. */

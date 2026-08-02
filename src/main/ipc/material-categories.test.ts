@@ -1,5 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
+
+// material-categories.ts pulls seedUuid from database.ts, which imports
+// electron only for getDbPath(). This suite drives its own in-memory DB, so
+// the mock only needs to exist.
+vi.mock('electron', () => ({ app: { getPath: () => '/tmp' } }));
+
+import { seedUuid } from '../database';
 import {
   normalizeCategoryName,
   validateCategoryName,
@@ -8,6 +15,8 @@ import {
   getMaterialCategoryUsage,
   listMaterialCategoriesWithUsage,
   deleteMaterialCategory,
+  restoreMaterialCategory,
+  listMaterialsByCategoryName,
 } from './material-categories';
 
 let db: Database.Database;
@@ -22,6 +31,7 @@ function createTestDb(): Database.Database {
       name TEXT NOT NULL UNIQUE,
       description TEXT,
       is_seed INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
       uuid TEXT
     );
 
@@ -173,43 +183,123 @@ describe('listMaterialCategoriesWithUsage', () => {
 });
 
 describe('deleteMaterialCategory', () => {
-  it('deletes empty category', () => {
+  const idOf = (name: string): number =>
+    (db.prepare('SELECT id FROM material_categories WHERE name = ?').get(name) as any).id;
+  const isActive = (id: number): number =>
+    (db.prepare('SELECT is_active FROM material_categories WHERE id = ?').get(id) as any).is_active;
+
+  it('hides an empty category instead of destroying the row', () => {
+    // Soft delete, not DELETE: a missing row can't propagate through catalog
+    // sync (see the note on deleteMaterialCategory), and it left no undo.
     const cat = createMaterialCategory(db, { name: 'Empty' });
     const result = deleteMaterialCategory(db, { categoryId: cat.id, replacementCategoryId: null, expectedMaterialCount: 0 });
     expect(result.deletedCategoryId).toBe(cat.id);
     expect(result.reassignedMaterialCount).toBe(0);
-    const check = db.prepare('SELECT * FROM material_categories WHERE id = ?').get(cat.id);
-    expect(check).toBeUndefined();
+    expect(isActive(cat.id)).toBe(0);
   });
 
   it('reassigns populated category', () => {
-    const pipeId = (db.prepare("SELECT id FROM material_categories WHERE name = 'Pipe'").get() as any).id;
-    const valvesId = (db.prepare("SELECT id FROM material_categories WHERE name = 'Valves'").get() as any).id;
+    const pipeId = idOf('Pipe');
+    const valvesId = idOf('Valves');
     const result = deleteMaterialCategory(db, { categoryId: pipeId, replacementCategoryId: valvesId, expectedMaterialCount: 2 });
     expect(result.deletedCategoryId).toBe(pipeId);
     expect(result.reassignedMaterialCount).toBe(2);
-    const check = db.prepare('SELECT * FROM material_categories WHERE id = ?').get(pipeId);
-    expect(check).toBeUndefined();
+    expect(isActive(pipeId)).toBe(0);
     const usage = getMaterialCategoryUsage(db, valvesId);
     expect(usage.materialCount).toBe(3); // 1 + 2
   });
 
   it('rejects stale count', () => {
-    const pipeId = (db.prepare("SELECT id FROM material_categories WHERE name = 'Pipe'").get() as any).id;
-    expect(() => deleteMaterialCategory(db, { categoryId: pipeId, replacementCategoryId: null, expectedMaterialCount: 0 })).toThrow();
+    expect(() => deleteMaterialCategory(db, { categoryId: idOf('Pipe'), replacementCategoryId: null, expectedMaterialCount: 0 })).toThrow();
   });
 
   it('rejects same category replacement', () => {
-    const pipeId = (db.prepare("SELECT id FROM material_categories WHERE name = 'Pipe'").get() as any).id;
+    const pipeId = idOf('Pipe');
     expect(() => deleteMaterialCategory(db, { categoryId: pipeId, replacementCategoryId: pipeId, expectedMaterialCount: 2 })).toThrow();
   });
 
-  it('rejects last category', () => {
-    const pipeId = (db.prepare("SELECT id FROM material_categories WHERE name = 'Pipe'").get() as any).id;
-    // Move all materials to Pipe, then delete the other categories
+  it('rejects a replacement that is itself hidden', () => {
+    const valvesId = idOf('Valves');
+    db.prepare('UPDATE materials SET category_id = ? WHERE category_id = ?').run(idOf('Pipe'), valvesId);
+    deleteMaterialCategory(db, { categoryId: valvesId, replacementCategoryId: null, expectedMaterialCount: 0 });
+    expect(() =>
+      deleteMaterialCategory(db, { categoryId: idOf('Pipe'), replacementCategoryId: valvesId, expectedMaterialCount: 3 })
+    ).toThrow(/replacement category no longer exists/);
+  });
+
+  it('rejects last category, counting only the visible ones', () => {
+    const pipeId = idOf('Pipe');
+    // Move all materials to Pipe, then hide the other categories
     db.prepare('UPDATE materials SET category_id = ?').run(pipeId);
-    db.prepare("DELETE FROM material_categories WHERE name != 'Pipe'").run();
+    db.prepare("UPDATE material_categories SET is_active = 0 WHERE name != 'Pipe'").run();
     const materialCount = (db.prepare('SELECT COUNT(*) as count FROM materials WHERE category_id = ?').get(pipeId) as any).count;
-    expect(() => deleteMaterialCategory(db, { categoryId: pipeId, replacementCategoryId: null, expectedMaterialCount: materialCount })).toThrow();
+    expect(() => deleteMaterialCategory(db, { categoryId: pipeId, replacementCategoryId: null, expectedMaterialCount: materialCount })).toThrow(/last material category/);
+  });
+});
+
+describe('restoreMaterialCategory', () => {
+  it('brings a hidden category back', () => {
+    const cat = createMaterialCategory(db, { name: 'Empty' });
+    deleteMaterialCategory(db, { categoryId: cat.id, replacementCategoryId: null, expectedMaterialCount: 0 });
+    const restored = restoreMaterialCategory(db, cat.id);
+    expect(restored.is_active).toBe(1);
+  });
+
+  it('throws for an id that was never there', () => {
+    expect(() => restoreMaterialCategory(db, 9999)).toThrow(/not found/);
+  });
+});
+
+describe('listMaterialCategoriesWithUsage visibility', () => {
+  it('hides soft-deleted categories by default and shows them on request', () => {
+    const cat = createMaterialCategory(db, { name: 'Empty' });
+    deleteMaterialCategory(db, { categoryId: cat.id, replacementCategoryId: null, expectedMaterialCount: 0 });
+
+    expect(listMaterialCategoriesWithUsage(db).some((c) => c.name === 'Empty')).toBe(false);
+    expect(listMaterialCategoriesWithUsage(db, true).some((c) => c.name === 'Empty')).toBe(true);
+  });
+});
+
+describe('listMaterialsByCategoryName', () => {
+  const setSeedUuid = (name: string) => {
+    db.prepare('UPDATE material_categories SET uuid = ? WHERE name = ?')
+      .run(seedUuid('material_categories', name), name);
+  };
+
+  it('finds materials by category name', () => {
+    const rows = listMaterialsByCategoryName(db, 'Pipe') as any[];
+    expect(rows.map((r) => r.name).sort()).toEqual(['6" PVC Pipe', '8" PVC Pipe']);
+  });
+
+  it('still finds a seeded category after it has been renamed', () => {
+    // The trench module asks for "Bedding & Backfill" and "PVC Pipe" by name.
+    // Categories became renameable in #115, so a rename used to empty those
+    // pickers silently — the seed uuid is what keeps the link.
+    setSeedUuid('Pipe');
+    updateMaterialCategory(db, {
+      id: (db.prepare("SELECT id FROM material_categories WHERE name = 'Pipe'").get() as any).id,
+      name: 'PVC Pipe (mine)',
+    });
+
+    const rows = listMaterialsByCategoryName(db, 'Pipe') as any[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].category_name).toBe('PVC Pipe (mine)');
+  });
+
+  it('excludes archived materials', () => {
+    db.prepare("UPDATE materials SET is_active = 0 WHERE name = '8\" PVC Pipe'").run();
+    expect(listMaterialsByCategoryName(db, 'Pipe')).toHaveLength(1);
+  });
+
+  it('returns nothing for a category no one has', () => {
+    expect(listMaterialsByCategoryName(db, 'Nonexistent')).toEqual([]);
+  });
+});
+
+describe('validateCategoryName against hidden categories', () => {
+  it('points at the restore path rather than a dead end', () => {
+    const cat = createMaterialCategory(db, { name: 'Empty' });
+    deleteMaterialCategory(db, { categoryId: cat.id, replacementCategoryId: null, expectedMaterialCount: 0 });
+    expect(() => createMaterialCategory(db, { name: 'empty' })).toThrow(/hidden category/i);
   });
 });

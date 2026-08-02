@@ -8,19 +8,28 @@ import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
 
-import { createMaterialCategory, updateMaterialCategory, getMaterialCategoryUsage, listMaterialCategoriesWithUsage, deleteMaterialCategory } from './material-categories';
+import { createMaterialCategory, updateMaterialCategory, getMaterialCategoryUsage, listMaterialCategoriesWithUsage, deleteMaterialCategory, restoreMaterialCategory, listMaterialsByCategoryName } from './material-categories';
+import {
+  listEquipmentCategories, listEquipmentCategoriesWithUsage, saveEquipmentCategory,
+  deleteEquipmentCategory, clearUnusedEquipmentCategories, adoptUsedEquipmentCategories,
+} from './equipment-categories';
+import type {
+  SaveEquipmentCategoryPayload, DeleteEquipmentCategoryPayload,
+} from '../../shared/types/ipc';
 
 export function registerCatalogHandlers(db: Database.Database): void {
   // ================================================================
   // MATERIAL CATEGORIES
   // ================================================================
 
-  safeHandle('db:material-categories:list', () => {
-    return db.prepare('SELECT * FROM material_categories ORDER BY name').all();
+  safeHandle('db:material-categories:list', (_event, includeInactive?: boolean) => {
+    // Interpolated SQL fragment is a fixed string chosen by a boolean.
+    const activeFilter = includeInactive ? '' : 'WHERE is_active = 1';
+    return db.prepare(`SELECT * FROM material_categories ${activeFilter} ORDER BY name`).all();
   });
 
-  safeHandle('db:material-categories:management', () => {
-    return listMaterialCategoriesWithUsage(db);
+  safeHandle('db:material-categories:management', (_event, includeInactive?: boolean) => {
+    return listMaterialCategoriesWithUsage(db, includeInactive === true);
   });
 
   safeHandle('db:material-categories:save', (_event, payload: any) => {
@@ -38,6 +47,37 @@ export function registerCatalogHandlers(db: Database.Database): void {
     return deleteMaterialCategory(db, payload);
   });
 
+  safeHandle('db:material-categories:restore', (_event, categoryId: number) => {
+    return restoreMaterialCategory(db, categoryId);
+  });
+
+  // ================================================================
+  // EQUIPMENT CATEGORIES
+  // ================================================================
+
+  safeHandle('db:equipment-categories:list', () => {
+    return listEquipmentCategories(db);
+  });
+
+  safeHandle('db:equipment-categories:management', () => {
+    return listEquipmentCategoriesWithUsage(db);
+  });
+
+  safeHandle('db:equipment-categories:save', (_event, payload: SaveEquipmentCategoryPayload) => {
+    return saveEquipmentCategory(db, payload);
+  });
+
+  safeHandle('db:equipment-categories:delete', (_event, payload: DeleteEquipmentCategoryPayload) => {
+    return deleteEquipmentCategory(db, payload);
+  });
+
+  safeHandle('db:equipment-categories:clear-unused', () => {
+    return clearUnusedEquipmentCategories(db);
+  });
+
+  safeHandle('db:equipment-categories:adopt-used', () => {
+    return adoptUsedEquipmentCategories(db);
+  });
 
   // ================================================================
   // MATERIALS
@@ -56,11 +96,7 @@ export function registerCatalogHandlers(db: Database.Database): void {
   });
 
   safeHandle('db:materials:list-by-category-name', (_event, categoryName: string) => {
-    return db.prepare(
-      `SELECT m.*, mc.name as category_name FROM materials m
-       JOIN material_categories mc ON m.category_id = mc.id
-       WHERE mc.name = ? AND m.is_active = 1 ORDER BY m.name`
-    ).all(categoryName);
+    return listMaterialsByCategoryName(db, categoryName);
   });
 
   safeHandle('db:materials:get', (_event, id: number) => {

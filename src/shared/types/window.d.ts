@@ -8,6 +8,9 @@ import type {
   BidSectionRow,
   ClientRow,
   CsvParseResult,
+  DeleteEquipmentCategoryPayload,
+  DeleteEquipmentCategoryResult,
+  EquipmentCategoryManagementRow,
   EquipmentRow,
   FileExportResult,
   IndirectCostRow,
@@ -39,6 +42,7 @@ import type {
   SaveBidSectionPayload,
   SaveClientPayload,
   SaveCrewTemplatePayload,
+  SaveEquipmentCategoryPayload,
   SaveEquipmentPayload,
   SaveJobPayload,
   SaveLaborRolePayload,
@@ -81,11 +85,12 @@ declare global {
   interface Window {
     api: {
       // Materials
-      getMaterialCategories: () => Promise<MaterialCategoryRow[]>;
-      getMaterialCategoryManagement: () => Promise<MaterialCategoryManagementRow[]>;
+      getMaterialCategories: (includeInactive?: boolean) => Promise<MaterialCategoryRow[]>;
+      getMaterialCategoryManagement: (includeInactive?: boolean) => Promise<MaterialCategoryManagementRow[]>;
       saveMaterialCategory: (payload: SaveMaterialCategoryPayload) => Promise<MaterialCategoryRow>;
       getMaterialCategoryUsage: (categoryId: number) => Promise<MaterialCategoryUsage>;
       deleteMaterialCategory: (payload: DeleteMaterialCategoryPayload) => Promise<DeleteMaterialCategoryResult>;
+      restoreMaterialCategory: (categoryId: number) => Promise<MaterialCategoryRow>;
       getMaterials: (categoryId?: number, includeInactive?: boolean) => Promise<MaterialRow[]>;
       getMaterial: (id: number) => Promise<MaterialRow | undefined>;
       saveMaterial: (material: SaveMaterialPayload) => Promise<SqlRunResult>;
@@ -107,6 +112,18 @@ declare global {
       deleteProductionRate: (id: number) => Promise<SqlRunResult>;
 
       // Equipment
+      /** Every category the picker should offer: managed list ∪ in use. */
+      getEquipmentCategories: () => Promise<string[]>;
+      getEquipmentCategoryManagement: () => Promise<EquipmentCategoryManagementRow[]>;
+      /** Add, or rename when `previousName` is set (equipment follows). */
+      saveEquipmentCategory: (
+        payload: SaveEquipmentCategoryPayload
+      ) => Promise<{ categories: string[]; equipmentUpdated: number }>;
+      deleteEquipmentCategory: (
+        payload: DeleteEquipmentCategoryPayload
+      ) => Promise<DeleteEquipmentCategoryResult>;
+      clearUnusedEquipmentCategories: () => Promise<{ removed: number; categories: string[] }>;
+      adoptUsedEquipmentCategories: () => Promise<{ added: number; categories: string[] }>;
       getEquipment: (includeInactive?: boolean) => Promise<EquipmentRow[]>;
       saveEquipment: (equip: SaveEquipmentPayload) => Promise<SqlRunResult>;
       deleteEquipment: (id: number) => Promise<SqlRunResult>;

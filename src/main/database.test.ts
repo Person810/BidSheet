@@ -9,6 +9,7 @@ vi.mock('electron', () => ({ app: { getPath: () => '/tmp' } }));
 import BetterSqlite3 from 'better-sqlite3';
 import {
   MIGRATIONS, seedDatabase, seedCatalogStatus, removeSeedCatalog, restoreSeedCatalog,
+  addTradeCatalog,
 } from './database';
 
 /** Runs migrations 1..version (1-indexed, matching schema_version) against a fresh DB. */
@@ -344,6 +345,46 @@ describe('migration v51 — HDD columns and rates', () => {
     expect(
       (db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as any).v
     ).toBe(50);
+  });
+});
+
+describe('migration v52 — manageable categories', () => {
+  it('adds material_categories.is_active, defaulting existing rows to visible', () => {
+    const db = dbAtVersion(51);
+    db.prepare("INSERT INTO material_categories (name) VALUES ('Pipe')").run();
+    db.transaction(() => MIGRATIONS[51](db))();
+
+    const cols = (db.prepare('PRAGMA table_info(material_categories)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('is_active');
+    // No backfill surprises: a category that existed before the migration
+    // must still be visible after it.
+    expect((db.prepare("SELECT is_active FROM material_categories WHERE name = 'Pipe'").get() as any).is_active).toBe(1);
+  });
+
+  it('adds app_settings.equipment_categories as null, meaning "use the defaults"', () => {
+    const db = dbAtVersion(52);
+    const cols = (db.prepare('PRAGMA table_info(app_settings)').all() as any[]).map((c) => c.name);
+    expect(cols).toContain('equipment_categories');
+    // Null, not '' — the two mean different things (see the migration note),
+    // and nobody's picker should change until they edit the list themselves.
+    expect(
+      (db.prepare('SELECT equipment_categories FROM app_settings WHERE id = 1').get() as any).equipment_categories
+    ).toBeNull();
+  });
+
+  it('un-hides a category when a trade seeds materials into it', () => {
+    // Otherwise INSERT OR IGNORE leaves the category hidden and the trade's
+    // materials arrive invisible — present in the table, absent from the UI.
+    const db = dbAtVersion(MIGRATIONS.length);
+    seedDatabase(db, ['water_sewer'], true, 'Co');
+    const cat = db.prepare('SELECT id, name FROM material_categories LIMIT 1').get() as any;
+    db.prepare('UPDATE material_categories SET is_active = 0 WHERE id = ?').run(cat.id);
+
+    // Adding the trade again re-runs its catalog seed over that category.
+    addTradeCatalog(db, 'water_sewer', true);
+    seedDatabase(db, ['water_sewer'], true, 'Co');
+
+    expect((db.prepare('SELECT is_active FROM material_categories WHERE id = ?').get(cat.id) as any).is_active).toBe(1);
   });
 });
 
