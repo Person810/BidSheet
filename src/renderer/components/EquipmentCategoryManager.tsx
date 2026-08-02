@@ -284,9 +284,7 @@ export function EquipmentCategoryManager({
                     )}
                   </td>
                   <td>
-                    {/* gap-8, not gap-4: there is no .gap-4 rule in
-                        global.css, so that class renders as gap: 0 and sits
-                        the two buttons flush against each other. */}
+                    {/* gap-8 to match the app's other button rows. */}
                     <div className="flex gap-8">
                       <button className="btn btn-sm btn-secondary" onClick={() => startEdit(cat)}>Rename</button>
                       <button className="btn btn-sm btn-danger" onClick={() => startDelete(cat)}>Delete</button>
