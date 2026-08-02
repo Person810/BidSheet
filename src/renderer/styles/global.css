@@ -900,7 +900,16 @@ body {
 .mb-16 { margin-bottom: 16px; }
 .mb-24 { margin-bottom: 24px; }
 .mt-16 { margin-top: 16px; }
+
+/* These follow the same name-is-the-pixel-value rule as the margin helpers
+   above. Only .gap-8 existed, so gap-4/12/16 were silently `gap: 0` wherever
+   they were written — the class name looked deliberate while doing nothing.
+   Keep this list in step with the values actually used in the components. */
+.gap-4 { gap: 4px; }
 .gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+
 .flex { display: flex; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }

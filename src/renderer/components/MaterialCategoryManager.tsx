@@ -214,8 +214,7 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
                   </td>
                   <td>{cat.materialCount}</td>
                   <td>
-                    {/* gap-8 for the same reason as the equipment manager:
-                        .gap-4 has no rule behind it, so it renders flush. */}
+                    {/* gap-8 to match the equipment manager's row actions. */}
                     <div className="flex gap-8">
                       {cat.is_active === 0 ? (
                         <button className="btn btn-sm btn-secondary" onClick={() => handleRestore(cat)}>Restore</button>
