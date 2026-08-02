@@ -154,6 +154,10 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding: var(--content-pad-y) var(--content-pad-x);
+  /* Cancels this container's top padding for sticky table headers — see
+     .data-table th. Same idea as .page-header's negative margin: things
+     that must meet the clip edge offset against the content padding. */
+  --sticky-th-top: calc(-1 * var(--content-pad-y));
 }
 
 /* App-wide status bar (desktop chrome). The takeoff workspace ships its
@@ -290,7 +294,13 @@ body {
   letter-spacing: 0.04em;
   background: var(--bg-secondary);
   position: sticky;
-  top: 0;
+  /* A scroll container's own padding sits INSIDE its clip region, so rows
+     scrolling under it stay visible — while `top: 0` pins this header to the
+     scrollport's *content* edge, one padding-height lower. The result is a
+     strip above the header where rows show through and the table looks torn.
+     Each scrolling container declares its own top padding here so the header
+     pins to the clip edge instead; 0 for containers that don't pad. */
+  top: var(--sticky-th-top, 0);
 }
 
 .data-table td {
@@ -1198,6 +1208,11 @@ body {
   flex: 1;
   padding: var(--content-pad-y) var(--content-pad-x);
   overflow-y: auto;
+  /* Declared rather than inherited: this pane scrolls itself, so its own
+     padding is what the sticky header has to clear (see .data-table th).
+     It happens to match .main-content's today — stating it here means
+     changing this pane's padding can't quietly re-tear its header. */
+  --sticky-th-top: calc(-1 * var(--content-pad-y));
 }
 
 .materials-count {
@@ -1259,6 +1274,12 @@ body {
   max-height: 80vh;
   overflow-y: auto;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  /* A dialog scrolls itself, so its own padding-top causes the same torn
+     seam under a sticky table header (the category managers scroll a table).
+     Tracks the padding above, and resets the value inherited from
+     .main-content, which a modal is a DOM descendant of despite floating
+     free of it. */
+  --sticky-th-top: -20px;
 }
 
 /* Dialog title bar, bleeding to the modal edges */
