@@ -7,6 +7,7 @@ import type Database from 'better-sqlite3';
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp' } }));
 
 import { initializeDatabase } from '../database';
+import { ensureImportedCategoryId } from './price-import';
 
 /**
  * Migration v31 schema + the price-state backfill rule. The reconciliation
@@ -73,6 +74,37 @@ describe('migration v31 — price import schema', () => {
     expect(() =>
       db.prepare("INSERT INTO quote_aliases (supplier, raw_description, material_id) VALUES ('cm', '8 in pvc', NULL)").run(),
     ).toThrow();
+  });
+});
+
+describe('the imported-items category', () => {
+  let db: Database.Database;
+  beforeEach(() => { db = freshDb(); });
+
+  const rowFor = () =>
+    db.prepare("SELECT id, is_active FROM material_categories WHERE name = 'Imported Items'").get() as any;
+
+  it('creates the category on first use', () => {
+    const id = ensureImportedCategoryId(db);
+    expect(rowFor().id).toBe(id);
+    expect(rowFor().is_active).toBe(1);
+  });
+
+  it('reuses it rather than creating a second one', () => {
+    expect(ensureImportedCategoryId(db)).toBe(ensureImportedCategoryId(db));
+    expect(
+      (db.prepare("SELECT COUNT(*) AS n FROM material_categories WHERE name = 'Imported Items'").get() as any).n
+    ).toBe(1);
+  });
+
+  it('un-hides the category when it was soft-deleted', () => {
+    // Otherwise imported items land somewhere the sidebar never shows, and
+    // the import reports success with the materials nowhere to be found.
+    const id = ensureImportedCategoryId(db);
+    db.prepare('UPDATE material_categories SET is_active = 0 WHERE id = ?').run(id);
+
+    expect(ensureImportedCategoryId(db)).toBe(id);
+    expect(rowFor().is_active).toBe(1);
   });
 });
 

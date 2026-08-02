@@ -1,5 +1,3 @@
-import type { MaterialCategoryManagementRow } from '../../shared/types/ipc';
-
 export interface CategoryForm {
   name: string;
   description: string;
@@ -40,12 +38,16 @@ export function getPostDeleteCategorySelection(
   return replacementId;
 }
 
-/** Get available replacement categories (excludes the source). */
-export function getReplacementCategories(
-  categories: { id: number; name: string }[],
+/**
+ * Categories that can take another one's materials: everything but the
+ * source, and nothing that is itself hidden — reassigning into a hidden
+ * category would strand the materials somewhere the sidebar never shows.
+ */
+export function getReplacementCategories<T extends { id: number; is_active?: number }>(
+  categories: T[],
   sourceId: number
-): { id: number; name: string }[] {
-  return categories.filter(c => c.id !== sourceId);
+): T[] {
+  return categories.filter((c) => c.id !== sourceId && c.is_active !== 0);
 }
 
 /** Check if an error is the stale-count concurrency error. */

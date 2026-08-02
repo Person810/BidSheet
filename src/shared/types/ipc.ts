@@ -28,6 +28,8 @@ export interface MaterialCategoryRow {
   id: number;
   name: string;
   description: string | null;
+  /** Soft-delete flag (v52). Hidden categories keep their materials' history. */
+  is_active?: number;
 }
 
 export interface SaveMaterialCategoryPayload {
@@ -55,6 +57,39 @@ export interface DeleteMaterialCategoryResult {
   deletedCategoryId: number;
   replacementCategoryId: number | null;
   reassignedMaterialCount: number;
+}
+
+/**
+ * Equipment categories are names, not rows — the managed list lives in
+ * app_settings and the link is the free-text `equipment.category` column
+ * (see shared/equipmentCategories.ts). Everything below is keyed by name.
+ */
+export interface EquipmentCategoryManagementRow {
+  name: string;
+  /** Equipment filed here, archived included. */
+  equipmentCount: number;
+  activeEquipmentCount: number;
+  /** False when only an equipment row keeps this category alive. */
+  listed: boolean;
+}
+
+export interface SaveEquipmentCategoryPayload {
+  name: string;
+  /** Set to rename; the equipment filed under it follows. Omit to add. */
+  previousName?: string | null;
+}
+
+export interface DeleteEquipmentCategoryPayload {
+  name: string;
+  replacementName: string | null;
+  expectedEquipmentCount: number;
+}
+
+export interface DeleteEquipmentCategoryResult {
+  deletedName: string;
+  replacementName: string | null;
+  reassignedEquipmentCount: number;
+  categories: string[];
 }
 
 export interface MaterialRow {
@@ -559,6 +594,11 @@ export interface AppSettingsRow {
   /** Free-text trades with no seed catalog (comma-separated); null = none. */
   custom_trades: string | null;
   hdd_rates_json?: string | null;
+  /**
+   * The managed equipment-category vocabulary (comma-separated). Tri-state:
+   * null = never edited, use the built-in defaults; '' = cleared on purpose.
+   */
+  equipment_categories?: string | null;
 }
 
 export interface SaveSettingsPayload {

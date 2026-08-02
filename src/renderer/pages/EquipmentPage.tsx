@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToastStore } from '../stores/toast-store';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
 import { dismissOnEscOnly } from '../components/modalDismiss';
+import { EquipmentCategoryManager } from '../components/EquipmentCategoryManager';
 
 interface EquipmentItem {
   id: number;
@@ -45,15 +46,10 @@ const EMPTY_FORM = {
   isActive: true,
 };
 
-const CATEGORIES = [
-  'Excavator', 'Backhoe', 'Loader', 'Compactor', 'Truck', 'Pump',
-  'Crane', 'Trencher', 'Drill', 'Plow', 'Fusion', 'Survey',
-  'Power', 'Transport', 'Other',
-];
-
 export function EquipmentPage() {
   const addToast = useToastStore((s) => s.addToast);
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -62,15 +58,24 @@ export function EquipmentPage() {
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   const loadEquipment = useCallback(async () => {
     const items = await window.api.getEquipment(showArchived);
     setEquipment(items);
   }, [showArchived]);
 
+  const loadCategories = useCallback(async () => {
+    setCategories(await window.api.getEquipmentCategories());
+  }, []);
+
   useEffect(() => {
     loadEquipment();
   }, [loadEquipment]);
+
+  useEffect(() => {
+    void loadCategories();
+  }, [loadCategories]);
 
   const filtered = equipment.filter((e) => {
     const matchesCategory = !filterCategory || e.category === filterCategory;
@@ -86,7 +91,14 @@ export function EquipmentPage() {
   // Get unique categories from actual data for filter buttons
   const usedCategories = [...new Set(equipment.map((e) => e.category))].sort();
 
-  const categoryItems = simpleListToAutocomplete(CATEGORIES);
+  // The picker offers the managed list; an item's own category is injected
+  // when the list no longer has it, so editing an old row can't silently
+  // blank out a category the user never touched.
+  const categoryItems = simpleListToAutocomplete(
+    form.category && !categories.some((c) => c === form.category)
+      ? [form.category, ...categories]
+      : categories
+  );
 
   const openAdd = () => {
     setEditing(null);
@@ -199,7 +211,7 @@ export function EquipmentPage() {
       </div>
 
       {/* Category filter chips */}
-      <div className="flex gap-8 mb-16" style={{ flexWrap: 'wrap' }}>
+      <div className="flex gap-8 mb-16 items-center" style={{ flexWrap: 'wrap' }}>
         <button
           className={`btn btn-sm ${!filterCategory ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setFilterCategory('')}
@@ -215,6 +227,13 @@ export function EquipmentPage() {
             {cat}
           </button>
         ))}
+        <button
+          className="btn btn-sm btn-secondary"
+          style={{ fontSize: 11, padding: '2px 8px', marginLeft: 'auto' }}
+          onClick={() => setShowCategoryManager(true)}
+        >
+          Manage Categories
+        </button>
       </div>
 
       <div className="materials-count">
@@ -359,8 +378,16 @@ export function EquipmentPage() {
                       setForm({ ...form, category: item.id as string });
                     }
                   }}
-                  placeholder="Search or pick a category..."
+                  placeholder={categories.length === 0 ? 'No categories yet' : 'Search or pick a category...'}
                 />
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  style={{ fontSize: 11, padding: '2px 8px', marginTop: 6 }}
+                  onClick={() => setShowCategoryManager(true)}
+                >
+                  {categories.length === 0 ? '+ Add a category' : 'Manage categories'}
+                </button>
               </div>
             </div>
             <div className="form-row">
@@ -461,6 +488,32 @@ export function EquipmentPage() {
           </div>
         </div>
       )}
+
+      {/* Rendered last on purpose: the Add/Edit modal has its own "Manage
+          categories" button, so both dialogs can be open at once. Overlays
+          share a z-index, so the later one in the DOM is the one on top —
+          and App.tsx's Esc handler closes that same topmost overlay. */}
+      <EquipmentCategoryManager
+        open={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
+        onChanged={() => { void loadCategories(); void loadEquipment(); }}
+        // The chip filter and the open edit form both hold a category *name*,
+        // so both have to follow a rename or a delete. The filter would
+        // otherwise keep filtering on a name no equipment has any more and
+        // the table would just go empty; the form is worse — saving it would
+        // write the old name back and resurrect the category that was renamed
+        // or deleted a moment ago.
+        onCategoryRenamed={(previousName, newName) => {
+          setFilterCategory((prev) => (prev === previousName ? newName : prev));
+          setForm((prev) => (prev.category === previousName ? { ...prev, category: newName } : prev));
+        }}
+        onCategoryDeleted={(deletedName, replacementName) => {
+          setFilterCategory((prev) => (prev === deletedName ? replacementName ?? '' : prev));
+          setForm((prev) =>
+            prev.category === deletedName ? { ...prev, category: replacementName ?? '' } : prev
+          );
+        }}
+      />
     </div>
   );
 }

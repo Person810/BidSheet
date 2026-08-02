@@ -53,6 +53,32 @@ interface CommitPayload {
 
 const IMPORTED_CATEGORY = 'Imported Items';
 
+/**
+ * The catch-all category imported items land in, created on first use.
+ *
+ * Reusing an existing one un-hides it: material categories soft-delete since
+ * v52, and a hidden category still matches by name — filing new materials
+ * into it would drop them out of the sidebar the moment they arrived, with
+ * nothing to tell the user where they went.
+ */
+export function ensureImportedCategoryId(db: Database.Database): number {
+  const existing = db
+    .prepare('SELECT id, is_active FROM material_categories WHERE name = ?')
+    .get(IMPORTED_CATEGORY) as { id: number; is_active: number } | undefined;
+
+  if (!existing) {
+    return Number(
+      db
+        .prepare('INSERT INTO material_categories (name, description) VALUES (?, ?)')
+        .run(IMPORTED_CATEGORY, 'Items created from imported supplier quotes').lastInsertRowid
+    );
+  }
+  if (existing.is_active === 0) {
+    db.prepare('UPDATE material_categories SET is_active = 1 WHERE id = ?').run(existing.id);
+  }
+  return existing.id;
+}
+
 export function registerPriceImportHandlers(db: Database.Database): void {
   // Bid lines (with linked-material context) + learned aliases + the picker
   // lists the reconciliation screen needs.
@@ -185,14 +211,8 @@ export function registerPriceImportHandlers(db: Database.Database): void {
       let importedCategoryId: number | null = null;
       const ensureImportedCategory = (): number => {
         if (importedCategoryId != null) return importedCategoryId;
-        const existing = db.prepare('SELECT id FROM material_categories WHERE name = ?')
-          .get(IMPORTED_CATEGORY) as { id: number } | undefined;
-        const id = existing
-          ? existing.id
-          : Number(db.prepare('INSERT INTO material_categories (name, description) VALUES (?, ?)')
-              .run(IMPORTED_CATEGORY, 'Items created from imported supplier quotes').lastInsertRowid);
-        importedCategoryId = id;
-        return id;
+        importedCategoryId = ensureImportedCategoryId(db);
+        return importedCategoryId;
       };
 
       const learn = (supplier: string, description: string, materialId: number, partNumber: string | null) => {

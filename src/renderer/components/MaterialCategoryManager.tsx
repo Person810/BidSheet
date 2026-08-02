@@ -27,8 +27,10 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
   const [deleteTarget, setDeleteTarget] = useState<MaterialCategoryManagementRow | null>(null);
   const [replacementId, setReplacementId] = useState<number | null>(null);
 
+  // The manager is the one surface that shows hidden categories — everywhere
+  // else (sidebar, pickers) only wants the live ones.
   const loadCategories = useCallback(async () => {
-    const cats = await window.api.getMaterialCategoryManagement();
+    const cats = await window.api.getMaterialCategoryManagement(true);
     setCategories(sortMaterialCategories(cats));
   }, []);
 
@@ -99,6 +101,17 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
         await loadCategories();
       }
       setError(err.message || 'Failed to delete category.');
+    }
+  };
+
+  const handleRestore = async (cat: MaterialCategoryManagementRow) => {
+    setError(null);
+    try {
+      await window.api.restoreMaterialCategory(cat.id);
+      await loadCategories();
+      onChanged();
+    } catch (err: unknown) {
+      setError(err instanceof Error && err.message ? err.message : 'Failed to restore category.');
     }
   };
 
@@ -191,16 +204,25 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
             </thead>
             <tbody>
               {categories.map(cat => (
-                <tr key={cat.id}>
+                <tr key={cat.id} style={cat.is_active === 0 ? { opacity: 0.5 } : {}}>
                   <td>
                     <span>{cat.name}</span>
+                    {cat.is_active === 0 && (
+                      <span className="badge badge-draft" style={{ marginLeft: 8, fontSize: 10 }}>hidden</span>
+                    )}
                     {cat.description && <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 12 }}>{cat.description}</span>}
                   </td>
                   <td>{cat.materialCount}</td>
                   <td>
                     <div className="flex gap-4">
-                      <button className="btn btn-sm btn-secondary" onClick={() => startEdit(cat)}>Edit</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => startDelete(cat)}>Delete</button>
+                      {cat.is_active === 0 ? (
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleRestore(cat)}>Restore</button>
+                      ) : (
+                        <>
+                          <button className="btn btn-sm btn-secondary" onClick={() => startEdit(cat)}>Edit</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => startDelete(cat)}>Delete</button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

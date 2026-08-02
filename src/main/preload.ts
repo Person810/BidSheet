@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { SetupExtras } from '../shared/types/ipc';
+import type {
+  SetupExtras, SaveEquipmentCategoryPayload, DeleteEquipmentCategoryPayload,
+} from '../shared/types/ipc';
 
 // Electron prefixes errors crossing IPC with
 // "Error invoking remote method 'channel': Error: ..." -- strip that
@@ -18,11 +20,13 @@ function invoke(channel: string, ...args: any[]): Promise<any> {
 // Expose a safe API to the renderer process
 contextBridge.exposeInMainWorld('api', {
   // ---- Materials ----
-  getMaterialCategories: () => invoke('db:material-categories:list'),
-  getMaterialCategoryManagement: () => invoke('db:material-categories:management'),
+  getMaterialCategories: (includeInactive?: boolean) => invoke('db:material-categories:list', includeInactive),
+  getMaterialCategoryManagement: (includeInactive?: boolean) =>
+    invoke('db:material-categories:management', includeInactive),
   saveMaterialCategory: (payload: any) => invoke('db:material-categories:save', payload),
   getMaterialCategoryUsage: (categoryId: number) => invoke('db:material-categories:usage', categoryId),
   deleteMaterialCategory: (payload: any) => invoke('db:material-categories:delete', payload),
+  restoreMaterialCategory: (categoryId: number) => invoke('db:material-categories:restore', categoryId),
   getMaterials: (categoryId?: number, includeInactive?: boolean) => invoke('db:materials:list', categoryId, includeInactive),
   getMaterial: (id: number) => invoke('db:materials:get', id),
   saveMaterial: (material: any) => invoke('db:materials:save', material),
@@ -45,6 +49,14 @@ contextBridge.exposeInMainWorld('api', {
   deleteProductionRate: (id: number) => invoke('db:production-rates:delete', id),
 
   // ---- Equipment ----
+  getEquipmentCategories: () => invoke('db:equipment-categories:list'),
+  getEquipmentCategoryManagement: () => invoke('db:equipment-categories:management'),
+  saveEquipmentCategory: (payload: SaveEquipmentCategoryPayload) =>
+    invoke('db:equipment-categories:save', payload),
+  deleteEquipmentCategory: (payload: DeleteEquipmentCategoryPayload) =>
+    invoke('db:equipment-categories:delete', payload),
+  clearUnusedEquipmentCategories: () => invoke('db:equipment-categories:clear-unused'),
+  adoptUsedEquipmentCategories: () => invoke('db:equipment-categories:adopt-used'),
   getEquipment: (includeInactive?: boolean) => invoke('db:equipment:list', includeInactive),
   saveEquipment: (equip: any) => invoke('db:equipment:save', equip),
   deleteEquipment: (id: number) => invoke('db:equipment:delete', id),
