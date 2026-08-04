@@ -3,22 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BidSheet — Free Construction Estimating Software</title>
-  <meta name="description" content="Free, open-source construction estimating software for underground utility subcontractors — bid proposals, plan takeoff, and trench volumes. Fully local.">
+  <title>BidSheet | Free Construction Estimating Software</title>
+  <meta name="description" content="Free, open-source construction estimating software for underground utility subcontractors: bid proposals, plan takeoff, and trench volumes. Fully local.">
   <meta name="keywords" content="bidsheet download, free construction estimating software, bid proposal software, underground utility estimating, subcontractor estimating tool, water sewer estimating, civil construction bidding, free alternative to HeavyBid, free alternative to SharpeSoft, open source estimating, takeoff software, trench excavation calculator, construction bid software free">
   <link rel="canonical" href="https://bidsheet.co/">
   <meta name="google-site-verification" content="fED-v8-RuR1Z5s5Wsc9t5kA7VPkcMmL6pWFzoNnVkYw" />
   <meta name="msvalidate.01" content="FA36183D01F5127910CB50DA10191428" />
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="BidSheet">
-  <meta property="og:title" content="BidSheet — Free Construction Estimating Software for Subcontractors">
+  <meta property="og:title" content="BidSheet | Free Construction Estimating Software for Subcontractors">
   <meta property="og:description" content="Free, open-source construction estimating software for underground utility subcontractors. Bid proposals, plan takeoff, and trench volumes for water, sewer, and civil work.">
   <meta property="og:url" content="https://bidsheet.co/">
-  <meta property="og:image" content="https://bidsheet.co/icon.png">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="BidSheet — Free Construction Estimating Software for Subcontractors">
-  <meta name="twitter:description" content="Free, open-source construction estimating software for underground utility subcontractors. Free forever, fully local — optional cloud sync funds development.">
-  <meta name="twitter:image" content="https://bidsheet.co/icon.png">
+  <meta property="og:image" content="https://bidsheet.co/assets/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A sanitary sewer bid open in BidSheet, with material, labor, and equipment costs broken out per line item.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="BidSheet | Free Construction Estimating Software for Subcontractors">
+  <meta name="twitter:description" content="Free, open-source construction estimating software for underground utility subcontractors. Free forever, fully local. Optional cloud sync funds development.">
+  <meta name="twitter:image" content="https://bidsheet.co/assets/og-card.png">
   <link rel="icon" href="/icon.png" type="image/png">
   <script type="application/ld+json">
   {
@@ -26,7 +29,7 @@
     "@type": "SoftwareApplication",
     "name": "BidSheet",
     "url": "https://bidsheet.co/",
-    "image": "https://bidsheet.co/icon.png",
+    "image": "https://bidsheet.co/assets/og-card.png",
     "description": "Free, open-source construction estimating software for underground utility subcontractors. Build bid proposals for water, sewer, storm drain, and civil work.",
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Windows, Linux",
@@ -133,6 +136,77 @@
     @media (prefers-reduced-motion: reduce) {
       .trench-detail .line.draw { stroke-dasharray: none; stroke-dashoffset: 0; }
       .trench-detail .dim, .trench-detail .dim-label, .trench-detail .note-label, .trench-detail .stone { opacity: 1; }
+    }
+
+    /* ---------- Screenshots ----------
+       Framed like details called out on a plan sheet: hairline rule, a mono
+       tick label in the same treatment as the hero's dimension annotations,
+       and no drop shadows -- drawings do not float. */
+    .shot {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--navy-deep);
+      display: block;
+    }
+    .shot img { display: block; width: 100%; height: auto; }
+    .shot-label {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-top: 12px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .shot-label b { color: var(--gold); font-weight: 400; }
+
+    .screen-band {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 8px 24px 72px;
+    }
+
+    /* ---------- Module walkthrough ---------- */
+    .walk {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 8px 24px 72px;
+    }
+    .walk-row {
+      display: grid;
+      /* The shots are dense data screens -- a bid grid, a 39-row catalog.
+         Give the image the larger share so rows stay legible at 2-up. */
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 44px;
+      align-items: center;
+      padding: 44px 0;
+      border-top: 1px solid var(--border);
+    }
+    .walk-row:first-of-type { border-top: none; }
+    /* Alternate sides so the eye zig-zags down the page instead of scanning
+       a single column of images. */
+    .walk-row:nth-child(even) .walk-figure { order: 2; }
+    .walk-copy h3 {
+      font-family: var(--serif);
+      font-size: clamp(21px, 2.6vw, 26px);
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      margin: 12px 0 10px;
+    }
+    .walk-copy p { color: var(--text-muted); font-size: 15px; line-height: 1.65; }
+    .walk-copy .eyebrow { color: var(--gold); }
+    .walk-figure { margin: 0; }
+
+    @media (max-width: 760px) {
+      .walk-row { grid-template-columns: 1fr; gap: 22px; padding: 32px 0; }
+      .walk-row:nth-child(even) .walk-figure { order: 0; }
     }
 
     /* ---------- Features ---------- */
@@ -315,7 +389,7 @@
 
       <figure class="hero-figure">
         <svg class="trench-detail" viewBox="0 0 480 372" role="img"
-             aria-label="Engineering line drawing of a pipe trench cross-section: an 8 inch ductile iron pipe on 6 inches of stone bedding, in a 36 inch wide trench, 5 feet deep — the quantities BidSheet calculates.">
+             aria-label="Engineering line drawing of a pipe trench cross-section: an 8 inch ductile iron pipe on 6 inches of stone bedding, in a 36 inch wide trench, 5 feet deep. These are the quantities BidSheet calculates.">
           <path class="line draw" pathLength="1" d="M16 84 H120 M360 84 H464" />
           <path class="line draw" pathLength="1" d="M24 84 l-8 -10 M52 84 l-8 -10 M80 84 l-8 -10 M108 84 l-8 -10 M376 84 l-8 -10 M404 84 l-8 -10 M432 84 l-8 -10 M460 84 l-8 -10" style="stroke-width:1; opacity:0.5" />
           <path class="line draw" pathLength="1" d="M120 84 L156 168 V296 H324 V168 L360 84" />
@@ -347,11 +421,19 @@
       </figure>
     </section>
 
+    <section class="screen-band" aria-label="The estimate screen">
+      <figure class="shot">
+        <img src="/assets/shots/bid-grid.webp" width="2200" height="1414" decoding="async"
+             alt="A sanitary sewer bid in BidSheet, organized into Sanitary Sewer and Water Main sections. Each line item shows quantity, unit, and separate material, labor, and equipment costs, with section subtotals of $24,083.35 and $39,326.65.">
+      </figure>
+      <p class="shot-label"><b>Estimate</b> <span>Maple Street sanitary sewer · 20 line items across 4 sections</span></p>
+    </section>
+
     <section class="features" id="features" aria-labelledby="features-title">
       <div class="features-header">
         <p class="eyebrow">Features</p>
         <h2 id="features-title">Built for underground utility contractors</h2>
-        <p>Estimating and bidding for water, sewer, storm, and civil work. The feature list is short on purpose.</p>
+        <p>Estimating and bidding for water, sewer, storm, and civil work.</p>
       </div>
 
       <div class="features-grid">
@@ -387,6 +469,73 @@
       </div>
     </section>
 
+    <section class="walk" aria-label="How a bid comes together">
+      <div class="walk-row">
+        <figure class="walk-figure">
+          <span class="shot"><img src="/assets/shots/plan-takeoff.webp" width="1200" height="771" loading="lazy" decoding="async"
+            alt="A sanitary sewer plan and profile sheet open in BidSheet with two pipe runs traced in green and segment callouts reading 235.0 feet, 110.1 feet, 175.0 feet, and 140.2 feet."></span>
+          <p class="shot-label"><b>Plan Takeoff</b> <span>1&Prime; = 20&prime;</span></p>
+        </figure>
+        <div class="walk-copy">
+          <p class="eyebrow">Measure</p>
+          <h3>Trace the run off the plan</h3>
+          <p>Load the plan PDF and calibrate the scale once. Draw the pipe runs and the footages land in the measurements panel, ready to send to your trench profiles or straight into the bid.</p>
+        </div>
+      </div>
+
+      <div class="walk-row">
+        <figure class="walk-figure">
+          <span class="shot"><img src="/assets/shots/trench-profiler.webp" width="1200" height="454" loading="lazy" decoding="async"
+            alt="The trench profiler showing a 520 foot run of 8 inch PVC at 9.2 feet average depth, with 531.56 cubic yards of excavation and a depth summary split into 0 to 5, 5 to 10, and 10 to 15 foot bands."></span>
+          <p class="shot-label"><b>Trench Profiler</b> <span>520 LF · 8&Prime; PVC SDR-35</span></p>
+        </figure>
+        <div class="walk-copy">
+          <p class="eyebrow">Dig</p>
+          <h3>Excavation and backfill, not guesswork</h3>
+          <p>Give it pipe size, depth, grade, width, and bedding. It returns excavation, bedding, and backfill volumes broken out by depth band, so you can see exactly where the trench box starts costing you.</p>
+        </div>
+      </div>
+
+      <div class="walk-row">
+        <figure class="walk-figure">
+          <span class="shot"><img src="/assets/shots/material-catalog.webp" width="1200" height="771" loading="lazy" decoding="async"
+            alt="The PVC Pipe category of the material catalog listing 39 items with unit costs, suppliers, part numbers, and the date each price was last updated."></span>
+          <p class="shot-label"><b>Material Catalog</b> <span>633 items · 39 in PVC pipe</span></p>
+        </figure>
+        <div class="walk-copy">
+          <p class="eyebrow">Price</p>
+          <h3>Your prices, from your suppliers</h3>
+          <p>Six hundred-plus seeded items for water, sewer, storm, gas, and fiber. Keep supplier and part numbers on the row, watch the last-updated date, and import a supplier price sheet from CSV when quotes come in.</p>
+        </div>
+      </div>
+
+      <div class="walk-row">
+        <figure class="walk-figure">
+          <span class="shot"><img src="/assets/shots/crew-templates.webp" width="1200" height="364" loading="lazy" decoding="async"
+            alt="Four crew templates in BidSheet showing burdened hourly rates: a restoration crew at $131.90, a service and tap crew at $123.50, a sewer pipe crew at $172.40, and a water pipe crew at $202.10."></span>
+          <p class="shot-label"><b>Crews &amp; Labor</b> <span>Burden applied</span></p>
+        </figure>
+        <div class="walk-copy">
+          <p class="eyebrow">Crew</p>
+          <h3>Crews that price their own labor</h3>
+          <p>Build crews out of labor roles with taxes, insurance, and benefits already in the rate. Pair a crew with a production rate and a line item works out its own hours instead of waiting on your gut.</p>
+        </div>
+      </div>
+
+      <div class="walk-row">
+        <figure class="walk-figure">
+          <span class="shot"><img src="/assets/shots/dashboard-winloss.webp" width="1200" height="600" loading="lazy" decoding="async"
+            alt="The BidSheet dashboard showing a 60 percent win rate on three wins and two losses, with a Where You Win panel breaking results down by client and by bid size."></span>
+          <p class="shot-label"><b>Dashboard</b> <span>3W / 2L · 60% win rate</span></p>
+        </figure>
+        <div class="walk-copy">
+          <p class="eyebrow">After</p>
+          <h3>Find out where you actually win</h3>
+          <p>Mark a bid won or lost and the dashboard does the rest, splitting your record by general contractor and by bid size. Bid the work you win instead of the work you happen to see.</p>
+        </div>
+      </div>
+    </section>
+
     <section class="local-band" aria-labelledby="local-title">
       <div class="local-band-box">
         <div>
@@ -410,9 +559,8 @@
           <p class="price-line">$20/month · first 30 days free</p>
           <p>
             Cloud sync adds encrypted backup, access from a second computer, and a way to get
-            everything back when a laptop dies. It costs real money to run, so it costs money to
-            use, and it funds the work. <strong>The app stays free either way, and your data
-            still lives locally.</strong>
+            everything back when a laptop dies. <strong>The app stays free either way, and your
+            data still lives locally.</strong>
           </p>
           <a href="/pricing/" class="btn btn-secondary">See pricing details</a>
         </div>
