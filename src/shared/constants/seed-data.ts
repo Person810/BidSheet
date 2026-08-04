@@ -458,7 +458,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
         name: 'Manhole Frame, Cover & Grade Ring Set (per EA)',
         description: 'Ring-and-cover set with grade rings and butyl for setting or adjusting a manhole to grade',
         unit: 'EA',
-        notes: 'Adjustment/build-up set — pairs with paving or concrete collar work.',
+        notes: 'Adjustment/build-up set, pairs with paving or concrete collar work.',
         items: [
           { category: 'Manholes', name: 'MH Frame & Cover (standard)', quantity: 1 },
           { category: 'Manholes', name: 'Grade Ring (flat)', quantity: 2 },
@@ -1145,7 +1145,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
     assemblies: [
       {
         name: '4" Slab on Grade (per SY)',
-        description: 'Unreinforced 4" slab with mesh, vapor barrier, and cure — per square yard',
+        description: 'Unreinforced 4" slab with mesh, vapor barrier, and cure (per square yard)',
         unit: 'SY',
         notes: 'Add a crew/production rate for placing & finishing labor.',
         items: [
@@ -1157,7 +1157,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       },
       {
         name: '6" Reinforced Slab on Grade (per SY)',
-        description: 'Heavy-duty 6" slab, #4 rebar grid at 18" o.c., 15 mil vapor barrier — per square yard',
+        description: 'Heavy-duty 6" slab, #4 rebar grid at 18" o.c., 15 mil vapor barrier (per square yard)',
         unit: 'SY',
         notes: 'Add a crew/production rate for placing & finishing labor.',
         items: [
@@ -1170,7 +1170,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       },
       {
         name: '4" Sidewalk (per SY)',
-        description: 'Fiber-reinforced sidewalk on stone base with edge forms and joints — per square yard',
+        description: 'Fiber-reinforced sidewalk on stone base with edge forms and joints (per square yard)',
         unit: 'SY',
         notes: 'Add a crew/production rate for forming, placing & finishing labor.',
         items: [
@@ -1183,7 +1183,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       },
       {
         name: 'Curb & Gutter (per LF)',
-        description: 'Standard 24" curb & gutter on stone base, 2 continuous #4 bars — per linear foot',
+        description: 'Standard 24" curb & gutter on stone base, 2 continuous #4 bars (per linear foot)',
         unit: 'LF',
         notes: 'Add a crew/production rate for forming, placing & finishing labor.',
         items: [
@@ -1195,7 +1195,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       },
       {
         name: 'Continuous Footing 24"x12" (per LF)',
-        description: 'Cast-in-place wall footing, 4 continuous #5 bars and side forms — per linear foot',
+        description: 'Cast-in-place wall footing, 4 continuous #5 bars and side forms (per linear foot)',
         unit: 'LF',
         notes: 'Add a crew/production rate for forming & placing labor.',
         items: [
