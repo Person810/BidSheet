@@ -9,7 +9,7 @@ function validateInput(i) {
   var e = [];
   if (i.pipeSizeIn <= 0) e.push({ field:'pipeSizeIn', message:'Pipe size must be > 0' });
   if (i.startDepthFt <= 0) e.push({ field:'startDepthFt', message:'Starting depth must be > 0' });
-  if (i.gradePct < 0) e.push({ field:'gradePct', message:'Grade cannot be negative — measure from the upstream (shallow) end' });
+  if (i.gradePct < 0) e.push({ field:'gradePct', message:'Grade cannot be negative. Measure from the upstream (shallow) end' });
   if (i.runLengthLF <= 0) e.push({ field:'runLengthLF', message:'Run length must be > 0' });
   if (i.trenchWidthFt <= 0) e.push({ field:'trenchWidthFt', message:'Trench width must be > 0' });
   if (i.benchWidthFt < 0) e.push({ field:'benchWidthFt', message:'Bench width cannot be negative' });

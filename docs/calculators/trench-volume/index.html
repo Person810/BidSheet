@@ -4,19 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trench Excavation Volume Calculator | BidSheet</title>
-  <meta name="description" content="Free calculator for trench excavation, bedding, and backfill volumes in cubic yards. Enter pipe size, depth, grade, and trench width — no signup.">
+  <meta name="description" content="Free calculator for trench excavation, bedding, and backfill volumes in cubic yards. Enter pipe size, depth, grade, and trench width. No signup.">
   <meta name="keywords" content="trench volume calculator, excavation calculator, trench excavation cubic yards, backfill calculator, bedding volume calculator, pipe trench calculator, spoil volume, utility trench estimating, sewer trench calculator, cubic yards of dirt, how to calculate trench volume">
   <link rel="canonical" href="https://bidsheet.co/calculators/trench-volume/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="BidSheet">
-  <meta property="og:title" content="Free Trench Volume Calculator — Excavation, Bedding &amp; Backfill">
-  <meta property="og:description" content="Punch in pipe size, depth, grade, and trench width — get excavation, bedding, and backfill in cubic yards instantly. Free, no signup, runs in your browser.">
+  <meta property="og:title" content="Free Trench Volume Calculator | Excavation, Bedding &amp; Backfill">
+  <meta property="og:description" content="Punch in pipe size, depth, grade, and trench width, and get excavation, bedding, and backfill in cubic yards instantly. Free, no signup, runs in your browser.">
   <meta property="og:url" content="https://bidsheet.co/calculators/trench-volume/">
-  <meta property="og:image" content="https://bidsheet.co/icon.png">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Free Trench Volume Calculator — Excavation, Bedding &amp; Backfill">
+  <meta property="og:image" content="https://bidsheet.co/assets/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A sanitary sewer bid open in BidSheet, with material, labor, and equipment costs broken out per line item.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Free Trench Volume Calculator | Excavation, Bedding &amp; Backfill">
   <meta name="twitter:description" content="Get excavation, bedding, and backfill volumes in cubic yards from pipe size, depth, grade, and trench width. Free, no signup.">
-  <meta name="twitter:image" content="https://bidsheet.co/icon.png">
+  <meta name="twitter:image" content="https://bidsheet.co/assets/og-card.png">
   <link rel="icon" href="/icon.png" type="image/png">
   <link rel="stylesheet" href="/assets/site.css">
   <script type="application/ld+json">
@@ -236,7 +239,7 @@
       <p class="eyebrow">Free tool</p>
       <h1>Trench volume calculator</h1>
       <p>
-        Excavation, bedding, and backfill in cubic yards for a single pipe run — the same math
+        Excavation, bedding, and backfill in cubic yards for a single pipe run. The same math
         BidSheet's Trench Profiler uses. Enter your dimensions; everything updates as you type.
         Runs entirely in your browser, no signup.
       </p>
@@ -247,7 +250,7 @@
         <h2>Trench dimensions</h2>
 
         <div class="field">
-          <label for="pipeSizeIn">Pipe diameter <span class="hint">— nominal size</span></label>
+          <label for="pipeSizeIn">Pipe diameter <span class="hint">(nominal size)</span></label>
           <div class="input-wrap">
             <input type="number" id="pipeSizeIn" inputmode="decimal" step="0.5" min="0" value="8">
             <span class="unit">in</span>
@@ -256,7 +259,7 @@
         </div>
 
         <div class="field">
-          <label for="startDepthFt">Starting depth <span class="hint">— invert at the shallow end</span></label>
+          <label for="startDepthFt">Starting depth <span class="hint">(invert at the shallow end)</span></label>
           <div class="input-wrap">
             <input type="number" id="startDepthFt" inputmode="decimal" step="0.25" min="0" value="4">
             <span class="unit">ft</span>
@@ -265,7 +268,7 @@
         </div>
 
         <div class="field">
-          <label for="gradePct">Grade <span class="hint">— ft of fall per 100 ft</span></label>
+          <label for="gradePct">Grade <span class="hint">(ft of fall per 100 ft)</span></label>
           <div class="input-wrap">
             <input type="number" id="gradePct" inputmode="decimal" step="0.1" min="0" value="2">
             <span class="unit">%</span>
@@ -274,7 +277,7 @@
         </div>
 
         <div class="field">
-          <label for="runLengthLF">Run length <span class="hint">— horizontal</span></label>
+          <label for="runLengthLF">Run length <span class="hint">(horizontal)</span></label>
           <div class="input-wrap">
             <input type="number" id="runLengthLF" inputmode="decimal" step="1" min="0" value="100">
             <span class="unit">LF</span>
@@ -283,7 +286,7 @@
         </div>
 
         <div class="field">
-          <label for="trenchWidthFt">Trench width <span class="hint">— 3 ft = 36 in</span></label>
+          <label for="trenchWidthFt">Trench width <span class="hint">(3 ft = 36 in)</span></label>
           <div class="input-wrap">
             <input type="number" id="trenchWidthFt" inputmode="decimal" step="0.25" min="0" value="3">
             <span class="unit">ft</span>
@@ -292,7 +295,7 @@
         </div>
 
         <div class="field">
-          <label for="benchWidthFt">Bench width <span class="hint">— each side, 0 = vertical walls</span></label>
+          <label for="benchWidthFt">Bench width <span class="hint">(each side, 0 = vertical walls)</span></label>
           <div class="input-wrap">
             <input type="number" id="benchWidthFt" inputmode="decimal" step="0.25" min="0" value="0">
             <span class="unit">ft</span>
@@ -301,7 +304,7 @@
         </div>
 
         <div class="field">
-          <label for="beddingDepthFt">Bedding depth <span class="hint">— below the pipe, 0 = none</span></label>
+          <label for="beddingDepthFt">Bedding depth <span class="hint">(below the pipe, 0 = none)</span></label>
           <div class="input-wrap">
             <input type="number" id="beddingDepthFt" inputmode="decimal" step="0.25" min="0" value="0.5">
             <span class="unit">ft</span>
@@ -361,7 +364,7 @@
 
     <p class="calc-note">
       <noscript>This calculator needs JavaScript enabled. </noscript>
-      Estimates for planning only — verify against your geotech, trench-safety plan, and local
+      Estimates for planning only. Verify against your geotech, trench-safety plan, and local
       spec before bidding or digging. Bench width models a benched/sloped wall on each side;
       use 0 for shored vertical walls.
     </p>
@@ -377,8 +380,8 @@
           (average-end-area), so a 4 ft start on a 2% / 100 LF run averages 5 ft deep.</p>
           <p><strong>Excavation.</strong> <code>(trench width + 2 × bench width) × average depth × run length ÷ 27</code>
           for cubic yards. Bench width is added to <em>each</em> side.</p>
-          <p><strong>Bedding.</strong> <code>trench width × bedding depth × run length ÷ 27</code> —
-          a full-width layer under the pipe (benches excluded).</p>
+          <p><strong>Bedding.</strong> <code>trench width × bedding depth × run length ÷ 27</code>.
+          A full-width layer under the pipe (benches excluded).</p>
           <p><strong>Backfill.</strong> Excavation minus bedding minus the pipe's own volume
           (treated as a cylinder, <code>π × r² × pipe length</code>). Subtracting the whole pipe is
           deliberately conservative and stays within takeoff tolerance.</p>
@@ -392,7 +395,7 @@
         <summary>Why grade can't be negative</summary>
         <div>
           <p>Enter every run from its upstream (shallow) end so the pipe always falls downstream.
-          A "rising" run is just the same trench measured from the other end — flip your start and
+          A "rising" run is just the same trench measured from the other end. Flip your start and
           end, and the grade is positive again.</p>
         </div>
       </details>
@@ -402,7 +405,7 @@
         <div>
           <p>Excavated dirt swells when you dig it. The spoil figure applies a typical 1.25 swell
           (bulking) factor to excavation volume as a rough haul-off / stockpile estimate. Real swell
-          varies a lot by soil — sand is lower, clay is higher — so treat it as a ballpark.</p>
+          varies a lot by soil (sand is lower, clay is higher), so treat it as a ballpark.</p>
         </div>
       </details>
     </section>

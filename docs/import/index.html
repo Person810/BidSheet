@@ -11,11 +11,14 @@
   <meta property="og:title" content="Import prices from CSV | BidSheet">
   <meta property="og:description" content="The CSV columns BidSheet recognizes, a downloadable sample template, and the step-by-step workflow for importing a supplier price sheet.">
   <meta property="og:url" content="https://bidsheet.co/import/">
-  <meta property="og:image" content="https://bidsheet.co/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://bidsheet.co/assets/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A sanitary sewer bid open in BidSheet, with material, labor, and equipment costs broken out per line item.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Import prices from CSV | BidSheet">
   <meta name="twitter:description" content="The CSV columns BidSheet recognizes, a downloadable sample template, and the import workflow.">
-  <meta name="twitter:image" content="https://bidsheet.co/icon.png">
+  <meta name="twitter:image" content="https://bidsheet.co/assets/og-card.png">
   <link rel="icon" href="/icon.png" type="image/png">
   <script type="application/ld+json">
   {
@@ -146,6 +149,25 @@
     .steps h3 { font-size: 16px; margin-bottom: 4px; }
     .steps p { color: var(--text-muted); font-size: 14.5px; }
     .steps code { font-family: var(--mono); font-size: 13px; color: var(--text); }
+    /* Step screenshots: same hairline framing as the shots on the home page,
+       so a reader moving between the two sees one product, not two. */
+    .steps figure { margin: 16px 0 0; }
+    .steps figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--navy-deep);
+    }
+    .steps figcaption {
+      margin-top: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
 
     .notes { list-style: none; max-width: 820px; }
     .notes li {
@@ -195,7 +217,7 @@
       <p class="lede">
         BidSheet reads a supplier price sheet straight from a CSV (or TSV), figures out which
         columns are which, and matches each row to your catalog. You don't retype prices, and
-        you don't have to format the file a specific way — just bring a header row.
+        you don't have to format the file a specific way. Just bring a header row.
       </p>
     </header>
 
@@ -223,7 +245,7 @@
       <h2 id="cols-title">Columns BidSheet recognizes</h2>
       <p>
         Only two columns are required. BidSheet auto-detects each one from your header row, so
-        the names below are just examples — if your sheet calls it <code>Cost</code> or
+        the names below are just examples. If your sheet calls it <code>Cost</code> or
         <code>SKU</code>, it still maps. You can fix any mapping by hand before importing.
       </p>
       <table class="cols">
@@ -282,23 +304,38 @@
       <ol class="steps">
         <li>
           <h3>Export your price sheet as CSV</h3>
-          <p>Save your supplier's pricing as a <code>.csv</code> or <code>.tsv</code> file — one
+          <p>Save your supplier's pricing as a <code>.csv</code> or <code>.tsv</code> file, one
           material per row, with a header row naming the columns.</p>
         </li>
         <li>
           <h3>Open the catalog import</h3>
           <p>In BidSheet, go to the <strong>Materials</strong> page and click
           <strong>Import Prices</strong>.</p>
+          <figure>
+            <img src="/assets/shots/import-1-dropzone.webp" width="1250" height="990" loading="lazy" decoding="async"
+                 alt="The Import Prices from CSV dialog, listing the required Material Name and Unit Cost fields above a drop area reading 'Drag a CSV file here, or click to browse'.">
+            <figcaption>Materials · Import Prices</figcaption>
+          </figure>
         </li>
         <li>
           <h3>Drop in the file and check the mapping</h3>
-          <p>Drag the CSV onto the window. BidSheet picks the name, unit price, supplier, and
-          part-number columns for you — adjust any that look wrong.</p>
+          <p>Drag the CSV onto the window, or click to browse. BidSheet picks the name, unit price,
+          supplier, and part-number columns for you. Adjust any that look wrong.</p>
+          <figure>
+            <img src="/assets/shots/import-2-mapping.webp" width="1250" height="930" loading="lazy" decoding="async"
+                 alt="The Map Columns step showing 14 rows from a supplier price sheet, with Material Name, Unit Cost, Unit, Supplier, and Part # each already matched to a column from the file.">
+            <figcaption>Map columns · 14 rows</figcaption>
+          </figure>
         </li>
         <li>
           <h3>Review the matches and confirm</h3>
           <p>See how each row matched your catalog, then confirm. Matched items update their
           price and keep a price history; anything unmatched can be created as a new material.</p>
+          <figure>
+            <img src="/assets/shots/import-3-review.webp" width="1250" height="935" loading="lazy" decoding="async"
+                 alt="The Review Import step: 11 matched, 1 to review, 2 unmatched. Each row shows the current catalog price beside the imported price, with per-row controls to update, create a new material, or exclude it.">
+            <figcaption>Review import · 11 matched, 1 to review, 2 unmatched</figcaption>
+          </figure>
         </li>
       </ol>
     </section>
