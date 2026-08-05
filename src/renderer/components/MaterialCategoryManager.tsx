@@ -26,6 +26,7 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MaterialCategoryManagementRow | null>(null);
   const [replacementId, setReplacementId] = useState<number | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
 
   // The manager is the one surface that shows hidden categories — everywhere
   // else (sidebar, pickers) only wants the live ones.
@@ -189,9 +190,21 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
             </div>
           )}
 
-          {/* Category list */}
+          {/* Category list toolbar */}
           {!isAdding && !editingId && !deleteTarget && (
-            <button className="btn btn-primary" onClick={startAdd} style={{ marginBottom: 12 }}>+ Add Category</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <button className="btn btn-primary" onClick={startAdd}>+ Add Category</button>
+              {categories.some(c => c.is_active === 0) && (
+                <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', color: 'var(--text-muted)' }}>
+                  <input
+                    type="checkbox"
+                    checked={showHidden}
+                    onChange={(e) => setShowHidden(e.target.checked)}
+                  />
+                  Show hidden categories ({categories.filter(c => c.is_active === 0).length})
+                </label>
+              )}
+            </div>
           )}
 
           <table className="data-table" style={{ fontSize: 13 }}>
@@ -203,7 +216,7 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
               </tr>
             </thead>
             <tbody>
-              {categories.map(cat => (
+              {(showHidden ? categories : categories.filter(c => c.is_active === 1)).map(cat => (
                 <tr key={cat.id} style={cat.is_active === 0 ? { opacity: 0.5 } : {}}>
                   <td>
                     <span>{cat.name}</span>

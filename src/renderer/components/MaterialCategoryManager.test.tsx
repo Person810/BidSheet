@@ -33,7 +33,7 @@ describe('MaterialCategoryManager Component', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders category list with material count and hidden badge when open is true', async () => {
+  it('hides inactive categories by default and shows them when toggle is checked', async () => {
     render(
       <MaterialCategoryManager open={true} onClose={onClose} onChanged={onChanged} />
     );
@@ -42,6 +42,13 @@ describe('MaterialCategoryManager Component', () => {
       expect(screen.getByText('Manage Categories')).toBeInTheDocument();
       expect(screen.getByText('Pipe')).toBeInTheDocument();
       expect(screen.getByText('Fittings')).toBeInTheDocument();
+      expect(screen.queryByText('Old Valves')).toBeNull();
+    });
+
+    const toggle = screen.getByLabelText(/Show hidden categories/i);
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
       expect(screen.getByText('Old Valves')).toBeInTheDocument();
       expect(screen.getByText('hidden')).toBeInTheDocument();
     });
@@ -120,6 +127,13 @@ describe('MaterialCategoryManager Component', () => {
     render(
       <MaterialCategoryManager open={true} onClose={onClose} onChanged={onChanged} />
     );
+
+    await waitFor(() => {
+      expect(screen.getByText('Pipe')).toBeInTheDocument();
+    });
+
+    const toggle = screen.getByLabelText(/Show hidden categories/i);
+    fireEvent.click(toggle);
 
     await waitFor(() => {
       expect(screen.getByText('Old Valves')).toBeInTheDocument();
