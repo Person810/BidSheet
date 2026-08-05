@@ -6,7 +6,7 @@
   "@typescript-eslint/no-unused-vars": 92,
   "jsx-a11y/click-events-have-key-events": 131,
   "jsx-a11y/interactive-supports-focus": 1,
-  "jsx-a11y/label-has-associated-control": 161,
+  "jsx-a11y/label-has-associated-control": 160,
   "jsx-a11y/mouse-events-have-key-events": 2,
   "jsx-a11y/no-autofocus": 35,
   "jsx-a11y/no-noninteractive-element-interactions": 8,

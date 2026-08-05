@@ -170,8 +170,8 @@ export function MaterialCategoryManager({ open, onClose, onChanged, onCategoryDe
           {(isAdding || editingId) && !deleteTarget && (
             <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
               <div style={{ marginBottom: 8 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>Name</label>
-                <input className="form-control" value={form.name}
+                <label htmlFor="material-cat-name" style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>Name</label>
+                <input id="material-cat-name" className="form-control" value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   maxLength={100} autoFocus />
               </div>
