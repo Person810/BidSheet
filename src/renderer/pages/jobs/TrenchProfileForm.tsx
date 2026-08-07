@@ -12,7 +12,7 @@ import type { TakeoffRun, TakeoffSurface } from '../../modules/underground/plan-
 import { DepthZoneTable } from '../../modules/underground/DepthZoneTable';
 import { UnitInput } from '../../components/UnitInput';
 import { useUnitSystem } from '../../stores/units-store';
-import { unitLabel, formatPipeSize } from '../../../shared/unitSystem';
+import { unitLabel, formatPipeSize, toDisplay, fromDisplay } from '../../../shared/unitSystem';
 import { formatCurrency } from './helpers';
 
 const Trench3DView = React.lazy(() =>
@@ -65,7 +65,10 @@ export function TrenchProfileForm({
     const jsonStr = form.hddAdditionalPipesJson || (form.backfillType && form.backfillType.startsWith('[') ? form.backfillType : '');
     if (jsonStr) {
       try {
-        return JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed)) {
+          return parsed as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+        }
       } catch {
         return [];
       }
@@ -73,22 +76,20 @@ export function TrenchProfileForm({
     return [];
   }, [form.hddAdditionalPipesJson, form.backfillType]);
 
-  const boresCount = Math.max(1, form.hddBoresPerPit !== undefined && form.hddBoresPerPit !== null ? form.hddBoresPerPit : (form.compactionPct || 1));
-  const normalizedAdditionalPipes = useMemo(() => {
-    const list = [...additionalPipes];
-    const targetLen = boresCount - 1;
-    if (list.length < targetLen) {
-      for (let i = list.length; i < targetLen; i++) {
-        list.push({ pipeSizeIn: form.pipeSizeIn || (isMetric ? 90 : 3.0), pipeMaterialId: form.pipeMaterialId || null });
-      }
-    } else if (list.length > targetLen) {
-      list.splice(targetLen);
-    }
-    return list;
-  }, [additionalPipes, boresCount, form.pipeSizeIn, form.pipeMaterialId, isMetric]);
+  const addAdditionalPipe = () => {
+    const defaultSizeIn = form.pipeSizeIn || (isMetric ? 3.937 : 3.0);
+    const newList = [...additionalPipes, { pipeSizeIn: defaultSizeIn, pipeMaterialId: form.pipeMaterialId || null, pipeMaterial: form.pipeMaterial || '' }];
+    onChange('hddAdditionalPipesJson', JSON.stringify(newList));
+  };
+
+  const removeAdditionalPipe = (index: number) => {
+    const newList = [...additionalPipes];
+    newList.splice(index, 1);
+    onChange('hddAdditionalPipesJson', JSON.stringify(newList));
+  };
 
   const onChangeAdditionalPipe = (index: number, field: 'pipeSizeIn' | 'pipeMaterialId', value: any) => {
-    const newList = [...normalizedAdditionalPipes];
+    const newList = [...additionalPipes];
     newList[index] = { ...newList[index], [field]: value };
     onChange('hddAdditionalPipesJson', JSON.stringify(newList));
   };
@@ -123,13 +124,13 @@ export function TrenchProfileForm({
         locale: isMetric ? 'en-AU' : 'en-US',
         boresPerPit: form.hddBoresPerPit ?? 1,
         isBundle: form.backfillType === 'bundle',
-        additionalPipes: normalizedAdditionalPipes,
+        additionalPipes: additionalPipes,
         customRates,
       });
     } catch (e) {
       return null;
     }
-  }, [form, errors, isHDD, isMetric, normalizedAdditionalPipes, customRates]);
+  }, [form, errors, isHDD, isMetric, additionalPipes, customRates]);
 
   return (
     <div style={{ padding: '12px 0' }}>
@@ -191,7 +192,115 @@ export function TrenchProfileForm({
                 )}
               </div>
             </div>
+            <div className="form-group" style={{ flex: 1.5 }}>
+              <label>Standard Pipe Size</label>
+              <select
+                className="form-control"
+                value={standardSizes.find((s) => Math.abs(s - form.pipeSizeIn) < 0.01) ?? 'custom'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val !== 'custom') {
+                    onChange('pipeSizeIn', Number(val));
+                  }
+                }}
+              >
+                {standardSizes.map((s) => (
+                  <option key={s} value={s}>
+                    {formatPipeSize(s, system)}
+                  </option>
+                ))}
+                <option value="custom">Custom size...</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 1.5 }}>
+              <label>Pipe Size ({isMetric ? 'mm' : 'inches'})</label>
+              {/* eslint-disable-next-line no-restricted-syntax -- Pipe size is a direct mm/inch dimension input */}
+              <input
+                type="number"
+                className={`form-control ${hasError('pipeSizeIn') ? 'input-error' : ''}`}
+                value={toDisplay(form.pipeSizeIn, 'in', system)}
+                onChange={(e) => onChange('pipeSizeIn', fromDisplay(parseFloat(e.target.value) || 0, 'in', system))}
+              />
+            </div>
           </div>
+
+          {!isHDD && (
+            <div style={{ marginTop: 12, marginBottom: 12, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 6, border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <label style={{ fontWeight: 600, fontSize: 13, margin: 0 }}>
+                    Additional Pipes & Conduits in Trench ({additionalPipes.length})
+                  </label>
+                  <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+                    Configure extra pipes or conduits running in this trench run
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={addAdditionalPipe}
+                  style={{ fontSize: 12, padding: '4px 10px' }}>
+                  + Add Pipe / Conduit
+                </button>
+              </div>
+
+              {additionalPipes.map((p, idx) => (
+                <div key={idx} className="form-row" style={{ marginTop: 10, alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: 12, width: 65, paddingBottom: 8 }}>
+                    Pipe {idx + 2}:
+                  </div>
+                  <div className="form-group" style={{ flex: 2 }}>
+                    <label>Pipe Material</label>
+                    <select className="form-control"
+                      value={p.pipeMaterialId ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const found = pipeMaterials.find((m) => String(m.id) === String(val));
+                        onChangeAdditionalPipe(idx, 'pipeMaterialId', found ? found.id : (val || null));
+                      }}>
+                      <option value="">Select material...</option>
+                      {pipeMaterials.map((m) => (
+                        <option key={String(m.id)} value={String(m.id)}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ flex: 1.5 }}>
+                    <label>Standard Size</label>
+                    <select className="form-control"
+                      value={standardSizes.find((s) => Math.abs(s - p.pipeSizeIn) < 0.01) ?? 'custom'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val !== 'custom') {
+                          onChangeAdditionalPipe(idx, 'pipeSizeIn', parseFloat(val));
+                        }
+                      }}>
+                      {standardSizes.map((s) => (
+                        <option key={s} value={s}>{formatPipeSize(s, system)}</option>
+                      ))}
+                      <option value="custom">Custom size...</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ flex: 1.5 }}>
+                    <label>Pipe Size ({isMetric ? 'mm' : 'inches'})</label>
+                    {/* eslint-disable-next-line no-restricted-syntax -- Pipe size is a direct mm/inch dimension input */}
+                    <input type="number" className="form-control"
+                      value={toDisplay(p.pipeSizeIn, 'in', system)}
+                      onChange={(e) => onChangeAdditionalPipe(idx, 'pipeSizeIn', fromDisplay(parseFloat(e.target.value) || 0, 'in', system))} />
+                  </div>
+                  <div className="form-group" style={{ flex: '0 0 auto', paddingBottom: 2 }}>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={() => removeAdditionalPipe(idx)}
+                      title="Remove pipe"
+                      style={{ padding: '6px 10px' }}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="form-row">
             <div className="form-group">
@@ -412,7 +521,7 @@ export function TrenchProfileForm({
                     const newBores = Math.max(1, parseInt(e.target.value) || 1);
                     onChange('hddBoresPerPit', newBores);
                     
-                    const newList = [...normalizedAdditionalPipes];
+                    const newList = [...additionalPipes];
                     const targetLen = newBores - 1;
                     if (newList.length < targetLen) {
                       for (let i = newList.length; i < targetLen; i++) {
@@ -427,7 +536,7 @@ export function TrenchProfileForm({
             </div>
           )}
 
-          {isHDD && normalizedAdditionalPipes.map((p, idx) => (
+          {isHDD && additionalPipes.map((p, idx) => (
             <div key={idx} className="form-row" style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: 13 }}>
                 Bore {idx + 2} Details:

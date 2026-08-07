@@ -412,19 +412,36 @@ export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520, i
     const jsonStr = run.hddAdditionalPipesJson || run.backfillType;
     if (!jsonStr || !jsonStr.startsWith('[')) return [];
     try {
-      const list = JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+      const list = JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null; pipeMaterial?: string }>;
+      const palette = ['#3b82f6', '#f59e0b', '#06b6d4', '#8b5cf6', '#ec4899', '#f97316'];
+      const sizeColorMap = new Map<string, string>();
+      
+      const primaryKey = (run.pipeSizeIn || 3.937).toFixed(1);
+      const primaryColor = run.color || '#10b981';
+      sizeColorMap.set(primaryKey, primaryColor);
+      
+      let paletteIdx = 0;
+
       return list.map((item) => {
-        const sizeIn = item.pipeSizeIn || 3.0;
-        const sizeFt = metric ? (sizeIn / 25.4) / 12 : sizeIn / 12;
+        const sizeIn = item.pipeSizeIn || 3.937;
+        const sizeKey = sizeIn.toFixed(1);
+        
+        if (!sizeColorMap.has(sizeKey)) {
+          sizeColorMap.set(sizeKey, palette[paletteIdx % palette.length]);
+          paletteIdx++;
+        }
+
+        const sizeFt = sizeIn / 12;
         return {
           radius: Math.max(sizeFt / 2, 0.05),
-          color: '#e28743', // orange shade for additional bores to contrast with green main
+          color: sizeColorMap.get(sizeKey)!,
+          sizeIn,
         };
       });
     } catch {
       return [];
     }
-  }, [run.hddAdditionalPipesJson, run.backfillType, metric]);
+  }, [run.hddAdditionalPipesJson, run.backfillType, run.pipeSizeIn, run.color]);
 
   if (!model) {
     return <p className="text-muted">This run has no measurable length yet.</p>;

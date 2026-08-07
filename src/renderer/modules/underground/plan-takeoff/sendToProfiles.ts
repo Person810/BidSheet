@@ -93,6 +93,7 @@ export async function sendToProfiles(
       beddingMaterialId: run.beddingMaterialId,
       backfillType: run.backfillType,
       backfillMaterialId: run.backfillMaterialId,
+      hddAdditionalPipesJson: run.hddAdditionalPipesJson || null,
       sortOrder: i,
     });
     created++;

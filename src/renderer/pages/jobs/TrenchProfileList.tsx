@@ -88,6 +88,7 @@ function rowToInput(row: any): TrenchInput {
         additionalPipes = parsed.map((p: any) => ({
           pipeSizeIn: p.pipeSizeIn || 0,
           pipeMaterial: p.pipeMaterial || '',
+          pipeMaterialId: p.pipeMaterialId ?? null,
         }));
       }
     } catch {}
@@ -322,7 +323,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       hddIncludePits: form.hddIncludePits !== false,
       hddMarginPct: form.hddMarginPct ?? 15,
       hddBoresPerPit: isHDD ? ((form as any).hddBoresPerPit ?? 1) : 1,
-      hddAdditionalPipesJson: isHDD ? ((form as any).hddAdditionalPipesJson || null) : null,
+      hddAdditionalPipesJson: (form as any).hddAdditionalPipesJson || null,
     });
     setEditingId(null);
     await loadProfiles();
