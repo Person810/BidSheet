@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from './trenchInputToRun';
 import { buildRunGeometry } from './plan-takeoff/trench3dModel';
-import type { TrenchInput } from './trenchCalc';
+import { validateInput, type TrenchInput } from './trenchCalc';
 
 const baseInput: TrenchInput = {
   pipeSizeIn: 8,
@@ -62,6 +62,11 @@ describe('trenchInputToTakeoffRun', () => {
         { pipeMaterial: 'PVC', pipeSizeIn: 6 },
       ],
     };
+
+    const errors = validateInput(stackedDuctBankInput);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].severity).toBe('warning');
+    expect(errors[0].message).toMatch(/exceeds/i);
 
     const run = trenchInputToTakeoffRun(stackedDuctBankInput, 'Duct Bank Run');
     expect(run).toBeDefined();

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { STANDARD_PIPE_SIZES_IN } from '../../../../shared/constants/units';
 import { FuzzyAutocomplete } from '../../../components/FuzzyAutocomplete';
 import { UnitInput } from '../../../components/UnitInput';
 import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from '../useTrenchMaterials';
@@ -41,9 +42,6 @@ const METRIC_DEFAULT_CONFIG: RunConfig = {
   trenchWidthFt: fromDisplay(1, 'ft', 'metric'),
   beddingDepthFt: fromDisplay(0.15, 'ft', 'metric'),
 };
-
-/** Standard nominal pipe sizes offered by the metric DN picker. */
-const STANDARD_PIPE_SIZES_IN = [2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 27, 30, 36, 42, 48];
 
 interface TrenchConfigModalProps {
   onConfirm: (config: RunConfig) => void;

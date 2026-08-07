@@ -33,12 +33,10 @@ export function useTrenchMaterials() {
 
         let generalMaterials: any[] = [];
         try {
-          if (typeof (window.api as any).getMaterials === 'function') {
-            generalMaterials = await (window.api as any).getMaterials();
-          } else if (typeof (window.api as any).listMaterials === 'function') {
-            generalMaterials = await (window.api as any).listMaterials();
-          }
-        } catch {}
+          generalMaterials = await window.api.getMaterials();
+        } catch {
+          // Ignore fallback errors
+        }
 
         const pipePool = [...allPipe, ...generalMaterials];
         const uniqueMap = new Map<number | string, any>();
