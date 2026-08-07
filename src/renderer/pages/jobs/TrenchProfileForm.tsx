@@ -72,8 +72,8 @@ export function TrenchProfileForm({
         if (Array.isArray(parsed)) {
           return parsed as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
         }
-      } catch {
-        // Fallback to empty array on invalid JSON format
+      } catch (err) {
+        console.warn('Failed to parse additional pipes JSON:', err);
         return [];
       }
     }
@@ -131,8 +131,8 @@ export function TrenchProfileForm({
         additionalPipes: additionalPipes,
         customRates,
       });
-    } catch {
-      // Fallback to null on calculation failure
+    } catch (err) {
+      console.warn('HDD calculation failed:', err);
       return null;
     }
   }, [form, blockingErrors, isHDD, isMetric, additionalPipes, customRates]);
@@ -219,7 +219,6 @@ export function TrenchProfileForm({
             </div>
             <div className="form-group" style={{ flex: 1.5 }}>
               <label>Pipe Size ({isMetric ? 'mm' : 'inches'})</label>
-              {/* eslint-disable-next-line no-restricted-syntax -- Pipe size is a direct mm/inch dimension input */}
               <input
                 type="number"
                 className={`form-control ${hasError('pipeSizeIn') ? 'input-error' : ''}`}

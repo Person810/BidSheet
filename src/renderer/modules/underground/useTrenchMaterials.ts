@@ -28,14 +28,16 @@ export function useTrenchMaterials() {
           try {
             const rows = await window.api.getMaterialsByCategoryName(cat);
             if (Array.isArray(rows)) allPipe.push(...rows);
-          } catch {}
+          } catch (err) {
+            console.warn(`Failed to fetch materials for category "${cat}":`, err);
+          }
         }
 
         let generalMaterials: any[] = [];
         try {
           generalMaterials = await window.api.getMaterials();
-        } catch {
-          // Ignore fallback errors
+        } catch (err) {
+          console.warn('Failed to fetch general materials:', err);
         }
 
         const pipePool = [...allPipe, ...generalMaterials];
