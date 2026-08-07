@@ -1,6 +1,6 @@
 {
   "name": "bidsheet",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Open source underground utility estimating software for subcontractors",
   "author": {
     "name": "Person810",
@@ -30,6 +30,7 @@
     "lint:baseline": "node scripts/lint-ratchet.mjs --update",
     "check:ipc": "node scripts/check-ipc-wiring.mjs",
     "check:ipc:baseline": "node scripts/check-ipc-wiring.mjs --update",
+    "postinstall": "node scripts/prune-jsdom-canvas.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "electron .",
