@@ -33,7 +33,7 @@
     "postinstall": "node scripts/prune-jsdom-canvas.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "start": "electron .",
+    "start": "npx @electron/rebuild -f -w better-sqlite3 && electron .",
     "start:debug": "electron --remote-debugging-port=9222 .",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",

@@ -23,9 +23,15 @@ import {
  */
 export const NATIVE_BACKFILL_LABEL = 'Native Material';
 
+export interface TrenchPipe {
+  pipeSizeIn: number;
+  pipeMaterial: string;
+}
+
 export interface TrenchInput {
   pipeSizeIn: number;         // inches
   pipeMaterial: string;
+  additionalPipes?: TrenchPipe[];
   startDepthFt: number;       // invert depth at start, feet
   gradePct: number;           // e.g. 2.0 = 2 ft fall per 100 ft
   runLengthLF: number;        // horizontal run, LF
@@ -49,9 +55,11 @@ export interface TrenchOutput {
   excavationCY: number;
   beddingCY: number;
   backfillCY: number;
+  totalPipeCF: number;        // combined pipe displacement volume
   tracerWireLF: number;
   warningTapeLF: number;
 }
+
 
 export interface ValidationError {
   field: string;
@@ -86,8 +94,9 @@ export function validateInput(input: TrenchInput): ValidationError[] {
   if (compactionPct < 0 || compactionPct > 100)
     errors.push({ field: 'compactionPct', message: 'Compaction/waste must be between 0 and 100%' });
 
-  const pipeDiameterFt = inchesToFeet(input.pipeSizeIn);
-  if (pipeDiameterFt >= input.trenchWidthFt)
+  const totalPipeWidthIn = input.pipeSizeIn + (input.additionalPipes ?? []).reduce((sum, p) => sum + (p.pipeSizeIn || 0), 0);
+  const totalPipeWidthFt = inchesToFeet(totalPipeWidthIn);
+  if (totalPipeWidthFt >= input.trenchWidthFt)
     errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than pipe' });
 
   return errors;
@@ -128,15 +137,18 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   const beddingCF = trenchWidthFt * beddingDepthFt * runLengthLF;
   const beddingCY = cubicFeetToYards(beddingCF) * compactionFactor;
 
-  // Pipe volume (cylinder) -- subtract from backfill
-  const pipeRadiusFt = inchesToFeet(pipeSizeIn) / 2;
-  const pipeCF = Math.PI * pipeRadiusFt ** 2 * pipeLF;
+  // Pipe volume (cylinder) -- sum primary pipe + all additional pipes
+  const primaryRadiusFt = inchesToFeet(pipeSizeIn) / 2;
+  let totalPipeCF = Math.PI * primaryRadiusFt ** 2 * pipeLF;
+  for (const extraPipe of input.additionalPipes ?? []) {
+    if (extraPipe.pipeSizeIn > 0) {
+      const extraRadiusFt = inchesToFeet(extraPipe.pipeSizeIn) / 2;
+      totalPipeCF += Math.PI * extraRadiusFt ** 2 * pipeLF;
+    }
+  }
 
-  // Backfill = excavation - bedding - pipe. Subtracting the full cylinder
-  // assumes the pipe sits entirely above the bedding zone (bedding to
-  // invert). For bedding-to-springline specs this slightly understates
-  // backfill -- conservative, and within takeoff tolerance.
-  const backfillCF = Math.max(excavationCF - beddingCF - pipeCF, 0);
+  // Backfill = excavation - bedding - total pipe displacement.
+  const backfillCF = Math.max(excavationCF - beddingCF - totalPipeCF, 0);
   const backfillCY = cubicFeetToYards(backfillCF) * backfillFactor;
 
   // Tracer wire is taped to the pipe, so it follows the pipe slope; warning
@@ -151,6 +163,7 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
     excavationCY: round2(excavationCY),
     beddingCY: round2(beddingCY),
     backfillCY: round2(backfillCY),
+    totalPipeCF: round2(totalPipeCF),
     tracerWireLF: round2(tracerWireLF),
     warningTapeLF: round2(warningTapeLF),
   };

@@ -79,9 +79,23 @@ const METRIC_DEFAULTS = {
 };
 
 function rowToInput(row: any): TrenchInput {
+  let additionalPipes: any[] = [];
+  const jsonStr = row.hdd_additional_pipes_json || (row.backfill_type && row.backfill_type.startsWith('[') ? row.backfill_type : '');
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) {
+        additionalPipes = parsed.map((p: any) => ({
+          pipeSizeIn: p.pipeSizeIn || 0,
+          pipeMaterial: p.pipeMaterial || '',
+        }));
+      }
+    } catch {}
+  }
   return {
     pipeSizeIn: row.pipe_size_in,
     pipeMaterial: row.pipe_material,
+    additionalPipes,
     startDepthFt: row.start_depth_ft,
     gradePct: row.grade_pct,
     runLengthLF: row.run_length_lf,
