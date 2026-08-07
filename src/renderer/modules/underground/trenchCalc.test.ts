@@ -285,14 +285,20 @@ describe('multi-pipe trench calculations (issue #150)', () => {
     expect(errors.map((e) => e.field)).toContain('trenchWidthFt');
   });
 
-  it('explainTrench breaks down all pipes in displacement list', () => {
+  it('T003: explainTrench breaks down all pipes and reconciles cumulative displacement with calculateTrench()', () => {
     const inp = input({
-      pipeSizeIn: 8,
-      additionalPipes: [{ pipeSizeIn: 4, pipeMaterial: 'Conduit' }],
+      pipeSizeIn: 12,
+      additionalPipes: [
+        { pipeSizeIn: 4, pipeMaterial: 'Conduit' },
+        { pipeSizeIn: 4, pipeMaterial: 'Conduit' },
+      ],
     });
-    const math = explainTrench(inp, calculateTrench(inp));
+    const res = calculateTrench(inp);
+    const math = explainTrench(inp, res);
     const pipeLine = math.backfill.lines.find((l) => l.label === 'Pipe displacement');
     expect(pipeLine).toBeDefined();
+    // Pipe displacement in explainTrench terms is formatted in CF (96 CF) matching totalPipeCF
+    expect(pipeLine?.value).toBe('96 CF');
   });
 });
 

@@ -53,11 +53,10 @@ export function useTrenchMaterials() {
           const isLengthUnit = m.unit === 'LF' || m.unit === 'm' || m.unit === 'ft';
           const matchesSizeFormat = /^(\d+['"]|DN ?\d+|\d+ ?mm|\d+ ?in)/i.test(m.name);
           const matchesKeyword = /pipe|conduit|tubing|duct|pvc|hdpe|iron/i.test(m.name) || /pipe|conduit/i.test(m.category_name || '');
-          return (isLengthUnit && matchesSizeFormat) || matchesKeyword || isLengthUnit;
+          return (isLengthUnit && matchesSizeFormat) || matchesKeyword;
         });
 
-        const finalPipes = filtered.length > 0 ? filtered : combinedList;
-        setPipeMaterials(materialsToAutocomplete(finalPipes));
+        setPipeMaterials(materialsToAutocomplete(filtered));
 
         const bedding = await window.api.getMaterialsByCategoryName(BEDDING_CATEGORY);
         setBeddingMaterials(materialsToAutocomplete(Array.isArray(bedding) ? bedding : []));

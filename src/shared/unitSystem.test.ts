@@ -68,6 +68,20 @@ describe('toDisplay round-trip (metric fidelity)', () => {
     expect(toDisplay(canonicalIn, 'in', 'metric')).toBe(100);
   });
 
+  it('T002: converts freeform metric user inputs (e.g. 150 mm) to canonical inches and never stores raw mm in DB', () => {
+    // A metric user typing '150' for a 150 mm pipe size
+    const userEnteredMm = 150;
+    const storedCanonicalInches = fromDisplay(userEnteredMm, 'in', 'metric');
+
+    // 150 mm / 25.4 = 5.905511811 inches
+    expect(storedCanonicalInches).toBeCloseTo(5.9055118, 5);
+    expect(storedCanonicalInches).not.toBe(150);
+
+    // Display boundary converts canonical inches back to user display 150 mm
+    const displayVal = toDisplay(storedCanonicalInches, 'in', 'metric');
+    expect(displayVal).toBe(150);
+  });
+
   it('leaves imperial values untouched apart from noise rounding', () => {
     expect(toDisplay(4, 'ft', 'imperial')).toBe(4);
     expect(toDisplay(0.5, 'ft', 'imperial')).toBe(0.5);

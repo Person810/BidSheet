@@ -64,6 +64,7 @@ export interface TrenchOutput {
 export interface ValidationError {
   field: string;
   message: string;
+  severity?: 'error' | 'warning';
 }
 
 // ---- Validation ------------------------------------------------------------
@@ -72,32 +73,42 @@ export function validateInput(input: TrenchInput): ValidationError[] {
   const errors: ValidationError[] = [];
 
   if (input.pipeSizeIn <= 0)
-    errors.push({ field: 'pipeSizeIn', message: 'Pipe size must be > 0' });
+    errors.push({ field: 'pipeSizeIn', message: 'Pipe size must be > 0', severity: 'error' });
   if (input.startDepthFt <= 0)
-    errors.push({ field: 'startDepthFt', message: 'Starting depth must be > 0' });
+    errors.push({ field: 'startDepthFt', message: 'Starting depth must be > 0', severity: 'error' });
   // Convention: enter the run from its upstream (shallow) end so the pipe
   // always falls downstream. A rising run is the same trench measured from
   // the other end.
   if (input.gradePct < 0)
-    errors.push({ field: 'gradePct', message: 'Grade cannot be negative. Measure from the upstream (shallow) end.' });
+    errors.push({ field: 'gradePct', message: 'Grade cannot be negative. Measure from the upstream (shallow) end.', severity: 'error' });
   if (input.runLengthLF <= 0)
-    errors.push({ field: 'runLengthLF', message: 'Run length must be > 0' });
+    errors.push({ field: 'runLengthLF', message: 'Run length must be > 0', severity: 'error' });
   if (input.trenchWidthFt <= 0)
-    errors.push({ field: 'trenchWidthFt', message: 'Trench width must be > 0' });
+    errors.push({ field: 'trenchWidthFt', message: 'Trench width must be > 0', severity: 'error' });
   if (input.benchWidthFt < 0)
-    errors.push({ field: 'benchWidthFt', message: 'Bench width cannot be negative' });
+    errors.push({ field: 'benchWidthFt', message: 'Bench width cannot be negative', severity: 'error' });
 
   if (input.beddingDepthFt < 0)
-    errors.push({ field: 'beddingDepthFt', message: 'Bedding depth cannot be negative' });
+    errors.push({ field: 'beddingDepthFt', message: 'Bedding depth cannot be negative', severity: 'error' });
 
   const compactionPct = input.compactionPct ?? 0;
   if (compactionPct < 0 || compactionPct > 100)
-    errors.push({ field: 'compactionPct', message: 'Compaction/waste must be between 0 and 100%' });
+    errors.push({ field: 'compactionPct', message: 'Compaction/waste must be between 0 and 100%', severity: 'error' });
 
-  const totalPipeWidthIn = input.pipeSizeIn + (input.additionalPipes ?? []).reduce((sum, p) => sum + (p.pipeSizeIn || 0), 0);
-  const totalPipeWidthFt = inchesToFeet(totalPipeWidthIn);
-  if (totalPipeWidthFt >= input.trenchWidthFt)
-    errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than pipe' });
+  const primaryPipeWidthFt = inchesToFeet(input.pipeSizeIn);
+  if (primaryPipeWidthFt >= input.trenchWidthFt) {
+    errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than primary pipe', severity: 'error' });
+  } else {
+    const totalPipeWidthIn = input.pipeSizeIn + (input.additionalPipes ?? []).reduce((sum, p) => sum + (p.pipeSizeIn || 0), 0);
+    const totalPipeWidthFt = inchesToFeet(totalPipeWidthIn);
+    if (totalPipeWidthFt >= input.trenchWidthFt) {
+      errors.push({
+        field: 'trenchWidthFt',
+        message: 'Combined pipe width exceeds side-by-side trench width (acceptable if stacking conduits in duct banks)',
+        severity: 'warning',
+      });
+    }
+  }
 
   return errors;
 }
@@ -293,7 +304,7 @@ export function explainTrench(
   const excavationCF = totalWidth * output.avgDepthFt * input.runLengthLF;
   const beddingCF = input.trenchWidthFt * input.beddingDepthFt * input.runLengthLF;
   const pipeRadiusFt = inchesToFeet(input.pipeSizeIn) / 2;
-  const pipeCF = Math.PI * pipeRadiusFt ** 2 * output.pipeLF;
+  const pipeCF = output.totalPipeCF ?? (Math.PI * pipeRadiusFt ** 2 * output.pipeLF);
 
   const compactionPct = input.compactionPct ?? 0;
   const backfillCompacts =
