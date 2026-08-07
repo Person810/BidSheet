@@ -4,7 +4,7 @@ import {
   parsePipeSizeFromName, depthZoneBreakdown,
   type TrenchInput, type ValidationError,
 } from '../../modules/underground/trenchCalc';
-import { calculateHDD } from '../../modules/underground/hddCalc';
+import { calculateHDD, type HDDInput } from '../../modules/underground/hddCalc';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { NATIVE_MATERIAL_ITEM } from '../../modules/underground/useTrenchMaterials';
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from '../../modules/underground/trenchInputToRun';
@@ -119,7 +119,7 @@ export function TrenchProfileForm({
     if (!isHDD || blockingErrors.length > 0) return null;
     try {
       return calculateHDD({
-        location: (form.hddLocation as any) || 'metro',
+        location: (form.hddLocation as HDDInput['location']) || 'metro',
         dn: form.pipeSizeIn,
         length: form.runLengthLF,
         includeSlurry: form.backfillType !== 'bundle' && form.hddIncludeSlurry !== false,
@@ -141,8 +141,9 @@ export function TrenchProfileForm({
     <div style={{ padding: '12px 0' }}>
       <div className="form-row">
         <div className="form-group" style={{ flex: 1 }}>
-          <label>Method</label>
+          <label htmlFor="trench-method-select">Method</label>
           <select
+            id="trench-method-select"
             className="form-control"
             value={form.method || 'open_cut'}
             onChange={(e) => {
@@ -219,9 +220,8 @@ export function TrenchProfileForm({
             </div>
             <div className="form-group" style={{ flex: 1.5 }}>
               <label>Pipe Size ({isMetric ? 'mm' : 'inches'})</label>
-              <input
-                type="number"
-                className={`form-control ${hasError('pipeSizeIn') ? 'input-error' : ''}`}
+              {/* eslint-disable-next-line no-restricted-syntax -- Pipe size is a direct mm/inch dimension input */}
+              <input type="number" className={`form-control ${hasError('pipeSizeIn') ? 'input-error' : ''}`}
                 value={toDisplay(form.pipeSizeIn, 'in', system)}
                 onChange={(e) => onChange('pipeSizeIn', fromDisplay(parseFloat(e.target.value) || 0, 'in', system))}
               />
@@ -599,14 +599,14 @@ export function TrenchProfileForm({
 
       {!isHDD && depthZones.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <label>Depth Summary</label>
+          <div style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>Depth Summary</div>
           <DepthZoneTable zones={depthZones} />
         </div>
       )}
 
       {isHDD && hddOutput && (
         <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-          <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>HDD Bore Estimate Summary</label>
+          <div style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>HDD Bore Estimate Summary</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <span className="text-muted" style={{ fontSize: 11, display: 'block' }}>Estimated Rate</span>
@@ -622,7 +622,7 @@ export function TrenchProfileForm({
             </div>
           </div>
 
-          <label style={{ fontWeight: 600, display: 'block', marginBottom: 4, fontSize: 12 }}>Cost Category Breakdown</label>
+          <div style={{ fontWeight: 600, display: 'block', marginBottom: 4, fontSize: 12 }}>Cost Category Breakdown</div>
           <table className="data-table" style={{ fontSize: 12 }}>
             <thead>
               <tr>
@@ -666,8 +666,9 @@ export function TrenchProfileForm({
 
       {!isHDD && takeoffRuns.length > 0 && (
         <div className="form-group" style={{ marginTop: 8 }}>
-          <label>Preview against plan run</label>
+          <label htmlFor="trench-preview-run-select">Preview against plan run</label>
           <select
+            id="trench-preview-run-select"
             className="form-control"
             value={linkedRunId ?? ''}
             onChange={(e) => setLinkedRunId(e.target.value ? Number(e.target.value) : null)}
