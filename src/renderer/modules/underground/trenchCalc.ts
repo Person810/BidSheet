@@ -23,9 +23,15 @@ import {
  */
 export const NATIVE_BACKFILL_LABEL = 'Native Material';
 
+export interface TrenchPipe {
+  pipeSizeIn: number;
+  pipeMaterial: string;
+}
+
 export interface TrenchInput {
   pipeSizeIn: number;         // inches
   pipeMaterial: string;
+  additionalPipes?: TrenchPipe[];
   startDepthFt: number;       // invert depth at start, feet
   gradePct: number;           // e.g. 2.0 = 2 ft fall per 100 ft
   runLengthLF: number;        // horizontal run, LF
@@ -49,13 +55,16 @@ export interface TrenchOutput {
   excavationCY: number;
   beddingCY: number;
   backfillCY: number;
+  totalPipeCF: number;        // combined pipe displacement volume
   tracerWireLF: number;
   warningTapeLF: number;
 }
 
+
 export interface ValidationError {
   field: string;
   message: string;
+  severity?: 'error' | 'warning';
 }
 
 // ---- Validation ------------------------------------------------------------
@@ -64,31 +73,42 @@ export function validateInput(input: TrenchInput): ValidationError[] {
   const errors: ValidationError[] = [];
 
   if (input.pipeSizeIn <= 0)
-    errors.push({ field: 'pipeSizeIn', message: 'Pipe size must be > 0' });
+    errors.push({ field: 'pipeSizeIn', message: 'Pipe size must be > 0', severity: 'error' });
   if (input.startDepthFt <= 0)
-    errors.push({ field: 'startDepthFt', message: 'Starting depth must be > 0' });
+    errors.push({ field: 'startDepthFt', message: 'Starting depth must be > 0', severity: 'error' });
   // Convention: enter the run from its upstream (shallow) end so the pipe
   // always falls downstream. A rising run is the same trench measured from
   // the other end.
   if (input.gradePct < 0)
-    errors.push({ field: 'gradePct', message: 'Grade cannot be negative. Measure from the upstream (shallow) end.' });
+    errors.push({ field: 'gradePct', message: 'Grade cannot be negative. Measure from the upstream (shallow) end.', severity: 'error' });
   if (input.runLengthLF <= 0)
-    errors.push({ field: 'runLengthLF', message: 'Run length must be > 0' });
+    errors.push({ field: 'runLengthLF', message: 'Run length must be > 0', severity: 'error' });
   if (input.trenchWidthFt <= 0)
-    errors.push({ field: 'trenchWidthFt', message: 'Trench width must be > 0' });
+    errors.push({ field: 'trenchWidthFt', message: 'Trench width must be > 0', severity: 'error' });
   if (input.benchWidthFt < 0)
-    errors.push({ field: 'benchWidthFt', message: 'Bench width cannot be negative' });
+    errors.push({ field: 'benchWidthFt', message: 'Bench width cannot be negative', severity: 'error' });
 
   if (input.beddingDepthFt < 0)
-    errors.push({ field: 'beddingDepthFt', message: 'Bedding depth cannot be negative' });
+    errors.push({ field: 'beddingDepthFt', message: 'Bedding depth cannot be negative', severity: 'error' });
 
   const compactionPct = input.compactionPct ?? 0;
   if (compactionPct < 0 || compactionPct > 100)
-    errors.push({ field: 'compactionPct', message: 'Compaction/waste must be between 0 and 100%' });
+    errors.push({ field: 'compactionPct', message: 'Compaction/waste must be between 0 and 100%', severity: 'error' });
 
-  const pipeDiameterFt = inchesToFeet(input.pipeSizeIn);
-  if (pipeDiameterFt >= input.trenchWidthFt)
-    errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than pipe' });
+  const primaryPipeWidthFt = inchesToFeet(input.pipeSizeIn);
+  if (primaryPipeWidthFt >= input.trenchWidthFt) {
+    errors.push({ field: 'trenchWidthFt', message: 'Trench must be wider than primary pipe', severity: 'error' });
+  } else {
+    const totalPipeWidthIn = input.pipeSizeIn + (input.additionalPipes ?? []).reduce((sum, p) => sum + (p.pipeSizeIn || 0), 0);
+    const totalPipeWidthFt = inchesToFeet(totalPipeWidthIn);
+    if (totalPipeWidthFt >= input.trenchWidthFt) {
+      errors.push({
+        field: 'trenchWidthFt',
+        message: 'Combined pipe width exceeds side-by-side trench width (acceptable if stacking conduits in duct banks)',
+        severity: 'warning',
+      });
+    }
+  }
 
   return errors;
 }
@@ -128,15 +148,18 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
   const beddingCF = trenchWidthFt * beddingDepthFt * runLengthLF;
   const beddingCY = cubicFeetToYards(beddingCF) * compactionFactor;
 
-  // Pipe volume (cylinder) -- subtract from backfill
-  const pipeRadiusFt = inchesToFeet(pipeSizeIn) / 2;
-  const pipeCF = Math.PI * pipeRadiusFt ** 2 * pipeLF;
+  // Pipe volume (cylinder) -- sum primary pipe + all additional pipes
+  const primaryRadiusFt = inchesToFeet(pipeSizeIn) / 2;
+  let totalPipeCF = Math.PI * primaryRadiusFt ** 2 * pipeLF;
+  for (const extraPipe of input.additionalPipes ?? []) {
+    if (extraPipe.pipeSizeIn > 0) {
+      const extraRadiusFt = inchesToFeet(extraPipe.pipeSizeIn) / 2;
+      totalPipeCF += Math.PI * extraRadiusFt ** 2 * pipeLF;
+    }
+  }
 
-  // Backfill = excavation - bedding - pipe. Subtracting the full cylinder
-  // assumes the pipe sits entirely above the bedding zone (bedding to
-  // invert). For bedding-to-springline specs this slightly understates
-  // backfill -- conservative, and within takeoff tolerance.
-  const backfillCF = Math.max(excavationCF - beddingCF - pipeCF, 0);
+  // Backfill = excavation - bedding - total pipe displacement.
+  const backfillCF = Math.max(excavationCF - beddingCF - totalPipeCF, 0);
   const backfillCY = cubicFeetToYards(backfillCF) * backfillFactor;
 
   // Tracer wire is taped to the pipe, so it follows the pipe slope; warning
@@ -151,6 +174,7 @@ export function calculateTrench(input: TrenchInput): TrenchOutput {
     excavationCY: round2(excavationCY),
     beddingCY: round2(beddingCY),
     backfillCY: round2(backfillCY),
+    totalPipeCF: round2(totalPipeCF),
     tracerWireLF: round2(tracerWireLF),
     warningTapeLF: round2(warningTapeLF),
   };
@@ -280,7 +304,7 @@ export function explainTrench(
   const excavationCF = totalWidth * output.avgDepthFt * input.runLengthLF;
   const beddingCF = input.trenchWidthFt * input.beddingDepthFt * input.runLengthLF;
   const pipeRadiusFt = inchesToFeet(input.pipeSizeIn) / 2;
-  const pipeCF = Math.PI * pipeRadiusFt ** 2 * output.pipeLF;
+  const pipeCF = output.totalPipeCF ?? (Math.PI * pipeRadiusFt ** 2 * output.pipeLF);
 
   const compactionPct = input.compactionPct ?? 0;
   const backfillCompacts =

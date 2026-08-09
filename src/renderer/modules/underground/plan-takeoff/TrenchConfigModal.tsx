@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
+import { STANDARD_PIPE_SIZES_IN } from '../../../../shared/constants/units';
 import { FuzzyAutocomplete } from '../../../components/FuzzyAutocomplete';
 import { UnitInput } from '../../../components/UnitInput';
 import { useTrenchMaterials, NATIVE_MATERIAL_ITEM } from '../useTrenchMaterials';
 import { parsePipeSizeFromName } from '../trenchCalc';
-import { formatPipeSize, fromDisplay } from '../../../../shared/unitSystem';
+import { formatPipeSize, fromDisplay, toDisplay } from '../../../../shared/unitSystem';
 import { useUnitSystem } from '../../../stores/units-store';
 import type { RunConfig, UtilityType } from './types';
 import { dismissOnEscOnly } from '../../../components/modalDismiss';
@@ -42,9 +43,6 @@ const METRIC_DEFAULT_CONFIG: RunConfig = {
   beddingDepthFt: fromDisplay(0.15, 'ft', 'metric'),
 };
 
-/** Standard nominal pipe sizes offered by the metric DN picker. */
-const STANDARD_PIPE_SIZES_IN = [2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 27, 30, 36, 42, 48];
-
 interface TrenchConfigModalProps {
   onConfirm: (config: RunConfig) => void;
   onCancel: () => void;
@@ -68,6 +66,33 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
 
   const set = <K extends keyof RunConfig>(field: K, value: RunConfig[K]) =>
     setConfig((prev) => ({ ...prev, [field]: value }));
+
+  const additionalPipes = useMemo(() => {
+    if (config.hddAdditionalPipesJson) {
+      try {
+        const parsed = JSON.parse(config.hddAdditionalPipesJson);
+        if (Array.isArray(parsed)) return parsed as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+      } catch {}
+    }
+    return [];
+  }, [config.hddAdditionalPipesJson]);
+
+  const addAdditionalPipe = () => {
+    const newList = [...additionalPipes, { pipeSizeIn: config.pipeSizeIn || (system === 'metric' ? 90 : 3.0), pipeMaterialId: pipeMaterialId || null }];
+    set('hddAdditionalPipesJson', JSON.stringify(newList));
+  };
+
+  const removeAdditionalPipe = (index: number) => {
+    const newList = [...additionalPipes];
+    newList.splice(index, 1);
+    set('hddAdditionalPipesJson', JSON.stringify(newList));
+  };
+
+  const onChangeAdditionalPipe = (index: number, field: 'pipeSizeIn' | 'pipeMaterialId', value: any) => {
+    const newList = [...additionalPipes];
+    newList[index] = { ...newList[index], [field]: value };
+    set('hddAdditionalPipesJson', JSON.stringify(newList));
+  };
 
   const handleCopyLastRun = () => {
     if (!lastRunConfig) return;
@@ -176,14 +201,91 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
                 <input
                   type="number"
                   className="form-control"
-                  value={config.pipeSizeIn}
+                  value={toDisplay(config.pipeSizeIn, 'in', system)}
                   step="1"
                   min="1"
-                  onChange={(e) => set('pipeSizeIn', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => set('pipeSizeIn', fromDisplay(parseFloat(e.target.value) || 0, 'in', system))}
                 />
               </>
             )}
           </div>
+        </div>
+
+        {/* Additional Pipes & Conduits in Trench */}
+        <div style={{ marginTop: 12, marginBottom: 12, padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 6, border: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <label className="form-label" style={{ fontWeight: 600, fontSize: 13, margin: 0 }}>
+                Additional Pipes & Conduits ({additionalPipes.length})
+              </label>
+              <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+                Configure extra pipes or conduits running in this trench
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={addAdditionalPipe}
+              style={{ fontSize: 12, padding: '3px 8px' }}>
+              + Add Pipe / Conduit
+            </button>
+          </div>
+
+          {additionalPipes.map((p, idx) => (
+            <div key={idx} className="form-row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: 12, width: 55, paddingBottom: 6 }}>
+                Pipe {idx + 2}:
+              </div>
+              <div className="form-group" style={{ flex: 1.5 }}>
+                <label className="form-label">Material</label>
+                <select className="form-control"
+                  value={p.pipeMaterialId ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const found = pipeMaterials.find((m) => String(m.id) === String(val));
+                    onChangeAdditionalPipe(idx, 'pipeMaterialId', found ? found.id : (val || null));
+                  }}>
+                  <option value="">Select material...</option>
+                  {pipeMaterials.map((m) => (
+                    <option key={String(m.id)} value={String(m.id)}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group" style={{ width: 120 }}>
+                <label className="form-label">Standard Size</label>
+                <select className="form-control"
+                  value={STANDARD_PIPE_SIZES_IN.includes(p.pipeSizeIn) ? p.pipeSizeIn : 'custom'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val !== 'custom') {
+                      onChangeAdditionalPipe(idx, 'pipeSizeIn', parseFloat(val));
+                    }
+                  }}>
+                  {STANDARD_PIPE_SIZES_IN.map((s) => (
+                    <option key={s} value={s}>{formatPipeSize(s, system)}</option>
+                  ))}
+                  <option value="custom">Custom size...</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ width: 100 }}>
+                <label className="form-label">Size ({system === 'metric' ? 'mm' : 'in'})</label>
+                {/* eslint-disable-next-line no-restricted-syntax -- Pipe size is a direct mm/inch dimension input */}
+                <input type="number" className="form-control"
+                  value={toDisplay(p.pipeSizeIn, 'in', system)}
+                  onChange={(e) => onChangeAdditionalPipe(idx, 'pipeSizeIn', fromDisplay(parseFloat(e.target.value) || 0, 'in', system))} />
+              </div>
+              <div className="form-group" style={{ flex: '0 0 auto', paddingBottom: 2 }}>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => removeAdditionalPipe(idx)}
+                  title="Remove pipe"
+                  style={{ padding: '4px 8px' }}>
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Depth + Grade */}

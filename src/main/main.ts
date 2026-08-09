@@ -88,7 +88,10 @@ function createWindow(): void {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5173').catch(() => {
+      logger.info('app', 'Dev server not reachable at http://localhost:5173; loading local production bundle.');
+      mainWindow?.loadFile(path.join(__dirname, '../renderer/index.html'));
+    });
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }

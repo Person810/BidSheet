@@ -61,3 +61,7 @@ export function squareFeetToYards(squareFeet: number): number {
 export function cubicFeetToYards(cubicFeet: number): number {
   return cubicFeet / CUBIC_FEET_PER_CUBIC_YARD;
 }
+
+/** Standard open-cut nominal pipe sizes in inches. */
+export const STANDARD_PIPE_SIZES_IN = [2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 30, 36, 42, 48];
+

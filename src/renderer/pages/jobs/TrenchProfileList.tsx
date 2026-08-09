@@ -78,18 +78,37 @@ const METRIC_DEFAULTS = {
   beddingDepthFt: fromDisplay(0.15, 'ft', 'metric'),
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Database row payload
 function rowToInput(row: any): TrenchInput {
+  let additionalPipes: Array<{ pipeSizeIn: number; pipeMaterial: string; pipeMaterialId: number | string | null }> = [];
+  const jsonStr = (typeof row.hdd_additional_pipes_json === 'string' ? row.hdd_additional_pipes_json : '') ||
+    (typeof row.backfill_type === 'string' && row.backfill_type.startsWith('[') ? row.backfill_type : '');
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) {
+        additionalPipes = parsed.map((p: any) => ({
+          pipeSizeIn: typeof p.pipeSizeIn === 'number' ? p.pipeSizeIn : 0,
+          pipeMaterial: typeof p.pipeMaterial === 'string' ? p.pipeMaterial : '',
+          pipeMaterialId: (typeof p.pipeMaterialId === 'number' || typeof p.pipeMaterialId === 'string') ? p.pipeMaterialId : null,
+        }));
+      }
+    } catch (err) {
+      console.warn('Failed to parse additional pipes json in rowToInput:', err);
+    }
+  }
   return {
     pipeSizeIn: row.pipe_size_in,
     pipeMaterial: row.pipe_material,
+    additionalPipes,
     startDepthFt: row.start_depth_ft,
     gradePct: row.grade_pct,
     runLengthLF: row.run_length_lf,
     trenchWidthFt: row.trench_width_ft,
     benchWidthFt: row.bench_width_ft,
-    beddingDepthFt: row.bedding_depth_ft ?? 0.5,
+    beddingDepthFt: row.bedding_depth_ft,
     backfillType: row.backfill_type,
-    compactionPct: row.compaction_pct ?? 0,
+    compactionPct: row.compaction_pct,
   };
 }
 
@@ -146,7 +165,9 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           if (jsonStr) {
             try {
               additionalPipes = JSON.parse(jsonStr);
-            } catch {}
+            } catch (err) {
+              console.warn('Failed to parse additionalPipes JSON in TrenchProfileList:', err);
+            }
           }
           const calc = calculateHDD({
             location: row.hdd_location || 'metro',
@@ -307,8 +328,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       hddIncludeSlurry: form.hddIncludeSlurry !== false,
       hddIncludePits: form.hddIncludePits !== false,
       hddMarginPct: form.hddMarginPct ?? 15,
-      hddBoresPerPit: isHDD ? ((form as any).hddBoresPerPit ?? 1) : 1,
-      hddAdditionalPipesJson: isHDD ? ((form as any).hddAdditionalPipesJson || null) : null,
+      hddBoresPerPit: isHDD ? (form.hddBoresPerPit ?? 1) : 1,
+      hddAdditionalPipesJson: form.hddAdditionalPipesJson || null,
     });
     setEditingId(null);
     await loadProfiles();
@@ -372,7 +393,9 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                   pipeMaterialName: mat?.label || 'Pipe',
                 };
               });
-            } catch {}
+            } catch (err) {
+              console.warn('Failed to parse backfill_type JSON in TrenchProfileList:', err);
+            }
           }
 
           data.push({

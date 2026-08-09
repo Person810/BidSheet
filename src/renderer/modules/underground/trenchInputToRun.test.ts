@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from './trenchInputToRun';
 import { buildRunGeometry } from './plan-takeoff/trench3dModel';
-import type { TrenchInput } from './trenchCalc';
+import { validateInput, type TrenchInput } from './trenchCalc';
 
 const baseInput: TrenchInput = {
   pipeSizeIn: 8,
@@ -48,5 +48,28 @@ describe('trenchInputToTakeoffRun', () => {
     const run = trenchInputToTakeoffRun({ ...baseInput, runLengthLF: 0 });
     expect(run.points[1].x).toBeGreaterThan(0);
     expect(buildRunGeometry(run, TRENCH_PREVIEW_SCALE_PX_PER_FT)).not.toBeNull();
+  });
+
+  it('T004: returns a non-blocking warning (not hard error) when combined pipe width exceeds nominal trench width for stacked conduit duct banks', () => {
+    // 4 x 6" (0.5 ft) conduits = 2.0 ft total width in a 1.5 ft trench (stacked vertically)
+    const stackedDuctBankInput: TrenchInput = {
+      ...baseInput,
+      pipeSizeIn: 6,
+      trenchWidthFt: 1.5,
+      additionalPipes: [
+        { pipeMaterial: 'PVC', pipeSizeIn: 6 },
+        { pipeMaterial: 'PVC', pipeSizeIn: 6 },
+        { pipeMaterial: 'PVC', pipeSizeIn: 6 },
+      ],
+    };
+
+    const errors = validateInput(stackedDuctBankInput);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].severity).toBe('warning');
+    expect(errors[0].message).toMatch(/exceeds/i);
+
+    const run = trenchInputToTakeoffRun(stackedDuctBankInput, 'Duct Bank Run');
+    expect(run).toBeDefined();
+    expect(run.pipeSizeIn).toBe(6);
   });
 });

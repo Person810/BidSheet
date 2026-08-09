@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react';
 import { materialsToAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { NATIVE_BACKFILL_LABEL } from './trenchCalc';
 
-const PIPE_CATEGORIES = ['PVC Pipe', 'Ductile Iron Pipe', 'HDPE Pipe', 'RCP Pipe'];
+const PIPE_CATEGORIES = [
+  'PVC Pipe', 'Ductile Iron Pipe', 'HDPE Pipe', 'RCP Pipe',
+  'Pipe', 'Pipes', 'Conduit', 'Conduits', 'Electrical Conduit', 'Fiber Conduit', 'Utility Pipe',
+];
 const BEDDING_CATEGORY = 'Bedding & Backfill';
 
 export const NATIVE_MATERIAL_ITEM: AutocompleteItem = {
@@ -22,18 +25,41 @@ export function useTrenchMaterials() {
       try {
         const allPipe: any[] = [];
         for (const cat of PIPE_CATEGORIES) {
-          const rows = await window.api.getMaterialsByCategoryName(cat);
-          allPipe.push(...rows);
+          try {
+            const rows = await window.api.getMaterialsByCategoryName(cat);
+            if (Array.isArray(rows)) allPipe.push(...rows);
+          } catch (err) {
+            console.warn(`Failed to fetch materials for category "${cat}":`, err);
+          }
         }
-        // Only include pipe materials priced per length whose name starts
-        // with a size — 8" imperial or DN200 metric
-        const filtered = allPipe.filter(
-          (m) => (m.unit === 'LF' || m.unit === 'm') && /^(\d+['"]|DN ?\d+)/i.test(m.name)
-        );
+
+        let generalMaterials: any[] = [];
+        try {
+          generalMaterials = await window.api.getMaterials();
+        } catch (err) {
+          console.warn('Failed to fetch general materials:', err);
+        }
+
+        const pipePool = [...allPipe, ...generalMaterials];
+        const uniqueMap = new Map<number | string, any>();
+        for (const m of pipePool) {
+          if (m && m.id != null) uniqueMap.set(m.id, m);
+        }
+
+        const combinedList = Array.from(uniqueMap.values());
+
+        const filtered = combinedList.filter((m) => {
+          if (!m || !m.name) return false;
+          const isLengthUnit = m.unit === 'LF' || m.unit === 'm' || m.unit === 'ft';
+          const matchesSizeFormat = /^(\d+['"]|DN ?\d+|\d+ ?mm|\d+ ?in)/i.test(m.name);
+          const matchesKeyword = /pipe|conduit|tubing|duct|pvc|hdpe|iron/i.test(m.name) || /pipe|conduit/i.test(m.category_name || '');
+          return (isLengthUnit && matchesSizeFormat) || matchesKeyword;
+        });
+
         setPipeMaterials(materialsToAutocomplete(filtered));
 
         const bedding = await window.api.getMaterialsByCategoryName(BEDDING_CATEGORY);
-        setBeddingMaterials(materialsToAutocomplete(bedding));
+        setBeddingMaterials(materialsToAutocomplete(Array.isArray(bedding) ? bedding : []));
       } catch (err) {
         console.error('Failed to load trench materials:', err);
       }

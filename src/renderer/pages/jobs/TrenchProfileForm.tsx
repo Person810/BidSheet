@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
+import { STANDARD_PIPE_SIZES_IN } from '../../../shared/constants/units';
 import {
   parsePipeSizeFromName, depthZoneBreakdown,
   type TrenchInput, type ValidationError,
 } from '../../modules/underground/trenchCalc';
-import { calculateHDD } from '../../modules/underground/hddCalc';
+import { calculateHDD, type HDDInput } from '../../modules/underground/hddCalc';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { NATIVE_MATERIAL_ITEM } from '../../modules/underground/useTrenchMaterials';
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from '../../modules/underground/trenchInputToRun';
@@ -12,7 +13,7 @@ import type { TakeoffRun, TakeoffSurface } from '../../modules/underground/plan-
 import { DepthZoneTable } from '../../modules/underground/DepthZoneTable';
 import { UnitInput } from '../../components/UnitInput';
 import { useUnitSystem } from '../../stores/units-store';
-import { unitLabel, formatPipeSize } from '../../../shared/unitSystem';
+import { unitLabel, formatPipeSize, toDisplay, fromDisplay } from '../../../shared/unitSystem';
 import { formatCurrency } from './helpers';
 
 const Trench3DView = React.lazy(() =>
@@ -55,7 +56,9 @@ export function TrenchProfileForm({
 }: Props) {
   const system = useUnitSystem();
   const isMetric = system === 'metric';
-  const hasError = (field: string) => errors.some((e) => e.field === field);
+  const blockingErrors = useMemo(() => errors.filter((e) => e.severity !== 'warning'), [errors]);
+  const warnings = useMemo(() => errors.filter((e) => e.severity === 'warning'), [errors]);
+  const hasError = (field: string) => blockingErrors.some((e) => e.field === field);
   const [linkedRunId, setLinkedRunId] = useState<number | null>(null);
   const linkedRun = takeoffRuns.find((r) => r.id === linkedRunId) ?? null;
 
@@ -65,37 +68,39 @@ export function TrenchProfileForm({
     const jsonStr = form.hddAdditionalPipesJson || (form.backfillType && form.backfillType.startsWith('[') ? form.backfillType : '');
     if (jsonStr) {
       try {
-        return JSON.parse(jsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
-      } catch {
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed)) {
+          return parsed as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+        }
+      } catch (err) {
+        console.warn('Failed to parse additional pipes JSON:', err);
         return [];
       }
     }
     return [];
   }, [form.hddAdditionalPipesJson, form.backfillType]);
 
-  const boresCount = Math.max(1, form.hddBoresPerPit !== undefined && form.hddBoresPerPit !== null ? form.hddBoresPerPit : (form.compactionPct || 1));
-  const normalizedAdditionalPipes = useMemo(() => {
-    const list = [...additionalPipes];
-    const targetLen = boresCount - 1;
-    if (list.length < targetLen) {
-      for (let i = list.length; i < targetLen; i++) {
-        list.push({ pipeSizeIn: form.pipeSizeIn || (isMetric ? 90 : 3.0), pipeMaterialId: form.pipeMaterialId || null });
-      }
-    } else if (list.length > targetLen) {
-      list.splice(targetLen);
-    }
-    return list;
-  }, [additionalPipes, boresCount, form.pipeSizeIn, form.pipeMaterialId, isMetric]);
+  const addAdditionalPipe = () => {
+    const defaultSizeIn = form.pipeSizeIn || (isMetric ? 3.937 : 3.0);
+    const newList = [...additionalPipes, { pipeSizeIn: defaultSizeIn, pipeMaterialId: form.pipeMaterialId || null, pipeMaterial: form.pipeMaterial || '' }];
+    onChange('hddAdditionalPipesJson', JSON.stringify(newList));
+  };
+
+  const removeAdditionalPipe = (index: number) => {
+    const newList = [...additionalPipes];
+    newList.splice(index, 1);
+    onChange('hddAdditionalPipesJson', JSON.stringify(newList));
+  };
 
   const onChangeAdditionalPipe = (index: number, field: 'pipeSizeIn' | 'pipeMaterialId', value: any) => {
-    const newList = [...normalizedAdditionalPipes];
+    const newList = [...additionalPipes];
     newList[index] = { ...newList[index], [field]: value };
     onChange('hddAdditionalPipesJson', JSON.stringify(newList));
   };
 
   const depthZones = useMemo(
-    () => (!isHDD && errors.length === 0 ? depthZoneBreakdown(form) : []),
-    [form, errors, isHDD]
+    () => (!isHDD && blockingErrors.length === 0 ? depthZoneBreakdown(form) : []),
+    [form, blockingErrors, isHDD]
   );
 
   const backfillItems = useMemo(
@@ -106,15 +111,15 @@ export function TrenchProfileForm({
   const selectedPipe = pipeMaterials.find((m) => m.id === form.pipeMaterialId);
   const selectedBedding = beddingMaterials.find((m) => m.id === form.beddingMaterialId);
 
-  const standardSizes = isMetric
+  const hddSizes = isMetric
     ? [63, 90, 110, 160, 200, 250, 300, 355, 400, 450, 500, 560, 630, 710]
     : [2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28];
 
   const hddOutput = useMemo(() => {
-    if (!isHDD || errors.length > 0) return null;
+    if (!isHDD || blockingErrors.length > 0) return null;
     try {
       return calculateHDD({
-        location: (form.hddLocation as any) || 'metro',
+        location: (form.hddLocation as HDDInput['location']) || 'metro',
         dn: form.pipeSizeIn,
         length: form.runLengthLF,
         includeSlurry: form.backfillType !== 'bundle' && form.hddIncludeSlurry !== false,
@@ -123,20 +128,22 @@ export function TrenchProfileForm({
         locale: isMetric ? 'en-AU' : 'en-US',
         boresPerPit: form.hddBoresPerPit ?? 1,
         isBundle: form.backfillType === 'bundle',
-        additionalPipes: normalizedAdditionalPipes,
+        additionalPipes: additionalPipes,
         customRates,
       });
-    } catch (e) {
+    } catch (err) {
+      console.warn('HDD calculation failed:', err);
       return null;
     }
-  }, [form, errors, isHDD, isMetric, normalizedAdditionalPipes, customRates]);
+  }, [form, blockingErrors, isHDD, isMetric, additionalPipes, customRates]);
 
   return (
     <div style={{ padding: '12px 0' }}>
       <div className="form-row">
         <div className="form-group" style={{ flex: 1 }}>
-          <label>Method</label>
+          <label htmlFor="trench-method-select">Method</label>
           <select
+            id="trench-method-select"
             className="form-control"
             value={form.method || 'open_cut'}
             onChange={(e) => {
@@ -191,7 +198,113 @@ export function TrenchProfileForm({
                 )}
               </div>
             </div>
+            <div className="form-group" style={{ flex: 1.5 }}>
+              <label>Standard Pipe Size</label>
+              <select
+                className="form-control"
+                value={STANDARD_PIPE_SIZES_IN.find((s) => Math.abs(s - form.pipeSizeIn) < 0.01) ?? 'custom'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val !== 'custom') {
+                    onChange('pipeSizeIn', Number(val));
+                  }
+                }}
+              >
+                {STANDARD_PIPE_SIZES_IN.map((s) => (
+                  <option key={s} value={s}>
+                    {formatPipeSize(s, system)}
+                  </option>
+                ))}
+                <option value="custom">Custom size...</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 1.5 }}>
+              <label>Pipe Size ({isMetric ? 'mm' : 'inches'})</label>
+              {/* eslint-disable-next-line no-restricted-syntax -- Pipe size is a direct mm/inch dimension input */}
+              <input type="number" className={`form-control ${hasError('pipeSizeIn') ? 'input-error' : ''}`}
+                value={toDisplay(form.pipeSizeIn, 'in', system)}
+                onChange={(e) => onChange('pipeSizeIn', fromDisplay(parseFloat(e.target.value) || 0, 'in', system))}
+              />
+            </div>
           </div>
+
+          {!isHDD && (
+            <div style={{ marginTop: 12, marginBottom: 12, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 6, border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <label style={{ fontWeight: 600, fontSize: 13, margin: 0 }}>
+                    Additional Pipes & Conduits in Trench ({additionalPipes.length})
+                  </label>
+                  <span className="text-muted" style={{ display: 'block', fontSize: 11 }}>
+                    Configure extra pipes or conduits running in this trench run
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={addAdditionalPipe}
+                  style={{ fontSize: 12, padding: '4px 10px' }}>
+                  + Add Pipe / Conduit
+                </button>
+              </div>
+
+              {additionalPipes.map((p, idx) => (
+                <div key={idx} className="form-row" style={{ marginTop: 10, alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: 12, width: 65, paddingBottom: 8 }}>
+                    Pipe {idx + 2}:
+                  </div>
+                  <div className="form-group" style={{ flex: 2 }}>
+                    <label>Pipe Material</label>
+                    <select className="form-control"
+                      value={p.pipeMaterialId ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const found = pipeMaterials.find((m) => String(m.id) === String(val));
+                        onChangeAdditionalPipe(idx, 'pipeMaterialId', found ? found.id : (val || null));
+                      }}>
+                      <option value="">Select material...</option>
+                      {pipeMaterials.map((m) => (
+                        <option key={String(m.id)} value={String(m.id)}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ flex: 1.5 }}>
+                    <label>Standard Size</label>
+                    <select className="form-control"
+                      value={STANDARD_PIPE_SIZES_IN.find((s) => Math.abs(s - p.pipeSizeIn) < 0.01) ?? 'custom'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val !== 'custom') {
+                          onChangeAdditionalPipe(idx, 'pipeSizeIn', parseFloat(val));
+                        }
+                      }}>
+                      {STANDARD_PIPE_SIZES_IN.map((s) => (
+                        <option key={s} value={s}>{formatPipeSize(s, system)}</option>
+                      ))}
+                      <option value="custom">Custom size...</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ flex: 1.5 }}>
+                    <label>Pipe Size ({isMetric ? 'mm' : 'inches'})</label>
+                    {/* eslint-disable-next-line no-restricted-syntax -- Pipe size is a direct mm/inch dimension input */}
+                    <input type="number" className="form-control"
+                      value={toDisplay(p.pipeSizeIn, 'in', system)}
+                      onChange={(e) => onChangeAdditionalPipe(idx, 'pipeSizeIn', fromDisplay(parseFloat(e.target.value) || 0, 'in', system))} />
+                  </div>
+                  <div className="form-group" style={{ flex: '0 0 auto', paddingBottom: 2 }}>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={() => removeAdditionalPipe(idx)}
+                      title="Remove pipe"
+                      style={{ padding: '6px 10px' }}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="form-row">
             <div className="form-group">
@@ -310,7 +423,7 @@ export function TrenchProfileForm({
               <label>Standard Pipe Size</label>
               <select
                 className="form-control"
-                value={standardSizes.includes(form.pipeSizeIn) ? form.pipeSizeIn : 'custom'}
+                value={hddSizes.includes(form.pipeSizeIn) ? form.pipeSizeIn : 'custom'}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val !== 'custom') {
@@ -318,7 +431,7 @@ export function TrenchProfileForm({
                   }
                 }}
               >
-                {standardSizes.map((s) => (
+                {hddSizes.map((s) => (
                   <option key={s} value={s}>
                     {isMetric ? `DN${s}` : `${s}"`}
                   </option>
@@ -326,7 +439,7 @@ export function TrenchProfileForm({
                 <option value="custom">Custom size...</option>
               </select>
             </div>
-            {(!standardSizes.includes(form.pipeSizeIn) || standardSizes.includes(form.pipeSizeIn)) && (
+            {(!hddSizes.includes(form.pipeSizeIn) || hddSizes.includes(form.pipeSizeIn)) && (
               <div className="form-group">
                 <label>Pipe Size ({isMetric ? 'mm' : 'inches'})</label>
                 <input
@@ -412,7 +525,7 @@ export function TrenchProfileForm({
                     const newBores = Math.max(1, parseInt(e.target.value) || 1);
                     onChange('hddBoresPerPit', newBores);
                     
-                    const newList = [...normalizedAdditionalPipes];
+                    const newList = [...additionalPipes];
                     const targetLen = newBores - 1;
                     if (newList.length < targetLen) {
                       for (let i = newList.length; i < targetLen; i++) {
@@ -427,7 +540,7 @@ export function TrenchProfileForm({
             </div>
           )}
 
-          {isHDD && normalizedAdditionalPipes.map((p, idx) => (
+          {isHDD && additionalPipes.map((p, idx) => (
             <div key={idx} className="form-row" style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', fontWeight: 'bold', fontSize: 13 }}>
                 Bore {idx + 2} Details:
@@ -446,14 +559,14 @@ export function TrenchProfileForm({
               <div className="form-group">
                 <label>Standard Pipe Size</label>
                 <select className="form-control"
-                  value={standardSizes.includes(p.pipeSizeIn) ? p.pipeSizeIn : 'custom'}
+                  value={hddSizes.includes(p.pipeSizeIn) ? p.pipeSizeIn : 'custom'}
                   onChange={(e) => {
                     const val = e.target.value;
                     if (val !== 'custom') {
                       onChangeAdditionalPipe(idx, 'pipeSizeIn', parseFloat(val));
                     }
                   }}>
-                  {standardSizes.map((s) => (
+                  {hddSizes.map((s) => (
                     <option key={s} value={s}>{isMetric ? `DN${s}` : `${s}"`}</option>
                   ))}
                   <option value="custom">Custom size...</option>
@@ -470,23 +583,30 @@ export function TrenchProfileForm({
         </>
       )}
 
-      {errors.length > 0 && (
+      {blockingErrors.length > 0 && (
         <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(239,68,68,0.1)',
           borderRadius: 6, fontSize: 12, color: 'var(--danger)' }}>
-          {errors.map((e, i) => <div key={i}>{e.message}</div>)}
+          {blockingErrors.map((e, i) => <div key={i}>{e.message}</div>)}
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(245,158,11,0.1)',
+          borderRadius: 6, fontSize: 12, color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)' }}>
+          {warnings.map((e, i) => <div key={i}>⚠️ {e.message}</div>)}
         </div>
       )}
 
       {!isHDD && depthZones.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <label>Depth Summary</label>
+          <div style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>Depth Summary</div>
           <DepthZoneTable zones={depthZones} />
         </div>
       )}
 
       {isHDD && hddOutput && (
         <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-          <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>HDD Bore Estimate Summary</label>
+          <div style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>HDD Bore Estimate Summary</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
               <span className="text-muted" style={{ fontSize: 11, display: 'block' }}>Estimated Rate</span>
@@ -502,7 +622,7 @@ export function TrenchProfileForm({
             </div>
           </div>
 
-          <label style={{ fontWeight: 600, display: 'block', marginBottom: 4, fontSize: 12 }}>Cost Category Breakdown</label>
+          <div style={{ fontWeight: 600, display: 'block', marginBottom: 4, fontSize: 12 }}>Cost Category Breakdown</div>
           <table className="data-table" style={{ fontSize: 12 }}>
             <thead>
               <tr>
@@ -546,8 +666,9 @@ export function TrenchProfileForm({
 
       {!isHDD && takeoffRuns.length > 0 && (
         <div className="form-group" style={{ marginTop: 8 }}>
-          <label>Preview against plan run</label>
+          <label htmlFor="trench-preview-run-select">Preview against plan run</label>
           <select
+            id="trench-preview-run-select"
             className="form-control"
             value={linkedRunId ?? ''}
             onChange={(e) => setLinkedRunId(e.target.value ? Number(e.target.value) : null)}
@@ -562,7 +683,7 @@ export function TrenchProfileForm({
         </div>
       )}
 
-      {(errors.length === 0 || linkedRun) && (() => {
+      {(blockingErrors.length === 0 || linkedRun) && (() => {
         const groundSampler = linkedRun ? buildGroundSampler(surface, linkedRun.pdfPage) : undefined;
         const synthesizedRun = trenchInputToTakeoffRun({
           ...form,
@@ -596,7 +717,7 @@ export function TrenchProfileForm({
 
       <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn btn-secondary btn-sm" onClick={onCancel}>Cancel</button>
-        <button className="btn btn-primary btn-sm" onClick={onSave} disabled={errors.length > 0}>Save</button>
+        <button className="btn btn-primary btn-sm" onClick={onSave} disabled={blockingErrors.length > 0}>Save</button>
       </div>
     </div>
   );

@@ -101,6 +101,7 @@ export interface RunConfig {
   pipeSizeIn: number;
   pipeMaterial: string;
   pipeMaterialId: number | null;
+  hddAdditionalPipesJson?: string | null;
   startDepthFt: number;
   gradePct: number;
   trenchWidthFt: number;

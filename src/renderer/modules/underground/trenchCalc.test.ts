@@ -251,3 +251,54 @@ describe('explainTrench', () => {
     }
   });
 });
+
+describe('multi-pipe trench calculations (issue #150)', () => {
+  it('calculates total pipe displacement for primary + additional pipes', () => {
+    const base = calculateTrench(input({ pipeSizeIn: 12, additionalPipes: [] }));
+    const multi = calculateTrench(
+      input({
+        pipeSizeIn: 12,
+        additionalPipes: [
+          { pipeSizeIn: 6, pipeMaterial: '2" Conduit' },
+          { pipeSizeIn: 6, pipeMaterial: '2" Conduit' },
+        ],
+      })
+    );
+
+    // Primary 12" pipe (0.5 ft radius) displacement volume over 100 LF = pi * 0.5^2 * 100 = 78.54 CF
+    // Additional 2 x 6" pipes (0.25 ft radius each) = 2 * (pi * 0.25^2 * 100) = 39.27 CF
+    // Total pipe volume = 78.54 + 39.27 = 117.81 CF
+    // Backfill should be smaller in multi-pipe trench by 39.27 CF (1.45 CY)
+    expect(multi.totalPipeCF).toBeCloseTo(117.81, 1);
+    expect(base.backfillCY - multi.backfillCY).toBeCloseTo(39.27 / 27, 2);
+  });
+
+  it('warns when total combined pipe width exceeds trench width', () => {
+    // Trench width 1 ft (12 inches). Primary 8" pipe + 6" pipe = 14" > 12"
+    const errors = validateInput(
+      input({
+        trenchWidthFt: 1,
+        pipeSizeIn: 8,
+        additionalPipes: [{ pipeSizeIn: 6, pipeMaterial: 'PVC' }],
+      })
+    );
+    expect(errors.map((e) => e.field)).toContain('trenchWidthFt');
+  });
+
+  it('T003: explainTrench breaks down all pipes and reconciles cumulative displacement with calculateTrench()', () => {
+    const inp = input({
+      pipeSizeIn: 12,
+      additionalPipes: [
+        { pipeSizeIn: 4, pipeMaterial: 'Conduit' },
+        { pipeSizeIn: 4, pipeMaterial: 'Conduit' },
+      ],
+    });
+    const res = calculateTrench(inp);
+    const math = explainTrench(inp, res);
+    const pipeLine = math.backfill.lines.find((l) => l.label === 'Pipe displacement');
+    expect(pipeLine).toBeDefined();
+    // Pipe displacement in explainTrench terms is formatted in CF (96 CF) matching totalPipeCF
+    expect(pipeLine?.value).toBe('96 CF');
+  });
+});
+
