@@ -199,7 +199,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       } else {
         const input = rowToInput(row);
         const errors = validateInput(input);
-        return errors.length === 0 ? calculateTrench(input) : null;
+        const blocking = errors.some((e) => e.severity !== 'warning');
+        return blocking ? null : calculateTrench(input);
       }
     }) as any[];
   }, [profiles, system, settings]);
@@ -224,9 +225,27 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
 
   const handleChange = (field: string, value: any) => setForm((prev) => ({ ...prev, [field]: value }));
 
+  const formAdditionalPipes = useMemo(() => {
+    const jsonStr = form.hddAdditionalPipesJson || (form.backfillType && form.backfillType.startsWith('[') ? form.backfillType : '');
+    if (!jsonStr) return [];
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) {
+        return parsed.map((p: any) => ({
+          pipeSizeIn: typeof p.pipeSizeIn === 'number' ? p.pipeSizeIn : 0,
+          pipeMaterial: typeof p.pipeMaterial === 'string' ? p.pipeMaterial : '',
+        }));
+      }
+    } catch (err) {
+      console.warn('Failed to parse additional pipes JSON for form validation:', err);
+    }
+    return [];
+  }, [form.hddAdditionalPipesJson, form.backfillType]);
+
   const formInput: TrenchInput = {
     pipeSizeIn: form.pipeSizeIn,
     pipeMaterial: form.pipeMaterial,
+    additionalPipes: formAdditionalPipes,
     startDepthFt: form.startDepthFt,
     gradePct: form.gradePct,
     runLengthLF: form.runLengthLF,
@@ -382,9 +401,10 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           const beddingMat = beddingMaterials.find((m) => m.id === row.bedding_material_id);
           const backfillMat = beddingMaterials.find((m) => m.id === row.backfill_material_id);
           let additionalPipes: Array<{ pipeLF: number; pipeMaterialId: number | null; pipeMaterialName: string }> = [];
-          if (row.method === 'hdd' && row.backfill_type && row.backfill_type.startsWith('[')) {
+          const addPipesJsonStr = row.hdd_additional_pipes_json || (row.backfill_type && row.backfill_type.startsWith('[') ? row.backfill_type : '');
+          if (addPipesJsonStr) {
             try {
-              const list = JSON.parse(row.backfill_type) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
+              const list = JSON.parse(addPipesJsonStr) as Array<{ pipeSizeIn: number; pipeMaterialId: number | string | null }>;
               additionalPipes = list.map((item) => {
                 const mat = pipeMaterials.find((m) => m.id === item.pipeMaterialId);
                 return {
@@ -394,7 +414,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                 };
               });
             } catch (err) {
-              console.warn('Failed to parse backfill_type JSON in TrenchProfileList:', err);
+              console.warn('Failed to parse additional pipes JSON in TrenchProfileList:', err);
             }
           }
 
