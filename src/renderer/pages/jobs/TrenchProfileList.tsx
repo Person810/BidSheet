@@ -231,7 +231,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
     try {
       const parsed = JSON.parse(jsonStr);
       if (Array.isArray(parsed)) {
-        return parsed.map((p: any) => ({
+        return (parsed as Array<{ pipeSizeIn?: number; pipeMaterial?: string }>).map((p) => ({
           pipeSizeIn: typeof p.pipeSizeIn === 'number' ? p.pipeSizeIn : 0,
           pipeMaterial: typeof p.pipeMaterial === 'string' ? p.pipeMaterial : '',
         }));
