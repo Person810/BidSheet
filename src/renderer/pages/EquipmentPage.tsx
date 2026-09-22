@@ -9,6 +9,7 @@ import { useToastStore } from '../stores/toast-store';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
 import { dismissOnEscOnly } from '../components/modalDismiss';
 import { EquipmentCategoryManager } from '../components/EquipmentCategoryManager';
+import { PriceLogModal } from '../components/PriceLog';
 
 interface EquipmentItem {
   id: number;
@@ -53,6 +54,7 @@ export function EquipmentPage() {
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [showPriceLog, setShowPriceLog] = useState(false);
   const [editing, setEditing] = useState<EquipmentItem | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
@@ -189,6 +191,7 @@ export function EquipmentPage() {
 
   return (
     <div>
+      {showPriceLog && <PriceLogModal initialKind="equipment" onClose={() => setShowPriceLog(false)} />}
       <div className="page-header">
         <h2>Equipment</h2>
         <div className="flex gap-8 items-center">
@@ -204,6 +207,10 @@ export function EquipmentPage() {
             <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} style={{ width: 14, height: 14 }} />
             Show archived
           </label>
+          <button className="btn btn-secondary" onClick={() => setShowPriceLog(true)}
+            title="Every equipment rate change: edits and synced changes">
+            Price Log
+          </button>
           <button className="btn btn-primary" onClick={openAdd}>
             + Add Equipment
           </button>

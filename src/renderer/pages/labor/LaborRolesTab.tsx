@@ -3,6 +3,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toast-store';
 import type { LaborRole } from '../../../shared/types/labor';
 import { dismissOnEscOnly } from '../../components/modalDismiss';
+import { PriceLogModal } from '../../components/PriceLog';
 
 interface LaborRolesTabProps {
   roles: LaborRole[];
@@ -12,6 +13,7 @@ interface LaborRolesTabProps {
 export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
   const addToast = useToastStore((s) => s.addToast);
   const [showModal, setShowModal] = useState(false);
+  const [showPriceLog, setShowPriceLog] = useState(false);
   const [editing, setEditing] = useState<LaborRole | null>(null);
   const [form, setForm] = useState({ name: '', defaultHourlyRate: 0, burdenMultiplier: 1.35, notes: '', aliases: '' });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
@@ -86,6 +88,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
 
   return (
     <div>
+      {showPriceLog && <PriceLogModal initialKind="labor_role" onClose={() => setShowPriceLog(false)} />}
       <div className="flex justify-between items-center mb-16">
         <div>
           <p className="text-muted">
@@ -93,7 +96,13 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
             (taxes, insurance, benefits).
           </p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Role</button>
+        <div className="flex gap-8">
+          <button className="btn btn-secondary" onClick={() => setShowPriceLog(true)}
+            title="Every labor rate change: edits and synced changes">
+            Price Log
+          </button>
+          <button className="btn btn-primary" onClick={openAdd}>+ Add Role</button>
+        </div>
       </div>
 
       <table className="data-table">

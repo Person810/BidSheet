@@ -22,6 +22,7 @@ import type Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { stableStringify } from './serializer';
 import { validateCatalog } from './validate-snapshot';
+import { logPriceChanges } from '../price-log';
 
 export interface CatalogSnapshot {
   format: 1;
@@ -211,6 +212,8 @@ export function importCatalog(db: Database.Database, raw: unknown): CatalogImpor
       if (existing) {
         const changedKeys = Object.keys(clean).filter((k) => clean[k] !== existing[k]);
         if (changedKeys.length === 0) continue; // identical — no write, no count
+        // A price another seat changed lands in this machine's audit log too.
+        logPriceChanges(db, table, existing.id, existing, clean, 'Cloud sync');
         db.prepare(
           `UPDATE ${table} SET ${changedKeys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`
         ).run(...changedKeys.map((k) => clean[k]), existing.id);

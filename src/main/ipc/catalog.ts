@@ -16,6 +16,7 @@ import {
 import type {
   SaveEquipmentCategoryPayload, DeleteEquipmentCategoryPayload,
 } from '../../shared/types/ipc';
+import { logPriceChanges, listPriceLog, type PriceLogKind } from '../price-log';
 
 export function registerCatalogHandlers(db: Database.Database): void {
   // ================================================================
@@ -105,22 +106,32 @@ export function registerCatalogHandlers(db: Database.Database): void {
 
   safeHandle('db:materials:save', (_event, material: any) => {
     if (material.id) {
-      return db
-        .prepare(
-          `UPDATE materials SET
-            category_id = ?, name = ?, description = ?, unit = ?,
-            default_unit_cost = ?, supplier = ?, part_number = ?,
-            last_price_update = datetime('now', 'localtime'), notes = ?, aliases = ?, is_active = ?,
-            tons_per_cy = ?, cost_per_cy = ?
-          WHERE id = ?`
-        )
-        .run(
-          material.categoryId, material.name, material.description,
-          material.unit, material.defaultUnitCost, material.supplier,
-          material.partNumber, material.notes, material.aliases || null,
-          material.isActive ? 1 : 0, material.tonsPerCy || null,
-          material.costPerCy || null, material.id
+      return db.transaction(() => {
+        const before = db.prepare('SELECT * FROM materials WHERE id = ?').get(material.id) as Record<string, unknown> | undefined;
+        // Only a price change is a price update: stamping last_price_update
+        // on every save (a rename, a new alias) reset the stale-price warning
+        // for prices nobody had checked.
+        const priceChanged = logPriceChanges(
+          db, 'materials', material.id, before, { default_unit_cost: material.defaultUnitCost }, 'Manual',
         );
+        return db
+          .prepare(
+            `UPDATE materials SET
+              category_id = ?, name = ?, description = ?, unit = ?,
+              default_unit_cost = ?, supplier = ?, part_number = ?,
+              last_price_update = CASE WHEN ? THEN datetime('now', 'localtime') ELSE last_price_update END,
+              notes = ?, aliases = ?, is_active = ?,
+              tons_per_cy = ?, cost_per_cy = ?
+            WHERE id = ?`
+          )
+          .run(
+            material.categoryId, material.name, material.description,
+            material.unit, material.defaultUnitCost, material.supplier,
+            material.partNumber, priceChanged ? 1 : 0, material.notes, material.aliases || null,
+            material.isActive ? 1 : 0, material.tonsPerCy || null,
+            material.costPerCy || null, material.id
+          );
+      })();
     } else {
       return db
         .prepare(
@@ -151,9 +162,7 @@ export function registerCatalogHandlers(db: Database.Database): void {
       if (!material) return null;
 
       const updatePrice = db.transaction(() => {
-        db.prepare(
-          `INSERT INTO price_updates (material_id, old_price, new_price, source) VALUES (?, ?, ?, ?)`
-        ).run(id, material.default_unit_cost, newPrice, source);
+        logPriceChanges(db, 'materials', id, material, { default_unit_cost: newPrice }, source || 'Manual');
 
         // A set density links the per-CY price to the per-TON price;
         // keep them in sync on every price change
@@ -169,6 +178,13 @@ export function registerCatalogHandlers(db: Database.Database): void {
     }
   );
 
+  // Pricing audit log (materials, labor rates, equipment rates), newest first.
+  safeHandle('db:price-log:list', (_event, opts?: { kind?: PriceLogKind; itemId?: number; limit?: number }) => {
+    const kind = opts?.kind && ['material', 'labor_role', 'equipment'].includes(opts.kind) ? opts.kind : undefined;
+    const itemId = Number.isInteger(opts?.itemId) ? opts!.itemId : undefined;
+    return listPriceLog(db, { kind, itemId, limit: opts?.limit });
+  });
+
   // ================================================================
   // LABOR ROLES
   // ================================================================
@@ -179,11 +195,17 @@ export function registerCatalogHandlers(db: Database.Database): void {
 
   safeHandle('db:labor-roles:save', (_event, role: any) => {
     if (role.id) {
-      return db
-        .prepare(
-          `UPDATE labor_roles SET name = ?, default_hourly_rate = ?, burden_multiplier = ?, notes = ?, aliases = ? WHERE id = ?`
-        )
-        .run(role.name, role.defaultHourlyRate, role.burdenMultiplier, role.notes, role.aliases || null, role.id);
+      return db.transaction(() => {
+        const before = db.prepare('SELECT * FROM labor_roles WHERE id = ?').get(role.id) as Record<string, unknown> | undefined;
+        logPriceChanges(db, 'labor_roles', role.id, before, {
+          name: role.name, default_hourly_rate: role.defaultHourlyRate, burden_multiplier: role.burdenMultiplier,
+        }, 'Manual');
+        return db
+          .prepare(
+            `UPDATE labor_roles SET name = ?, default_hourly_rate = ?, burden_multiplier = ?, notes = ?, aliases = ? WHERE id = ?`
+          )
+          .run(role.name, role.defaultHourlyRate, role.burdenMultiplier, role.notes, role.aliases || null, role.id);
+      })();
     } else {
       return db
         .prepare(
@@ -326,17 +348,24 @@ export function registerCatalogHandlers(db: Database.Database): void {
 
   safeHandle('db:equipment:save', (_event, equip: any) => {
     if (equip.id) {
-      return db
-        .prepare(
-          `UPDATE equipment SET name = ?, category = ?, hourly_rate = ?, daily_rate = ?,
-            mobilization_cost = ?, fuel_cost_per_hour = ?, notes = ?, aliases = ?, is_owned = ?, is_active = ?
-          WHERE id = ?`
-        )
-        .run(
-          equip.name, equip.category, equip.hourlyRate, equip.dailyRate,
-          equip.mobilizationCost, equip.fuelCostPerHour, equip.notes, equip.aliases || null,
-          equip.isOwned ? 1 : 0, equip.isActive ? 1 : 0, equip.id
-        );
+      return db.transaction(() => {
+        const before = db.prepare('SELECT * FROM equipment WHERE id = ?').get(equip.id) as Record<string, unknown> | undefined;
+        logPriceChanges(db, 'equipment', equip.id, before, {
+          name: equip.name, hourly_rate: equip.hourlyRate, daily_rate: equip.dailyRate,
+          mobilization_cost: equip.mobilizationCost,
+        }, 'Manual');
+        return db
+          .prepare(
+            `UPDATE equipment SET name = ?, category = ?, hourly_rate = ?, daily_rate = ?,
+              mobilization_cost = ?, fuel_cost_per_hour = ?, notes = ?, aliases = ?, is_owned = ?, is_active = ?
+            WHERE id = ?`
+          )
+          .run(
+            equip.name, equip.category, equip.hourlyRate, equip.dailyRate,
+            equip.mobilizationCost, equip.fuelCostPerHour, equip.notes, equip.aliases || null,
+            equip.isOwned ? 1 : 0, equip.isActive ? 1 : 0, equip.id
+          );
+      })();
     } else {
       return db
         .prepare(
