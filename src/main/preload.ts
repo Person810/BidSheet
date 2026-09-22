@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
-  SetupExtras, SaveEquipmentCategoryPayload, DeleteEquipmentCategoryPayload,
+  SetupExtras, SaveEquipmentCategoryPayload, DeleteEquipmentCategoryPayload, PriceLogKind,
 } from '../shared/types/ipc';
 import type { TrenchPit } from '../shared/trenchPits';
 
@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   saveMaterial: (material: any) => invoke('db:materials:save', material),
   deleteMaterial: (id: number) => invoke('db:materials:delete', id),
   restoreMaterial: (id: number) => invoke('db:materials:restore', id),
+  getPriceLog: (opts?: { kind?: PriceLogKind; itemId?: number; limit?: number }) => invoke('db:price-log:list', opts),
   updateMaterialPrice: (id: number, newPrice: number, source: string) =>
     invoke('db:materials:update-price', id, newPrice, source),
   getMaterialsByCategoryName: (name: string) => invoke('db:materials:list-by-category-name', name),

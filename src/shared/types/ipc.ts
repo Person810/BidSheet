@@ -1035,3 +1035,20 @@ export interface UpdateStatusEvent {
   percent?: number;
   error?: string;
 }
+
+/** Pricing audit log (src/main/price-log.ts). */
+export type PriceLogKind = 'material' | 'labor_role' | 'equipment';
+
+export interface PriceLogEntry {
+  kind: PriceLogKind;
+  itemId: number;
+  itemName: string;
+  /** Catalog column that changed, e.g. default_unit_cost, hourly_rate. */
+  field: string;
+  oldValue: number | null;
+  newValue: number | null;
+  /** 'Manual', a CSV import source, or 'Cloud sync'. */
+  source: string;
+  /** SQLite localtime string. */
+  changedAt: string;
+}

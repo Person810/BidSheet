@@ -71,6 +71,7 @@ import type {
   TakeoffStateSnapshot,
   TrenchProfileRow,
   UpdateStatusEvent,
+  PriceLogEntry, PriceLogKind,
 } from './ipc';
 import type {
   JobLocationLookupRequest,
@@ -98,6 +99,7 @@ declare global {
       deleteMaterial: (id: number) => Promise<SqlRunResult>;
       restoreMaterial: (id: number) => Promise<SqlRunResult>;
       updateMaterialPrice: (id: number, newPrice: number, source: string) => Promise<{ success: boolean } | null>;
+      getPriceLog: (opts?: { kind?: PriceLogKind; itemId?: number; limit?: number }) => Promise<PriceLogEntry[]>;
       getMaterialsByCategoryName: (name: string) => Promise<MaterialWithCategoryRow[]>;
 
       // Labor

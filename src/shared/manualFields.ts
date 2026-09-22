@@ -16,6 +16,7 @@ export const OVERRIDABLE_FIELDS = [
   'materialUnitCost',
   'laborHours',
   'laborCostPerHour',
+  'equipmentHours',
   'equipmentCostPerHour',
 ] as const;
 
@@ -26,6 +27,7 @@ export const MANUAL_FIELD_LABELS: Record<OverridableField, string> = {
   materialUnitCost: 'material unit cost',
   laborHours: 'labor hours',
   laborCostPerHour: 'crew cost/hr',
+  equipmentHours: 'equipment hours',
   equipmentCostPerHour: 'equipment cost/hr',
 };
 

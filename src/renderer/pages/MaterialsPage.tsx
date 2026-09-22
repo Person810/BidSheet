@@ -9,6 +9,8 @@ import { formatCurrency } from './jobs/helpers';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToastStore } from '../stores/toast-store';
 import { CsvImportModal } from '../components/CsvImportModal';
+import { PriceLogModal, PriceLogTable } from '../components/PriceLog';
+import type { PriceLogEntry } from '../../shared/types/ipc';
 import { SortableTh, useSortableRows } from '../components/SortableTable';
 import { isMassUnit } from '../../shared/unitConversion';
 
@@ -72,6 +74,14 @@ export function MaterialsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<any>(null);
+  const [showPriceLog, setShowPriceLog] = useState(false);
+  const [priceHistory, setPriceHistory] = useState<PriceLogEntry[]>([]);
+  useEffect(() => {
+    if (!editingMaterial?.id || !showModal) { setPriceHistory([]); return; }
+    window.api.getPriceLog({ kind: 'material', itemId: editingMaterial.id, limit: 50 })
+      .then(setPriceHistory)
+      .catch((err: unknown) => console.error('Failed to load price history:', err));
+  }, [editingMaterial?.id, showModal]);
   const [form, setForm] = useState({ ...EMPTY_MATERIAL });
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -257,6 +267,10 @@ export function MaterialsPage() {
             <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
               Import Prices
             </button>
+            <button className="btn btn-secondary" onClick={() => setShowPriceLog(true)}
+              title="Every price change: edits, imports and synced changes">
+              Price Log
+            </button>
             <button className="btn btn-primary" onClick={openAdd}>
               + Add Material
             </button>
@@ -392,6 +406,8 @@ export function MaterialsPage() {
           setSelectedCategory(prev => getPostDeleteCategorySelection(deletedId, replacementId, prev));
         }}
       />
+
+      {showPriceLog && <PriceLogModal initialKind="material" onClose={() => setShowPriceLog(false)} />}
 
       {/* Add/Edit Modal */}
       {showModal && (
@@ -565,6 +581,14 @@ export function MaterialsPage() {
                 Comma-separated alternative names. These help find this item when typing different terms.
               </div>
             </div>
+            {editingMaterial && (
+              <div className="form-group">
+                <label>Price History</label>
+                <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+                  <PriceLogTable entries={priceHistory} showItem={false} />
+                </div>
+              </div>
+            )}
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
                 Cancel

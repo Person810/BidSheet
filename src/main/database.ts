@@ -434,6 +434,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV52,
   migrateV53,
   migrateV54,
+  migrateV55,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -1070,6 +1071,28 @@ function migrateV54(db: Database.Database): void {
     ALTER TABLE trench_profiles ADD COLUMN start_pit_id TEXT;
     ALTER TABLE trench_profiles ADD COLUMN end_pit_id TEXT;
     INSERT INTO schema_version (version) VALUES (54);
+  `);
+}
+
+// V55: rate_updates — the audit log for labor and equipment rate changes,
+// alongside price_updates for materials (see src/main/price-log.ts). Local
+// history only, like price_updates: not a synced table. item_name is a
+// snapshot so the log still reads after a role is deleted.
+function migrateV55(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE rate_updates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind        TEXT NOT NULL CHECK (kind IN ('labor_role', 'equipment')),
+      item_id     INTEGER NOT NULL,
+      item_name   TEXT NOT NULL DEFAULT '',
+      field       TEXT NOT NULL,
+      old_value   REAL,
+      new_value   REAL,
+      source      TEXT NOT NULL DEFAULT 'Manual',
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX idx_rate_updates_item ON rate_updates(kind, item_id);
+    INSERT INTO schema_version (version) VALUES (55);
   `);
 }
 
