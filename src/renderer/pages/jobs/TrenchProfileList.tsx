@@ -3,7 +3,7 @@ import {
   calculateTrench, validateInput,
   type TrenchInput,
 } from '../../modules/underground/trenchCalc';
-import { calculateHDD, validateHDDInput } from '../../modules/underground/hddCalc';
+import { calculateHDD, validateHDDInput, type HDDInput } from '../../modules/underground/hddCalc';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TrenchProfileForm } from './TrenchProfileForm';
 import { useTrenchMaterials } from '../../modules/underground/useTrenchMaterials';
@@ -112,6 +112,21 @@ function rowToInput(row: any): TrenchInput {
   };
 }
 
+/**
+ * Custom HDD rate tables from settings. The value is synced through the
+ * catalog, so another seat (or an older build) can hand us something that
+ * isn't JSON; that must fall back to the built-in rates, not crash the tab.
+ */
+function parseHddRates(json: string | null | undefined): HDDInput['customRates'] {
+  if (!json) return undefined;
+  try {
+    return JSON.parse(json);
+  } catch (err) {
+    console.warn('Ignoring unparseable HDD rates in settings:', err);
+    return undefined;
+  }
+}
+
 export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange }: Props) {
   const system = useUnitSystem();
   const defaults = system === 'metric' ? METRIC_DEFAULTS : DEFAULTS;
@@ -149,7 +164,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   useEffect(() => { loadProfiles(); }, [loadProfiles]);
 
   const computed = useMemo(() => {
-    const customRates = settings?.hdd_rates_json ? JSON.parse(settings.hdd_rates_json) : undefined;
+    const customRates = parseHddRates(settings?.hdd_rates_json);
     return profiles.map((row) => {
       const isHDD = row.method === 'hdd';
       if (isHDD) {
@@ -336,7 +351,10 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       trenchWidthFt: form.trenchWidthFt,
       benchWidthFt: form.benchWidthFt,
       beddingType: beddingLabel,
-      backfillType: isHDD ? null : backfillLabel,
+      // HDD rows have no backfill, but the "Bundle Pipe" flag lives in this
+      // column (backfill_type = 'bundle'); writing null here un-bundled every
+      // bundled bore on save and re-priced it as a full rig mobilization.
+      backfillType: isHDD ? (form.backfillType === 'bundle' ? 'bundle' : null) : backfillLabel,
       beddingDepthFt: form.beddingDepthFt,
       compactionPct: isHDD ? 0 : form.compactionPct,
       pipeMaterialId: typeof form.pipeMaterialId === 'number' ? form.pipeMaterialId : null,
@@ -388,7 +406,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   const handleConvert = () => {
     if (!onConvertToBid) return;
     setConfirmState({
-      msg: 'Create bid sections from trench profiles? This will add new sections and line items for pipe, excavation, bedding, backfill, tracer wire, and warning tape. Existing sections are not affected.',
+      msg: 'Create bid sections from trench profiles? This will add new sections and line items for pipe, excavation, bedding, backfill, tracer wire, and warning tape, plus one subcontractor line per HDD bore. Existing sections are not affected.',
       yesLabel: 'Create Sections',
       variant: 'neutral',
       onYes: async () => {
@@ -408,7 +426,9 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
               additionalPipes = list.map((item) => {
                 const mat = pipeMaterials.find((m) => m.id === item.pipeMaterialId);
                 return {
-                  pipeLF: row.run_length_lf,
+                  // Same trench, same slope: extra pipes are as long as the
+                  // primary pipe (slope length), not the horizontal run.
+                  pipeLF: out.pipeLF,
                   pipeMaterialId: typeof item.pipeMaterialId === 'number' ? item.pipeMaterialId : null,
                   pipeMaterialName: mat?.label || 'Pipe',
                 };
@@ -519,7 +539,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                         onSave={saveProfile} onCancel={() => setEditingId(null)} errors={formErrors}
                         pipeMaterials={pipeMaterials} beddingMaterials={beddingMaterials}
                         takeoffRuns={takeoffRuns} pageScales={pageScales} surface={surface}
-                        customRates={settings?.hdd_rates_json ? JSON.parse(settings.hdd_rates_json) : undefined} />
+                        customRates={parseHddRates(settings?.hdd_rates_json)} />
                     </td></tr>
                   )}
                 </React.Fragment>

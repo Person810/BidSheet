@@ -123,19 +123,52 @@ export function registerSettingsHandlers(db: Database.Database): void {
     if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
 
     const backupPath = result.filePaths[0];
+
+    // Validate while the live database is still open. Everything up to
+    // db.close() below must fail WITHOUT touching the live DB or relaunching:
+    // the catch block further down assumes the connection is already closed,
+    // so a non-SQLite pick used to restart the app mid-session, and a stale
+    // .pre-restore left by an earlier interrupted restore was copied over the
+    // live database.
+    const invalid = (reason: string) => {
+      logger.warn('db:restore', `Rejected backup file ${backupPath}: ${reason}`);
+      return { success: false, error: 'This file is not a valid BidSheet database.' };
+    };
+    let backupVersion = 0;
     try {
       const BetterSqlite3 = require('better-sqlite3');
-      const testDb = new BetterSqlite3(backupPath, { readonly: true });
-      const hasSettings = testDb.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'"
-      ).get();
-      testDb.close();
-
-      if (!hasSettings) {
-        logger.warn('db:restore', `Rejected invalid backup file: ${backupPath}`);
-        return { success: false, error: 'This file is not a valid BidSheet database.' };
+      const testDb = new BetterSqlite3(backupPath, { readonly: true, fileMustExist: true });
+      try {
+        const hasSettings = testDb.prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'"
+        ).get();
+        if (!hasSettings) return invalid('no app_settings table');
+        const hasVersions = testDb.prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        ).get();
+        backupVersion = hasVersions
+          ? (testDb.prepare('SELECT MAX(version) AS v FROM schema_version').get() as { v: number | null } | undefined)?.v ?? 0
+          : 0;
+      } finally {
+        testDb.close();
       }
+    } catch (err) {
+      return invalid(err instanceof Error ? err.message : String(err));
+    }
+    // A backup from a newer BidSheet has columns this build doesn't know and
+    // would be opened as-is (runMigrations only walks forward), so refuse it
+    // rather than half-load it.
+    const currentVersion =
+      (db.prepare('SELECT MAX(version) AS v FROM schema_version').get() as { v: number | null } | undefined)?.v ?? 0;
+    if (backupVersion > currentVersion) {
+      logger.warn('db:restore', `Rejected backup at schema v${backupVersion} (app is v${currentVersion})`);
+      return {
+        success: false,
+        error: 'This backup was made by a newer version of BidSheet. Update BidSheet, then restore it.',
+      };
+    }
 
+    try {
       const dbPath = getDbPath();
       const walPath = dbPath + '-wal';
       const shmPath = dbPath + '-shm';

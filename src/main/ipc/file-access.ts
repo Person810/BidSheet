@@ -27,10 +27,23 @@ function isGrantedPath(filePath: string): boolean {
   return grantedPaths.has(path.resolve(filePath));
 }
 
+/**
+ * Windows and macOS filesystems are case-insensitive by default, so
+ * "c:\\users\\bob\\appdata\\roaming\\bidsheet" names the same directory as
+ * app.getPath('userData'). Compare folded paths there, or a renderer can walk
+ * past the denylist just by changing case.
+ */
+const foldCase = process.platform === 'win32' || process.platform === 'darwin'
+  ? (p: string) => p.toLowerCase()
+  : (p: string) => p;
+
 /** Credential stores and the app's own data dir (DB, cloud auth tokens). */
 function isSensitivePath(filePath: string): boolean {
-  const resolved = path.resolve(filePath);
-  const within = (dir: string) => resolved === dir || resolved.startsWith(dir + path.sep);
+  const resolved = foldCase(path.resolve(filePath));
+  const within = (dir: string) => {
+    const d = foldCase(dir);
+    return resolved === d || resolved.startsWith(d + path.sep);
+  };
   if (within(path.resolve(app.getPath('userData')))) return true;
   const home = app.getPath('home');
   for (const name of ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.netrc']) {

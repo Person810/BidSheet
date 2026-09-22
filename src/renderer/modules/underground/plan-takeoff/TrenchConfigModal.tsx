@@ -78,7 +78,7 @@ export function TrenchConfigModal({ onConfirm, onCancel, initialConfig, lastRunC
   }, [config.hddAdditionalPipesJson]);
 
   const addAdditionalPipe = () => {
-    const newList = [...additionalPipes, { pipeSizeIn: config.pipeSizeIn || (system === 'metric' ? 90 : 3.0), pipeMaterialId: pipeMaterialId || null }];
+    const newList = [...additionalPipes, { pipeSizeIn: config.pipeSizeIn || (system === 'metric' ? 3.937 : 3.0), pipeMaterialId: pipeMaterialId || null }];
     set('hddAdditionalPipesJson', JSON.stringify(newList));
   };
 

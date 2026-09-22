@@ -149,6 +149,12 @@ export function TrenchProfileForm({
             onChange={(e) => {
               const nextVal = e.target.value;
               onChange('method', nextVal);
+              // The HDD "Bundle Pipe" flag is stored in backfillType; it must
+              // not survive into open cut as a backfill material named "bundle".
+              if (nextVal !== 'hdd' && form.backfillType === 'bundle') {
+                onChange('backfillType', NATIVE_MATERIAL_ITEM.label);
+                onChange('backfillMaterialId', NATIVE_MATERIAL_ITEM.id);
+              }
               if (nextVal === 'hdd') {
                 if (!form.trenchWidthFt || form.trenchWidthFt === 2.0) onChange('trenchWidthFt', isMetric ? 3.28 : 3.0);
                 if (!form.benchWidthFt || form.benchWidthFt === 0) onChange('benchWidthFt', isMetric ? 6.56 : 6.0);
