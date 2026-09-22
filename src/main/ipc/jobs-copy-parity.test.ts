@@ -78,6 +78,7 @@ const CHANGE_ORDER_EXEMPT: Record<string, string> = {
   description: 'a CO describes its own scope (explicit null at jobs.ts:462)',
   notes: 'a CO carries its own notes (explicit null at jobs.ts:470, beside description)',
   start_date: 'a CO is scheduled independently',
+  trench_pits_json: "pits belong to the parent's trench profiles, which a CO doesn't copy",
 };
 
 describe('job copy parity — every jobs column is a deliberate decision', () => {

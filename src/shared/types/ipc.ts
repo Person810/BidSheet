@@ -479,6 +479,9 @@ export interface TrenchProfileRow {
   hdd_margin_pct?: number | null;
   hdd_bores_per_pit?: number | null;
   hdd_additional_pipes_json?: string | null;
+  /** Ids from the job's pit list (jobs.trench_pits_json); null = no pit at that end. */
+  start_pit_id?: string | null;
+  end_pit_id?: string | null;
 }
 
 export interface SaveTrenchProfilePayload {
@@ -509,6 +512,8 @@ export interface SaveTrenchProfilePayload {
   hddMarginPct?: number | null;
   hddBoresPerPit?: number | null;
   hddAdditionalPipesJson?: string | null;
+  startPitId?: string | null;
+  endPitId?: string | null;
 }
 
 // ================================================================
