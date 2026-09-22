@@ -78,6 +78,7 @@ import type {
 } from './ipc/job-locations';
 import type { CrewTemplate, LaborRole } from './labor';
 import type { PdfTemplate } from './pdf';
+import type { TrenchPit } from '../trenchPits';
 
 export {};
 
@@ -171,6 +172,8 @@ declare global {
       getTrenchProfiles: (jobId: number) => Promise<TrenchProfileRow[]>;
       saveTrenchProfile: (profile: SaveTrenchProfilePayload) => Promise<{ id: number }>;
       deleteTrenchProfile: (id: number) => Promise<SqlRunResult>;
+      getTrenchPits: (jobId: number) => Promise<TrenchPit[]>;
+      saveTrenchPits: (jobId: number, pits: TrenchPit[]) => Promise<TrenchPit[]>;
       reorderTrenchProfiles: (items: { id: number; sortOrder: number }[]) => Promise<void>;
 
       // Assemblies

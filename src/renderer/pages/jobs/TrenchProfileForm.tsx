@@ -15,6 +15,7 @@ import { UnitInput } from '../../components/UnitInput';
 import { useUnitSystem } from '../../stores/units-store';
 import { unitLabel, formatPipeSize, toDisplay, fromDisplay } from '../../../shared/unitSystem';
 import { formatCurrency } from './helpers';
+import type { TrenchPit } from '../../../shared/trenchPits';
 
 const Trench3DView = React.lazy(() =>
   import('../../modules/underground/plan-takeoff/Trench3DView').then((m) => ({ default: m.Trench3DView })));
@@ -31,6 +32,8 @@ interface FormData extends TrenchInput {
   hddMarginPct?: number;
   hddBoresPerPit?: number;
   hddAdditionalPipesJson?: string;
+  startPitId?: string | null;
+  endPitId?: string | null;
 }
 
 interface Props {
@@ -48,11 +51,13 @@ interface Props {
   /** The job's surveyed-terrain surface, if any, so a linked run can ground against real elevations. */
   surface: TakeoffSurface | null;
   customRates?: any;
+  /** The job's pit list (#149), for the start/end pit pickers. */
+  pits?: TrenchPit[];
 }
 
 export function TrenchProfileForm({
   form, onChange, onSave, onCancel, errors, pipeMaterials, beddingMaterials,
-  takeoffRuns, pageScales, surface, customRates,
+  takeoffRuns, pageScales, surface, customRates, pits = [],
 }: Props) {
   const system = useUnitSystem();
   const isMetric = system === 'metric';
@@ -164,6 +169,22 @@ export function TrenchProfileForm({
           >
             <option value="open_cut">Open Cut Trenching</option>
             <option value="hdd">Horizontal Directional Drilling (HDD)</option>
+          </select>
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label htmlFor="trench-start-pit">Start Pit</label>
+          <select id="trench-start-pit" className="form-control" value={form.startPitId ?? ''}
+            onChange={(e) => onChange('startPitId', e.target.value || null)}>
+            <option value="">No pit</option>
+            {pits.map((p) => <option key={p.id} value={p.id}>{p.label || 'Unnamed pit'}</option>)}
+          </select>
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label htmlFor="trench-end-pit">End Pit</label>
+          <select id="trench-end-pit" className="form-control" value={form.endPitId ?? ''}
+            onChange={(e) => onChange('endPitId', e.target.value || null)}>
+            <option value="">No pit</option>
+            {pits.map((p) => <option key={p.id} value={p.id}>{p.label || 'Unnamed pit'}</option>)}
           </select>
         </div>
       </div>

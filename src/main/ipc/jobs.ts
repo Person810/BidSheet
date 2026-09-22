@@ -195,8 +195,8 @@ export function registerJobHandlers(db: Database.Database): void {
 
       const newJob = db
         .prepare(
-          `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, freight, site_postcode, site_country)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO jobs (name, job_number, client, client_id, location, bid_date, start_date, description, status, overhead_percent, profit_percent, bond_percent, tax_percent, escalation_percent, notes, freight, site_postcode, site_country, trench_pits_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           newName || job.name + ' (Copy)', jobNumber, job.client, job.client_id, job.location,
@@ -204,7 +204,10 @@ export function registerJobHandlers(db: Database.Database): void {
           job.overhead_percent, job.profit_percent, job.bond_percent,
           job.tax_percent, job.escalation_percent ?? 0, job.notes,
           // A copy is a template of the whole priced job, freight included.
-          job.freight ?? 0, job.site_postcode ?? null, job.site_country ?? null
+          job.freight ?? 0, job.site_postcode ?? null, job.site_country ?? null,
+          // Pit ids are job-local, so the copied profiles' start/end links
+          // stay valid against the copied list.
+          job.trench_pits_json ?? null
         );
       const newJobId = Number(newJob.lastInsertRowid);
 
@@ -254,8 +257,8 @@ export function registerJobHandlers(db: Database.Database): void {
           bedding_type, backfill_type, sort_order,
           pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft,
           compaction_pct, method, hdd_location, hdd_include_slurry, hdd_include_pits, hdd_margin_pct,
-          hdd_bores_per_pit, hdd_additional_pipes_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          hdd_bores_per_pit, hdd_additional_pipes_json, start_pit_id, end_pit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       for (const p of profiles) {
         insertProfile.run(
@@ -265,7 +268,8 @@ export function registerJobHandlers(db: Database.Database): void {
           p.pipe_material_id, p.bedding_material_id, p.backfill_material_id, p.bedding_depth_ft,
           p.compaction_pct ?? 0, p.method ?? 'open_cut', p.hdd_location ?? null,
           p.hdd_include_slurry ?? 1, p.hdd_include_pits ?? 1, p.hdd_margin_pct ?? 15.0,
-          p.hdd_bores_per_pit ?? 1, p.hdd_additional_pipes_json ?? null
+          p.hdd_bores_per_pit ?? 1, p.hdd_additional_pipes_json ?? null,
+          p.start_pit_id ?? null, p.end_pit_id ?? null
         );
       }
 

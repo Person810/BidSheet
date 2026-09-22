@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   SetupExtras, SaveEquipmentCategoryPayload, DeleteEquipmentCategoryPayload,
 } from '../shared/types/ipc';
+import type { TrenchPit } from '../shared/trenchPits';
 
 // Electron prefixes errors crossing IPC with
 // "Error invoking remote method 'channel': Error: ..." -- strip that
@@ -103,6 +104,8 @@ contextBridge.exposeInMainWorld('api', {
   getTrenchProfiles: (jobId: number) => invoke('db:trench-profiles:list', jobId),
   saveTrenchProfile: (profile: any) => invoke('db:trench-profiles:save', profile),
   deleteTrenchProfile: (id: number) => invoke('db:trench-profiles:delete', id),
+  getTrenchPits: (jobId: number) => invoke('db:trench-pits:get', jobId),
+  saveTrenchPits: (jobId: number, pits: TrenchPit[]) => invoke('db:trench-pits:save', jobId, pits),
   reorderTrenchProfiles: (items: any[]) => invoke('db:trench-profiles:reorder', items),
 
   // ---- Assemblies ----

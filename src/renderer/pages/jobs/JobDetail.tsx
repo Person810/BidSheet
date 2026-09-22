@@ -26,7 +26,7 @@ import { BidItemImportModal } from './BidItemImportModal';
 import { JobPriceImportModal } from './JobPriceImportModal';
 import { PriceStateLegend, priceAgeDays } from './priceState';
 import { CompareJobsModal } from './CompareJobsModal';
-import { TrenchProfileList, type ConvertToBidProfile } from './TrenchProfileList';
+import { TrenchProfileList, type ConvertToBidProfile, type ConvertToBidPits } from './TrenchProfileList';
 import { PdfCustomizerModal } from './PdfCustomizerModal';
 import { useToastStore } from '../../stores/toast-store';
 import { useUnitSystem } from '../../stores/units-store';
@@ -588,7 +588,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
   };
 
   // ---- Convert trench profiles to bid sections ----
-  const handleConvertToBid = async (profileData: ConvertToBidProfile[]) => {
+  const handleConvertToBid = async (profileData: ConvertToBidProfile[], pits: ConvertToBidPits) => {
     history.record();
     const tracerMat = materials.find((m: any) => m.name.toLowerCase().includes('tracer wire'));
     const tapeMat = materials.find((m: any) => m.name.toLowerCase().includes('warning tape'));
@@ -664,6 +664,22 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       totalTapeLF += p.warningTapeLF;
     }
 
+    // Pits (#149): volume joins the Excavation total and the matching backfill
+    // group; a shared pit arrives here once.
+    const pitCount = pits.count;
+    if (pitCount > 0) {
+      totalExcavationCY += pits.excavationCY;
+      for (const b of pits.backfill) {
+        const key = b.materialId != null ? String(b.materialId) : b.name;
+        const entry = backfillByKey.get(key);
+        if (entry) {
+          entry.qty += b.qty;
+        } else {
+          backfillByKey.set(key, { qty: b.qty, materialId: b.materialId, name: b.name, unit: b.unit, labels: [] });
+        }
+      }
+    }
+
     const allLabels = profileData.map((p) => p.label).join(', ');
     const profileNote = `From trench profiles: ${allLabels}`;
 
@@ -723,7 +739,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       }));
     }
 
-    if (!hasOpenCut) {
+    if (!hasOpenCut && pitCount === 0) {
       await loadJob();
       return;
     }
@@ -779,6 +795,18 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
     for (const entry of backfillByKey.values()) {
       await volumeItem(entry);
+    }
+
+    if (pitCount > 0) {
+      await saveItem({
+        description: 'Pits', quantity: pitCount, unit: 'EA', materialId: null, materialUnitCost: 0,
+        notes: `${pits.labels.join(', ')} | Pit excavation and backfill are included in the lines above; price shoring/setup here`,
+      });
+    }
+
+    if (!hasOpenCut) {
+      await loadJob();
+      return;
     }
 
     // Tracer Wire (single total)
@@ -1076,8 +1104,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
 
       {/* Profiles tab */}
       {activeTab === 'profiles' && (
-        <TrenchProfileList jobId={jobId} onProfileCountChange={setProfileCount} onConvertToBid={(data) => new Promise<void>((resolve) => {
-          withLockCheck(async () => { await handleConvertToBid(data); resolve(); }, resolve);
+        <TrenchProfileList jobId={jobId} onProfileCountChange={setProfileCount} onConvertToBid={(data, pits) => new Promise<void>((resolve) => {
+          withLockCheck(async () => { await handleConvertToBid(data, pits); resolve(); }, resolve);
         })} />
       )}
 

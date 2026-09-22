@@ -433,6 +433,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV51,
   migrateV52,
   migrateV53,
+  migrateV54,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -1054,6 +1055,21 @@ function migrateV53(db: Database.Database): void {
   db.exec(`
     ALTER TABLE takeoff_runs ADD COLUMN additional_pipes_json TEXT;
     INSERT INTO schema_version (version) VALUES (53);
+  `);
+}
+
+// V54: trench and bore pits (#149). A job-level pit list, each profile
+// pointing at an optional start and end pit, so a pit shared at a change of
+// direction is one pit counted once. jobs.trench_pits_json holds the list
+// (see src/shared/trenchPits.ts for the shape and why it is a column, not a
+// table: a new table would break cloud sync for every older client); the
+// profile columns hold pit ids from that list. NULL = no pit at that end.
+function migrateV54(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE jobs ADD COLUMN trench_pits_json TEXT;
+    ALTER TABLE trench_profiles ADD COLUMN start_pit_id TEXT;
+    ALTER TABLE trench_profiles ADD COLUMN end_pit_id TEXT;
+    INSERT INTO schema_version (version) VALUES (54);
   `);
 }
 

@@ -8,6 +8,7 @@ import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { safeHandle, getSectionCostRows } from './shared';
 import { grantPathAccess, isPathReadable } from './file-access';
+import { parsePits, serializePits } from '../../shared/trenchPits';
 
 export function registerTakeoffHandlers(db: Database.Database): void {
   // ================================================================
@@ -21,6 +22,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
   safeHandle('db:trench-profiles:save', (_event, profile: any) => {
     // Only store numeric IDs in the FK columns; string IDs like 'native' become NULL
     const intOrNull = (v: any) => (typeof v === 'number' ? v : null);
+    // Pit links are ids from the job's pit list (jobs.trench_pits_json).
+    const pitIdOrNull = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 64) : null);
 
     if (profile.id) {
       db.prepare(
@@ -29,7 +32,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
           bedding_type = ?, backfill_type = ?, sort_order = ?,
           pipe_material_id = ?, bedding_material_id = ?, backfill_material_id = ?, bedding_depth_ft = ?,
           compaction_pct = ?, method = ?, hdd_location = ?, hdd_include_slurry = ?, hdd_include_pits = ?, hdd_margin_pct = ?,
-          hdd_bores_per_pit = ?, hdd_additional_pipes_json = ?,
+          hdd_bores_per_pit = ?, hdd_additional_pipes_json = ?, start_pit_id = ?, end_pit_id = ?,
           updated_at = datetime('now', 'localtime')
         WHERE id = ?`
       ).run(
@@ -46,6 +49,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         profile.hddMarginPct ?? null,
         profile.hddBoresPerPit ?? 1,
         profile.hddAdditionalPipesJson ?? null,
+        pitIdOrNull(profile.startPitId), pitIdOrNull(profile.endPitId),
         profile.id
       );
       return { id: profile.id };
@@ -54,8 +58,9 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         `INSERT INTO trench_profiles (job_id, label, pipe_size_in, pipe_material, start_depth_ft,
           grade_pct, run_length_lf, trench_width_ft, bench_width_ft, bedding_type, backfill_type, sort_order,
           pipe_material_id, bedding_material_id, backfill_material_id, bedding_depth_ft, compaction_pct,
-          method, hdd_location, hdd_include_slurry, hdd_include_pits, hdd_margin_pct, hdd_bores_per_pit, hdd_additional_pipes_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          method, hdd_location, hdd_include_slurry, hdd_include_pits, hdd_margin_pct, hdd_bores_per_pit, hdd_additional_pipes_json,
+          start_pit_id, end_pit_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         profile.jobId, profile.label ?? '', profile.pipeSizeIn, profile.pipeMaterial ?? '', profile.startDepthFt,
         profile.gradePct, profile.runLengthLF, profile.trenchWidthFt, profile.benchWidthFt,
@@ -69,10 +74,30 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         profile.hddIncludePits === undefined ? null : (profile.hddIncludePits ? 1 : 0),
         profile.hddMarginPct ?? null,
         profile.hddBoresPerPit ?? 1,
-        profile.hddAdditionalPipesJson ?? null
+        profile.hddAdditionalPipesJson ?? null,
+        pitIdOrNull(profile.startPitId), pitIdOrNull(profile.endPitId)
       );
       return { id: Number(result.lastInsertRowid) };
     }
+  });
+
+  // ---- Trench / bore pits (#149) ----
+  // The job's pit list. Profiles link to pits by id; a pit deleted here just
+  // leaves those links dangling, and summarizePits ignores them.
+  safeHandle('db:trench-pits:get', (_event, jobId: number) => {
+    const row = db.prepare('SELECT trench_pits_json FROM jobs WHERE id = ?').get(jobId) as
+      { trench_pits_json: string | null } | undefined;
+    return parsePits(row?.trench_pits_json);
+  });
+
+  safeHandle('db:trench-pits:save', (_event, jobId: number, pits: unknown) => {
+    // Round-trip through the parser so the renderer can't store junk.
+    const clean = parsePits(JSON.stringify(Array.isArray(pits) ? pits : []));
+    const info = db.prepare(
+      `UPDATE jobs SET trench_pits_json = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`
+    ).run(serializePits(clean), jobId);
+    if (info.changes === 0) throw new Error('Job not found.');
+    return clean;
   });
 
   safeHandle('db:trench-profiles:delete', (_event, id: number) => {

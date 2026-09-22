@@ -12,6 +12,9 @@ import type { TakeoffRun } from '../../modules/underground/plan-takeoff/types';
 import { useUnitSystem } from '../../stores/units-store';
 import { unitLabel, convertQty, formatPipeSize, fromDisplay } from '../../../shared/unitSystem';
 import { formatCurrency } from './helpers';
+import { TrenchPitsCard } from './TrenchPitsCard';
+import { summarizePits, type TrenchPit } from '../../../shared/trenchPits';
+import { NATIVE_BACKFILL_LABEL } from '../../modules/underground/trenchCalc';
 
 export interface ConvertToBidProfile {
   label: string;
@@ -38,9 +41,18 @@ export interface ConvertToBidProfile {
   additionalPipes?: Array<{ pipeLF: number; pipeMaterialId: number | null; pipeMaterialName: string }>;
 }
 
+/** Pits the converted profiles dig (#149), each counted once. */
+export interface ConvertToBidPits {
+  count: number;
+  labels: string[];
+  excavationCY: number;
+  /** Pit backfill, grouped like profile backfill so it lands on the same line. */
+  backfill: Array<{ qty: number; materialId: number | null; name: string; unit: string }>;
+}
+
 interface Props {
   jobId: number;
-  onConvertToBid?: (profileData: ConvertToBidProfile[]) => Promise<void>;
+  onConvertToBid?: (profileData: ConvertToBidProfile[], pits: ConvertToBidPits) => Promise<void>;
   onProfileCountChange?: (count: number) => void;
 }
 
@@ -66,6 +78,8 @@ const DEFAULTS = {
   hddMarginPct: 15,
   hddBoresPerPit: 1,
   hddAdditionalPipesJson: '',
+  startPitId: null as string | null,
+  endPitId: null as string | null,
 };
 
 /** Metric prefills: round metres (1.2 m deep, 30 m long, 1 m wide, 150 mm
@@ -137,6 +151,18 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
   const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel?: string; variant?: 'danger' | 'neutral' } | null>(null);
 
   const { pipeMaterials, beddingMaterials } = useTrenchMaterials();
+
+  // The job's pit list (#149). Saved on every edit; the server sanitizes and
+  // echoes it back, but local state stays authoritative while typing.
+  const [pits, setPits] = useState<TrenchPit[]>([]);
+  useEffect(() => {
+    window.api.getTrenchPits(jobId).then(setPits)
+      .catch((err: unknown) => console.error('Failed to load pits:', err));
+  }, [jobId]);
+  const persistPits = (next: TrenchPit[]) => {
+    setPits(next);
+    window.api.saveTrenchPits(jobId, next).catch((err: unknown) => console.error('Failed to save pits:', err));
+  };
 
   // Plan Takeoff data (runs + terrain), so the 3D preview can show a profile
   // against the real pipe route and surveyed ground instead of a synthetic
@@ -240,6 +266,27 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
 
   const handleChange = (field: string, value: any) => setForm((prev) => ({ ...prev, [field]: value }));
 
+  // Only valid profiles dig their pits; an unsaved edit uses the form's links.
+  const pitSummary = useMemo(() => summarizePits(pits, profiles.map((row, idx) => {
+    if (!computed[idx]) return {};
+    return { start_pit_id: row.start_pit_id, end_pit_id: row.end_pit_id };
+  })), [pits, profiles, computed]);
+  const profileLabels = profiles.map((row, idx) => row.label || `Run ${idx + 1}`);
+  const pitLabel = (id: string | null | undefined) => pits.find((p) => p.id === id)?.label;
+
+  const handlePitsChange = (next: TrenchPit[]) => {
+    const removedInUse = pitSummary.used.filter((u) => !next.some((p) => p.id === u.pit.id));
+    if (removedInUse.length === 0) {
+      persistPits(next);
+      return;
+    }
+    const u = removedInUse[0];
+    setConfirmState({
+      msg: `Delete pit ${u.pit.label || ''}? It is used by ${u.profileIndexes.map((i) => profileLabels[i]).join(', ')}; those runs will have no pit at that end.`,
+      onYes: () => { setConfirmState(null); persistPits(next); },
+    });
+  };
+
   const formAdditionalPipes = useMemo(() => {
     const jsonStr = form.hddAdditionalPipesJson || (form.backfillType && form.backfillType.startsWith('[') ? form.backfillType : '');
     if (!jsonStr) return [];
@@ -325,6 +372,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       hddMarginPct: row.hdd_margin_pct ?? 15,
       hddBoresPerPit: row.hdd_bores_per_pit !== undefined && row.hdd_bores_per_pit !== null ? row.hdd_bores_per_pit : (row.compaction_pct || 1),
       hddAdditionalPipesJson: row.hdd_additional_pipes_json || (row.backfill_type && row.backfill_type.startsWith('[') ? row.backfill_type : ''),
+      startPitId: row.start_pit_id ?? null,
+      endPitId: row.end_pit_id ?? null,
     });
     setEditingId(row.id);
   };
@@ -367,6 +416,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       hddMarginPct: form.hddMarginPct ?? 15,
       hddBoresPerPit: isHDD ? (form.hddBoresPerPit ?? 1) : 1,
       hddAdditionalPipesJson: form.hddAdditionalPipesJson || null,
+      startPitId: form.startPitId || null,
+      endPitId: form.endPitId || null,
     });
     setEditingId(null);
     await loadProfiles();
@@ -463,7 +514,25 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
             additionalPipes: additionalPipes.length > 0 ? additionalPipes : undefined,
           });
         });
-        await onConvertToBid(data);
+        // Pit backfill follows the first open-cut run that uses the pit;
+        // a pit only HDD bores use is backfilled with native material.
+        const pitBackfill = new Map<string, ConvertToBidPits['backfill'][number]>();
+        for (const u of pitSummary.used) {
+          const openCut = u.profileIndexes.map((i) => profiles[i]).find((r) => (r.method || 'open_cut') !== 'hdd');
+          const mat = openCut ? beddingMaterials.find((m) => m.id === openCut.backfill_material_id) : undefined;
+          const materialId: number | null = mat && typeof openCut?.backfill_material_id === 'number' ? openCut.backfill_material_id : null;
+          const name = mat?.label || (openCut?.backfill_type && openCut.backfill_type !== 'bundle' ? openCut.backfill_type : NATIVE_BACKFILL_LABEL);
+          const key = materialId != null ? String(materialId) : name;
+          const entry = pitBackfill.get(key);
+          if (entry) entry.qty += u.volumeCY;
+          else pitBackfill.set(key, { qty: u.volumeCY, materialId, name, unit: mat?.detailSub || '' });
+        }
+        await onConvertToBid(data, {
+          count: pitSummary.count,
+          labels: pitSummary.used.map((u) => u.pit.label),
+          excavationCY: pitSummary.excavationCY,
+          backfill: [...pitBackfill.values()],
+        });
       },
     });
   };
@@ -511,6 +580,11 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                         {row.label || `Run ${idx + 1}`}
                       </span>
                       <span className="print-only">{row.label || `Run ${idx + 1}`}</span>
+                      {(pitLabel(row.start_pit_id) || pitLabel(row.end_pit_id)) && (
+                        <div className="text-muted" style={{ fontSize: 11 }}>
+                          Pits: {pitLabel(row.start_pit_id) || '--'} &rarr; {pitLabel(row.end_pit_id) || '--'}
+                        </div>
+                      )}
                     </td>
                     <td className="text-right">{out ? lf(out.pipeLF) : '--'}</td>
                     <td className="text-right">{pipeDisplay(row)}</td>
@@ -539,20 +613,32 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
                         onSave={saveProfile} onCancel={() => setEditingId(null)} errors={formErrors}
                         pipeMaterials={pipeMaterials} beddingMaterials={beddingMaterials}
                         takeoffRuns={takeoffRuns} pageScales={pageScales} surface={surface}
-                        customRates={parseHddRates(settings?.hdd_rates_json)} />
+                        customRates={parseHddRates(settings?.hdd_rates_json)} pits={pits} />
                     </td></tr>
                   )}
                 </React.Fragment>
               );
             })}
+            {pitSummary.count > 0 && (
+              <tr>
+                <td>Pits ({pitSummary.count})</td>
+                <td></td>
+                <td className="text-right text-muted" style={{ fontSize: 12 }}>{pitSummary.used.map((u) => u.pit.label).join(', ')}</td>
+                <td></td>
+                <td className="text-right">{cy(pitSummary.excavationCY)}</td>
+                <td></td>
+                <td className="text-right">{cy(pitSummary.excavationCY)}</td>
+                <td></td>
+              </tr>
+            )}
             <tr>
               <td style={{ fontWeight: 600 }}>Totals</td>
               <td className="text-right" style={{ fontWeight: 600 }}>{lf(totals.pipeLF)}</td>
               <td></td>
               <td></td>
-              <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.excavationCY)}</td>
+              <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.excavationCY + pitSummary.excavationCY)}</td>
               <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.beddingCY)}</td>
-              <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.backfillCY)}</td>
+              <td className="text-right" style={{ fontWeight: 600 }}>{cy(totals.backfillCY + pitSummary.excavationCY)}</td>
               <td></td>
             </tr>
           </tbody>
@@ -571,6 +657,8 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
           </tfoot>
         </table>
       )}
+
+      <TrenchPitsCard pits={pits} summary={pitSummary} profileLabels={profileLabels} onChange={handlePitsChange} />
 
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
