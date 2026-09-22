@@ -366,7 +366,43 @@ function LegendSwatch({ color, opacity, label }: { color: string; opacity: numbe
   );
 }
 
-export function Trench3DView({ run, scalePxPerFt, groundSampler, height = 520, isHDD = false, includePits = false }: Trench3DViewProps) {
+/**
+ * Contains a 3D failure to the preview pane. WebGL is not guaranteed: remote
+ * desktop sessions, VMs and blocklisted GPU drivers have none, and three.js
+ * throws "Error creating WebGL context" during render. With only the app-level
+ * boundary above it, that replaced the whole screen (the job, the profile form
+ * being edited) with "Something went wrong" — just for opening a profile.
+ */
+class Trench3DErrorBoundary extends React.Component<
+  { height: number; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err: Error) { console.warn('3D trench preview unavailable:', err.message); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="text-muted" style={{
+        height: Math.min(this.props.height, 160), display: 'flex', alignItems: 'center', justifyContent: 'center',
+        textAlign: 'center', padding: 16, borderRadius: 6, background: '#0e1116', fontSize: 13,
+      }}>
+        3D preview unavailable: this computer&apos;s graphics driver doesn&apos;t support WebGL.
+        Quantities and pricing are unaffected.
+      </div>
+    );
+  }
+}
+
+export function Trench3DView(props: Trench3DViewProps) {
+  return (
+    <Trench3DErrorBoundary height={props.height ?? 520}>
+      <Trench3DViewInner {...props} />
+    </Trench3DErrorBoundary>
+  );
+}
+
+function Trench3DViewInner({ run, scalePxPerFt, groundSampler, height = 520, isHDD = false, includePits = false }: Trench3DViewProps) {
   const system = useUnitSystem();
   const metric = system === 'metric';
   const [resetKey, setResetKey] = useState(0);
