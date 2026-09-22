@@ -1130,7 +1130,10 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           changeOrders={changeOrders}
           coSummaries={coSummaries}
           onOpenJob={onOpenJob}
-          onCreateCO={() => withLockCheck(handleCreateCO)}
+          // A change order is how a won job's scope changes; creating one
+          // doesn't touch this bid, so it isn't gated by the bid lock (the
+          // "Edit anyway?" bypass would also unlock this bid for the session).
+          onCreateCO={handleCreateCO}
           onDeleteCO={handleDeleteCO}
         />
       )}
