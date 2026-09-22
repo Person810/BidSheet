@@ -264,6 +264,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
       beddingMaterialId: r.bedding_material_id,
       backfillType: r.backfill_type,
       backfillMaterialId: r.backfill_material_id,
+      hddAdditionalPipesJson: r.additional_pipes_json ?? null,
       color: r.color,
       pdfPage: r.pdf_page,
       points: (pointsStmt.all(r.id) as any[]).map((p) => ({
@@ -288,6 +289,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
             trench_width_ft = ?, bench_width_ft = ?, bedding_type = ?,
             bedding_depth_ft = ?, bedding_material_id = ?, backfill_type = ?,
             backfill_material_id = ?, color = ?, sort_order = ?, pdf_page = ?,
+            additional_pipes_json = ?,
             updated_at = datetime('now','localtime')
           WHERE id = ?
         `).run(
@@ -296,6 +298,7 @@ export function registerTakeoffHandlers(db: Database.Database): void {
           run.trenchWidthFt, run.benchWidthFt, run.beddingType,
           run.beddingDepthFt, run.beddingMaterialId ?? null, run.backfillType,
           run.backfillMaterialId ?? null, run.color, run.sortOrder ?? 0, run.pdfPage,
+          run.hddAdditionalPipesJson || null,
           run.id
         );
         runId = run.id;
@@ -306,14 +309,15 @@ export function registerTakeoffHandlers(db: Database.Database): void {
              pipe_material_id, start_depth_ft, grade_pct,
              trench_width_ft, bench_width_ft, bedding_type,
              bedding_depth_ft, bedding_material_id, backfill_type,
-             backfill_material_id, color, sort_order, pdf_page)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             backfill_material_id, color, sort_order, pdf_page, additional_pipes_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           run.jobId, run.label, run.utilityType, run.pipeSizeIn, run.pipeMaterial,
           run.pipeMaterialId ?? null, run.startDepthFt, run.gradePct,
           run.trenchWidthFt, run.benchWidthFt, run.beddingType,
           run.beddingDepthFt, run.beddingMaterialId ?? null, run.backfillType,
-          run.backfillMaterialId ?? null, run.color, run.sortOrder ?? 0, run.pdfPage
+          run.backfillMaterialId ?? null, run.color, run.sortOrder ?? 0, run.pdfPage,
+          run.hddAdditionalPipesJson || null
         );
         runId = Number(result.lastInsertRowid);
       }
@@ -706,8 +710,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
           (id, job_id, label, utility_type, pipe_size_in, pipe_material, pipe_material_id,
            start_depth_ft, grade_pct, trench_width_ft, bench_width_ft, bedding_type,
            bedding_depth_ft, bedding_material_id, backfill_type, backfill_material_id,
-           color, sort_order, pdf_page)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           color, sort_order, pdf_page, additional_pipes_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const insertPt = db.prepare(
         'INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order, invert_elev, rim_elev, structure_type, node_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -717,7 +721,8 @@ export function registerTakeoffHandlers(db: Database.Database): void {
         insertRun.run(r.id, jobId, r.label, r.utilityType, r.pipeSizeIn, r.pipeMaterial,
           r.pipeMaterialId ?? null, r.startDepthFt, r.gradePct, r.trenchWidthFt,
           r.benchWidthFt, r.beddingType, r.beddingDepthFt, r.beddingMaterialId ?? null,
-          r.backfillType, r.backfillMaterialId ?? null, r.color, idx, r.pdfPage);
+          r.backfillType, r.backfillMaterialId ?? null, r.color, idx, r.pdfPage,
+          r.hddAdditionalPipesJson || null);
         (r.points || []).forEach((pt: any, i: number) => {
           insertPt.run(r.id, pt.x, pt.y, i, pt.invertElev ?? null, pt.rimElev ?? null,
             pt.structureType ?? null, pt.nodeId ?? null);

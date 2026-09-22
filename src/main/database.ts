@@ -432,6 +432,7 @@ export const MIGRATIONS: Array<(db: Database.Database) => void> = [
   migrateV50,
   migrateV51,
   migrateV52,
+  migrateV53,
 ];
 
 function runMigrations(db: Database.Database): void {
@@ -1037,6 +1038,22 @@ function migrateV52(db: Database.Database): void {
     ALTER TABLE material_categories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE app_settings ADD COLUMN equipment_categories TEXT;
     INSERT INTO schema_version (version) VALUES (52);
+  `);
+}
+
+// V53: persist the additional pipes/conduits on a Plan Takeoff run (#150).
+//
+// The multi-pipe trench work gave the takeoff run modal an "Additional Pipes &
+// Conduits" list and carried it into the 3D view and Send to Profiles, but
+// takeoff_runs had nowhere to keep it: every save dropped the list, so the
+// pipes vanished on reload, on undo/redo (which restores from the DB), and on
+// job copy and sync. Same JSON shape as trench_profiles.hdd_additional_pipes_json
+// ([{ pipeSizeIn, pipeMaterialId }], sizes in canonical inches). The column is
+// named for what it holds rather than for HDD; takeoff runs are open-cut only.
+function migrateV53(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE takeoff_runs ADD COLUMN additional_pipes_json TEXT;
+    INSERT INTO schema_version (version) VALUES (53);
   `);
 }
 

@@ -303,8 +303,8 @@ export function registerJobHandlers(db: Database.Database): void {
       // Copy takeoff runs and their points
       const runs = db.prepare('SELECT * FROM takeoff_runs WHERE job_id = ? ORDER BY sort_order').all(id) as any[];
       const insertRun = db.prepare(
-        `INSERT INTO takeoff_runs (job_id, label, utility_type, pipe_size_in, pipe_material, pipe_material_id, start_depth_ft, grade_pct, trench_width_ft, bench_width_ft, bedding_type, bedding_depth_ft, bedding_material_id, backfill_type, backfill_material_id, color, sort_order, pdf_page)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO takeoff_runs (job_id, label, utility_type, pipe_size_in, pipe_material, pipe_material_id, start_depth_ft, grade_pct, trench_width_ft, bench_width_ft, bedding_type, bedding_depth_ft, bedding_material_id, backfill_type, backfill_material_id, color, sort_order, pdf_page, additional_pipes_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const insertPt = db.prepare(
         'INSERT INTO takeoff_points (run_id, x_px, y_px, sort_order, invert_elev, rim_elev, structure_type, node_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -314,7 +314,7 @@ export function registerJobHandlers(db: Database.Database): void {
           newJobId, r.label, r.utility_type, r.pipe_size_in, r.pipe_material, r.pipe_material_id,
           r.start_depth_ft, r.grade_pct, r.trench_width_ft, r.bench_width_ft, r.bedding_type,
           r.bedding_depth_ft, r.bedding_material_id, r.backfill_type, r.backfill_material_id,
-          r.color, r.sort_order, r.pdf_page
+          r.color, r.sort_order, r.pdf_page, r.additional_pipes_json ?? null
         );
         const newRunId = Number(newRun.lastInsertRowid);
         const points = db.prepare('SELECT * FROM takeoff_points WHERE run_id = ? ORDER BY sort_order').all(r.id) as any[];

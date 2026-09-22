@@ -81,6 +81,7 @@ function runToConfig(run: TakeoffRun): RunConfig {
     beddingType: run.beddingType, beddingDepthFt: run.beddingDepthFt,
     beddingMaterialId: run.beddingMaterialId, backfillType: run.backfillType,
     backfillMaterialId: run.backfillMaterialId,
+    hddAdditionalPipesJson: run.hddAdditionalPipesJson ?? null,
   };
 }
 
