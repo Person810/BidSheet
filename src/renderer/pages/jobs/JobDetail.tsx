@@ -600,8 +600,14 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     const backfillByKey = new Map<string, { qty: number; materialId: number | null; name: string; unit: string; labels: string[] }>();
     let totalTracerLF = 0;
     let totalTapeLF = 0;
+    // HDD bores are priced as a lump sum by calculateHDD (rig, crew, fluids,
+    // pits, margin). They have no excavation/bedding/backfill/tracer/tape, so
+    // they skip those groups and become one subcontractor line each below.
+    const hddBores: Array<{ label: string; qtyLF: number; cost: number }> = [];
+    let hasOpenCut = false;
 
     for (const p of profileData) {
+      const isHDD = p.method === 'hdd';
       // Pipe -- group by material ID (or name for legacy)
       const pipeKey = p.pipeMaterialId != null ? String(p.pipeMaterialId) : p.pipeMaterialName;
       const pipeEntry = pipeByKey.get(pipeKey);
@@ -613,8 +619,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
       }
 
       // Additional pipes in the same run/bundle
-      if ((p as any).additionalPipes && (p as any).additionalPipes.length > 0) {
-        for (const addPipe of (p as any).additionalPipes) {
+      if (p.additionalPipes && p.additionalPipes.length > 0) {
+        for (const addPipe of p.additionalPipes) {
           const addKey = addPipe.pipeMaterialId != null ? String(addPipe.pipeMaterialId) : addPipe.pipeMaterialName;
           const addEntry = pipeByKey.get(addKey);
           if (addEntry) {
@@ -625,6 +631,12 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           }
         }
       }
+
+      if (isHDD) {
+        hddBores.push({ label: p.label, qtyLF: p.pipeLF, cost: p.totalEstimate ?? 0 });
+        continue;
+      }
+      hasOpenCut = true;
 
       totalExcavationCY += p.excavationCY;
 
@@ -697,6 +709,23 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     for (const entry of pipeByKey.values()) {
       const mat = entry.materialId ? materials.find((m: any) => m.id === entry.materialId) : null;
       await linearItem({ description: entry.name, qtyLF: entry.qty, mat, materialId: entry.materialId });
+    }
+
+    // HDD bores: one subcontractor line per profile, quantity in LF (m
+    // metric) so the unit price reads as the bore's $/LF.
+    for (const bore of hddBores) {
+      const { quantity, unit } = bidLineQty(bore.qtyLF, 'lf', system);
+      await window.api.saveBidLineItem(buildLineItemPayload({
+        sectionId, jobId, sortOrder: sortOrder++,
+        description: `HDD Bore - ${bore.label}`, quantity, unit,
+        subcontractorCost: bore.cost,
+        notes: `From trench profile: ${bore.label} | HDD estimate incl. margin`,
+      }));
+    }
+
+    if (!hasOpenCut) {
+      await loadJob();
+      return;
     }
 
     // Excavation (single total)
