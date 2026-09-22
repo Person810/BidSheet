@@ -9,7 +9,7 @@ import { ChangeOrdersTab } from './ChangeOrdersTab';
 import { AssemblyPickerModal } from './AssemblyPickerModal';
 import { emptyLineForm, jobToPayload, formatCurrency, formatDateLocal } from './helpers';
 import { buildAssemblyLineItems } from '../../../shared/assemblyExpansion';
-import { buildLineItemPayload, lineItemRowToPayload, laborHoursForQuantity } from '../../../shared/lineItemPayload';
+import { buildLineItemPayload, lineItemRowToPayload, laborHoursForQuantity, equipmentHoursForLabor } from '../../../shared/lineItemPayload';
 import { parseManualFields, withManual } from '../../../shared/manualFields';
 import { effectiveMaterialUnitCost } from '../../../shared/unitConversion';
 import { bidLineQty, metricUnitPrice } from '../../../shared/unitSystem';
@@ -526,10 +526,19 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
         rate: productionRates.find((r: any) => r.id === item.production_rate_id),
         manualFields,
       });
+      // The crew's equipment runs the crew's hours (equipmentHoursForLabor).
+      const equipmentHours = equipmentHoursForLabor({
+        equipmentId: item.equipment_id,
+        currentEquipmentHours: item.equipment_hours,
+        previousLaborHours: item.labor_hours,
+        nextLaborHours: laborHours,
+        manualFields,
+      });
       await window.api.saveBidLineItem(lineItemRowToPayload(item, {
         jobId,
         quantity,
         laborHours,
+        equipmentHours,
         materialUnitCost: merged.materialUnitCost ?? item.material_unit_cost,
         manualFields,
       }));

@@ -12,7 +12,7 @@ import { effectiveMaterialUnitCost, isCubicMeters, isCubicYards, isMassUnit } fr
 import { roundHours } from '../../../shared/round';
 import { parseNumericInput } from '../../../shared/parseNumericInput';
 import { computeLineItemCost } from '../../../shared/lineItemCost';
-import { laborHoursForQuantity } from '../../../shared/lineItemPayload';
+import { laborHoursForQuantity, equipmentHoursForLabor } from '../../../shared/lineItemPayload';
 import { CalcPopover } from '../../components/CalcPopover';
 import { explainProduct, explainQuotient, explainSum, fmtMoney, fmtNum, fmtQty } from '../../../shared/calcExplain';
 import { isManual, withManual, type OverridableField } from '../../../shared/manualFields';
@@ -68,10 +68,27 @@ export function LineItemModal({
   const rateItems = useMemo(() => productionRatesToAutocomplete(productionRates), [productionRates]);
   const equipmentItems = useMemo(() => equipmentToAutocomplete(equipment), [equipment]);
 
+  // New crew hours, carrying the crew's equipment along (see
+  // equipmentHoursForLabor) — every path that changes labor hours goes here.
+  type CrewHoursFields = { equipmentId?: number | null; equipmentHours: number; laborHours: number; manualFields?: string[] };
+  const withLaborHours = (prev: CrewHoursFields, nextLaborHours: number, manualFields = prev.manualFields || []) => ({
+    laborHours: nextLaborHours,
+    equipmentHours: equipmentHoursForLabor({
+      equipmentId: prev.equipmentId,
+      currentEquipmentHours: prev.equipmentHours,
+      previousLaborHours: prev.laborHours,
+      nextLaborHours,
+      manualFields,
+    }),
+  });
+
   // Mark a derived field as a manual override + set its value in one go.
   const overrideField = (field: OverridableField, value: number) => {
     setLineForm((prev: any) => ({
-      ...prev, [field]: value, manualFields: withManual(prev.manualFields || [], field, true),
+      ...prev,
+      [field]: value,
+      ...(field === 'laborHours' ? withLaborHours(prev, value) : {}),
+      manualFields: withManual(prev.manualFields || [], field, true),
     }));
   };
 
@@ -167,7 +184,7 @@ export function LineItemModal({
           ...prev,
           productionRateId: rate.id,
           crewTemplateId: rate.crew_template_id,
-          laborHours: roundHours(hours),
+          ...withLaborHours(prev, roundHours(hours)),
           laborCostPerHour: costPerHour,
           // Fresh source for both hours and crew cost — clear their overrides.
           manualFields: withManual(
@@ -185,12 +202,12 @@ export function LineItemModal({
     setLineForm((prev: any) => ({
       ...prev,
       quantity: qty,
-      laborHours: laborHoursForQuantity({
+      ...withLaborHours(prev, laborHoursForQuantity({
         quantity: qty,
         currentLaborHours: prev.laborHours,
         rate: productionRates.find((r: any) => r.id === prev.productionRateId),
         manualFields: prev.manualFields || [],
-      }),
+      })),
     }));
   };
 
@@ -204,7 +221,9 @@ export function LineItemModal({
           equipmentId: eq.id,
           equipmentCostPerHour: eq.hourly_rate,
           equipmentHours: prev.laborHours || prev.equipmentHours,
-          manualFields: withManual(prev.manualFields || [], 'equipmentCostPerHour', false),
+          // Fresh equipment runs with the crew again.
+          manualFields: withManual(
+            withManual(prev.manualFields || [], 'equipmentCostPerHour', false), 'equipmentHours', false),
         }));
       }
     } else {
@@ -244,17 +263,23 @@ export function LineItemModal({
           ? roundHours(lineForm.quantity / selectedRate.rate_per_hour) : null;
       case 'laborCostPerHour':
         return selectedCrew ? calcCrewCostPerHour(selectedCrew) : null;
+      case 'equipmentHours':
+        return selectedEquipment ? lineForm.laborHours : null;
       case 'equipmentCostPerHour':
         return selectedEquipment ? selectedEquipment.hourly_rate : null;
     }
   };
   const revert = (field: OverridableField) => {
     const v = computedValue(field);
-    setLineForm((prev: any) => ({
-      ...prev,
-      ...(v != null ? { [field]: v } : {}),
-      manualFields: withManual(prev.manualFields || [], field, false),
-    }));
+    setLineForm((prev: any) => {
+      const manual = withManual(prev.manualFields || [], field, false);
+      return {
+        ...prev,
+        ...(v != null ? { [field]: v } : {}),
+        ...(field === 'laborHours' && v != null ? withLaborHours(prev, v, manual) : {}),
+        manualFields: manual,
+      };
+    });
   };
   // Only surface the "overridden" tag when there's a source the field would
   // otherwise compute from — a hand-typed value with no catalog source behind
@@ -459,10 +484,16 @@ export function LineItemModal({
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label>Equipment Hours</label>
+              <label>Equipment Hours {overrideTag('equipmentHours')}</label>
               <input type="number" className="form-control" value={lineForm.equipmentHours}
-                onChange={(e) => setLineForm({ ...lineForm, equipmentHours: nonNegative(parseNumericInput(e.target.value) || 0) })}
+                onChange={(e) => overrideField('equipmentHours', nonNegative(parseNumericInput(e.target.value) || 0))}
                 step="0.5" min="0" />
+              {selectedEquipment && !isManual(manualFields, 'equipmentHours')
+                && Math.abs(lineForm.equipmentHours - lineForm.laborHours) < 0.005 && (
+                <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  Runs with the crew: follows labor hours
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label>Cost / Hour ($) {overrideTag('equipmentCostPerHour')}</label>

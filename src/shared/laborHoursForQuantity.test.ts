@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { laborHoursForQuantity } from './lineItemPayload';
+import { laborHoursForQuantity, equipmentHoursForLabor } from './lineItemPayload';
 
 /**
  * The rule the bid grid and the line-item modal must agree on. They didn't:
@@ -112,5 +112,32 @@ describe('previousQuantity gates the recompute', () => {
         manualFields: ['laborHours'],
       })
     ).toBe(4);
+  });
+});
+
+describe('equipmentHoursForLabor — the crew\'s equipment runs the crew\'s hours', () => {
+  const base = { equipmentId: 4, currentEquipmentHours: 16, previousLaborHours: 16, nextLaborHours: 20, manualFields: [] as string[] };
+
+  it('follows the crew when the equipment was running with it', () => {
+    expect(equipmentHoursForLabor(base)).toBe(20);
+  });
+
+  it('leaves hand-set equipment hours alone', () => {
+    expect(equipmentHoursForLabor({ ...base, manualFields: ['equipmentHours'] })).toBe(16);
+  });
+
+  it('leaves older lines whose equipment hours already differ from the crew', () => {
+    // Saved before this rule, excavator deliberately at 8 of the crew's 16 hours.
+    expect(equipmentHoursForLabor({ ...base, currentEquipmentHours: 8 })).toBe(8);
+  });
+
+  it('does nothing without equipment on the line', () => {
+    expect(equipmentHoursForLabor({ ...base, equipmentId: null, currentEquipmentHours: 0 })).toBe(0);
+    expect(equipmentHoursForLabor({ ...base, equipmentId: 0 })).toBe(16);
+  });
+
+  it('picks up crew hours when equipment was chosen before the production rate', () => {
+    // Equipment picked at 0 labor hours, then the rate sets 16.
+    expect(equipmentHoursForLabor({ ...base, currentEquipmentHours: 0, previousLaborHours: 0, nextLaborHours: 16 })).toBe(16);
   });
 });

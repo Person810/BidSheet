@@ -46,9 +46,9 @@ describe('withManual / isManual', () => {
     expect(withManual(['laborHours'], 'laborHours', true)).toEqual(['laborHours']);
   });
 
-  it('covers exactly the four overridable fields', () => {
+  it('covers exactly the five overridable fields', () => {
     expect([...OVERRIDABLE_FIELDS].sort()).toEqual(
-      ['equipmentCostPerHour', 'laborCostPerHour', 'laborHours', 'materialUnitCost'],
+      ['equipmentCostPerHour', 'equipmentHours', 'laborCostPerHour', 'laborHours', 'materialUnitCost'],
     );
   });
 });

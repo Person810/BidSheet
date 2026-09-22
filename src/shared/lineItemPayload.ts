@@ -41,6 +41,33 @@ export function laborHoursForQuantity(opts: {
 }
 
 /**
+ * Equipment hours that run with the crew. Equipment on a line is the crew's
+ * equipment — picking it copies the crew hours — so when the crew's hours
+ * change (quantity, production rate, a typed-in labor figure) the machine's
+ * hours change with them. Otherwise doubling a pipe line doubled the crew and
+ * left the excavator at the old hours, and the bid went out short.
+ *
+ * Left alone when there is no equipment, when the estimator typed the
+ * equipment hours themselves (manual_fields carries 'equipmentHours'), or
+ * when they already differ from the crew's previous hours — a line saved
+ * before this rule existed with hand-set hours keeps them.
+ */
+export function equipmentHoursForLabor(opts: {
+  equipmentId: number | null | undefined;
+  currentEquipmentHours: number;
+  previousLaborHours: number;
+  nextLaborHours: number;
+  manualFields: string[];
+}): number {
+  if (!opts.equipmentId) return opts.currentEquipmentHours;
+  if (isManual(opts.manualFields, 'equipmentHours')) return opts.currentEquipmentHours;
+  if (Math.abs((opts.currentEquipmentHours || 0) - (opts.previousLaborHours || 0)) > 0.005) {
+    return opts.currentEquipmentHours;
+  }
+  return opts.nextLaborHours;
+}
+
+/**
  * Build a bid line-item save payload, defaulting every cost field to zero/null.
  * Callers supply only the fields that apply (description, quantity, a material,
  * a subcontractor cost, …); the rest fall back to "no cost" defaults.
