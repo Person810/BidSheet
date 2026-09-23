@@ -2054,15 +2054,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: tour-fade-in 0.2s ease;
 }
 
 .tour-spotlight {
   position: fixed;
   border-radius: 6px;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.6),
+    0 0 0 4px rgba(59, 130, 246, 0.25);
   border: 2px solid var(--accent);
   pointer-events: none;
-  transition: top 0.2s ease, height 0.2s ease;
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
 }
 
 .tour-tooltip {
@@ -2070,15 +2073,19 @@ body {
   width: 340px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 18px 20px;
+  border-top: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 16px 20px 16px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   animation: toast-slide-in 0.18s ease;
+  transition: top 0.25s ease;
 }
 
 .tour-tooltip-centered {
   position: static;
-  animation: tour-fade-in 0.18s ease;
+  width: 400px;
+  padding: 22px 24px 18px;
+  animation: tour-pop-in 0.22s ease;
 }
 
 @keyframes tour-fade-in {
@@ -2086,10 +2093,54 @@ body {
   to { opacity: 1; }
 }
 
+@keyframes tour-pop-in {
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Small diamond on the card's left edge pointing at the spotlight */
+.tour-arrow {
+  position: absolute;
+  left: -7px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+  transition: top 0.25s ease;
+}
+
+.tour-content {
+  animation: tour-fade-in 0.2s ease;
+}
+
+.tour-mark {
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+}
+
+.tour-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
 .tour-tooltip h4 {
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 8px;
+}
+
+.tour-tooltip-centered h4 {
+  font-size: 18px;
 }
 
 .tour-tooltip p {
@@ -2102,25 +2153,49 @@ body {
 .tour-dots {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 14px;
+  gap: 2px;
+  margin: 0 0 14px -4px;
 }
 
-.tour-step-count {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
+/* The visible dot is small, but the button around it is a comfortable
+   click target */
 .tour-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--border);
+  position: relative;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: none;
   cursor: pointer;
 }
 
-.tour-dot.active {
+.tour-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.tour-dot.done::after {
+  background: var(--text-muted);
+}
+
+.tour-dot.active::after {
+  background: var(--accent);
+  transform: scale(1.35);
+}
+
+.tour-dot:hover::after {
+  background: var(--text-secondary);
+}
+
+.tour-dot.active:hover::after {
   background: var(--accent);
 }
 
@@ -2142,6 +2217,47 @@ body {
 .tour-skip:hover {
   color: var(--text-secondary);
   text-decoration: underline;
+}
+
+.tour-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tour-keys {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.tour-keys kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-overlay-dim,
+  .tour-spotlight,
+  .tour-tooltip,
+  .tour-arrow,
+  .tour-content,
+  .tour-dot::after {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* ============================================================

@@ -228,7 +228,7 @@ export function App() {
               </NavLink>
             </li>
             <li>
-              <NavLink to="/clients" className={({ isActive }) => isActive ? 'active' : ''}>
+              <NavLink to="/clients" data-tour="clients" className={({ isActive }) => isActive ? 'active' : ''}>
                 <span className="nav-icon">{SidebarIcons['/clients']}</span>
                 Clients
               </NavLink>
