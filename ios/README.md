@@ -50,8 +50,9 @@ npm run field:preview
 
 It prints an `On your phone:` address. Open that in Safari/Chrome on a phone
 on the same Wi-Fi. (Or just open `web-preview/index.html` straight from disk
-on a computer.) The sign-in screens list what to type; the ••• menu on the
-jobs list can cut the signal to try offline photo queuing.
+on a computer.) It opens already signed in, on the jobs list. The ••• menu
+there can cut the signal to try offline photo queuing, or Sign Out to walk
+the sign-in screens (each one lists what to type).
 
 It is one self-contained file with no build step. When a SwiftUI screen
 changes, update the preview to match.

@@ -466,10 +466,12 @@
   // Mirrors AppModel.Phase: signedOut → needsTotp → locked → ready, plus
   // needsDesktopSetup. The "unlocked" flag stands in for the Keychain DEK, so
   // a reopen skips the recovery-key screen just like the real app.
-  const STORE_KEY = "bidsheet-field-preview-v1";
+  // The preview opens already signed in and unlocked, straight to the jobs;
+  // Sign Out in the ••• menu walks the sign-in screens.
+  const STORE_KEY = "bidsheet-field-preview-v2";
   const state = {
-    phase: "signedOut",
-    unlocked: false,
+    phase: "ready",
+    unlocked: true,
     offline: false,
     downloaded: {},   // jobId → true once the plan is "cached for offline"
     userFiles: {},    // jobId → uploaded photos [{ id, kind, name, size, created_at, takenAt, src }]
@@ -780,7 +782,7 @@
         { label: "Refresh", action: async () => { await refreshJobs(); rerender(); } },
         { label: "Simulate No Signal", check: state.offline, icon: icon.wifiOff, action: async () => { state.offline = !state.offline; persist(); await refreshJobs(); rerender(); } },
         { label: "Reset Preview", action: () => {
-          Object.assign(state, { phase: "signedOut", unlocked: false, offline: false, downloaded: {}, userFiles: {}, pending: {}, lastError: null });
+          Object.assign(state, { phase: "ready", unlocked: true, offline: false, downloaded: {}, userFiles: {}, pending: {}, lastError: null });
           setRoot();
         } },
         { label: "Sign Out", danger: true, action: signOut },
