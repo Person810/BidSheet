@@ -335,7 +335,7 @@ export function JobLocationFields({
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor={`${id}-postcode`}>Postal code / postcode</label>
+              <label htmlFor={`${id}-postcode`}>{profile.postalLabel}</label>
               <input
                 id={`${id}-postcode`}
                 className="form-control"

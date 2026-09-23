@@ -95,7 +95,7 @@ export function EditJobModal({
           </div>
         </div>
         <div className="form-group" style={{ position: 'relative' }}>
-          <label>Client / Builder</label>
+          <label>{profile.gcLabel}</label>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div style={{ flex: 1 }}>
               <SavedClientPicker
