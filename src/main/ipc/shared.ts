@@ -119,7 +119,7 @@ function friendlyMessage(err: any): string {
     return 'This clashes with something you already have. Check for a duplicate.';
   }
   if (code === 'SQLITE_CORRUPT' || msg.includes('database disk image is malformed')) {
-    return 'BidSheet\'s data file may be damaged. Restore from a backup in Settings → Data Management.';
+    return 'BidSheet\'s data file may be damaged. Restore from a backup in Settings → Backup & Restore.';
   }
   if (code === 'SQLITE_READONLY' || msg.includes('attempt to write a readonly')) {
     return 'BidSheet can\'t save right now. Check the disk isn\'t full or read-only.';

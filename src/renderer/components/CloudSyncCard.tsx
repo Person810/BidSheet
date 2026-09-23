@@ -141,20 +141,10 @@ export function CloudSyncCard() {
 
   return (
     <div className="card mb-24">
-      <h3 style={{ marginBottom: 8 }}>
-        Cloud Sync
-        <span
-          className="badge badge-submitted"
-          style={{ fontSize: 11, padding: '2px 8px', marginLeft: 8, verticalAlign: 'middle' }}
-        >
-          Beta
-        </span>
-      </h3>
       <p className="text-muted mb-16">
-        Optional online backup and multi-computer sync for your jobs. BidSheet works fully
-        offline without it. An authenticator app (Google Authenticator, Authy, 1Password)
-        is required, so your bids and plans only leave this computer behind two-factor login.
-        Whether or not you subscribe, your data always lives locally on this computer.
+        Back up your jobs online and work on them from more than one computer. Sign-in
+        uses an authenticator app (such as Google Authenticator or Authy) for two-factor
+        security. Your data stays on this computer either way.
       </p>
 
       {!auth ? (

@@ -58,8 +58,14 @@ export function ShortcutsOverlay() {
         setOpen(false);
       }
     };
+    const toggle = () => setOpen((o) => !o);
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    // Settings → Help → Show Shortcuts
+    window.addEventListener('bidsheet:toggle-shortcuts', toggle);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('bidsheet:toggle-shortcuts', toggle);
+    };
   }, []);
 
   if (!open) return null;

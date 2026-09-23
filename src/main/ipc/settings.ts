@@ -97,9 +97,8 @@ export function registerSettingsHandlers(db: Database.Database): void {
       const srcSize = fs.statSync(srcPath).size;
       const destSize = fs.statSync(result.filePath).size;
       if (destSize !== srcSize) {
-        const msg = `Backup file size mismatch (expected ${srcSize}, got ${destSize})`;
-        logger.error('db:export', msg);
-        return { success: false, error: msg };
+        logger.error('db:export', `Backup file size mismatch (expected ${srcSize}, got ${destSize})`);
+        return { success: false, error: 'the file didn\'t save completely. Try saving it somewhere else.' };
       }
 
       // Mark backup schema version as current so the reminder dismisses
