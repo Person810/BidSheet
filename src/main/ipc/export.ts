@@ -9,7 +9,8 @@ import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { fmtMoney, fmtNum } from '../../shared/calcExplain';
 import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable } from './shared';
 import { grantPathAccess, isPathReadable } from './file-access';
-import { PdfTemplate, PdfSectionId, parsePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
+import { PdfTemplate, PdfSectionId, parsePdfTemplate, normalizePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
+import { buildSellSchedule, type SellSection } from '../../shared/sellSchedule';
 import { commitMaterialPriceImport } from './export/material-price-import-service';
 
 export function registerExportHandlers(db: Database.Database): void {
@@ -92,105 +93,60 @@ export function registerExportHandlers(db: Database.Database): void {
       'SELECT * FROM bid_sections WHERE job_id = ? ORDER BY sort_order'
     ).all(jobId) as any[];
 
-    const escPct = (job.escalation_percent || 0) / 100;
-    const taxPct = (job.tax_percent || 0) / 100;
+    const itemsBySection: Record<number, any[]> = {};
+    for (const section of sections) {
+      itemsBySection[section.id] = db.prepare(
+        'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
+      ).all(section.id) as any[];
+    }
+    // Same schedule and rounding as the proposal PDF, so the two documents
+    // can never quote different unit prices.
+    const tplRow = db.prepare('SELECT pdf_template_json FROM app_settings WHERE id = 1').get() as any;
+    const indirectTotal = getIndirectTotal(db, jobId);
+    const schedule = buildSellSchedule({
+      job, sections, itemsBySection, indirectTotal,
+      freightTaxable: getFreightTaxable(db),
+      rounding: parsePdfTemplate(tplRow?.pdf_template_json).unitPriceRounding,
+    });
 
     const lines: string[] = [];
-    lines.push('﻿' + row('UNIT PRICE SCHEDULE', job.name, job.job_number || ''));
+    lines.push('\uFEFF' + row('UNIT PRICE SCHEDULE', job.name, job.job_number || ''));
     lines.push('');
     lines.push(row('Item No', 'Description', 'Unit', 'Quantity', 'Unit Price', 'Extension'));
 
-    // Section markups resolve overrides the same way the bid summary does
-    const sectionMarkupPct = (section: any) => (
-      (section.overhead_percent_override ?? job.overhead_percent ?? 0)
-      + (section.profit_percent_override ?? job.profit_percent ?? 0)
-      + (section.bond_percent_override ?? job.bond_percent ?? 0)
-    ) / 100;
-
-    const lineSell = (item: any, markupPct: number): number => {
-      const escalatedMaterial = (item.material_total || 0) * (1 + escPct);
-      const directWithEsc = (item.total_cost || 0) - (item.material_total || 0) + escalatedMaterial;
-      return directWithEsc * (1 + markupPct) + escalatedMaterial * taxPct;
-    };
-
-    // Indirect pool (marked up with job-level percentages, matching
-    // bidCalc) is spread proportionally into the BASE bid's unit prices —
-    // the whole point of an owner-facing unit price schedule is that
-    // indirects are invisible.
-    const indirectTotal = getIndirectTotal(db, jobId);
-    const jobMarkupPct = ((job.overhead_percent || 0) + (job.profit_percent || 0) + (job.bond_percent || 0)) / 100;
-    // Freight is priced exactly like the indirect pool (bidCalc), plus tax
-    // when the freight-taxable setting says so — and spread the same way,
-    // since an owner-facing schedule shouldn't show a freight line either.
-    const freightTotal = Math.max(job.freight || 0, 0);
-    const freightSell = freightTotal * (1 + jobMarkupPct)
-      + (getFreightTaxable(db) ? freightTotal * taxPct : 0);
-    const indirectSell = indirectTotal * (1 + jobMarkupPct) + freightSell;
-    let baseSellSum = 0;
-    for (const section of sections.filter((s) => !s.is_alternate)) {
-      const items = db.prepare(
-        'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
-      ).all(section.id) as any[];
-      const markupPct = sectionMarkupPct(section);
-      for (const item of items) baseSellSum += lineSell(item, markupPct);
-    }
-    const spreadFactor = baseSellSum > 0 ? 1 + indirectSell / baseSellSum : 1;
-
-    const buildSection = (section: any): number => {
-      const items = db.prepare(
-        'SELECT * FROM bid_line_items WHERE section_id = ? ORDER BY sort_order'
-      ).all(section.id) as any[];
-      if (items.length === 0) return 0;
-
-      const markupPct = sectionMarkupPct(section);
-      // Alternates never carry the base bid's indirects
-      const factor = section.is_alternate ? 1 : spreadFactor;
-
-      lines.push(row(section.is_alternate ? `ADD ALTERNATE: ${section.name}` : section.name, '', '', '', '', ''));
-      let sectionTotal = 0;
-      for (const item of items) {
-        const sellTotal = lineSell(item, markupPct) * factor;
-        const qty = item.quantity || 0;
-        // Round the unit price to cents and extend from the rounded price,
-        // as owner bid forms require qty x unit price = extension
-        const unitSell = qty > 0 ? Math.round((sellTotal / qty) * 100) / 100 : 0;
-        const extension = qty > 0 ? unitSell * qty : Math.round(sellTotal * 100) / 100;
-        sectionTotal += extension;
+    const emitSection = (sec: SellSection<any>, isAlternate: boolean) => {
+      if (sec.lines.length === 0) return;
+      lines.push(row(isAlternate ? `ADD ALTERNATE: ${sec.section.name}` : sec.section.name, '', '', '', '', ''));
+      for (const l of sec.lines) {
         lines.push(row(
-          item.item_number || '', item.description, item.unit, qty,
-          unitSell.toFixed(2), extension.toFixed(2),
+          l.item.item_number || '', l.item.description, l.item.unit, l.quantity,
+          l.unitPrice.toFixed(2), l.extension.toFixed(2),
         ));
       }
-      lines.push(row('', `${section.name} Subtotal`, '', '', '', sectionTotal.toFixed(2)));
-      return sectionTotal;
+      lines.push(row('', `${sec.section.name} Subtotal`, '', '', '', sec.subtotal.toFixed(2)));
     };
 
-    let baseTotal = 0;
-    for (const section of sections.filter((s) => !s.is_alternate)) {
-      baseTotal += buildSection(section);
-    }
+    for (const sec of schedule.base) emitSection(sec, false);
     // With no priced base line items there is nothing to spread the
-    // indirect/freight pool into — emit it as an explicit lump-sum line
-    // rather than silently dropping dollars the bid summary includes.
-    if (baseSellSum <= 0 && indirectSell > 0) {
-      const lump = Math.round(indirectSell * 100) / 100;
-      lines.push(row('', 'General Conditions (indirect & freight)', 'LS', 1, lump.toFixed(2), lump.toFixed(2)));
-      baseTotal += lump;
+    // indirect/freight pool into — it prints as an explicit lump sum rather
+    // than silently dropping dollars the bid summary includes.
+    if (schedule.generalConditions != null) {
+      const lump = schedule.generalConditions.toFixed(2);
+      lines.push(row('', 'General Conditions (indirect & freight)', 'LS', 1, lump, lump));
     }
-    lines.push(row('', 'TOTAL BASE BID', '', '', '', baseTotal.toFixed(2)));
+    lines.push(row('', 'TOTAL BASE BID', '', '', '', schedule.baseTotal.toFixed(2)));
 
-    const altSections = sections.filter((s) => s.is_alternate);
-    if (altSections.length > 0) {
+    if (schedule.alternates.some((a) => a.lines.length > 0)) {
       lines.push('');
-      for (const section of altSections) {
-        buildSection(section);
-      }
+      for (const sec of schedule.alternates) emitSection(sec, true);
     }
+    const spread = (indirectTotal > 0 || Math.max(job.freight || 0, 0) > 0) && schedule.generalConditions == null;
     lines.push('');
     lines.push(row(
-      (indirectTotal > 0 || freightTotal > 0) && baseSellSum > 0
-        ? 'Note: unit prices include overhead, profit, bond, escalation, sales tax, and spread indirect/freight costs. Extensions use rounded unit prices and may differ from the proposal total by cents.'
-        : 'Note: unit prices include overhead, profit, bond, escalation, and sales tax. Extensions use rounded unit prices and may differ from the proposal total by cents.'
+      (spread
+        ? 'Note: unit prices include overhead, profit, bond, escalation, sales tax, and spread indirect/freight costs.'
+        : 'Note: unit prices include overhead, profit, bond, escalation, and sales tax.')
+      + ' Unit prices govern: each extension is quantity × unit price and the total is the sum of the extensions.'
     ));
 
     const csvContent = lines.join('\r\n') + '\r\n';
@@ -252,6 +208,24 @@ export function registerExportHandlers(db: Database.Database): void {
       )),
     };
   };
+
+  // What the sell-price proposal will total with a given rounding, next to
+  // the estimate it came from — so the estimator sees the rounding before
+  // sending (unit prices govern; see src/shared/sellSchedule.ts).
+  safeHandle('jobs:proposal-totals', (_event, jobId: number, rounding: unknown) => {
+    const data = gatherBidPdfData(jobId);
+    const tpl = normalizePdfTemplate({ ...DEFAULT_PDF_TEMPLATE, unitPriceRounding: rounding as any });
+    const schedule = buildSellSchedule({
+      job: data.job, sections: data.sections, itemsBySection: data.lineItemsBySection,
+      indirectTotal: data.indirect, freightTaxable: !!data.totals.freight_taxed,
+      rounding: tpl.unitPriceRounding,
+    });
+    return {
+      proposalTotal: schedule.baseTotal,
+      estimateTotal: Math.round(data.grandTotal * 100) / 100,
+      alternates: schedule.alternates.map((a) => ({ name: a.section.name, total: a.subtotal })),
+    };
+  });
 
   safeHandle('jobs:get-pdf-html', async (_event, jobId: number, template: PdfTemplate) => {
     const data = gatherBidPdfData(jobId);
@@ -511,7 +485,8 @@ interface PdfData {
   hasMarkupOverrides: boolean;
 }
 
-function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
+function buildBidPdfHtml(data: PdfData, rawTemplate: PdfTemplate): string {
+  const template = normalizePdfTemplate(rawTemplate);
   const { job, settings, sections, lineItemsBySection, totals,
     escalation, indirect, freight, overhead, profit, bond, tax, grandTotal, alternates,
     escalationPct, overheadPct, profitPct, bondPct, taxPct, hasMarkupOverrides } = data;
@@ -543,6 +518,21 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   const baseSections = sections.filter((s: any) => !s.is_alternate);
   const altSections = sections.filter((s: any) => s.is_alternate);
 
+  // Sell mode (the default) prints the owner-facing schedule: sell unit
+  // prices with every markup, tax and indirect folded in, extensions =
+  // quantity × unit price, total = their sum. Open book prints cost and
+  // itemizes the markup (the layout below the `schedule` checks).
+  const schedule = template.pricingMode === 'sell'
+    ? buildSellSchedule({
+      job, sections, itemsBySection: lineItemsBySection,
+      indirectTotal: indirect, freightTaxable: !!totals.freight_taxed,
+      rounding: template.unitPriceRounding,
+    })
+    : null;
+  const sellSections = new Map(
+    schedule ? [...schedule.base, ...schedule.alternates].map((sec) => [sec.section.id, sec] as const) : [],
+  );
+
   const cols = template.showUnitPrices ? 6 : 5;
   const dataColspan = template.showUnitPrices ? 4 : 3;
 
@@ -553,6 +543,29 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
       const items = lineItemsBySection[section.id] || [];
       html += `<tr class="section-header"><td colspan="${cols}">${escHtml(section.name)}</td></tr>\n`;
       let sectionTotal = 0;
+      const sell = sellSections.get(section.id);
+      if (sell) {
+        sell.lines.forEach((line, idx) => {
+          const rowClass = idx % 2 === 1 ? ' class="stripe"' : '';
+          itemNumber++;
+          const unitPriceCell = template.showUnitPrices
+            ? `<td class="right">${line.quantity > 0 ? fmtMoney(line.unitPrice) : '--'}</td>` : '';
+          html += `<tr${rowClass}>
+          <td class="center item-num">${itemNumber}</td>
+          <td class="desc">${escHtml(line.item.description)}</td>
+          <td class="center">${escHtml(line.item.unit)}</td>
+          <td class="center">${escHtml(String(line.item.quantity))}</td>
+          ${unitPriceCell}
+          <td class="right">${fmtMoney(line.extension)}</td>
+        </tr>\n`;
+        });
+        html += `<tr class="section-subtotal">
+        <td colspan="${dataColspan}"></td>
+        <td class="right subtotal-label">Subtotal</td>
+        <td class="right subtotal-val">${fmtMoney(sell.subtotal)}</td>
+      </tr>\n`;
+        continue;
+      }
       items.forEach((item: any, idx: number) => {
         const rowClass = idx % 2 === 1 ? ' class="stripe"' : '';
         // Number(): `+=` on a string total_cost concatenates instead of
@@ -582,7 +595,20 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   };
 
   const baseRows = buildSectionRows(baseSections, 0);
-  const tableRows = baseRows.html;
+  let tableRows = baseRows.html;
+  // Indirects/freight with no base lines to spread into print as their own
+  // lump sum, so the rows still add up to the total.
+  if (schedule?.generalConditions != null) {
+    const unitCell = template.showUnitPrices ? `<td class="right">${fmtMoney(schedule.generalConditions)}</td>` : '';
+    tableRows += `<tr>
+          <td class="center item-num">${baseRows.nextNumber + 1}</td>
+          <td class="desc">General Conditions</td>
+          <td class="center">LS</td>
+          <td class="center">1</td>
+          ${unitCell}
+          <td class="right">${fmtMoney(schedule.generalConditions)}</td>
+        </tr>\n`;
+  }
 
   // Summary rows.
   //
@@ -622,17 +648,22 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   const pctLabel = (pct: number) => escHtml(fmtNum(pct, 4));
   const markupRate = (pct: number) => (hasMarkupOverrides ? ' *' : ` (${pctLabel(pct)}%)`);
   let summaryRows = '';
-  summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtMoney(totals.direct_cost_total)}</td></tr>`;
-  if (has(escalation)) summaryRows += `<tr><td class="sum-label">Material Escalation (${pctLabel(escalationPct)}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
-  if (has(indirect)) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
-  if (has(freight)) summaryRows += `<tr><td class="sum-label">Freight</td><td class="sum-val">${fmtMoney(freight)}</td></tr>`;
-  if (has(overhead)) summaryRows += `<tr><td class="sum-label">Overhead${markupRate(overheadPct)}</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
-  if (has(profit)) summaryRows += `<tr><td class="sum-label">Profit${markupRate(profitPct)}</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
-  if (has(bond)) summaryRows += `<tr><td class="sum-label">Bond${markupRate(bondPct)}</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;
-  if (has(tax)) summaryRows += `<tr><td class="sum-label">Sales Tax (${pctLabel(taxPct)}%)</td><td class="sum-val">${fmtMoney(tax)}</td></tr>`;
-  if (hasMarkupOverrides) summaryRows += `<tr><td class="sum-label sum-note" colspan="2">* Rates vary by section; the amount shown is the total across all sections.</td></tr>`;
   const totalLabel = altSections.length > 0 ? 'TOTAL BASE BID' : 'TOTAL BID AMOUNT';
-  summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtMoney(grandTotal)}</td></tr>`;
+  if (schedule) {
+    // Unit prices govern: the bid is the sum of the printed extensions.
+    summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtMoney(schedule.baseTotal)}</td></tr>`;
+  } else {
+    summaryRows += `<tr><td class="sum-label">Direct Cost Subtotal</td><td class="sum-val">${fmtMoney(totals.direct_cost_total)}</td></tr>`;
+    if (has(escalation)) summaryRows += `<tr><td class="sum-label">Material Escalation (${pctLabel(escalationPct)}%)</td><td class="sum-val">${fmtMoney(escalation)}</td></tr>`;
+    if (has(indirect)) summaryRows += `<tr><td class="sum-label">Indirect Costs</td><td class="sum-val">${fmtMoney(indirect)}</td></tr>`;
+    if (has(freight)) summaryRows += `<tr><td class="sum-label">Freight</td><td class="sum-val">${fmtMoney(freight)}</td></tr>`;
+    if (has(overhead)) summaryRows += `<tr><td class="sum-label">Overhead${markupRate(overheadPct)}</td><td class="sum-val">${fmtMoney(overhead)}</td></tr>`;
+    if (has(profit)) summaryRows += `<tr><td class="sum-label">Profit${markupRate(profitPct)}</td><td class="sum-val">${fmtMoney(profit)}</td></tr>`;
+    if (has(bond)) summaryRows += `<tr><td class="sum-label">Bond${markupRate(bondPct)}</td><td class="sum-val">${fmtMoney(bond)}</td></tr>`;
+    if (has(tax)) summaryRows += `<tr><td class="sum-label">Sales Tax (${pctLabel(taxPct)}%)</td><td class="sum-val">${fmtMoney(tax)}</td></tr>`;
+    if (hasMarkupOverrides) summaryRows += `<tr><td class="sum-label sum-note" colspan="2">* Rates vary by section; the amount shown is the total across all sections.</td></tr>`;
+    summaryRows += `<tr class="total-row"><td class="sum-label">${totalLabel}</td><td class="sum-val">${fmtMoney(grandTotal)}</td></tr>`;
+  }
 
   // Cost breakdown section
   let costBreakdownRows = '';
@@ -642,9 +673,12 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   if (totals.subcontractor_total > 0) costBreakdownRows += `<tr><td class="cb-label">Subcontractors</td><td class="cb-val">${fmtMoney(totals.subcontractor_total)}</td></tr>`;
 
   // Build post-table section blocks
-  const altRows = buildSectionRows(altSections, baseRows.nextNumber).html;
+  const altRows = buildSectionRows(altSections, baseRows.nextNumber + (schedule?.generalConditions != null ? 1 : 0)).html;
   const altTotalRows = altSections.map((s: any) => {
-    const alt = alternates.find((a) => a.sectionId === s.id);
+    const sellAlt = sellSections.get(s.id);
+    const alt = sellAlt
+      ? { grandTotal: sellAlt.subtotal }
+      : alternates.find((a) => a.sectionId === s.id);
     return `<tr class="section-subtotal">
       <td colspan="${dataColspan}" class="desc" style="font-weight:bold;">ADD ALTERNATE: ${escHtml(s.name)}</td>
       <td class="right subtotal-label">Add to Base Bid</td>
@@ -653,7 +687,8 @@ function buildBidPdfHtml(data: PdfData, template: PdfTemplate): string {
   }).join('\n');
 
   const sectionBlocks: Record<PdfSectionId, string> = {
-    breakdown: template.showCostBreakdown && costBreakdownRows ? `
+    // Cost breakdown exposes cost, so it only ever prints open book.
+    breakdown: !schedule && template.showCostBreakdown && costBreakdownRows ? `
     <div style="margin-top:16px;">
       <div class="cb-title">Cost Breakdown</div>
       <table class="cb-table">${costBreakdownRows}</table>

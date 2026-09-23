@@ -1,3 +1,14 @@
+import { isUnitPriceRounding, type UnitPriceRounding } from '../sellSchedule';
+
+/**
+ * 'sell': the owner-facing proposal — sell unit prices with markups, tax and
+ * indirects folded in, the total the sum of the extensions, no cost or
+ * markup lines. 'open_book': cost unit prices plus separate overhead,
+ * profit, bond and tax lines and an optional cost breakdown, for cost-plus
+ * and T&M work where the owner audits the markup.
+ */
+export type PdfPricingMode = 'sell' | 'open_book';
+
 export type PdfSectionId = 'breakdown' | 'alternates' | 'terms' | 'signature';
 
 export const PDF_SECTION_LABELS: Record<PdfSectionId, string> = {
@@ -20,6 +31,9 @@ export interface PdfTemplate {
   signatorLabel: string;
   clientLabel: string;
   sectionOrder: PdfSectionId[];
+  pricingMode: PdfPricingMode;
+  /** How sell unit prices round (sell mode and the Unit Price Schedule CSV). */
+  unitPriceRounding: UnitPriceRounding;
 }
 
 export const DEFAULT_PDF_TEMPLATE: PdfTemplate = {
@@ -41,17 +55,32 @@ export const DEFAULT_PDF_TEMPLATE: PdfTemplate = {
   signatorLabel: '',
   clientLabel: 'Accepted By',
   sectionOrder: ['breakdown', 'alternates', 'terms', 'signature'],
+  pricingMode: 'sell',
+  unitPriceRounding: 'up_cent',
 };
+
+/**
+ * Coerce the two enum fields: a template can arrive from the renderer or
+ * from a saved/synced settings row, and anything unrecognized falls back to
+ * the owner-safe default rather than to open book.
+ */
+export function normalizePdfTemplate(t: PdfTemplate): PdfTemplate {
+  return {
+    ...t,
+    pricingMode: t.pricingMode === 'open_book' ? 'open_book' : 'sell',
+    unitPriceRounding: isUnitPriceRounding(t.unitPriceRounding) ? t.unitPriceRounding : DEFAULT_PDF_TEMPLATE.unitPriceRounding,
+  };
+}
 
 export function parsePdfTemplate(json: string | null | undefined): PdfTemplate {
   if (!json) return { ...DEFAULT_PDF_TEMPLATE, sectionOrder: [...DEFAULT_PDF_TEMPLATE.sectionOrder] };
   try {
     const parsed = JSON.parse(json);
-    return {
+    return normalizePdfTemplate({
       ...DEFAULT_PDF_TEMPLATE,
       ...parsed,
       sectionOrder: Array.isArray(parsed.sectionOrder) ? parsed.sectionOrder : [...DEFAULT_PDF_TEMPLATE.sectionOrder],
-    };
+    });
   } catch {
     return { ...DEFAULT_PDF_TEMPLATE, sectionOrder: [...DEFAULT_PDF_TEMPLATE.sectionOrder] };
   }
