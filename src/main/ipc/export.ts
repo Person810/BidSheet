@@ -7,7 +7,8 @@ import { logger } from '../logger';
 import { TradeType } from '../../shared/constants/seed-data';
 import { computeBidSummaryFromSections } from '../../shared/bidCalc';
 import { fmtMoney, fmtNum } from '../../shared/calcExplain';
-import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable } from './shared';
+import { safeHandle, getSectionCostRows, getIndirectTotal, getFreightTaxable, safeSystemLocale } from './shared';
+import { resolveLocaleProfile } from '../../shared/localeProfiles';
 import { grantPathAccess, isPathReadable } from './file-access';
 import { PdfTemplate, PdfSectionId, parsePdfTemplate, normalizePdfTemplate, DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
 import { buildSellSchedule, type SellSection } from '../../shared/sellSchedule';
@@ -490,6 +491,8 @@ function buildBidPdfHtml(data: PdfData, rawTemplate: PdfTemplate): string {
   const { job, settings, sections, lineItemsBySection, totals,
     escalation, indirect, freight, overhead, profit, bond, tax, grandTotal, alternates,
     escalationPct, overheadPct, profitPct, bondPct, taxPct, hasMarkupOverrides } = data;
+  // Same client label the job forms show ("GC / Owner", "Builder"…).
+  const clientLabel = resolveLocaleProfile(safeSystemLocale(), settings?.locale).gcLabel;
 
   // The template can arrive straight from the renderer (jobs:get-pdf-html,
   // jobs:export-pdf) and these two values land unescaped inside the <style>
@@ -879,7 +882,7 @@ function buildBidPdfHtml(data: PdfData, rawTemplate: PdfTemplate): string {
 <table class="info-strip">
   <tr>
     <td><div class="info-label">Project</div><div class="info-value">${escHtml(job.name)}</div></td>
-    <td><div class="info-label">Owner / GC</div><div class="info-value">${escHtml(job.client || '—')}</div></td>
+    <td><div class="info-label">${escHtml(clientLabel)}</div><div class="info-value">${escHtml(job.client || '—')}</div></td>
     ${locationHtml}
     <td><div class="info-label">Bid #</div><div class="info-value">${escHtml(job.job_number || '—')}</div></td>
   </tr>

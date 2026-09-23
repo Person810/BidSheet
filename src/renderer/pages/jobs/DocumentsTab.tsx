@@ -407,8 +407,8 @@ export function DocumentsTab({ jobId, onCountChange }: {
           childFolders.length === 0 && (
             <p className="text-muted" style={{ fontSize: 13, padding: '24px 8px', textAlign: 'center' }}>
               {currentFolderId == null
-                ? 'No documents yet. Drag files here, or click "+ Add Files" to attach plans, addenda, quotes, photos, or anything else that belongs with this job.'
-                : 'This folder is empty. Drag files here, or click "+ Add Files".'}
+                ? 'No documents yet. Drag plans, addenda, quotes, or photos here, or use + Add Files.'
+                : 'This folder is empty. Drag files here, or use + Add Files.'}
             </p>
           )
         ) : (

@@ -169,7 +169,7 @@ export function QuotesTab({ jobId, onSendToBid }: {
 
       {quotes.length === 0 ? (
         <p className="text-muted" style={{ fontSize: 13 }}>
-          No quotes yet. Click "+ Quote" to log the first one.
+          No quotes yet.
         </p>
       ) : (
         scopes.map(([scope, list]) => {

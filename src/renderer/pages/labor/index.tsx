@@ -56,7 +56,8 @@ export function LaborPage() {
 
       {tab === 'roles' && <LaborRolesTab roles={roles} onRefresh={loadAll} />}
       {tab === 'crews' && <CrewTemplatesTab crews={crews} roles={roles} onRefresh={loadAll} />}
-      {tab === 'rates' && <ProductionRatesTab rates={rates} crews={crews} onRefresh={loadAll} />}
+      {tab === 'rates' && <ProductionRatesTab rates={rates} crews={crews} onRefresh={loadAll}
+        onGoToCrews={() => setTab('crews')} />}
     </div>
   );
 }

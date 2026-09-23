@@ -93,6 +93,17 @@ function lookup(val: number, table: Array<[number, number]>): number {
   return table[table.length - 1][1];
 }
 
+/**
+ * Trade vocabulary for the HDD screens. The Australian rate set came with
+ * Australian terms (rig hire, establishment, metro/regional); a US estimator
+ * says rig rate, mobilization and urban/rural for the same things.
+ */
+export function hddTerms(australian: boolean) {
+  return australian
+    ? { rig: 'Rig Hire', setup: 'Establishment', urban: 'Metro', rural: 'Regional', travel: 'Travel Allowance' }
+    : { rig: 'Rig Rate', setup: 'Mobilization', urban: 'Urban', rural: 'Rural', travel: 'Travel / Per Diem' };
+}
+
 export function calculateHDD(input: HDDInput): HDDOutput {
   if (input.isBundle) {
     return {

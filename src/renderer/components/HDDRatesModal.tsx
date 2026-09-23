@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DEFAULT_RATES } from '../modules/underground/hddCalc';
+import { DEFAULT_RATES, hddTerms } from '../modules/underground/hddCalc';
 import { lookupTableValue, updateTableValues } from '../modules/underground/hddRatesHelper';
 import { dismissOnEscOnly } from './modalDismiss';
 import { useUnitSystem } from '../stores/units-store';
@@ -80,14 +80,15 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
   };
 
   const isMetric = locale === 'en-AU';
+  const terms = hddTerms(isMetric);
 
   return (
     <div className="modal-overlay" onClick={dismissOnEscOnly(onClose)} style={{ zIndex: 9999 }}>
       <div className="modal" style={{ width: 850, maxWidth: '95vw', height: '90vh', display: 'flex', flexDirection: 'column', padding: 24 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ margin: 0 }}>Configure HDD Rates</h2>
+          <h2 style={{ margin: 0 }}>HDD Rates</h2>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <label style={{ fontWeight: 'bold', fontSize: 13, margin: 0 }}>Standard System:</label>
+            <label style={{ fontWeight: 'bold', fontSize: 13, margin: 0 }}>Rate set</label>
             <select
               className="form-control"
               style={{ width: 180 }}
@@ -114,7 +115,7 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
             style={{ padding: '8px 16px', background: 'transparent', border: 'none', borderBottom: activeTab === 'establishment' ? '2px solid var(--primary)' : 'none', color: activeTab === 'establishment' ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold' }}
             onClick={() => setActiveTab('establishment')}
           >
-            Establishment (Setup)
+            {terms.setup}
           </button>
           <button
             className={`tab-btn ${activeTab === 'fluids' ? 'active' : ''}`}
@@ -140,9 +141,9 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
                 <tr>
                   <th>Pipe Size ({isMetric ? 'DN' : 'inch'})</th>
                   <th>Crew Size</th>
-                  <th>Rig Hire ($/day)</th>
-                  <th>Metro Prod Rate ({isMetric ? 'm/day' : 'ft/day'})</th>
-                  <th>Regional Prod Rate ({isMetric ? 'm/day' : 'ft/day'})</th>
+                  <th>{terms.rig} ($/day)</th>
+                  <th>{terms.urban} Production ({isMetric ? 'm/day' : 'ft/day'})</th>
+                  <th>{terms.rural} Production ({isMetric ? 'm/day' : 'ft/day'})</th>
                 </tr>
               </thead>
               <tbody>
@@ -196,8 +197,8 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
               <thead>
                 <tr>
                   <th>Pipe Size ({isMetric ? 'DN' : 'inch'})</th>
-                  <th>Metro Establishment ($)</th>
-                  <th>Regional Establishment ($)</th>
+                  <th>{terms.urban} {terms.setup} ($)</th>
+                  <th>{terms.rural} {terms.setup} ($)</th>
                 </tr>
               </thead>
               <tbody>
@@ -231,7 +232,7 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
           {activeTab === 'fluids' && (
             <div>
               <div className="form-group" style={{ maxWidth: 300, marginBottom: 20 }}>
-                <label style={{ fontWeight: 'bold' }}>Travel Allowance per Crew Day ($)</label>
+                <label style={{ fontWeight: 'bold' }}>{terms.travel} per Crew Day ($)</label>
                 <input
                   type="number"
                   className="form-control"
@@ -273,7 +274,7 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
                 <tr>
                   <th>Pipe Size ({isMetric ? 'DN' : 'inch'})</th>
                   <th>Excavator Daily Rate ($)</th>
-                  <th>Excavator Days Per Pit Pair</th>
+                  <th>Excavator Days per Pair of Pits</th>
                 </tr>
               </thead>
               <tbody>
@@ -310,7 +311,7 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
             Cancel
           </button>
           <button className="btn btn-primary" onClick={handleSave}>
-            Save Configuration
+            Save Rates
           </button>
         </div>
       </div>

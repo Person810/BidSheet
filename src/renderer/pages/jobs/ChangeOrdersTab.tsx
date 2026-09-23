@@ -22,7 +22,7 @@ export function ChangeOrdersTab({
       </div>
 
       {changeOrders.length === 0 ? (
-        <p className="text-muted" style={{ fontSize: 13 }}>No change orders. Click "+ Change Order" to create one.</p>
+        <p className="text-muted" style={{ fontSize: 13 }}>No change orders yet.</p>
       ) : (
         <table className="data-table">
           <thead>

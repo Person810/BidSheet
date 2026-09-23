@@ -208,7 +208,7 @@ export function TrenchProfiler() {
 
         {/* ---- Outputs ---- */}
         <div className="card">
-          <h3 style={{ marginBottom: 14 }}>Takeoff Summary</h3>
+          <h3 style={{ marginBottom: 14 }}>Quantities</h3>
           {result ? (
             <table className="data-table" style={{ fontSize: 13 }}>
               <tbody>

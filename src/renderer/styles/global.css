@@ -776,6 +776,17 @@ body {
   margin-bottom: 4px;
 }
 
+/* A label beside a checkbox is a sentence, not a field name: render it as
+   written instead of in small capitals. */
+.form-group input[type="checkbox"] + label,
+.form-group label:has(> input[type="checkbox"]) {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .form-control {
   width: 100%;
   padding: 5px 9px;
@@ -1153,6 +1164,7 @@ body {
 .setup-nav {
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
 /* ============================================================
@@ -1238,6 +1250,12 @@ body {
 
 .material-name-link:hover {
   text-decoration: underline;
+}
+
+.inline-money-prefix {
+  color: var(--text-muted);
+  margin-right: 4px;
+  font-size: 13px;
 }
 
 .inline-price-input {

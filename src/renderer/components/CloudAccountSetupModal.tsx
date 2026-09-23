@@ -180,8 +180,7 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
         {step === 'pitch' && (
           <div>
             <p style={{ marginBottom: 12 }}>
-              Back up your jobs online and work from any computer, and soon see plans and
-              take jobsite photos from your phone.
+              Back up your jobs online and work from any computer.
             </p>
             <ul style={{ margin: '0 0 12px 18px', lineHeight: 1.7 }}>
               <li><strong>Free for 30 days</strong>, no card needed, 10 GB of storage</li>

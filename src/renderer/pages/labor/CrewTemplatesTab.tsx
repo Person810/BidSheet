@@ -187,7 +187,7 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
               </div>
               {form.members.length === 0 ? (
                 <p className="text-muted" style={{ fontSize: 13 }}>
-                  No members yet. Click "+ Add Member" to assign roles to this crew.
+                  No members yet. Add the roles that make up this crew.
                 </p>
               ) : (
                 form.members.map((member, i) => (

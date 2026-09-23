@@ -45,7 +45,7 @@ export function getFreightTaxable(
 }
 
 /** OS regional locale, or '' when Electron isn't available (unit tests). */
-function safeSystemLocale(): string {
+export function safeSystemLocale(): string {
   try {
     // Handlers only run after app.whenReady(), so the sync read is safe.
     return app.getSystemLocale();

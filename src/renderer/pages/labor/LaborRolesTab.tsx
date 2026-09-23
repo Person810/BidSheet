@@ -109,7 +109,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
         <thead>
           <tr>
             <th>Role</th>
-            <th className="text-right">Base Hourly Rate</th>
+            <th className="text-right">Base Hourly Rate ($/hr)</th>
             <th className="text-right">Burden Multiplier</th>
             <th className="text-right">Burdened Rate</th>
             <th>Notes</th>
@@ -133,6 +133,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
                 </span>
               </td>
               <td className="text-right">
+                <span className="inline-money-prefix">$</span>
                 <input
                   // Uncontrolled: key on the value so an external price change
                   // (e.g. a price import) remounts the field and re-applies
@@ -140,7 +141,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
                   key={`rate-${role.default_hourly_rate}`}
                   type="number"
                   className="inline-price-input"
-                  defaultValue={role.default_hourly_rate}
+                  defaultValue={role.default_hourly_rate.toFixed(2)}
                   step="0.50"
                   min="0"
                   onBlur={(e) => handleRateChange(role, e.target.value)}

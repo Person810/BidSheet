@@ -279,7 +279,7 @@ export function Walkthrough() {
             <img className="tour-mark" src="./icon.png" alt="" aria-hidden="true" />
           )}
           <div className="tour-eyebrow">
-            {isFirst ? 'Quick tour' : isLast ? 'Tour complete' : `Step ${stepIndex} of ${steps.length - 2}`}
+            {isFirst ? 'Quick tour' : isLast ? 'Tour complete' : `Step ${stepIndex + 1} of ${steps.length}`}
           </div>
           <h4 id="tour-title">{step.title}</h4>
           <p id="tour-body">{step.body}</p>

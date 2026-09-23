@@ -309,7 +309,6 @@ export function App() {
             </ErrorBoundary>
           </main>
           <footer className="app-statusbar">
-            <span className="tk-status-cell">Ready</span>
             <span className="tk-status-hint" />
             {companyName && <span className="tk-status-cell">{companyName}</span>}
             <span className="tk-status-cell">BidSheet {APP_VERSION}</span>

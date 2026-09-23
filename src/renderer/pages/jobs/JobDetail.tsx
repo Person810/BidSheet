@@ -863,6 +863,25 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     .reduce((sum, co) => sum + (coSummaries[co.id]?.grandTotal || 0), 0);
   const revisedTotal = summary ? summary.grandTotal + approvedCOTotal : 0;
 
+  // ---- Pre-send check ----
+  // A proposal with blank lines or a $0 total is almost always unfinished.
+  // Say so before it goes to the printer or a PDF, but let the user go ahead.
+  const confirmBeforeSending = (verb: string, send: () => void) => {
+    const empty = Object.values(lineItems).flat().filter((i: any) => !(Number(i.quantity) > 0)).length;
+    const total = summary?.grandTotal ?? 0;
+    const problems: string[] = [];
+    if (empty > 0) problems.push(`${empty} line${empty === 1 ? ' has' : 's have'} no quantity`);
+    if (!(total > 0)) problems.push(`the bid total is ${formatCurrency(total)}`);
+    if (problems.length === 0) { send(); return; }
+    const sentence = problems.join(' and ');
+    setConfirmState({
+      msg: `${sentence[0].toUpperCase()}${sentence.slice(1)}. ${verb} it anyway?`,
+      yesLabel: `${verb} Anyway`,
+      variant: 'neutral',
+      onYes: () => { setConfirmState(null); send(); },
+    });
+  };
+
   // ---- Print ----
   const [printing, setPrinting] = useState(false);
   const handlePrint = async () => {
@@ -955,8 +974,8 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           >
             {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
           </button>
-          <button className="btn btn-secondary" onClick={handlePrint} disabled={printing}>
-            {printing ? 'Printing...' : 'Print Bid'}
+          <button className="btn btn-secondary" onClick={() => confirmBeforeSending('Print', handlePrint)} disabled={printing}>
+            {printing ? 'Printing…' : 'Print Bid'}
           </button>
           <div style={{ position: 'relative' }}>
             <button className="btn btn-secondary" onClick={() => setShowExportMenu((o) => !o)}
@@ -974,7 +993,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
                   boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                 }}>
                   {[
-                    { label: 'Proposal PDF', action: handleExportPdf },
+                    { label: 'Proposal PDF', action: () => confirmBeforeSending('Export', handleExportPdf) },
                     { label: 'Customize Proposal PDF…', action: () => setShowPdfCustomizer(true) },
                     { label: 'QuickBooks CSV', action: handleExportQB },
                     { label: 'Unit Price Schedule CSV', action: handleExportUnitPrices },

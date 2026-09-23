@@ -8,6 +8,7 @@ import {
   AutocompleteItem,
 } from '../components/FuzzyAutocomplete';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { formatCurrency } from '../utils/format';
 import { useToastStore } from '../stores/toast-store';
 
 // ============================================================
@@ -254,7 +255,7 @@ export function AssembliesPage() {
         <div>
           <h2>Assemblies</h2>
           <p className="text-muted" style={{ marginTop: 2 }}>
-            Reusable material bundles you can drop into a bid as one line item
+            Reusable bundles of materials, labor and equipment you can drop into a bid as one line item
           </p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>
@@ -310,7 +311,7 @@ export function AssembliesPage() {
                     </div>
                   </div>
                   <div className="assembly-card-right">
-                    <span className="assembly-cost">${cost.toFixed(2)}</span>
+                    <span className="assembly-cost">{formatCurrency(cost)}</span>
                     <span className="text-muted" style={{ fontSize: '0.85em' }}>
                       /{a.unit} · {a.items.length} material{a.items.length !== 1 ? 's' : ''}
                     </span>
@@ -325,6 +326,7 @@ export function AssembliesPage() {
                       className="btn btn-sm btn-danger"
                       onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
                       style={{ marginLeft: 4 }}
+                      title="Remove assembly" aria-label={`Remove ${a.name}`}
                     >
                       ×
                     </button>
@@ -349,9 +351,9 @@ export function AssembliesPage() {
                             <td>{item.material_name}</td>
                             <td style={{ textAlign: 'right' }}>{item.quantity}</td>
                             <td style={{ textAlign: 'center' }}>{item.material_unit}</td>
-                            <td style={{ textAlign: 'right' }}>${item.material_unit_cost.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right' }}>{formatCurrency(item.material_unit_cost)}</td>
                             <td style={{ textAlign: 'right' }}>
-                              ${(item.material_unit_cost * item.quantity).toFixed(2)}
+                              {formatCurrency((item.material_unit_cost * item.quantity))}
                             </td>
                           </tr>
                         ))}
@@ -362,7 +364,7 @@ export function AssembliesPage() {
                             Assembly Total:
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                            ${cost.toFixed(2)}
+                            {formatCurrency(cost)}
                           </td>
                         </tr>
                       </tfoot>
@@ -477,7 +479,7 @@ export function AssembliesPage() {
                         <tr key={fi.materialId}>
                           <td>{fi.materialName}</td>
                           <td style={{ textAlign: 'center' }}>{fi.materialUnit}</td>
-                          <td style={{ textAlign: 'right' }}>${fi.materialUnitCost.toFixed(2)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCurrency(fi.materialUnitCost)}</td>
                           <td style={{ textAlign: 'center' }}>
                             <input
                               type="number"
@@ -490,7 +492,7 @@ export function AssembliesPage() {
                             />
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            ${(fi.materialUnitCost * fi.quantity).toFixed(2)}
+                            {formatCurrency((fi.materialUnitCost * fi.quantity))}
                           </td>
                           <td>
                             <button
@@ -511,7 +513,7 @@ export function AssembliesPage() {
                           Total per {form.unit}:
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                          ${calcFormCost().toFixed(2)}
+                          {formatCurrency(calcFormCost())}
                         </td>
                         <td></td>
                       </tr>

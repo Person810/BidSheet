@@ -253,7 +253,7 @@ export function EquipmentPage() {
             <SortableTh label="Name" sortKey="name" sort={sort} onToggle={toggleSort} />
             <SortableTh label="Category" sortKey="category" sort={sort} onToggle={toggleSort} />
             <SortableTh label="Type" sortKey="is_owned" sort={sort} onToggle={toggleSort} />
-            <SortableTh label="Hourly Rate" sortKey="hourly_rate" sort={sort} onToggle={toggleSort} className="text-right" />
+            <SortableTh label="Hourly Rate ($/hr)" sortKey="hourly_rate" sort={sort} onToggle={toggleSort} className="text-right" />
             <SortableTh label="Daily Rate" sortKey="daily_rate" sort={sort} onToggle={toggleSort} className="text-right" />
             <SortableTh label="Mobilization" sortKey="mobilization_cost" sort={sort} onToggle={toggleSort} className="text-right" />
             <th style={{ width: 80 }}></th>
@@ -297,6 +297,7 @@ export function EquipmentPage() {
                   </span>
                 </td>
                 <td className="text-right">
+                  <span className="inline-money-prefix">$</span>
                   <input
                     // Uncontrolled: key on the value so an external price change
                     // (e.g. a price import) remounts the field and re-applies
@@ -304,7 +305,7 @@ export function EquipmentPage() {
                     key={`hourly-${item.hourly_rate}`}
                     type="number"
                     className="inline-price-input"
-                    defaultValue={item.hourly_rate}
+                    defaultValue={item.hourly_rate.toFixed(2)}
                     step="0.50"
                     min="0"
                     onBlur={(e) => handleRateChange(item, 'hourly', e.target.value)}
@@ -317,11 +318,12 @@ export function EquipmentPage() {
                   {formatCurrency(item.daily_rate)}
                 </td>
                 <td className="text-right">
+                  <span className="inline-money-prefix">$</span>
                   <input
                     key={`mob-${item.mobilization_cost}`}
                     type="number"
                     className="inline-price-input"
-                    defaultValue={item.mobilization_cost}
+                    defaultValue={item.mobilization_cost.toFixed(2)}
                     step="25"
                     min="0"
                     onBlur={(e) => handleRateChange(item, 'mob', e.target.value)}

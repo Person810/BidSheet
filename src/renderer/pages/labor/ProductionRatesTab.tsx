@@ -25,9 +25,11 @@ interface ProductionRatesTabProps {
   rates: ProductionRate[];
   crews: CrewTemplate[];
   onRefresh: () => void;
+  /** Switch to the Crew Templates tab (a rate needs a crew). */
+  onGoToCrews: () => void;
 }
 
-export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesTabProps) {
+export function ProductionRatesTab({ rates, crews, onRefresh, onGoToCrews }: ProductionRatesTabProps) {
   const addToast = useToastStore((s) => s.addToast);
   const system = useUnitSystem();
   const [showModal, setShowModal] = useState(false);
@@ -120,8 +122,9 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
       </div>
 
       {crews.length === 0 && (
-        <div className="card mb-24">
-          <p className="text-warning">You need to create at least one crew template before adding production rates.</p>
+        <div className="card mb-24 flex justify-between items-center">
+          <p className="text-warning">A production rate belongs to a crew, so start by building a crew template.</p>
+          <button className="btn btn-secondary" onClick={onGoToCrews}>Go to Crew Templates</button>
         </div>
       )}
 
@@ -140,7 +143,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
           {rates.length === 0 ? (
             <tr>
               <td colSpan={6} className="text-muted" style={{ textAlign: 'center', padding: 32 }}>
-                No production rates yet. Create crew templates first, then add production rates.
+                No production rates yet.
               </td>
             </tr>
           ) : (

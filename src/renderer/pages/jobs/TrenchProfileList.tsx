@@ -553,7 +553,7 @@ export function TrenchProfileList({ jobId, onConvertToBid, onProfileCountChange 
       </div>
 
       {profiles.length === 0 ? (
-        <p className="text-muted" style={{ fontSize: 13 }}>No trench profiles. Click "+ Profile" to add one.</p>
+        <p className="text-muted" style={{ fontSize: 13 }}>No trench profiles yet. Add one, or send runs here from Plan Takeoff.</p>
       ) : (
         <table className="bid-grid">
           <thead>

@@ -123,7 +123,7 @@ export function Dashboard() {
     <div>
       <div className="page-header">
         <h2>
-          {settings?.company_name ? `${settings.company_name}` : 'Dashboard'}
+          Dashboard
         </h2>
       </div>
 
@@ -192,7 +192,10 @@ export function Dashboard() {
       <div className="card">
         <h3 style={{ marginBottom: 16 }}>Recent Jobs</h3>
         {recentJobs.length === 0 ? (
-          <p className="text-muted">No jobs yet. Create your first bid from the Jobs & Bids page.</p>
+          <div>
+            <p className="text-muted mb-16">No jobs yet.</p>
+            <button className="btn btn-primary" onClick={() => navigate('/jobs?new=1')}>+ New Job</button>
+          </div>
         ) : (
           <table className="data-table">
             <thead>

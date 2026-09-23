@@ -433,7 +433,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
               <div style={{ fontSize: 36, marginBottom: 6 }}>&#10003;</div>
               <div style={{ fontSize: 15, fontWeight: 600 }}>
                 {result.stateCounts.quoted + result.stateCounts.confirmed} of {result.stateCounts.total} items now on quoted prices
-                {result.stateCounts.seed > 0 ? ` · ${result.stateCounts.seed} still on sample prices` : ''}
+                {result.stateCounts.seed > 0 ? ` · ${result.stateCounts.seed} unverified` : ''}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>

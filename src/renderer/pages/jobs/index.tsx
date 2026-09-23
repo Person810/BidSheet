@@ -10,11 +10,16 @@ export function JobsPage() {
   const [view, setView] = useState<View>('list');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  // ?new=1 (from the Dashboard's empty state) opens the New Job form once.
+  const [createRequested, setCreateRequested] = useState(false);
 
   useEffect(() => {
     const openId = searchParams.get('open');
     if (openId) {
       openJob(Number(openId));
+      setSearchParams({}, { replace: true });
+    } else if (searchParams.get('new')) {
+      setCreateRequested(true);
       setSearchParams({}, { replace: true });
     }
   }, [searchParams]);
@@ -55,7 +60,8 @@ export function JobsPage() {
   }
 
   return view === 'list' ? (
-    <JobList onOpenJob={openJob} />
+    <JobList onOpenJob={openJob} createRequested={createRequested}
+      onCreateHandled={() => setCreateRequested(false)} />
   ) : (
     <JobDetail jobId={selectedJobId!} onBack={backToList} onOpenJob={openJob} onOpenTakeoff={openTakeoff} />
   );

@@ -263,16 +263,16 @@ export function BidGrid({
                     </span>
                   )}
                   <button className="bid-grid-inline-action no-print" onClick={() => onAddLineItem(section.id)}>
-                    + item
+                    + Item
                   </button>
                   {hasAssemblies && (
                     <button className="bid-grid-inline-action no-print" onClick={() => onOpenAssemblyPicker(section.id)}>
-                      + assembly
+                      + Assembly
                     </button>
                   )}
                   <button className="bid-grid-inline-action no-print" onClick={() => onEditSection(section)}
                     title="Section settings (alternate, markup overrides)">
-                    settings
+                    Settings
                   </button>
                 </td>
                 <td className="text-right" style={{ color: 'var(--text-secondary)' }}>{formatCurrency(totals.material)}</td>
@@ -284,7 +284,7 @@ export function BidGrid({
                   <button
                     className="btn btn-sm btn-secondary"
                     onClick={() => onDeleteSection(section.id)}
-                    title="Remove section"
+                    title="Delete section" aria-label={`Delete section ${section.name}`}
                     style={{ fontSize: 11, padding: '1px 6px' }}
                   >
                     &#215;
@@ -296,7 +296,7 @@ export function BidGrid({
               {items.length === 0 ? (
                 <tr>
                   <td colSpan={COL_COUNT} className="bid-grid-item-desc" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    No line items. Click + item to add one.
+                    No line items yet.
                   </td>
                 </tr>
               ) : (
@@ -390,6 +390,7 @@ export function BidGrid({
                       <button
                         className="btn btn-sm btn-secondary"
                         onClick={() => onDeleteLineItem(item.id)}
+                        title="Delete line item" aria-label={`Delete ${item.description || 'line item'}`}
                         style={{ fontSize: 11, padding: '1px 6px' }}
                       >
                         &#215;

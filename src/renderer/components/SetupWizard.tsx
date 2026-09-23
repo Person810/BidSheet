@@ -306,6 +306,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <button className="btn btn-secondary" onClick={() => setStep(0)}>
                 Back
               </button>
+              {!hasAnyTrade && (
+                <span className="text-muted" style={{ fontSize: 12 }}>Pick at least one trade to continue.</span>
+              )}
               <button
                 className="btn btn-primary"
                 onClick={() => setStep(2)}
@@ -381,6 +384,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <button className="btn btn-secondary" onClick={() => setStep(1)}>
                 Back
               </button>
+              {!noSeedCatalog && catalogChoice === null && (
+                <span className="text-muted" style={{ fontSize: 12 }}>Pick a starting catalog to continue.</span>
+              )}
               <button
                 className="btn btn-primary"
                 onClick={() => setStep(3)}
@@ -450,7 +456,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   <>
                     <p className="setup-desc" style={{ marginBottom: 12 }}>
                       Create your cloud account now to start your free trial, or sign in if you
-                      already have one. You can also skip this and set it up later from Settings.
+                      already have one.
                     </p>
                     <div className="flex gap-8">
                       <button
@@ -477,12 +483,15 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <button className="btn btn-secondary" onClick={() => setStep(2)}>
                 Back
               </button>
+              {cloudChoice === null && (
+                <span className="text-muted" style={{ fontSize: 12 }}>Pick an option to finish.</span>
+              )}
               <button
                 className="btn btn-primary"
                 onClick={handleFinish}
                 disabled={cloudChoice === null || loading}
               >
-                {loading ? 'Setting up...' : 'Finish Setup'}
+                {loading ? 'Setting up…' : 'Finish Setup'}
               </button>
             </div>
           </div>

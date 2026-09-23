@@ -335,6 +335,7 @@ export function MaterialsPage() {
                   </td>
                   <td>{mat.unit}</td>
                   <td className="text-right">
+                    <span className="inline-money-prefix">$</span>
                     <input
                       // Uncontrolled input: defaultValue only applies on mount,
                       // so an external price change (e.g. a price import) would
@@ -344,7 +345,7 @@ export function MaterialsPage() {
                       key={`price-${mat.default_unit_cost}`}
                       type="number"
                       className="inline-price-input"
-                      defaultValue={mat.default_unit_cost}
+                      defaultValue={mat.default_unit_cost.toFixed(2)}
                       step="0.01"
                       min="0"
                       onBlur={(e) => handlePriceChange(mat, e.target.value)}

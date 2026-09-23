@@ -274,7 +274,7 @@ export function SettingsPage() {
             className="form-control"
             value={settings.companyAddress}
             onChange={(e) => update('companyAddress', e.target.value)}
-            placeholder="123 Main St, City, TX 75001"
+            placeholder="e.g. 123 Main St, Dallas, TX 75001"
           />
         </div>
         <div className="form-row">
@@ -285,7 +285,7 @@ export function SettingsPage() {
               className="form-control"
               value={settings.companyPhone}
               onChange={(e) => update('companyPhone', e.target.value)}
-              placeholder="(555) 555-5555"
+              placeholder="e.g. (555) 555-5555"
             />
           </div>
           <div className="form-group">
@@ -295,7 +295,7 @@ export function SettingsPage() {
               className="form-control"
               value={settings.companyEmail}
               onChange={(e) => update('companyEmail', e.target.value)}
-              placeholder="bids@company.com"
+              placeholder="e.g. bids@yourcompany.com"
             />
           </div>
         </div>
@@ -389,7 +389,7 @@ export function SettingsPage() {
               }
             >
               <option value="default">
-                Locale default — {profile.freightTaxable ? 'taxed' : 'not taxed'} ({profile.displayName})
+                Default ({profile.freightTaxable ? 'taxed' : 'not taxed'})
               </option>
               <option value="1">Taxed</option>
               <option value="0">Not taxed</option>
@@ -491,7 +491,7 @@ export function SettingsPage() {
             className="btn btn-primary"
             onClick={() => setShowHddRatesModal(true)}
           >
-            Configure HDD Rates...
+            Edit HDD Rates…
           </button>
           {settings.hddRatesJson && settings.hddRatesJson.trim() !== '' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

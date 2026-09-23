@@ -38,9 +38,12 @@ const EMPTY_JOB_FORM = {
 
 interface JobListProps {
   onOpenJob: (id: number) => void;
+  /** Open the New Job form as soon as the list mounts. */
+  createRequested?: boolean;
+  onCreateHandled?: () => void;
 }
 
-export function JobList({ onOpenJob }: JobListProps) {
+export function JobList({ onOpenJob, createRequested, onCreateHandled }: JobListProps) {
   const addToast = useToastStore((s) => s.addToast);
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobCOs, setJobCOs] = useState<Record<number, any[]>>({});
@@ -76,6 +79,13 @@ export function JobList({ onOpenJob }: JobListProps) {
       // Suggestion is a convenience — the modal works without one.
     }
   };
+
+  useEffect(() => {
+    if (!createRequested) return;
+    void openCreate();
+    onCreateHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot request from the router
+  }, [createRequested]);
 
   // Closing the modal abandons the whole draft (#111). A left-over client
   // details draft is the dangerous part: reopening New Job would show the
@@ -280,7 +290,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       <div className="flex gap-8 mb-24">
         {['', 'draft', 'submitted', 'won', 'lost'].map((f) => (
           <button key={f} className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setFilter(f)}>{f || 'All'}</button>
+            onClick={() => setFilter(f)}>{f ? f[0].toUpperCase() + f.slice(1) : 'All'}</button>
         ))}
       </div>
 
@@ -301,7 +311,14 @@ export function JobList({ onOpenJob }: JobListProps) {
           {jobs.length === 0 ? (
             <tr>
               <td colSpan={columnCount} className="text-muted" style={{ textAlign: 'center', padding: 32 }}>
-                No jobs found. Click "+ New Job" to create your first bid.
+                {filter ? (
+                  `No ${filter} jobs.`
+                ) : (
+                  <>
+                    <p className="mb-16">No jobs yet.</p>
+                    <button className="btn btn-primary" onClick={openCreate}>+ New Job</button>
+                  </>
+                )}
               </td>
             </tr>
           ) : (

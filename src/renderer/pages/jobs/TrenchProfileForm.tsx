@@ -4,7 +4,7 @@ import {
   parsePipeSizeFromName, depthZoneBreakdown,
   type TrenchInput, type ValidationError,
 } from '../../modules/underground/trenchCalc';
-import { calculateHDD, type HDDInput } from '../../modules/underground/hddCalc';
+import { calculateHDD, hddTerms, type HDDInput } from '../../modules/underground/hddCalc';
 import { FuzzyAutocomplete, type AutocompleteItem } from '../../components/FuzzyAutocomplete';
 import { NATIVE_MATERIAL_ITEM } from '../../modules/underground/useTrenchMaterials';
 import { trenchInputToTakeoffRun, TRENCH_PREVIEW_SCALE_PX_PER_FT } from '../../modules/underground/trenchInputToRun';
@@ -61,6 +61,7 @@ export function TrenchProfileForm({
 }: Props) {
   const system = useUnitSystem();
   const isMetric = system === 'metric';
+  const hddWords = hddTerms(isMetric);
   const blockingErrors = useMemo(() => errors.filter((e) => e.severity !== 'warning'), [errors]);
   const warnings = useMemo(() => errors.filter((e) => e.severity === 'warning'), [errors]);
   const hasError = (field: string) => blockingErrors.some((e) => e.field === field);
@@ -439,8 +440,8 @@ export function TrenchProfileForm({
                 value={form.hddLocation || 'metro'}
                 onChange={(e) => onChange('hddLocation', e.target.value)}
               >
-                <option value="metro">Metro</option>
-                <option value="regional">Regional</option>
+                <option value="metro">{hddWords.urban}</option>
+                <option value="regional">{hddWords.rural}</option>
               </select>
             </div>
           </div>
@@ -659,7 +660,7 @@ export function TrenchProfileForm({
             </thead>
             <tbody>
               <tr>
-                <td>Establishment Fee</td>
+                <td>{hddWords.setup}</td>
                 <td className="text-right">{formatCurrency(hddOutput.breakdown.establishment)}</td>
               </tr>
               <tr>
@@ -678,7 +679,7 @@ export function TrenchProfileForm({
               )}
               {form.hddIncludePits !== false && (
                 <tr>
-                  <td>Excavator & Pits Allowance</td>
+                  <td>Excavator & Pits</td>
                   <td className="text-right">{formatCurrency(hddOutput.breakdown.excavatorAllowance)}</td>
                 </tr>
               )}
