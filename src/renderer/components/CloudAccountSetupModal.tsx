@@ -444,7 +444,7 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
             <p className="text-muted mb-16">
               {billingEnabled
                 ? 'Turn sync on per job from the Jobs & Bids list. Subscribe now (or any time before the trial ends) to keep syncing and get the full 100 GB.'
-                : 'Turn sync on per job from the Jobs & Bids list. You have the full 100 GB during your trial. Paid plans are coming soon.'}
+                : 'Turn sync on per job from the Jobs & Bids list. Your trial includes 10 GB of storage. Paid plans are coming soon.'}
             </p>
             {billingEnabled && awaitingPayment && (
               <p className="text-muted mb-16" style={{ fontSize: 12 }}>

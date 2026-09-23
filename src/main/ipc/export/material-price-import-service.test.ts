@@ -259,7 +259,7 @@ describe('material price import successful atomic effects', () => {
     ).get()).toEqual({
       unit: 'EA',
       default_unit_cost: 0,
-      category_name: 'Uncategorised',
+      category_name: 'Uncategorized',
     });
 
     const history = db.prepare(
@@ -289,7 +289,7 @@ describe('material price import successful atomic effects', () => {
     ]);
   });
 
-  it('reuses one normalized Uncategorised category and lazily creates it only when needed', () => {
+  it('reuses a legacy Uncategorised category and lazily creates the fallback only when needed', () => {
     const reusedDb = freshDb();
     const fallbackId = category(reusedDb, '  UnCaTeGoRiSeD  ');
     commitMaterialPriceImport(reusedDb, request([
@@ -316,8 +316,23 @@ describe('material price import successful atomic effects', () => {
     ]));
     expect(noCreateDb.prepare(
       `SELECT COUNT(*) AS count FROM material_categories
-       WHERE lower(trim(name)) = 'uncategorised'`,
+       WHERE lower(trim(name)) IN ('uncategorized', 'uncategorised')`,
     ).get()).toEqual({ count: 0 });
+  });
+
+  it('prefers an existing Uncategorized category over the legacy spelling', () => {
+    const db = freshDb();
+    category(db, 'Uncategorised');
+    const usId = category(db, 'Uncategorized');
+    commitMaterialPriceImport(db, request([
+      create(0, { name: 'Uses fallback', categoryText: null }),
+    ]));
+    expect(db.prepare(
+      'SELECT DISTINCT category_id FROM materials',
+    ).all()).toEqual([{ category_id: usId }]);
+    expect(db.prepare(
+      'SELECT COUNT(*) AS count FROM material_categories',
+    ).get()).toEqual({ count: 2 });
   });
 });
 
@@ -495,7 +510,7 @@ describe('material price import rollback and safe recovery', () => {
     {
       name: 'category',
       trigger: `CREATE TRIGGER fail_import BEFORE INSERT ON material_categories
-        WHEN NEW.name = 'Uncategorised'
+        WHEN NEW.name = 'Uncategorized'
         BEGIN SELECT RAISE(ABORT, 'forced category secret failure'); END`,
       rows: (materialId: number) => [
         update(0, materialId, { name: 'Existing Pipe', unit: 'LF', unitCost: 15 }),

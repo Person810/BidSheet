@@ -242,7 +242,7 @@ export function CrewTemplatesTab({ crews, roles, onRefresh }: CrewTemplatesTabPr
       )}
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} />
+          onNo={() => setConfirmState(null)} yesLabel="Delete" />
       )}
     </div>
   );

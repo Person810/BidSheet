@@ -245,7 +245,7 @@ export function LaborRolesTab({ roles, onRefresh }: LaborRolesTabProps) {
       )}
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} />
+          onNo={() => setConfirmState(null)} yesLabel="Delete" />
       )}
     </div>
   );

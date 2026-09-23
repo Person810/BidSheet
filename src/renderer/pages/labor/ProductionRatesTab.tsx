@@ -265,7 +265,7 @@ export function ProductionRatesTab({ rates, crews, onRefresh }: ProductionRatesT
       )}
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} />
+          onNo={() => setConfirmState(null)} yesLabel="Delete" />
       )}
     </div>
   );

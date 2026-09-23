@@ -239,7 +239,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
     setConfirmState({
       msg: newLocked
         ? 'Lock this bid? Future edits will require confirmation.'
-        : 'Permanently unlock this bid? Edits will no longer require confirmation.',
+        : 'Unlock this bid? You won\'t be asked to confirm edits until you lock it again.',
       yesLabel: newLocked ? 'Lock Bid' : 'Unlock Bid',
       variant: 'neutral',
       onYes: async () => {
@@ -950,7 +950,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           <button
             className="btn btn-sm btn-secondary"
             onClick={toggleMasterLock}
-            title={job.bid_locked === 1 ? 'Bid locked -- click to permanently unlock' : 'Bid unlocked -- click to lock'}
+            title={job.bid_locked === 1 ? 'Bid locked — click to unlock' : 'Bid unlocked — click to lock'}
             style={{ display: 'flex', alignItems: 'center', gap: 6, color: job.bid_locked === 1 ? 'var(--warning, #f59e0b)' : 'var(--text-muted)' }}
           >
             {job.bid_locked === 1 ? <LockClosedIcon /> : <LockOpenIcon />}
@@ -1177,7 +1177,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           message={confirmState.msg}
           onYes={confirmState.onYes}
           onNo={() => { const cancel = confirmState.onNo; setConfirmState(null); cancel?.(); }}
-          yesLabel={confirmState.yesLabel}
+          yesLabel={confirmState.yesLabel ?? 'Delete'}
           variant={confirmState.variant}
         />
       )}

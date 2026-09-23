@@ -405,7 +405,7 @@ export function MaterialPriceImportReview({
                                 )}
                               >
                                 <option value="">
-                                  Uncategorised (create or reuse)
+                                  Uncategorized (create or reuse)
                                 </option>
                                 {categories.map((category) => (
                                   <option key={category.id} value={category.id}>

@@ -241,7 +241,7 @@ function categoryDraft(
       return { categoryId: matches[0].id, categoryName: matches[0].name };
     }
   }
-  return { categoryId: null, categoryName: 'Uncategorised' };
+  return { categoryId: null, categoryName: 'Uncategorized' };
 }
 
 function createDraft(

@@ -16,7 +16,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 function setup(overrides: Partial<Parameters<typeof ConfirmDialog>[0]> = {}) {
   const onYes = vi.fn();
   const onNo = vi.fn();
-  render(<ConfirmDialog message="Delete this job?" onYes={onYes} onNo={onNo} {...overrides} />);
+  render(<ConfirmDialog message="Delete this job?" onYes={onYes} onNo={onNo} yesLabel="Delete" {...overrides} />);
   return { onYes, onNo, user: userEvent.setup() };
 }
 

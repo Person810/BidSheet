@@ -141,7 +141,7 @@ export function CsvImportModal({
       setMaterials(loadedMaterials);
       setCategories(loadedCategories);
     }).catch((cause: unknown) => {
-      setError(cause instanceof Error ? cause.message : 'Could not load the catalogue.');
+      setError(cause instanceof Error ? cause.message : 'Could not load the catalog.');
     });
   }, []);
 
@@ -228,7 +228,7 @@ export function CsvImportModal({
         await onComplete();
       } catch {
         setPostCommitWarning(
-          'Import completed successfully, but the catalogue could not refresh. '
+          'Import completed successfully, but the catalog could not refresh. '
           + 'Reopen Materials to see the imported records.',
         );
       }
@@ -326,7 +326,7 @@ export function CsvImportModal({
               <p>
                 CSV, TSV and TXT files may use comma or tab separation, with up to
                 {' '}10,000 data rows. A missing Unit defaults to EA; a missing or
-                unknown Category defaults to Uncategorised.
+                unknown Category defaults to Uncategorized.
               </p>
               <details>
                 <summary style={{ cursor: 'pointer' }}>Show a valid example</summary>
@@ -336,7 +336,7 @@ export function CsvImportModal({
                   overflowWrap: 'anywhere',
                   whiteSpace: 'pre-wrap',
                 }}>
-                  {`Material Name,Unit Cost,Unit,Supplier,Part Number,Description,Category\nCisco Catalyst 9600 Chassis,16488.18,EA,ITNest,C9606R,"Core network chassis",IT Equipment`}
+                  {`Material Name,Unit Cost,Unit,Supplier,Part Number,Description,Category\n8 in PVC SDR-35 Sewer Pipe,7.50,LF,Local Supply Co,PVC835-8,"Gravity sewer pipe, 14 ft joint",PVC Pipe`}
                 </pre>
               </details>
             </div>
@@ -355,7 +355,7 @@ export function CsvImportModal({
           <>
             <p className="text-muted">
               {csv.rows.length} rows from {csv.fileName}. Map the available fields.
-              New materials use EA and Uncategorised when those fields are absent.
+              New materials use EA and Uncategorized when those fields are absent.
             </p>
             <MappingFields csv={csv} mapping={mapping} onChange={setMapping} />
             <div className="modal-actions" style={{ marginTop: 24 }}>
@@ -386,7 +386,7 @@ export function CsvImportModal({
 
         {step === 'done' && result && (
           <div aria-live="polite">
-            <p>Import completed atomically. Every changed price has provenance.</p>
+            <p>Import complete. Every price change is recorded in the Price Log.</p>
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(3, 1fr)',

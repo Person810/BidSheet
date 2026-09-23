@@ -158,7 +158,7 @@ describe('material price import pre-selection guide contract', () => {
   it('states both import defaults before file selection', () => {
     expect(pickView).toMatch(/(?:missing|blank|absent) Unit[\s\S]{0,100}EA/i);
     expect(pickView).toMatch(
-      /(?:missing|unknown|unmatched)[\s\S]{0,80}Category[\s\S]{0,100}Uncategorised/i,
+      /(?:missing|unknown|unmatched)[\s\S]{0,80}Category[\s\S]{0,100}Uncategorized/i,
     );
   });
 
@@ -174,7 +174,7 @@ describe('material price import pre-selection guide contract', () => {
     const header =
       'Material Name,Unit Cost,Unit,Supplier,Part Number,Description,Category';
     const data =
-      'Cisco Catalyst 9600 Chassis,16488.18,EA,ITNest,C9606R,"Core network chassis",IT Equipment';
+      '8 in PVC SDR-35 Sewer Pipe,7.50,LF,Local Supply Co,PVC835-8,"Gravity sewer pipe, 14 ft joint",PVC Pipe';
 
     expect(detailsIndex).toBeGreaterThanOrEqual(0);
     expect(detailsIndex).toBeLessThan(pickerIndex);

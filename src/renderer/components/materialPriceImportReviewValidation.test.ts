@@ -100,7 +100,7 @@ describe('material price import confirmation blockers', () => {
 
     expect(evaluate(state, [draft(5, {
       categoryId: null,
-      categoryName: 'Uncategorised',
+      categoryName: 'Uncategorized',
     })])).toEqual([]);
   });
 

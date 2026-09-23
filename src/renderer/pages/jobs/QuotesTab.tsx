@@ -265,7 +265,7 @@ export function QuotesTab({ jobId, onSendToBid }: {
 
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} yesLabel={confirmState.yesLabel} variant={confirmState.variant} />
+          onNo={() => setConfirmState(null)} yesLabel={confirmState.yesLabel ?? 'Delete'} variant={confirmState.variant} />
       )}
 
       {showModal && (

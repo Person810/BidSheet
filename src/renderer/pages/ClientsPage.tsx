@@ -167,7 +167,7 @@ export function ClientsPage() {
 
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} />
+          onNo={() => setConfirmState(null)} yesLabel="Remove" variant="neutral" />
       )}
 
       {showModal && (

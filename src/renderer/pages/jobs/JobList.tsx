@@ -144,7 +144,7 @@ export function JobList({ onOpenJob }: JobListProps) {
     }
   };
 
-  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void } | null>(null);
+  const [confirmState, setConfirmState] = useState<{ msg: string; onYes: () => void; yesLabel: string; variant?: 'danger' | 'neutral' } | null>(null);
   const { sorted: sortedJobs, sort, toggleSort } = useSortableRows(jobs, JOB_SORT_ACCESSORS);
 
   // ---- Cloud sync ----
@@ -204,6 +204,8 @@ export function JobList({ onOpenJob }: JobListProps) {
           e.stopPropagation();
           setConfirmState({
             msg: 'Turn off cloud sync for this job? The cloud copy stays for now; this computer just stops syncing it.',
+            yesLabel: 'Stop Syncing',
+            variant: 'neutral',
             onYes: () => { setConfirmState(null); cloudAction(() => window.api.cloudDisableJob(jobId)); },
           });
         }}>
@@ -219,6 +221,7 @@ export function JobList({ onOpenJob }: JobListProps) {
     const coWarning = coCount > 0 ? ` This will also delete ${coCount} change order${coCount !== 1 ? 's' : ''}.` : '';
     setConfirmState({
       msg: `Delete this job and all its bid data?${coWarning} This cannot be undone.`,
+      yesLabel: 'Delete',
       onYes: async () => {
         setConfirmState(null);
         await window.api.deleteJob(id);
@@ -423,7 +426,8 @@ export function JobList({ onOpenJob }: JobListProps) {
 
       {confirmState && (
         <ConfirmDialog message={confirmState.msg} onYes={confirmState.onYes}
-          onNo={() => setConfirmState(null)} />
+          onNo={() => setConfirmState(null)} yesLabel={confirmState.yesLabel}
+          variant={confirmState.variant} />
       )}
 
       {dupState && (

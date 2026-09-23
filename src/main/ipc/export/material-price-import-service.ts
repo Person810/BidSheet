@@ -19,7 +19,10 @@ const FIELD_LIMITS = {
   description: 2_000,
   categoryText: 100,
 } as const;
-const UNCATEGORISED = 'Uncategorised';
+const UNCATEGORIZED = 'Uncategorized';
+// Imports before 2026-09 created the fallback with the British spelling. Reuse
+// that category rather than creating a second, US-spelled one beside it.
+const LEGACY_UNCATEGORISED = 'Uncategorised';
 
 interface MaterialRecord {
   id: number;
@@ -400,7 +403,7 @@ function buildPlan(
     if (materialCandidates(allMaterials, action).size > 0) {
       throw rowError(
         action.rowIndex,
-        'a matching catalogue material already exists; review this row.',
+        'a matching catalog material already exists; review this row.',
       );
     }
     for (const key of materialPriceImportCreateIdentityKeys(action)) {
@@ -433,13 +436,17 @@ export function commitMaterialPriceImport(
   try {
     const input = validateRequest(request);
     const plan = buildPlan(db, input);
-    const fallbackCategories = plan.categories.filter(
-      ({ name }) => comparisonKey(name) === comparisonKey(UNCATEGORISED),
+    const namedFallback = (name: string) => plan.categories.filter(
+      (category) => comparisonKey(category.name) === comparisonKey(name),
     );
+    const usFallbacks = namedFallback(UNCATEGORIZED);
+    const fallbackCategories = usFallbacks.length > 0
+      ? usFallbacks
+      : namedFallback(LEGACY_UNCATEGORISED);
     if (fallbackCategories.length > 1
       && plan.creates.some(({ categoryId }) => categoryId === null)) {
       throw new ImportValidationError(
-        'More than one Uncategorised category exists. Review categories and try again.',
+        'More than one Uncategorized category exists. Review categories and try again.',
       );
     }
 
@@ -450,7 +457,7 @@ export function commitMaterialPriceImport(
         fallbackCategoryId = Number(db.prepare(
           `INSERT INTO material_categories (name, description)
            VALUES (?, NULL)`,
-        ).run(UNCATEGORISED).lastInsertRowid);
+        ).run(UNCATEGORIZED).lastInsertRowid);
       }
 
       const insertMaterial = db.prepare(

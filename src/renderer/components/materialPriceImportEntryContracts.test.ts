@@ -114,7 +114,7 @@ describe('catalog material price import entry contract', () => {
   });
 
   it('keeps row category editing and the explicit Uncategorised fallback', () => {
-    expect(catalogReview).toContain('Uncategorised (create or reuse)');
+    expect(catalogReview).toContain('Uncategorized (create or reuse)');
     expect(catalogReview).toContain('Category for new material');
     expect(catalogReview).not.toContain('applyMaterialPriceImportBulkActionWithResult');
   });
@@ -127,7 +127,7 @@ describe('catalog material price import entry contract', () => {
       'Supplier for new material',
       'Part number for new material',
       'Description for new material',
-      'Uncategorised (create or reuse)',
+      'Uncategorized (create or reuse)',
     ]) {
       expect(catalogReview).toContain(label);
     }

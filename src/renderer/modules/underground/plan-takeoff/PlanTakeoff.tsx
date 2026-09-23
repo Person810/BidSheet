@@ -1552,6 +1552,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           message={`Delete "${am.areas.find((a) => a.id === am.pendingDeleteId)?.label || 'this area'}"?`}
           onYes={() => { history.record(); am.confirmDelete(); }}
           onNo={am.cancelDelete}
+          yesLabel="Delete"
         />
       )}
 
@@ -1570,6 +1571,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           message={`Delete "${wm.walls.find((w) => w.id === wm.pendingDeleteId)?.label || 'this wall'}"?`}
           onYes={() => { history.record(); wm.confirmDelete(); }}
           onNo={wm.cancelDelete}
+          yesLabel="Delete"
         />
       )}
 
@@ -1588,6 +1590,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           message={`Delete "${rm.runs.find((r) => r.id === rm.pendingDeleteId)?.label || 'this run'}"?`}
           onYes={() => { history.record(); rm.confirmDelete(); }}
           onNo={rm.cancelDelete}
+          yesLabel="Delete"
         />
       )}
 
@@ -1596,6 +1599,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
           message={`Delete "${im.items.find((i) => i.id === im.pendingDeleteId)?.materialName || 'this item'}"?`}
           onYes={() => { history.record(); im.confirmDelete(); }}
           onNo={im.cancelDelete}
+          yesLabel="Delete"
         />
       )}
 

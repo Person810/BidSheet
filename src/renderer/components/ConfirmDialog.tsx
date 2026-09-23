@@ -3,11 +3,13 @@ import { dismissOnEscOnly } from './modalDismiss';
 
 // In-app confirm dialog — replaces native confirm() which steals
 // focus from Electron's renderer and leaves inputs unresponsive.
-export function ConfirmDialog({ message, onYes, onNo, yesLabel = 'Delete', variant = 'danger' }: {
+// yesLabel is required so every caller names its own action: a default
+// "Delete" ended up on confirmations that don't delete anything.
+export function ConfirmDialog({ message, onYes, onNo, yesLabel, variant = 'danger' }: {
   message: string;
   onYes: () => void;
   onNo: () => void;
-  yesLabel?: string;
+  yesLabel: string;
   variant?: 'danger' | 'neutral';
 }) {
   const yesStyle = variant === 'danger'

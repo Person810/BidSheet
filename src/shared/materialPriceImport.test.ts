@@ -200,7 +200,7 @@ describe('four-way material price review classification', () => {
         partNumber: 'H-001',
         description: 'Red hydrant',
         categoryId: null,
-        categoryName: 'Uncategorised',
+        categoryName: 'Uncategorized',
       },
     });
   });
