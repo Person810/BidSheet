@@ -251,6 +251,7 @@ declare global {
       exportBidPdf: (jobId: number) => Promise<{ success: boolean; filePath?: string; canceled?: boolean }>;
       printBid: (jobId: number) => Promise<{ success: boolean; canceled?: boolean; openedPdf?: boolean; filePath?: string }>;
       getPdfHtml: (jobId: number, template: PdfTemplate) => Promise<string>;
+      getProposalTotals: (jobId: number, rounding: string) => Promise<{ proposalTotal: number; estimateTotal: number; alternates: Array<{ name: string; total: number }> }>;
       getPdfTemplate: () => Promise<PdfTemplate>;
       savePdfTemplate: (template: PdfTemplate) => Promise<void>;
       exportBidPdfWithTemplate: (jobId: number, template: PdfTemplate) => Promise<{ success: boolean; filePath?: string; canceled?: boolean }>;

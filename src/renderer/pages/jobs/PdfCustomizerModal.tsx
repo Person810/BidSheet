@@ -6,6 +6,8 @@ import {
   DEFAULT_PDF_TEMPLATE,
 } from '../../../shared/types/pdf';
 import { dismissOnEscOnly } from '../../components/modalDismiss';
+import { UNIT_PRICE_ROUNDING_OPTIONS, type UnitPriceRounding } from '../../../shared/sellSchedule';
+import { formatCurrency } from '../../utils/format';
 
 interface Props {
   jobId: number;
@@ -25,6 +27,16 @@ export function PdfCustomizerModal({ jobId, onClose }: Props) {
   const [exporting, setExporting] = useState(false);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [totals, setTotals] = useState<{ proposalTotal: number; estimateTotal: number } | null>(null);
+  const sellMode = template.pricingMode !== 'open_book';
+
+  // Proposal (sum of rounded extensions) vs. the estimate, for the chosen rounding.
+  useEffect(() => {
+    if (!sellMode) { setTotals(null); return; }
+    window.api.getProposalTotals(jobId, template.unitPriceRounding)
+      .then(setTotals)
+      .catch((err: unknown) => console.error('Failed to load proposal totals:', err));
+  }, [jobId, sellMode, template.unitPriceRounding]);
 
   // Load saved template on mount
   useEffect(() => {
@@ -173,6 +185,52 @@ export function PdfCustomizerModal({ jobId, onClose }: Props) {
           }}>
             {/* Colors */}
             <section>
+              <div style={sectionHeadStyle}>Pricing</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <label style={radioLabelStyle}>
+                    <input type="radio" name="pdf-pricing" checked={sellMode}
+                      onChange={() => set('pricingMode', 'sell')} style={{ accentColor: 'var(--accent)' }} />
+                    Selling prices
+                  </label>
+                  <div style={{ ...hintStyle, marginLeft: 22 }}>
+                    Unit prices include overhead, profit, bond, tax and indirects. Your costs and markup are never shown.
+                  </div>
+                </div>
+                <div>
+                  <label style={radioLabelStyle}>
+                    <input type="radio" name="pdf-pricing" checked={!sellMode}
+                      onChange={() => set('pricingMode', 'open_book')} style={{ accentColor: 'var(--accent)' }} />
+                    Open book
+                  </label>
+                  <div style={{ ...hintStyle, marginLeft: 22 }}>
+                    Cost unit prices with overhead, profit, bond and tax as separate lines. For cost-plus and T&amp;M work; shows the client your margin.
+                  </div>
+                </div>
+                {sellMode && (
+                  <div className="form-group" style={{ marginTop: 4 }}>
+                    <label htmlFor="pdf-rounding">Unit price rounding</label>
+                    <select id="pdf-rounding" className="form-control" value={template.unitPriceRounding}
+                      onChange={(e) => set('unitPriceRounding', e.target.value as UnitPriceRounding)}>
+                      {UNIT_PRICE_ROUNDING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    <div style={hintStyle}>
+                      {UNIT_PRICE_ROUNDING_OPTIONS.find((o) => o.value === template.unitPriceRounding)?.hint}
+                      {' '}Unit prices govern: each line is qty × unit price and the total is their sum.
+                    </div>
+                    {totals && (
+                      <div style={{ ...hintStyle, marginTop: 6, color: 'var(--text-primary)' }}>
+                        Proposal {formatCurrency(totals.proposalTotal)} · estimate {formatCurrency(totals.estimateTotal)}
+                        {' '}({totals.proposalTotal - totals.estimateTotal >= 0 ? '+' : '−'}
+                        {formatCurrency(Math.abs(totals.proposalTotal - totals.estimateTotal))} rounding)
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section>
               <div style={sectionHeadStyle}>Colors</div>
               <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 <ColorField label="Accent / Highlight" value={template.accentColor} onChange={(v) => set('accentColor', v)} />
@@ -220,6 +278,9 @@ export function PdfCustomizerModal({ jobId, onClose }: Props) {
                     <span style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1 }}>⠿</span>
                     <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-primary)' }}>
                       {PDF_SECTION_LABELS[id]}
+                      {id === 'breakdown' && sellMode && (
+                        <span style={{ ...hintStyle, marginLeft: 6 }}>(open book only)</span>
+                      )}
                     </span>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none' }}
                       onClick={(e) => e.stopPropagation()}>
@@ -376,6 +437,12 @@ export function PdfCustomizerModal({ jobId, onClose }: Props) {
     </div>
   );
 }
+
+const radioLabelStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+};
+
+const hintStyle: React.CSSProperties = { fontSize: 11, color: 'var(--text-secondary)' };
 
 const sectionHeadStyle: React.CSSProperties = {
   fontSize: 11,

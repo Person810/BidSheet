@@ -28,7 +28,9 @@ import { DEFAULT_PDF_TEMPLATE } from '../../shared/types/pdf';
 const getHtml = (jobId: number) => {
   const fn = handlers.get('jobs:get-pdf-html');
   if (!fn) throw new Error('handler not registered');
-  return fn(null, jobId, DEFAULT_PDF_TEMPLATE) as Promise<string>;
+  // These tests pin the OPEN BOOK summary (cost + itemized markup rows);
+  // sell mode, the default, has its own suite in proposal-sell-mode.test.ts.
+  return fn(null, jobId, { ...DEFAULT_PDF_TEMPLATE, pricingMode: 'open_book' }) as Promise<string>;
 };
 
 /** Every `<td class="sum-val">$1,234.56</td>` in document order. */

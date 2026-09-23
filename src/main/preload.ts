@@ -229,6 +229,7 @@ contextBridge.exposeInMainWorld('api', {
   exportBidPdf: (jobId: number) => invoke('jobs:export-pdf', jobId),
   printBid: (jobId: number) => invoke('jobs:print-bid', jobId),
   getPdfHtml: (jobId: number, template: any) => invoke('jobs:get-pdf-html', jobId, template),
+  getProposalTotals: (jobId: number, rounding: string) => invoke('jobs:proposal-totals', jobId, rounding),
   getPdfTemplate: () => invoke('settings:get-pdf-template'),
   savePdfTemplate: (template: any) => invoke('settings:save-pdf-template', template),
   exportBidPdfWithTemplate: (jobId: number, template: any) => invoke('jobs:export-pdf', jobId, template),
