@@ -721,7 +721,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           note = `${profileNote} | Catalog price ${formatCurrency(opts.mat.default_unit_cost)}/LF, using ${formatCurrency(unitCost)}/m`;
         } else {
           unitCost = 0;
-          note = `${profileNote} | Catalog unit is ${opts.mat.unit} -- adjust pricing manually`;
+          note = `${profileNote} | Catalog unit is ${opts.mat.unit}; adjust pricing manually`;
         }
       }
       return saveItem({
@@ -781,7 +781,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
             unitCost = metricUnitPrice(mat.default_unit_cost, 'cy');
             note = `${profileNote} | Catalog price ${formatCurrency(mat.default_unit_cost)}/${mat.unit}, using ${formatCurrency(unitCost)}/m³`;
           } else {
-            note = `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually`;
+            note = `${profileNote} | Catalog unit is ${mat.unit}; adjust pricing manually`;
           }
         } else if (mat.unit === 'CY' || mat.unit === 'CYD') {
           unitCost = mat.default_unit_cost;
@@ -789,7 +789,7 @@ export function JobDetail({ jobId, onBack, onOpenJob, onOpenTakeoff }: JobDetail
           unitCost = eff.cost;
           note = `${profileNote} | Catalog price ${formatCurrency(mat.default_unit_cost)}/${mat.unit}, using ${formatCurrency(eff.cost)}/CY`;
         } else {
-          note = `${profileNote} | Catalog unit is ${mat.unit} -- adjust pricing manually`;
+          note = `${profileNote} | Catalog unit is ${mat.unit}; adjust pricing manually`;
         }
       }
       return saveItem({

@@ -122,10 +122,11 @@ describe('localized date field state', () => {
 
 describe('localized date accessibility descriptors', () => {
   it.each([
-    ['dmy', 'en-AU', 'DD/MM/YYYY', '08/07/2026'],
-    ['mdy', 'en-US', 'MM/DD/YYYY', '07/08/2026'],
-    ['ymd', 'en-AU', 'YYYY-MM-DD', '2026-07-08'],
-    ['system', 'ja-JP', 'YYYY-MM-DD', '2026-07-08'],
+    // A day past the 12th, so the example can't be read as either order.
+    ['dmy', 'en-AU', 'DD/MM/YYYY', '28/07/2026'],
+    ['mdy', 'en-US', 'MM/DD/YYYY', '07/28/2026'],
+    ['ymd', 'en-AU', 'YYYY-MM-DD', '2026-07-28'],
+    ['system', 'ja-JP', 'YYYY-MM-DD', '2026-07-28'],
   ] as const)('describes %s/%s entry order and example', (preference, locale, order, example) => {
     expect(describeLocalizedDateField(preference, locale)).toEqual({
       order,

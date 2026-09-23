@@ -279,7 +279,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
               </div>
             </div>
             <div className="text-muted" style={{ fontSize: 11, marginTop: 8 }}>
-              The supplier scopes the learned matcher, so next time this supplier's rows auto-match.
+              BidSheet remembers how you match this supplier&apos;s items, so next time they match automatically.
             </div>
             <div className="modal-actions" style={{ marginTop: 24 }}>
               <button className="btn btn-secondary" onClick={() => setStep('pick')}>Back</button>
@@ -433,7 +433,7 @@ export function JobPriceImportModal({ jobId, onDone, onClose }: {
               <div style={{ fontSize: 36, marginBottom: 6 }}>&#10003;</div>
               <div style={{ fontSize: 15, fontWeight: 600 }}>
                 {result.stateCounts.quoted + result.stateCounts.confirmed} of {result.stateCounts.total} items now on quoted prices
-                {result.stateCounts.seed > 0 ? ` · ${result.stateCounts.seed} still on seed` : ''}
+                {result.stateCounts.seed > 0 ? ` · ${result.stateCounts.seed} still on sample prices` : ''}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>

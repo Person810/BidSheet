@@ -228,7 +228,7 @@ export function CsvImportModal({
         await onComplete();
       } catch {
         setPostCommitWarning(
-          'Import completed successfully, but the catalog could not refresh. '
+          'Import completed, but the list didn\'t refresh. '
           + 'Reopen Materials to see the imported records.',
         );
       }

@@ -248,7 +248,7 @@ export function SettingsPage() {
       <div className="page-header">
         <h2>Settings</h2>
         <div className="flex gap-8 items-center">
-          {saved && <span className="text-success" style={{ fontSize: 13 }}>Saved!</span>}
+          {saved && <span className="text-success" style={{ fontSize: 13 }}>Saved.</span>}
           <button className="btn btn-primary" onClick={handleSave}>
             Save Settings
           </button>
@@ -499,7 +499,7 @@ export function SettingsPage() {
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={async () => {
-                  if (confirm('Are you sure you want to reset all HDD rates back to standard system defaults?')) {
+                  if (confirm('Reset HDD rates to the defaults? Your custom rates will be lost.')) {
                     const updated = { ...settings, hddRatesJson: '' };
                     setSettings(updated);
                     await window.api.saveSettings({
@@ -523,7 +523,7 @@ export function SettingsPage() {
                       customTrades: serializeCustomTrades(updated.customTrades),
                       hddRatesJson: null,
                     });
-                    addToast('HDD rates reset to system defaults!', 'success');
+                    addToast('HDD rates reset to the defaults.', 'success');
                   }
                 }}
               >
@@ -531,7 +531,7 @@ export function SettingsPage() {
               </button>
             </div>
           ) : (
-            <span className="text-muted" style={{ fontSize: 13 }}>Using system default rates (Australia/US standard sets)</span>
+            <span className="text-muted" style={{ fontSize: 13 }}>Using the default rates</span>
           )}
         </div>
 
@@ -563,7 +563,7 @@ export function SettingsPage() {
                 hddRatesJson: updated.hddRatesJson || null,
               });
               setShowHddRatesModal(false);
-              addToast('Custom HDD rates saved successfully!', 'success');
+              addToast('HDD rates saved.', 'success');
             }}
             onClose={() => setShowHddRatesModal(false)}
           />
@@ -599,15 +599,13 @@ export function SettingsPage() {
             style={{ width: 16, height: 16, cursor: 'pointer' }}
           />
           <label htmlFor="localOnlyMode" style={{ margin: 0, cursor: 'pointer' }}>
-            Local-only mode. I'll never use cloud sync, so hide it.
+            Local-only mode (hide cloud sync)
           </label>
         </div>
         <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>
-          Hides the Cloud Sync section and never loads any cloud code: no accounts,
-          no servers, no network connections except checking GitHub for app updates.
-          Your data lives only on this computer, so keep regular backups (below).
-          Uncheck anytime to bring cloud sync back. Takes effect after saving and
-          restarting BidSheet.
+          Turns cloud sync off completely. BidSheet won&apos;t go online except to check
+          for updates. Your data lives only on this computer, so keep regular backups
+          (below). Takes effect after you save and restart BidSheet.
         </p>
       </div>
 
@@ -622,7 +620,7 @@ export function SettingsPage() {
             const result = await window.api.exportDatabase();
             if (result.canceled) return;
             if (result.success) {
-              setBackupStatus('Backup saved successfully.');
+              setBackupStatus('Backup saved.');
             } else {
               setBackupStatus('Export failed: ' + result.error);
             }
@@ -630,7 +628,7 @@ export function SettingsPage() {
           }}>Export Backup</button>
           <button className="btn btn-secondary" onClick={() => {
             setConfirmState({
-              msg: 'Restoring from a backup will replace ALL current data (materials, jobs, bids, settings). The app will restart. Are you sure?',
+              msg: 'Restore from a backup? Everything in BidSheet now (materials, jobs, bids, settings) will be replaced, and BidSheet will restart.',
               onYes: async () => {
                 setConfirmState(null);
                 const result = await window.api.restoreDatabase();
@@ -671,7 +669,11 @@ export function SettingsPage() {
           main sections. Press <kbd>?</kbd> anywhere to see keyboard shortcuts.
         </p>
         <button className="btn btn-secondary" onClick={openWalkthrough}>
-          Replay Walkthrough
+          Replay Tour
+        </button>{' '}
+        <button className="btn btn-secondary" title="Log files help diagnose problems. Send them along when you report one."
+          onClick={() => window.api.openLogDir().catch((err: any) => addToast(err?.message || 'Couldn\'t open the log folder.', 'error'))}>
+          Open Log Folder
         </button>
       </div>
 
@@ -723,7 +725,7 @@ export function SettingsPage() {
       <div className="card">
         <h3 style={{ marginBottom: 16 }}>Trade Configuration</h3>
         <p className="text-muted mb-16">
-          Trade types selected during initial setup. These determined which seed materials,
+          Trade types selected during initial setup. These determined which sample materials,
           labor roles, and equipment were loaded into your catalog.
         </p>
         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
@@ -806,7 +808,7 @@ export function SettingsPage() {
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
             <h4 style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600 }}>Add a trade</h4>
             <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
-              Loads the trade's seed materials, labor roles, equipment, and assemblies, and
+              Loads the trade's sample materials, labor roles, equipment, and assemblies, and
               makes its tools visible. This only adds new items — your existing catalog and any
               prices you've edited are left untouched.
             </p>

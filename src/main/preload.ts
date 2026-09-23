@@ -242,6 +242,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // ---- App Info ----
   getLogDir: () => invoke('app:log-dir'),
+  openLogDir: () => invoke('app:open-log-dir'),
   getSystemLocale: () => invoke('app:system-locale'),
 
   // ---- Updates ----

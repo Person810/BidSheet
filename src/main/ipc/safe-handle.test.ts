@@ -59,9 +59,9 @@ describe('safeHandle', () => {
     safeHandle('test:async-busy', async () => {
       throw coded('SQLITE_BUSY', 'database is locked');
     });
-    await expect(call('test:async-busy')).rejects.toThrow(/Database is busy/);
+    await expect(call('test:async-busy')).rejects.toThrow(/still saving/);
     expect(logged).toEqual([
-      { channel: 'test:async-busy', message: 'Database is busy. Try again in a moment.' },
+      { channel: 'test:async-busy', message: 'BidSheet is still saving. Try again in a moment.' },
     ]);
   });
 

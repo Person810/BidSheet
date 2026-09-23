@@ -108,21 +108,21 @@ export function deleteMaterialCategory(db: Database.Database, input: DeleteMater
   const { categoryId, replacementCategoryId, expectedMaterialCount } = input;
 
   if (categoryId === replacementCategoryId) {
-    throw new Error('Replacement category cannot be the same as the deleted category.');
+    throw new Error('Pick a different category to move them to.');
   }
 
   const activeCount = (db.prepare('SELECT COUNT(*) as count FROM material_categories WHERE is_active = 1').get() as { count: number }).count;
   if (activeCount <= 1) {
-    throw new Error('Cannot delete the last material category.');
+    throw new Error('You need at least one material category, so this one can\'t be deleted.');
   }
 
   const usage = getMaterialCategoryUsage(db, categoryId);
   if (usage.materialCount !== expectedMaterialCount) {
-    throw new Error('Material count has changed. Please refresh and try again.');
+    throw new Error('The materials in this category changed while this was open. Close it and try again.');
   }
 
   if (usage.materialCount > 0 && !replacementCategoryId) {
-    throw new Error('Cannot delete a category that contains materials without a replacement category.');
+    throw new Error('This category still has materials in it. Pick where they should go first.');
   }
 
   if (replacementCategoryId != null) {
@@ -130,7 +130,7 @@ export function deleteMaterialCategory(db: Database.Database, input: DeleteMater
       .prepare('SELECT is_active FROM material_categories WHERE id = ?')
       .get(replacementCategoryId) as { is_active: number } | undefined;
     if (!replacement || replacement.is_active === 0) {
-      throw new Error('The replacement category no longer exists. Please refresh and try again.');
+      throw new Error('The category you picked to move them to no longer exists. Close this and try again.');
     }
   }
 

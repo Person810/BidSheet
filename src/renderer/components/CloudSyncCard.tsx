@@ -87,6 +87,7 @@ export function CloudSyncCard() {
     account?.storage_cap_bytes > 0 ? (account.storage_bytes_used || 0) / account.storage_cap_bytes : 0;
 
   const cloudOnlyCount = sync?.cloudOnly?.length ?? 0;
+  const syncingCount = sync?.jobs.filter((j) => j.enabled).length ?? 0;
 
   const subStatus: string | undefined = account?.subscription_status;
   const trialEnd = account?.trial_ends_at
@@ -170,7 +171,7 @@ export function CloudSyncCard() {
           </div>
           <p className="text-muted" style={{ fontSize: 13, marginTop: 12 }}>
             New to BidSheet Cloud? First 30 days free, then $20/month for your whole company.
-            Got an invite code from a teammate? Hit <strong>Create Account</strong> — you'll
+            Got an invite code from a teammate? Click <strong>Create Account</strong> and you&apos;ll
             join their subscription instead of starting your own.
           </p>
         </div>
@@ -267,7 +268,7 @@ export function CloudSyncCard() {
             <p className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
               Last checked {new Date(sync.lastCheckAt).toLocaleTimeString()}
               {', '}
-              {sync.jobs.filter((j) => j.enabled).length} job(s) syncing
+              {syncingCount} job{syncingCount === 1 ? '' : 's'} syncing
               {sync.cloudOnly.length > 0 && `, ${sync.cloudOnly.length} in cloud only`}
             </p>
           )}
@@ -721,7 +722,7 @@ function TeamSection({ lastCheckAt }: { lastCheckAt: string | null }) {
     const preamble =
       bindingStatus === 'verified'
         ? `Approve ${memberLabel}?\n\nTheir encryption key matches the invite they used. That check runs against the server's own record, so it is not proof on its own.`
-        : `Approve ${memberLabel}?\n\nTheir key could NOT be checked against their invite automatically — usually that just means they joined from an older version of BidSheet.`;
+        : `Approve ${memberLabel}?\n\nBidSheet couldn't check their key against their invite — usually that just means they joined from an older version of BidSheet.`;
     const prompt = safetyCode
       ? `${preamble}\n\nAsk them to read you the device code shown on their Cloud Sync screen. It must be exactly:\n\n        ${safetyCode}\n\nIf it doesn't match, don't approve — someone may be intercepting the connection.`
       : `Approve ${memberLabel}? They have no encryption key registered yet.`;

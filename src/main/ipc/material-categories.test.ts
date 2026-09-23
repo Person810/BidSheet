@@ -224,7 +224,7 @@ describe('deleteMaterialCategory', () => {
     deleteMaterialCategory(db, { categoryId: valvesId, replacementCategoryId: null, expectedMaterialCount: 0 });
     expect(() =>
       deleteMaterialCategory(db, { categoryId: idOf('Pipe'), replacementCategoryId: valvesId, expectedMaterialCount: 3 })
-    ).toThrow(/replacement category no longer exists/);
+    ).toThrow(/you picked to move them to no longer exists/);
   });
 
   it('rejects last category, counting only the visible ones', () => {
@@ -233,7 +233,7 @@ describe('deleteMaterialCategory', () => {
     db.prepare('UPDATE materials SET category_id = ?').run(pipeId);
     db.prepare("UPDATE material_categories SET is_active = 0 WHERE name != 'Pipe'").run();
     const materialCount = (db.prepare('SELECT COUNT(*) as count FROM materials WHERE category_id = ?').get(pipeId) as any).count;
-    expect(() => deleteMaterialCategory(db, { categoryId: pipeId, replacementCategoryId: null, expectedMaterialCount: materialCount })).toThrow(/last material category/);
+    expect(() => deleteMaterialCategory(db, { categoryId: pipeId, replacementCategoryId: null, expectedMaterialCount: materialCount })).toThrow(/at least one material category/);
   });
 });
 

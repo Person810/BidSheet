@@ -350,8 +350,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 <div className="price-option-title">Sample catalog with ballpark prices</div>
                 <div className="price-option-desc">
                   Pre-fill with rough estimates so you have a starting point.
-                  These are NOT accurate quotes -- just a reference to help you
-                  get started faster.
+                  Ballpark only, not real quotes. Replace them with your
+                  supplier&apos;s prices before you bid.
                 </div>
               </div>
               <div
@@ -426,9 +426,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               >
                 <div className="price-option-title">Never (keep everything local)</div>
                 <div className="price-option-desc">
-                  Hides cloud sync and never loads any cloud code. The app makes no
-                  network connections except checking GitHub for updates. Reversible
-                  in Settings.
+                  Turns cloud sync off completely. BidSheet won&apos;t go online except to
+                  check for updates. You can change this in Settings.
                 </div>
               </div>
             </div>

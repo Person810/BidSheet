@@ -156,7 +156,7 @@ export function saveEquipmentCategory(
     if (previousName) {
       const previousKey = equipmentCategoryKey(previousName);
       const existed = visible.some((c) => equipmentCategoryKey(c) === previousKey);
-      if (!existed) throw new Error('That category no longer exists. Please refresh and try again.');
+      if (!existed) throw new Error('That category no longer exists. Close this and try again.');
 
       const next = list.filter((c) => equipmentCategoryKey(c) !== previousKey);
       next.push(name);
@@ -196,25 +196,25 @@ export function deleteEquipmentCategory(
 
   if (!name) throw new Error('Category name is required.');
   if (replacementName && equipmentCategoryKey(replacementName) === equipmentCategoryKey(name)) {
-    throw new Error('Replacement category cannot be the same as the deleted category.');
+    throw new Error('Pick a different category to move them to.');
   }
 
   const run = db.transaction(() => {
     const key = equipmentCategoryKey(name);
     const visible = resolveEquipmentCategories(readStoredColumn(db), categoriesInUse(db));
     if (!visible.some((c) => equipmentCategoryKey(c) === key)) {
-      throw new Error('That category no longer exists. Please refresh and try again.');
+      throw new Error('That category no longer exists. Close this and try again.');
     }
 
     const inUse = equipmentCountFor(db, name);
     if (inUse !== input.expectedEquipmentCount) {
-      throw new Error('Equipment count has changed. Please refresh and try again.');
+      throw new Error('The equipment in this category changed while this was open. Close it and try again.');
     }
     if (inUse > 0 && !replacementName) {
       throw new Error('Cannot delete a category that has equipment in it without a replacement.');
     }
     if (replacementName && !visible.some((c) => equipmentCategoryKey(c) === equipmentCategoryKey(replacementName))) {
-      throw new Error('The replacement category no longer exists. Please refresh and try again.');
+      throw new Error('The category you picked to move them to no longer exists. Close this and try again.');
     }
 
     let reassignedEquipmentCount = 0;

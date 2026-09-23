@@ -229,7 +229,7 @@ export function TrenchProfiler() {
             </table>
           ) : (
             <p className="text-muted" style={{ padding: 24, textAlign: 'center' }}>
-              Fix input errors to see results.
+              Fix the highlighted fields to see results.
             </p>
           )}
 

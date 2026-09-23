@@ -4,6 +4,8 @@ import { dismissOnEscOnly } from './modalDismiss';
 interface ShortcutRow {
   keys: string[];
   action: string;
+  /** The keys are alternatives (← or →), not a chord pressed together. */
+  either?: boolean;
 }
 
 const GENERAL_SHORTCUTS: ShortcutRow[] = [
@@ -18,19 +20,19 @@ const TAKEOFF_SHORTCUTS: ShortcutRow[] = [
   { keys: ['Shift'], action: 'Hold for straight (ortho) lines while drawing or dragging' },
   { keys: ['Space'], action: 'Hold to pan' },
   { keys: ['M'], action: 'Toggle the magnifier for reading small plan text' },
-  { keys: ['←', '→'], action: 'Previous / next page' },
-  { keys: ['+', '−'], action: 'Zoom in / out' },
+  { keys: ['←', '→'], either: true, action: 'Previous / next page' },
+  { keys: ['+', '−'], either: true, action: 'Zoom in / out' },
   { keys: ['Ctrl', '0'], action: 'Fit page to width' },
   { keys: ['Right-click'], action: 'Context menu on runs, vertices, items, areas' },
   { keys: ['Drag'], action: 'Move vertices and count items directly' },
 ];
 
-function Keys({ keys }: { keys: string[] }) {
+function Keys({ keys, either }: { keys: string[]; either?: boolean }) {
   return (
     <span className="shortcut-keys">
       {keys.map((k, i) => (
         <React.Fragment key={i}>
-          {i > 0 && <span className="shortcut-plus">+</span>}
+          {i > 0 && <span className="shortcut-plus">{either ? '/' : '+'}</span>}
           <kbd>{k}</kbd>
         </React.Fragment>
       ))}
@@ -73,7 +75,7 @@ export function ShortcutsOverlay() {
           <tbody>
             {GENERAL_SHORTCUTS.map((s, i) => (
               <tr key={i}>
-                <td><Keys keys={s.keys} /></td>
+                <td><Keys keys={s.keys} either={s.either} /></td>
                 <td>{s.action}</td>
               </tr>
             ))}
@@ -85,7 +87,7 @@ export function ShortcutsOverlay() {
           <tbody>
             {TAKEOFF_SHORTCUTS.map((s, i) => (
               <tr key={i}>
-                <td><Keys keys={s.keys} /></td>
+                <td><Keys keys={s.keys} either={s.either} /></td>
                 <td>{s.action}</td>
               </tr>
             ))}

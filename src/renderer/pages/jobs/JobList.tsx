@@ -329,7 +329,7 @@ export function JobList({ onOpenJob }: JobListProps) {
                   <td>
                     <div className="flex gap-8">
                       <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); startDuplicate(job); }}
-                        title="Duplicate this job as a template">Copy</button>
+                        title="Start a new job from a copy of this one">Duplicate</button>
                       <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); handleDelete(job.id); }}>Delete</button>
                     </div>
                   </td>
@@ -433,7 +433,7 @@ export function JobList({ onOpenJob }: JobListProps) {
       {dupState && (
         <div className="modal-overlay" onClick={dismissOnEscOnly(() => setDupState(null))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Copy Job as Template</h3>
+            <h3>Duplicate Job</h3>
             <p className="text-muted" style={{ marginBottom: 16 }}>All sections, line items, markups, and trench profiles will be copied. The original job stays untouched.</p>
             <div className="form-group">
               <label>New Job Name</label>

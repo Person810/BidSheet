@@ -300,6 +300,7 @@ declare global {
 
       // App Info
       getLogDir: () => Promise<string>;
+      openLogDir: () => Promise<void>;
       getSystemLocale: () => Promise<string>;
 
       // Updates

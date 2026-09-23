@@ -82,7 +82,7 @@ export function decryptForSync(blob: Buffer, dek: Buffer, aad: Buffer): Buffer {
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   } catch {
     throw new SyncDecryptError(
-      'Could not decrypt cloud data — wrong key, wrong context, or the data is damaged.'
+      'Some cloud data couldn\'t be unlocked. If this keeps happening, re-enter your recovery key in Settings → Cloud Sync.'
     );
   }
 }

@@ -56,7 +56,7 @@ export const TRADE_SEED_DATA: Record<TradeType, TradeSeedData> = {
       { name: 'HDPE Pipe', description: 'High density polyethylene pipe' },
       { name: 'Steel Pipe', description: 'Steel casing, carrier pipe, and welded steel' },
       { name: 'Copper Pipe', description: 'Copper water service tubing' },
-      { name: 'Fittings', description: 'Pipe fittings -- bends, tees, reducers, couplings' },
+      { name: 'Fittings', description: 'Pipe fittings: bends, tees, reducers, couplings' },
       { name: 'Restraints', description: 'Mechanical joint restraint glands and thrust restraint' },
       { name: 'Valves', description: 'Gate valves, butterfly valves, check valves, ARVs' },
       { name: 'Manholes', description: 'Precast manholes, grade rings, frames and covers' },

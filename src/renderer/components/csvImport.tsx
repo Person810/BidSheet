@@ -72,7 +72,7 @@ export function ColumnSelect({ label, required, value, options, onChange }: {
         ? <span style={{ color: 'var(--danger)' }}>*</span>
         : <span className="text-muted" style={{ fontWeight: 400 }}>(optional)</span>}</label>
       <select className="form-control" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{required ? '-- select column --' : '-- skip --'}</option>
+        <option value="">{required ? 'Choose a column…' : '(skip)'}</option>
         {options.map((h) => <option key={h} value={h}>{h}</option>)}
       </select>
     </div>

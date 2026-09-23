@@ -291,7 +291,7 @@ export class E2eeManager {
     }
     if (dekFingerprint(dek) !== material.dek_fingerprint) {
       throw new E2eeUnlockError(
-        'The recovery key unlocked a key that does not match this account. Contact support.'
+        'That recovery key belongs to a different account. Check you\'re signed in to the right account.'
       );
     }
     this.cacheDek(dek, material.dek_fingerprint);

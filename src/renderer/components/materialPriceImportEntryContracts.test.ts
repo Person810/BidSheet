@@ -87,7 +87,7 @@ describe('catalog material price import entry contract', () => {
     expect(catalogReview).toContain('Current price');
     expect(catalogReview).toContain('Imported price');
     expect(catalogReview).toContain('Match reason');
-    expect(catalogReview).toContain('Proposed action: Update');
+    expect(catalogReview).toContain('Will update the price');
     expect(catalogReview).toContain('Possible match — review');
   });
 
@@ -96,7 +96,7 @@ describe('catalog material price import entry contract', () => {
       /Selected unmatched rows will be created as new materials/i,
     );
     expect(catalogReview).toMatch(/Deselected rows will not be imported/i);
-    expect(catalogReview).toMatch(/Proposed action: Create New Material/i);
+    expect(catalogReview).toMatch(/Will add as a new material/i);
     expect(catalogReview).not.toMatch(/Create selected/i);
     expect(catalogReview).not.toMatch(/Ignore selected/i);
     expect(catalogReview).not.toMatch(/Category for new materials/i);
@@ -157,7 +157,7 @@ describe('catalog material price import entry contract', () => {
       'isMaterialPriceImportConfirmationEnabled',
     );
     expect(catalogReview).toMatch(/role=["']alert["']/);
-    expect(catalogReview).toMatch(/Show first|Show blocking|Show row/i);
+    expect(catalogReview).toMatch(/Go to the first row/i);
     expect(catalogReview).toMatch(/material-price-import-row-/);
     expect(catalogReview).toMatch(
       /disabled=\{[\s\S]*!isMaterialPriceImportConfirmationEnabled/,

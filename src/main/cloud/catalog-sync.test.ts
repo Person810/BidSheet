@@ -222,6 +222,6 @@ describe('importCatalog', () => {
     buildCatalog(a);
     const polluted: any = JSON.parse(JSON.stringify(exportCatalog(a)));
     polluted.materials[0] = JSON.parse('{"uuid": "x", "__proto__": {"polluted": true}}');
-    expect(() => importCatalog(db, polluted)).toThrow(/forbidden key/);
+    expect(() => importCatalog(db, polluted)).toThrow(/damaged and was skipped/);
   });
 });

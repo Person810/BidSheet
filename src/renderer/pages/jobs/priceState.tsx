@@ -8,7 +8,7 @@ import type { PriceState } from '../../../shared/types/ipc';
  * small dot, not a loud badge.
  */
 export const PRICE_STATE_META: Record<PriceState, { label: string; color: string; desc: string }> = {
-  seed:       { label: 'Seed',       color: 'var(--warning)',    desc: 'Seed price, unverified placeholder' },
+  seed:       { label: 'Sample',     color: 'var(--warning)',    desc: 'Sample price: a ballpark placeholder, not a real quote' },
   past_price: { label: 'Past price', color: 'var(--text-muted)', desc: 'Past price: real, but not quoted for this job' },
   quoted:     { label: 'Quoted',     color: 'var(--accent)',     desc: 'Quoted for this job' },
   confirmed:  { label: 'Confirmed',  color: 'var(--success)',    desc: 'Confirmed price' },
@@ -91,7 +91,7 @@ export function PriceStateLegend({ lineItems, materialAges }: {
       ))}
       <span className="legend-payoff">
         {live} of {total} on quoted prices
-        {counts.seed > 0 ? ` · ${counts.seed} still on seed` : ''}
+        {counts.seed > 0 ? ` · ${counts.seed} still on sample prices` : ''}
       </span>
       {stale > 0 && (
         <span className="legend-item" style={{ color: 'var(--warning)' }}

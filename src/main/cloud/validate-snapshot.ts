@@ -122,7 +122,7 @@ const MAX_DEPTH = 32;
 
 function assertSafeStructure(value: unknown, depth = 0): void {
   if (depth > MAX_DEPTH) {
-    throw new Error('Cloud snapshot rejected: structure is nested too deeply.');
+    throw new Error('Some synced data from the cloud was damaged and was skipped. Nothing on this computer was changed.');
   }
   if (Array.isArray(value)) {
     for (const v of value) assertSafeStructure(v, depth + 1);
@@ -131,7 +131,7 @@ function assertSafeStructure(value: unknown, depth = 0): void {
   if (value !== null && typeof value === 'object') {
     for (const key of Object.getOwnPropertyNames(value)) {
       if (FORBIDDEN_KEYS.has(key)) {
-        throw new Error(`Cloud snapshot rejected: forbidden key "${key}".`);
+        throw new Error('Some synced data from the cloud was damaged and was skipped. Nothing on this computer was changed.');
       }
       assertSafeStructure((value as Record<string, unknown>)[key], depth + 1);
     }

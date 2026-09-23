@@ -94,8 +94,8 @@ export function HDDRatesModal({ initialRatesJson, onSave, onClose }: Props) {
               value={locale}
               onChange={(e) => setLocale(e.target.value as LocaleKey)}
             >
-              <option value="en-AU">Metric (en-AU)</option>
-              <option value="en-US">Imperial (en-US)</option>
+              <option value="en-AU">Metric</option>
+              <option value="en-US">Imperial (US)</option>
             </select>
           </div>
         </div>

@@ -102,7 +102,7 @@ export function describeLocalizedDateField(
     ymd: 'YYYY-MM-DD',
   } as const;
   const displayOrder = labels[order];
-  const example = formatBusinessDate('2026-07-08', preference, locale);
+  const example = formatBusinessDate('2026-07-28', preference, locale);
   return {
     order: displayOrder,
     placeholder: displayOrder,

@@ -102,27 +102,27 @@ function friendlyMessage(err: any): string {
 
   // SQLite errors
   if (code === 'SQLITE_BUSY' || msg.includes('database is locked')) {
-    return 'Database is busy. Try again in a moment.';
+    return 'BidSheet is still saving. Try again in a moment.';
   }
   if (code === 'SQLITE_CONSTRAINT' || msg.includes('UNIQUE constraint') || msg.includes('FOREIGN KEY constraint')) {
     if (msg.includes('UNIQUE constraint')) {
       const match = msg.match(/UNIQUE constraint failed: (\w+)\.(\w+)/);
       if (match) {
         const field = match[2].replace(/_/g, ' ');
-        return `A record with that ${field} already exists.`;
+        return `You already have one with that ${field}.`;
       }
-      return 'A record with those values already exists. Check for duplicates.';
+      return 'You already have one just like this.';
     }
     if (msg.includes('FOREIGN KEY constraint')) {
-      return 'This record is referenced by other data and cannot be modified.';
+      return 'This is still used somewhere else, so it can\'t be changed or deleted yet.';
     }
-    return 'This record conflicts with existing data. Check for duplicates.';
+    return 'This clashes with something you already have. Check for a duplicate.';
   }
   if (code === 'SQLITE_CORRUPT' || msg.includes('database disk image is malformed')) {
-    return 'Database file may be damaged. Try restoring from a backup.';
+    return 'BidSheet\'s data file may be damaged. Restore from a backup in Settings → Data Management.';
   }
   if (code === 'SQLITE_READONLY' || msg.includes('attempt to write a readonly')) {
-    return 'Database is read-only. Check file permissions or disk space.';
+    return 'BidSheet can\'t save right now. Check the disk isn\'t full or read-only.';
   }
   if (code === 'SQLITE_FULL' || msg.includes('database or disk is full')) {
     return 'Disk is full. Free some space and try again.';
@@ -130,16 +130,16 @@ function friendlyMessage(err: any): string {
 
   // Filesystem errors
   if (msg.includes('ENOENT') || msg.includes('no such file')) {
-    return 'File not found. It may have been moved or deleted.';
+    return 'That file isn\'t there anymore. It may have been moved or deleted.';
   }
   if (msg.includes('EACCES') || msg.includes('permission denied')) {
-    return 'Permission denied. Check that BidSheet has access to this file.';
+    return 'BidSheet isn\'t allowed to open that file. Check its permissions.';
   }
   if (msg.includes('ENOSPC') || msg.includes('no space left')) {
     return 'Disk is full. Free some space and try again.';
   }
 
-  return 'Something went wrong. Check the log for details.';
+  return 'Something went wrong. Try again. If it keeps happening, Settings → Help → Open Log Folder has the details.';
 }
 
 /**

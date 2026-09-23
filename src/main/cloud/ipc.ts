@@ -36,10 +36,10 @@ async function openExternalHttps(url: string): Promise<void> {
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error('Billing service returned an invalid link.');
+    throw new Error('Couldn\'t open the billing page. Try again in a moment.');
   }
   if (parsed.protocol !== 'https:') {
-    throw new Error('Billing service returned a non-https link; refusing to open it.');
+    throw new Error('Couldn\'t open the billing page. Try again in a moment.');
   }
   await shell.openExternal(parsed.href);
 }

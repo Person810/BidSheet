@@ -29,7 +29,7 @@ export function AssemblyPickerModal({ assemblies, onAdd, onClose }: AssemblyPick
             onChange={(e) => setSelectedAssemblyId(Number(e.target.value) || null)}
             autoFocus
           >
-            <option value="">-- Select an assembly --</option>
+            <option value="">Choose an assembly…</option>
             {assemblies.map((a: any) => (
               <option key={a.id} value={a.id}>
                 {a.name} ({a.items.length} material{a.items.length !== 1 ? 's' : ''} · ${a.items.reduce((s: number, i: any) => s + i.material_unit_cost * i.quantity, 0).toFixed(2)}/{a.unit})

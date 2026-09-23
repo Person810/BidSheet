@@ -1,4 +1,4 @@
-import { dialog, app, BrowserWindow } from 'electron';
+import { dialog, app, BrowserWindow, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import type Database from 'better-sqlite3';
@@ -231,6 +231,13 @@ export function registerSettingsHandlers(db: Database.Database): void {
 
   safeHandle('app:log-dir', () => {
     return logger.getLogDir();
+  });
+
+  safeHandle('app:open-log-dir', async () => {
+    const dir = logger.getLogDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const err = await shell.openPath(dir);
+    if (err) throw new Error(`Couldn't open the log folder. It's at ${dir}`);
   });
 
   safeHandle('app:system-locale', async () => {

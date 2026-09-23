@@ -202,7 +202,7 @@ describe('deleteEquipmentCategory', () => {
       deleteEquipmentCategory(db, {
         name: 'Excavator', replacementName: 'Loader', expectedEquipmentCount: 0,
       })
-    ).toThrow(/count has changed/);
+    ).toThrow(/changed while this was open/);
   });
 
   it('rejects a replacement that is the same category', () => {
@@ -210,7 +210,7 @@ describe('deleteEquipmentCategory', () => {
       deleteEquipmentCategory(db, {
         name: 'Excavator', replacementName: 'excavator', expectedEquipmentCount: 0,
       })
-    ).toThrow(/cannot be the same/);
+    ).toThrow(/Pick a different category/);
   });
 
   it('rejects a replacement that no longer exists', () => {
@@ -219,7 +219,7 @@ describe('deleteEquipmentCategory', () => {
       deleteEquipmentCategory(db, {
         name: 'Excavator', replacementName: 'Nonexistent', expectedEquipmentCount: 1,
       })
-    ).toThrow(/replacement category no longer exists/);
+    ).toThrow(/you picked to move them to no longer exists/);
   });
 
   it('leaves nothing behind when every category is deleted', () => {

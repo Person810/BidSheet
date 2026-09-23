@@ -118,7 +118,7 @@ export function MaterialPriceImportReview({
       selected,
     ));
     setSelectionFeedback(selected
-      ? 'All eligible shown rows selected for import.'
+      ? 'Selected every row that can be imported.'
       : 'All shown rows excluded from import.');
   };
 
@@ -244,10 +244,10 @@ export function MaterialPriceImportReview({
                       {row.price == null ? 'invalid price' : row.price}
                     </div>
                     {row.action === 'update' && (
-                      <strong>Proposed action: Update</strong>
+                      <strong>Will update the price</strong>
                     )}
                     {row.selected && row.action === 'create' && (
-                      <strong>Proposed action: Create New Material</strong>
+                      <strong>Will add as a new material</strong>
                     )}
                     {!row.selected && row.classification !== 'invalid' && (
                       <strong>Excluded from import</strong>
@@ -453,7 +453,7 @@ export function MaterialPriceImportReview({
                     type="button"
                     onClick={() => showFirstBlocker(blocker.firstRowId as number)}
                   >
-                    Show first blocking row
+                    Go to the first row that needs fixing
                   </button>
                 )}
               </div>

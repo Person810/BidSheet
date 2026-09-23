@@ -186,7 +186,7 @@ export function CloudAccountSetupModal({ onClose }: { onClose: () => void }) {
             <ul style={{ margin: '0 0 12px 18px', lineHeight: 1.7 }}>
               <li><strong>Free for 30 days</strong>, no card needed, 10 GB of storage</li>
               <li><strong>$20/month</strong> after that, one price for your whole company</li>
-              <li>Unlimited computers and users, 100 GB of storage</li>
+              <li>Paid plan: 100 GB of storage, unlimited computers and users</li>
               <li><strong>End-to-end encrypted</strong> — your bids are locked with a key only you hold</li>
               <li>Cancel anytime. Your data stays downloadable.</li>
             </ul>

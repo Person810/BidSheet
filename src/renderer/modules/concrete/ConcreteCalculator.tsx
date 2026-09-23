@@ -221,7 +221,7 @@ export function ConcreteCalculator() {
             </table>
           ) : (
             <p className="text-muted" style={{ padding: 24, textAlign: 'center' }}>
-              Fix input errors to see results.
+              Fix the highlighted fields to see results.
             </p>
           )}
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12 }}>

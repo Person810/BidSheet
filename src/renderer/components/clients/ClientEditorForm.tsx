@@ -345,7 +345,7 @@ export function ClientForm({
             ? 'Saving…'
             : state.mode === 'edit'
               ? 'Save changes'
-              : 'Save client'}
+              : 'Save Client'}
         </button>
       </div>
     </form>

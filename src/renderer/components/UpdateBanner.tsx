@@ -49,7 +49,7 @@ export function UpdateBanner() {
       )}
 
       {state.status === 'checking' && (
-        <span className="text-muted" style={{ fontSize: 13 }}>Checking for updates...</span>
+        <span className="text-muted" style={{ fontSize: 13 }}>Checking for updates…</span>
       )}
 
       {state.status === 'up-to-date' && (
@@ -64,7 +64,7 @@ export function UpdateBanner() {
       {state.status === 'available' && (
         <div className="flex gap-8 items-center">
           <span style={{ fontSize: 13 }}>
-            <strong>v{state.version}</strong> is available!
+            <strong>v{state.version}</strong> is available.
           </span>
           <button className="btn btn-primary" onClick={handleDownload}>
             Download Update
@@ -75,7 +75,7 @@ export function UpdateBanner() {
       {state.status === 'downloading' && (
         <div>
           <span className="text-muted" style={{ fontSize: 13 }}>
-            Downloading... {state.percent}%
+            Downloading… {state.percent}%
           </span>
           <div style={{
             marginTop: 6,

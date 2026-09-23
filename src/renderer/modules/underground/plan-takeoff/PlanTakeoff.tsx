@@ -121,7 +121,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
         });
         setPageScalePxPerFt(result.pxPerFt);
       } catch (err) {
-        addToast('Failed to save scale calibration', 'error');
+        addToast('Couldn\'t save the scale. Try calibrating again.', 'error');
       } finally {
         setCalibrating(false);
       }
@@ -723,7 +723,7 @@ export function PlanTakeoff({ jobId, onBack }: PlanTakeoffProps) {
   const confirmSpotElevation = useCallback(() => {
     if (!pendingElev) return;
     const typed = parseFloat(elevInput);
-    if (!Number.isFinite(typed)) { addToast('Enter a valid elevation', 'error'); return; }
+    if (!Number.isFinite(typed)) { addToast('Enter an elevation as a number.', 'error'); return; }
     // Typed in the active system's unit; stored elevations are canonical feet
     const z = fromDisplay(typed, 'ft', system);
     sm.addSpotElevation(pendingElev.point, z, pendingElev.pdfPage);

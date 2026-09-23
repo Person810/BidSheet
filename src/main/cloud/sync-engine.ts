@@ -158,7 +158,7 @@ export class SyncEngine {
     const accountId = await this.requireAccountId();
     const dek = this.e2ee.getDek(); // throws cleanly if encrypted sync is locked
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
-    if (!job?.cloud_id) throw new Error('Job has no cloud id. Enable sync first.');
+    if (!job?.cloud_id) throw new Error('Turn on sync for this job first.');
     const cloudId = assertCloudId(job.cloud_id);
 
     try {
@@ -544,7 +544,7 @@ export class SyncEngine {
   /** User picked a side for a conflicted job. */
   async resolveConflict(jobId: number, keep: 'local' | 'cloud'): Promise<void> {
     const job = this.db.prepare('SELECT cloud_id FROM jobs WHERE id = ?').get(jobId) as any;
-    if (!job?.cloud_id) throw new Error('Job has no cloud id.');
+    if (!job?.cloud_id) throw new Error('This job isn\'t synced to the cloud.');
     if (keep === 'local') {
       // Deliberate overwrite: skip the lost-update guards or the push would
       // just re-flag the very conflict the user resolved.

@@ -157,7 +157,7 @@ export function App() {
         window.api.checkBackupReminder().then((reminder) => {
           if (reminder.needed) {
             addToast(
-              'BidSheet has been updated. Your existing backups may be outdated. Head to Settings to make a fresh backup.',
+              'BidSheet was updated. Make a fresh backup in Settings: backups from before the update may not restore correctly.',
               'warn'
             );
           }
