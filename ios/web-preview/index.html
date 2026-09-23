@@ -1,0 +1,1297 @@
+<title>BidSheet Field Preview</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2f3f7">
+<!--
+  BidSheet Field — browser preview.
+
+  A click-through of the iOS companion app (ios/BidSheetField) that runs in
+  any phone browser, so the flows can be tried without a Mac, Xcode, or an
+  Apple ID. Same screens, same order, same copy as the SwiftUI views.
+
+  Everything here is demo data held in this page: it does NOT talk to
+  BidSheet Cloud, does no real encryption, and nothing leaves the browser.
+  The real app is the Swift one; keep this file in step when its screens
+  change. Single file, no build step — see ios/README.md for how to open it
+  on a phone.
+-->
+<style>
+  :root {
+    --bg: #f2f3f7;
+    --card: #ffffff;
+    --text: #12151b;
+    --muted: #6a707c;
+    --faint: #a3a8b3;
+    --sep: rgba(60, 64, 80, 0.16);
+    --accent: #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.13);
+    --danger: #d92d20;
+    --bar: rgba(247, 248, 251, 0.88);
+    --viewer: #d8dbe1;
+    --scrim: rgba(10, 12, 18, 0.32);
+    --demo-bg: #fff4d6;
+    --demo-text: #6b4a00;
+    --shadow: 0 10px 30px rgba(15, 20, 35, 0.18);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1014;
+      --card: #1a1d23;
+      --text: #e8eaed;
+      --muted: #9aa1ad;
+      --faint: #5d6470;
+      --sep: rgba(255, 255, 255, 0.09);
+      --accent: #5b9bff;
+      --accent-soft: rgba(91, 155, 255, 0.16);
+      --danger: #ff6b5e;
+      --bar: rgba(20, 22, 27, 0.88);
+      --viewer: #07080a;
+      --scrim: rgba(0, 0, 0, 0.55);
+      --demo-bg: #2e2510;
+      --demo-text: #f3d48a;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1014;
+    --card: #1a1d23;
+    --text: #e8eaed;
+    --muted: #9aa1ad;
+    --faint: #5d6470;
+    --sep: rgba(255, 255, 255, 0.09);
+    --accent: #5b9bff;
+    --accent-soft: rgba(91, 155, 255, 0.16);
+    --danger: #ff6b5e;
+    --bar: rgba(20, 22, 27, 0.88);
+    --viewer: #07080a;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --demo-bg: #2e2510;
+    --demo-text: #f3d48a;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { background: none; border: 0; padding: 0; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #app { position: relative; height: 100%; display: flex; flex-direction: column; max-width: 720px; margin: 0 auto; }
+
+  /* demo strip — says plainly this is sample data */
+  .demo {
+    display: flex; align-items: center; gap: 8px; justify-content: center;
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 16px 6px;
+    background: var(--demo-bg); color: var(--demo-text);
+    font-size: 12px; font-weight: 600; letter-spacing: 0.01em; text-align: center;
+  }
+  .demo .off { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 99px; background: var(--danger); color: #fff; }
+
+  .stack { position: relative; flex: 1; overflow: hidden; }
+  .screen {
+    position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg);
+  }
+  .screen.enter { animation: push 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .screen.enter-back { animation: pop 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  @keyframes push { from { transform: translateX(40%); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  @keyframes pop { from { transform: translateX(-18%); opacity: 0.6; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .screen.enter, .screen.enter-back, .sheet, .pop { animation: none !important; } }
+
+  /* nav bar */
+  .nav {
+    position: relative; z-index: 3; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    min-height: 44px; padding: 0 8px; background: var(--bar);
+    -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px);
+    border-bottom: 0.5px solid var(--sep);
+  }
+  .nav .ttl { font-size: 17px; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56vw; }
+  .nav .l, .nav .r { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .nav .r { justify-content: flex-end; }
+  .nbtn { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px; color: var(--accent); font-size: 17px; white-space: nowrap; }
+  .nbtn svg { width: 22px; height: 22px; }
+  .nbtn.back svg { width: 24px; height: 24px; margin-left: -6px; }
+  .nbtn:disabled { color: var(--faint); }
+  .large { padding: 6px 20px 2px; font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+
+  .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 16px calc(28px + env(safe-area-inset-bottom, 0px)); }
+
+  /* inset grouped list, iOS style */
+  .sec { margin-top: 26px; }
+  .sec > h3 { margin: 0 0 7px 16px; font-size: 13px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .sec > .foot { margin: 7px 16px 0; font-size: 13px; color: var(--muted); }
+  .group { background: var(--card); border-radius: 12px; overflow: hidden; }
+  .group.clear { background: transparent; }
+  .row {
+    position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px;
+    padding: 11px 16px; text-align: left;
+  }
+  .row + .row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; border-top: 0.5px solid var(--sep); }
+  .row.ico + .row::before, .row + .row.ico::before { left: 52px; }
+  button.row:active, .row.link:active { background: var(--sep); }
+  .row .ic { flex: none; width: 24px; display: grid; place-items: center; color: var(--muted); }
+  .row .ic svg { width: 21px; height: 21px; }
+  .row .ic.tint { color: var(--accent); }
+  .row .main { flex: 1; min-width: 0; }
+  .row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .t.wrap { white-space: normal; }
+  .row .s { margin-top: 2px; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .v { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .row .chev { flex: none; color: var(--faint); }
+  .row .chev svg { width: 14px; height: 14px; }
+  .row.action { color: var(--accent); }
+  .row.action.center { justify-content: center; }
+  .row.action:disabled { color: var(--faint); }
+  .row.danger { color: var(--danger); }
+  .row.note { color: var(--muted); font-size: 15px; }
+  .row.err { color: var(--danger); font-size: 15px; }
+  .lc { display: flex; justify-content: space-between; gap: 16px; width: 100%; }
+  .lc span:last-child { color: var(--muted); text-align: right; }
+
+  .field { width: 100%; border: 0; background: transparent; outline: none; padding: 0; min-height: 22px; }
+  .field::placeholder { color: var(--faint); }
+  textarea.field { resize: none; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 16px; line-height: 1.4; }
+  .field.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 24px; letter-spacing: 0.12em; }
+  .field.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  .hero { display: grid; justify-items: center; gap: 8px; padding: 22px 12px 4px; text-align: center; }
+  .hero svg { width: 44px; height: 44px; color: var(--accent); }
+  .hero h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+  .hero p { margin: 0; max-width: 34ch; font-size: 15px; color: var(--muted); text-wrap: balance; }
+  .hero.muted svg { color: var(--muted); }
+  .hero.center { padding: 48px 20px; }
+
+  .tips { margin-top: 26px; padding: 12px 16px; border-radius: 12px; border: 1px dashed var(--sep); font-size: 13px; color: var(--muted); }
+  .tips b { color: var(--text); font-weight: 600; }
+  .tips ul { margin: 6px 0 0; padding-left: 18px; }
+  .tips li + li { margin-top: 3px; }
+  .tips code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--text); }
+
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 500; }
+  .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .meta .n { display: inline-flex; align-items: center; gap: 3px; }
+  .meta svg { width: 13px; height: 13px; }
+  .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--sep); border-top-color: var(--muted); animation: spin 0.8s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading { flex: 1; display: grid; place-items: center; align-content: center; gap: 10px; color: var(--muted); font-size: 15px; }
+  .loading .spin { width: 26px; height: 26px; }
+
+  .toast {
+    position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 99px; background: rgba(217, 45, 32, 0.92); color: #fff;
+    font-size: 13px; text-align: center; z-index: 5;
+  }
+
+  /* zoomable viewer (plans, takeoff, photos) */
+  .viewer { position: relative; flex: 1; overflow: hidden; background: var(--viewer); touch-action: none; }
+  .viewer.black { background: #000; }
+  .viewer .content { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  .viewer .content > * { display: block; }
+  .viewer .hint {
+    position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    padding: 5px 11px; border-radius: 99px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px; pointer-events: none;
+    transition: opacity 0.6s; white-space: nowrap;
+  }
+  .page-sheet { display: block; background: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); }
+  .pages { display: grid; gap: 16px; padding: 16px; }
+  .caption { display: flex; justify-content: center; gap: 6px; align-items: center; padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--muted); background: var(--bg); }
+  .caption svg { width: 13px; height: 13px; }
+
+  /* popover menu */
+  .scrim { position: absolute; inset: 0; z-index: 10; }
+  .scrim.dim { background: var(--scrim); animation: fade 0.2s; }
+  @keyframes fade { from { opacity: 0; } }
+  .pop {
+    position: absolute; right: 10px; min-width: 230px; max-width: calc(100% - 20px); background: var(--card); border-radius: 13px;
+    box-shadow: var(--shadow); overflow: hidden; animation: popin 0.16s ease-out; transform-origin: top right;
+  }
+  @keyframes popin { from { transform: scale(0.9); opacity: 0; } }
+  .pop .row { padding: 12px 16px; justify-content: space-between; }
+  .pop .row svg { width: 19px; height: 19px; }
+
+  /* bottom sheet */
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; max-height: 78%; display: flex; flex-direction: column;
+    background: var(--bg); border-radius: 14px 14px 0 0; box-shadow: var(--shadow); animation: up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes up { from { transform: translateY(100%); } }
+  .sheet .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--faint); margin: 6px auto 0; opacity: 0.6; }
+  .sheet .nav { background: transparent; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+
+<div id="app">
+  <div class="demo" id="demo"></div>
+  <div class="stack" id="stack"></div>
+</div>
+<input type="file" id="camera" class="vh" accept="image/*" capture="environment" aria-label="Take photo">
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------------------------------------------------------------- icons
+  const I = (d, extra = "") =>
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+  const icon = {
+    back: I('<path d="M15 5l-7 7 7 7"/>', 'stroke-width="2.4"'),
+    chev: I('<path d="M9 5l7 7-7 7"/>', 'stroke-width="2.6"'),
+    more: I('<circle cx="12" cy="12" r="9.5"/><circle cx="7.6" cy="12" r=".6" fill="currentColor"/><circle cx="12" cy="12" r=".6" fill="currentColor"/><circle cx="16.4" cy="12" r=".6" fill="currentColor"/>'),
+    hammer: I('<path d="M14.5 6.5l-9.8 9.8a1.9 1.9 0 0 0 2.7 2.7l9.8-9.8"/><path d="M12.4 4.4l5.3-1.4 3.3 3.3-1.5 3.6-2.6-.2-2.3 2.3-4.5-4.5z" fill="currentColor"/>'),
+    desktop: I('<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>'),
+    shield: I('<path d="M12 3l7.5 3v5.5c0 4.5-3.2 8.3-7.5 9.5-4.3-1.2-7.5-5-7.5-9.5V6z"/><rect x="9" y="10.5" width="6" height="5" rx="1"/><path d="M10.3 10.5V9a1.7 1.7 0 0 1 3.4 0v1.5"/>'),
+    tray: I('<path d="M3 13l2.5-7h13L21 13v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/>'),
+    doc: I('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'),
+    plan: I('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 15.5h6M9 8.5h2.5"/>'),
+    scribble: I('<path d="M4 17c2-5 4-9 6-9s-1 8 1.5 8S15 7 17 7s0 9 3 9"/>'),
+    photo: I('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 15.5l-5-5-9 8.5"/>'),
+    camera: I('<path d="M4 8h3.2L9 5.5h6L16.8 8H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/>'),
+    down: I('<circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v9M8 12.5l4 4 4-4"/>'),
+    box: I('<path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9"/>'),
+    list: I('<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9h1M11 9h6M7 12.5h1M11 12.5h6M7 16h1M11 16h6"/>'),
+    clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'),
+    requeue: I('<path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5M12 8v4l3 2"/>'),
+    ruler: I('<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>'),
+    warn: I('<path d="M12 4l9 16H3z"/><path d="M12 10v4.5M12 17.5v.01"/>'),
+    check: I('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 'stroke-width="2.4"'),
+    wifiOff: I('<path d="M2 8.5a15 15 0 0 1 5-3M22 8.5a15 15 0 0 0-10-3.9M5.5 12a10 10 0 0 1 3-1.9M18.5 12a10 10 0 0 0-2.4-1.6M9 15.5a4.5 4.5 0 0 1 6 0M12 19h.01M3 3l18 18"/>'),
+  };
+
+  // --------------------------------------------------------- utilities
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const uuid = () =>
+    (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    }));
+  const OFFLINE_MSG = "The Internet connection appears to be offline.";
+
+  /** Wire timestamps come as ISO-8601 or D1's "YYYY-MM-DD HH:MM:SS" (UTC) — same parse as WireTimestamp. */
+  function parseWire(raw) {
+    if (!raw) return null;
+    let s = raw.replace(" ", "T");
+    const time = s.length > 10 ? s.slice(10) : "";
+    if (!/[Z+-]/.test(time)) s += "Z";
+    const d = new Date(s);
+    return isNaN(d) ? null : d;
+  }
+  const fmtLabel = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const localLabel = (raw) => { const d = parseWire(raw); return d ? fmtLabel.format(d) : null; };
+  function byteString(n) {
+    if (n < 1000) return `${n} bytes`;
+    const units = ["KB", "MB", "GB"];
+    let v = n, u = -1;
+    do { v /= 1000; u++; } while (v >= 1000 && u < units.length - 1);
+    return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")} ${units[u]}`;
+  }
+  const d1 = (date) => date.toISOString().slice(0, 19).replace("T", " ");
+  const daysAgo = (days, h = 9, m = 0) => { const d = new Date(); d.setDate(d.getDate() - days); d.setHours(h, m, 0, 0); return d; };
+
+  // ------------------------------------------------------- takeoff math
+  // Straight port of TakeoffModels.swift: pdf.js scale-1 coordinates,
+  // per-page calibration first, then the legacy job-wide scale.
+  const T = {
+    pxPerFt: (t, page) => t.page_scales.find((s) => s.page_number === page)?.scale_px_per_ft ?? t.settings?.scale_px_per_ft ?? null,
+    rotation: (t, page) => t.page_rotations.find((r) => r.page_number === page)?.rotation ?? 0,
+    pagesWithMarkup(t) {
+      const pages = new Set();
+      for (const k of ["runs", "items", "areas", "nodes", "annotations"]) t[k].forEach((o) => pages.add(o.pdf_page));
+      return [...pages].sort((a, b) => a - b);
+    },
+    order: (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id - b.id,
+    polyline: (t, runId) => t.points.filter((p) => p.run_id === runId).sort(T.order),
+    polygon: (t, areaId) => t.area_points.filter((p) => p.area_id === areaId).sort(T.order),
+    lengthFt(t, runId, page) {
+      const s = T.pxPerFt(t, page);
+      if (!s || s <= 0) return null;
+      const pts = T.polyline(t, runId);
+      if (pts.length < 2) return null;
+      let px = 0;
+      for (let i = 1; i < pts.length; i++) px += Math.hypot(pts[i].x_px - pts[i - 1].x_px, pts[i].y_px - pts[i - 1].y_px);
+      return px / s;
+    },
+    areaSf(t, areaId, page) {
+      const s = T.pxPerFt(t, page);
+      if (!s || s <= 0) return null;
+      const pts = T.polygon(t, areaId);
+      if (pts.length < 3) return null;
+      let dbl = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        dbl += a.x_px * b.y_px - b.x_px * a.y_px;
+      }
+      return Math.abs(dbl) / 2 / (s * s);
+    },
+  };
+  const sizeLabel = (n) => (n === Math.round(n) ? String(n) : String(n));
+  function runTitle(run) {
+    const parts = [];
+    if (run.pipe_size_in != null) parts.push(`${sizeLabel(run.pipe_size_in)}"`);
+    if (run.pipe_material) parts.push(run.pipe_material);
+    if (run.label) parts.push(run.label);
+    return parts.length ? parts.join(" ") : "Run";
+  }
+
+  // --------------------------------------------------------- demo data
+  // A tiny takeoff builder so the sample markup reads like the desktop's
+  // SQLite dumps (ids, sort_order, per-row pdf_page).
+  function buildTakeoff(spec) {
+    const t = { settings: { scale_px_per_ft: null }, page_scales: [], page_rotations: [], nodes: [], runs: [], points: [], items: [], areas: [], area_points: [], annotations: [] };
+    let id = 1;
+    for (const p of spec.pages) {
+      if (p.scale) t.page_scales.push({ page_number: p.page, scale_px_per_ft: p.scale });
+      if (p.rotation) t.page_rotations.push({ page_number: p.page, rotation: p.rotation });
+      for (const r of p.runs || []) {
+        const runId = id++;
+        t.runs.push({ id: runId, label: r.label, utility_type: r.type, pipe_size_in: r.size, pipe_material: r.mat, color: r.color, pdf_page: p.page, sort_order: runId });
+        r.pts.forEach(([x, y], i) => t.points.push({ id: id++, run_id: runId, x_px: x, y_px: y, sort_order: i, node_id: null }));
+      }
+      for (const a of p.areas || []) {
+        const areaId = id++;
+        t.areas.push({ id: areaId, label: a.label, area_type: a.type, color: a.color, pdf_page: p.page });
+        a.pts.forEach(([x, y], i) => t.area_points.push({ id: id++, area_id: areaId, x_px: x, y_px: y, sort_order: i }));
+      }
+      for (const n of p.nodes || []) t.nodes.push({ id: id++, x_px: n[0], y_px: n[1], structure_type: n[2], label: n[3], pdf_page: p.page });
+      for (const it of p.items || []) t.items.push({ id: id++, x_px: it[0], y_px: it[1], quantity: it[2], label: it[3], pdf_page: p.page });
+      for (const an of p.annotations || []) t.annotations.push({ id: id++, pdf_page: p.page, ...an });
+    }
+    return t;
+  }
+
+  // Sheets are 11×17 landscape in PDF points (1224 × 792) — civil plan size.
+  const SHEET = { w: 1224, h: 792 };
+
+  const maple = buildTakeoff({
+    pages: [
+      {
+        page: 1, scale: 1.8, // 1" = 40'
+        areas: [
+          { label: "Trench Patch", type: "asphalt", color: "#6B7280", pts: [[60, 350], [420, 350], [420, 372], [60, 372]] },
+        ],
+        runs: [
+          { label: "Main A", type: "water", size: 8, mat: "PVC C900", color: "#2196F3", pts: [[60, 361], [400, 361], [600, 361], [1000, 361]] },
+          { label: "3rd Ave", type: "water", size: 8, mat: "PVC C900", color: "#0EA5E9", pts: [[600, 361], [600, 240], [600, 110]] },
+          { label: "Hyd Lead", type: "water", size: 6, mat: "DIP", color: "#7C3AED", pts: [[300, 361], [300, 334], [300, 318]] },
+        ],
+        nodes: [[400, 361, "valve", "GV-1"], [600, 361, "tee", "8×8 TEE"], [1000, 361, "connection", "CONN TO EX"], [600, 110, "valve", "GV-2"]],
+        items: [[300, 312, 1, "Fire Hydrant Assy"], [760, 336, 6, "1\" Water Service"], [480, 390, 2, "Air Release"]],
+        annotations: [
+          { kind: "cloud", x1_px: 820, y1_px: 292, x2_px: 960, y2_px: 432, text: "ADD. 2 — relocate GV", color: "#EF4444" },
+          { kind: "arrow", x1_px: 150, y1_px: 250, x2_px: 292, y2_px: 342, text: "Verify ex. hydrant", color: "#EF4444" },
+        ],
+      },
+      {
+        page: 2, scale: 3.6, // 1" = 20'
+        areas: [
+          { label: "Sidewalk", type: "concrete", color: "#A16207", pts: [[120, 470], [720, 470], [720, 500], [120, 500]] },
+          { label: "", type: "grass", color: "#16A34A", pts: [[120, 510], [720, 510], [720, 600], [420, 640], [120, 600]] },
+        ],
+        runs: [
+          { label: "ST-1", type: "storm", size: 15, mat: "RCP", color: "#10B981", pts: [[140, 330], [520, 330], [860, 300]] },
+          { label: "ST-2", type: "storm", size: 12, mat: "HDPE", color: "#14B8A6", pts: [[520, 330], [520, 170]] },
+        ],
+        nodes: [[140, 330, "catch basin", "CB-1"], [520, 330, "manhole", "MH-4"], [860, 300, "outfall", "EX MH"], [520, 170, "catch basin", "CB-2"]],
+        items: [[300, 440, 3, "Bollard"]],
+        annotations: [{ kind: "text", x1_px: 330, y1_px: 250, text: "Match ex. invert 842.15", color: "#EF4444" }],
+      },
+      {
+        page: 3, rotation: 90, // details sheet, not calibrated
+        items: [[250, 300, 4, "Thrust Block"], [520, 300, 2, "Valve Box"]],
+        annotations: [{ kind: "text", x1_px: 390, y1_px: 520, text: "Per City Std. W-12", color: "#EF4444" }],
+      },
+    ],
+  });
+
+  const plans = {
+    maple: { filename: "Maple-St-WM-Plans-Rev2.pdf", sha256: "9f2c41e7a0b3", pages: 3, sheets: ["C-2 WATER MAIN PLAN", "C-5 STORM & RESTORATION", "C-8 WATER DETAILS"], street: "MAPLE ST", cross: "3RD AVE" },
+    river: { filename: "Riverside-Sewer-Ph2-IFB.pdf", sha256: "4b81d09c77e2", pages: 2, sheets: ["S-1 SEWER PLAN", "S-2 SEWER PLAN"], street: "RIVER RD", cross: "MILL ST" },
+  };
+
+  function seedJobs() {
+    return [
+      {
+        id: "a41c", name: "Job a41c", meta: { name: "Maple St Water Main Replacement", status: "bidding" },
+        info: { client: "City of Fairview Public Works", location: "Maple St, 1st Ave to 5th Ave — Fairview, OH", status: "bidding" },
+        updated_at: d1(daysAgo(0, 7, 40)), plan: "maple", markup: maple,
+        files: [
+          { id: "f1", kind: "plan", name: "Maple-St-WM-Plans-Rev2.pdf", size: 18_420_311, created_at: d1(daysAgo(6, 14, 12)) },
+          { id: "f2", kind: "markup", name: "takeoff.json", size: 41_877, created_at: d1(daysAgo(0, 7, 40)) },
+          { id: "f3", kind: "job", name: "job.json", size: 96_204, created_at: d1(daysAgo(0, 7, 40)) },
+          { id: "f4", kind: "photo", name: "c1e0.jpg", size: 1_806_223, created_at: d1(daysAgo(2, 15, 3)), takenAt: daysAgo(2, 10, 58).toISOString(), demo: 0 },
+          { id: "f5", kind: "photo", name: "77b2.jpg", size: 2_140_915, created_at: d1(daysAgo(2, 15, 3)), takenAt: daysAgo(2, 11, 20).toISOString(), demo: 1 },
+        ],
+      },
+      {
+        id: "b92e", name: "Job b92e", meta: { name: "Riverside Sewer Rehab Ph. 2", status: "won" },
+        info: { client: "Riverside Sanitary District", location: "River Rd & Mill St — Riverside, OH", status: "won" },
+        updated_at: d1(daysAgo(3, 16, 5)), plan: "river", markup: buildTakeoff({ pages: [] }),
+        files: [
+          { id: "g1", kind: "plan", name: "Riverside-Sewer-Ph2-IFB.pdf", size: 9_003_118, created_at: d1(daysAgo(12, 9, 30)) },
+          { id: "g2", kind: "markup", name: "takeoff.json", size: 2_311, created_at: d1(daysAgo(3, 16, 5)) },
+          { id: "g3", kind: "job", name: "job.json", size: 64_540, created_at: d1(daysAgo(3, 16, 5)) },
+        ],
+      },
+      {
+        id: "c07d", name: "Job c07d", meta: { name: "Hwy 9 Storm Drain Extension", status: "submitted" },
+        info: { client: "ODOT District 4", location: "SR-9, MP 12.4–13.1", status: "submitted" },
+        updated_at: d1(daysAgo(9, 11, 45)), plan: null, markup: null,
+        files: [{ id: "h1", kind: "job", name: "job.json", size: 38_112, created_at: d1(daysAgo(9, 11, 45)) }],
+      },
+      {
+        id: "d3f8", name: "Job d3f8", meta: { name: "Oak Ridge Subdivision Utilities", status: "lost" },
+        info: { client: "Hartwell Homes LLC", location: "Oak Ridge Ph. 3 — Delaware County", status: "lost" },
+        updated_at: d1(daysAgo(34, 13, 10)), plan: null, markup: null,
+        files: [{ id: "k1", kind: "job", name: "job.json", size: 71_906, created_at: d1(daysAgo(34, 13, 10)) }],
+      },
+    ];
+  }
+
+  // --------------------------------------------------------- app state
+  // Mirrors AppModel.Phase: signedOut → needsTotp → locked → ready, plus
+  // needsDesktopSetup. The "unlocked" flag stands in for the Keychain DEK, so
+  // a reopen skips the recovery-key screen just like the real app.
+  const STORE_KEY = "bidsheet-field-preview-v1";
+  const state = {
+    phase: "signedOut",
+    unlocked: false,
+    offline: false,
+    downloaded: {},   // jobId → true once the plan is "cached for offline"
+    userFiles: {},    // jobId → uploaded photos [{ id, kind, name, size, created_at, takenAt, src }]
+    pending: {},      // jobId → queued photos [{ filename, takenAt, src, size }]
+    jobs: seedJobs(),
+    lastError: null,
+  };
+  function persist() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        phase: state.phase, unlocked: state.unlocked, offline: state.offline,
+        downloaded: state.downloaded, userFiles: state.userFiles, pending: state.pending,
+      }));
+    } catch {
+      // Storage full or blocked — the preview still works for this visit.
+    }
+  }
+  function restore() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+      if (!raw) return;
+      Object.assign(state, {
+        phase: raw.phase === "ready" && !raw.unlocked ? "locked" : raw.phase || "signedOut",
+        unlocked: !!raw.unlocked, offline: !!raw.offline,
+        downloaded: raw.downloaded || {}, userFiles: raw.userFiles || {}, pending: raw.pending || {},
+      });
+      // Mid-flow phases don't survive a relaunch (no session yet).
+      if (state.phase === "needsTotp" || state.phase === "needsDesktopSetup") state.phase = "signedOut";
+    } catch {}
+  }
+  const jobFiles = (job) => [...job.files, ...(state.userFiles[job.id] || [])];
+  const displayName = (job) => job.meta?.name ?? job.name;
+
+  // Simulated network — the only place "online" matters.
+  async function net(ms = 650) {
+    await wait(ms);
+    if (state.offline) throw new Error(OFFLINE_MSG);
+  }
+
+  // ------------------------------------------------------------ router
+  const stackEl = $("#stack");
+  let stack = [];      // [{ view, props }]
+  let cleanup = [];
+
+  function setDemoStrip() {
+    $("#demo").innerHTML =
+      `<span>Preview · sample jobs, nothing leaves this browser</span>` +
+      (state.offline ? `<span class="off">${icon.wifiOff.replace("<svg", '<svg width="12" height="12"')}No signal</span>` : "");
+  }
+
+  function render(dir = null) {
+    cleanup.forEach((fn) => fn());
+    cleanup = [];
+    setDemoStrip();
+    const top = stack[stack.length - 1];
+    const screen = document.createElement("div");
+    screen.className = "screen" + (dir === "push" ? " enter" : dir === "pop" ? " enter-back" : "");
+    stackEl.replaceChildren(screen);
+    top.view(screen, top.props || {});
+  }
+  const push = (view, props) => { stack.push({ view, props }); render("push"); };
+  const pop = () => { if (stack.length > 1) { stack.pop(); render("pop"); } };
+  const rerender = () => render();
+
+  function setRoot() {
+    const map = { signedOut: SignInView, needsTotp: TotpView, needsDesktopSetup: DesktopSetupView, locked: UnlockView, ready: JobListView };
+    stack = [{ view: map[state.phase] || SignInView }];
+    persist();
+    render();
+  }
+
+  /** Nav bar: { title, back, left: html, right: html } */
+  function navBar({ title = "", back = false, left = "", right = "" }) {
+    return `<div class="nav">
+      <div class="l">${back ? `<button class="nbtn back" data-back>${icon.back}<span>${esc(back === true ? "Back" : back)}</span></button>` : left}</div>
+      <div class="ttl">${esc(title)}</div>
+      <div class="r">${right}</div>
+    </div>`;
+  }
+  function wireBack(el) { el.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", pop)); }
+
+  // --------------------------------------------------------- overlays
+  function openPopover(anchor, rows) {
+    const app = $("#app");
+    const scrim = document.createElement("div");
+    scrim.className = "scrim";
+    const r = anchor.getBoundingClientRect(), a = app.getBoundingClientRect();
+    scrim.innerHTML = `<div class="pop" role="menu" style="top:${r.bottom - a.top + 4}px">${rows
+      .map((row, i) => `<button class="row ${row.danger ? "danger" : ""}" role="menuitem" data-i="${i}"><span>${esc(row.label)}</span>${row.check ? icon.check : row.icon || ""}</button>`)
+      .join("")}</div>`;
+    const close = () => scrim.remove();
+    scrim.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-i]");
+      close();
+      if (btn) rows[+btn.dataset.i].action();
+    });
+    app.appendChild(scrim);
+    scrim.querySelector("button")?.focus();
+  }
+
+  function openSheet(build) {
+    const app = $("#app");
+    const scrim = document.createElement("div");
+    scrim.className = "scrim dim";
+    const sheet = document.createElement("div");
+    sheet.className = "sheet";
+    sheet.setAttribute("role", "dialog");
+    scrim.appendChild(sheet);
+    const close = () => scrim.remove();
+    scrim.addEventListener("click", (e) => { if (e.target === scrim) close(); });
+    build(sheet, close);
+    app.appendChild(scrim);
+    cleanup.push(close);
+  }
+
+  function toast(el, msg) {
+    if (!msg) return;
+    const t = document.createElement("div");
+    t.className = "toast";
+    t.textContent = msg;
+    el.appendChild(t);
+  }
+
+  // ======================================================== SCREENS
+
+  // ---- SignInView -------------------------------------------------------
+  function SignInView(el) {
+    el.innerHTML = `${navBar({ title: "Sign In" })}
+      <form class="scroll" id="f" novalidate>
+        <div class="hero">${icon.hammer}<h1>BidSheet Field</h1><p>Sign in with your BidSheet Cloud account — the same one you use on your computer.</p></div>
+        <div class="sec"><div class="group">
+          <label class="row"><span class="vh">Email</span><input class="field" id="email" type="email" placeholder="Email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+          <label class="row"><span class="vh">Password</span><input class="field" id="password" type="password" placeholder="Password" autocomplete="current-password"></label>
+        </div></div>
+        <div class="sec" id="errSec" hidden><div class="group"><div class="row err" id="err"></div></div></div>
+        <div class="sec"><div class="group"><button class="row action center" id="go" type="submit" disabled>Sign In</button></div></div>
+        <div class="sec"><div class="group clear"><div class="row note">No account yet? Create one in BidSheet on your computer under Settings → Cloud Sync.</div></div></div>
+        <div class="tips"><b>Preview tips</b>
+          <ul>
+            <li>Any email and password signs in.</li>
+            <li>An email containing <code>nomfa</code> shows the “finish setup on your computer” screen.</li>
+            <li>The ••• menu on the jobs list can cut the signal to try offline behavior.</li>
+          </ul>
+        </div>
+      </form>`;
+    const email = $("#email", el), pw = $("#password", el), go = $("#go", el);
+    const sync = () => { go.disabled = !email.value.trim() || !pw.value; };
+    email.addEventListener("input", sync);
+    pw.addEventListener("input", sync);
+    $("#f", el).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (go.disabled) return;
+      go.disabled = true;
+      go.innerHTML = `<span class="spin"></span>`;
+      $("#errSec", el).hidden = true;
+      try {
+        await net(800);
+        state.email = email.value.trim();
+        state.phase = /nomfa/i.test(state.email) ? "needsDesktopSetup" : "needsTotp";
+        setRoot();
+      } catch (err) {
+        $("#err", el).textContent = err.message;
+        $("#errSec", el).hidden = false;
+        go.textContent = "Sign In";
+        sync();
+      }
+    });
+  }
+
+  // ---- TotpView ---------------------------------------------------------
+  function TotpView(el) {
+    el.innerHTML = `${navBar({ title: "Authenticator Code", left: `<button class="nbtn" id="cancel">Cancel</button>` })}
+      <form class="scroll" id="f" novalidate>
+        <div class="sec"><div class="group">
+          <div class="row note">Enter the 6-digit code from your authenticator app.</div>
+          <label class="row"><span class="vh">Code</span><input class="field code" id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" maxlength="7"></label>
+        </div></div>
+        <div class="sec" id="errSec" hidden><div class="group"><div class="row err" id="err"></div></div></div>
+        <div class="sec"><div class="group"><button class="row action center" id="go" type="submit" disabled>Verify</button></div></div>
+        <div class="tips"><b>Preview tips</b><ul><li>Any 6 digits verify, except <code>000000</code>, which shows the wrong-code error.</li></ul></div>
+      </form>`;
+    const code = $("#code", el), go = $("#go", el);
+    let busy = false;
+    const digits = () => code.value.replace(/\D/g, "");
+    async function submit() {
+      if (busy || digits().length !== 6) return;
+      busy = true;
+      go.disabled = true;
+      go.innerHTML = `<span class="spin"></span>`;
+      $("#errSec", el).hidden = true;
+      try {
+        await net(700);
+        if (digits() === "000000") throw new Error("Invalid TOTP code entered");
+        state.phase = state.unlocked ? "ready" : "locked";
+        setRoot();
+      } catch (err) {
+        $("#err", el).textContent = err.message;
+        $("#errSec", el).hidden = false;
+        code.value = "";
+        go.textContent = "Verify";
+        go.disabled = true;
+        busy = false;
+      }
+    }
+    code.addEventListener("input", () => {
+      go.disabled = digits().length !== 6;
+      if (digits().length === 6) submit(); // auto-submit, like .onChange in TotpView
+    });
+    $("#f", el).addEventListener("submit", (e) => { e.preventDefault(); submit(); });
+    $("#cancel", el).addEventListener("click", signOut);
+    setTimeout(() => code.focus(), 50);
+  }
+
+  // ---- DesktopSetupView -------------------------------------------------
+  function DesktopSetupView(el) {
+    el.innerHTML = `<div class="scroll"><div class="hero muted center">${icon.desktop}
+      <h1 style="font-size:22px">Finish setup on your computer</h1>
+      <p>Cloud sync needs an authenticator app, which you set up in BidSheet on your computer (Settings → Cloud Sync). Once that's done, sign in here again.</p>
+      <div class="group" style="margin-top:14px"><button class="row action center" id="b">Back to sign in</button></div>
+    </div></div>`;
+    $("#b", el).addEventListener("click", signOut);
+  }
+
+  // ---- UnlockView -------------------------------------------------------
+  function UnlockView(el) {
+    el.innerHTML = `${navBar({ title: "Unlock", left: `<button class="nbtn" id="out">Sign Out</button>` })}
+      <form class="scroll" id="f" novalidate>
+        <div class="sec"><div class="group"><div class="row ico" style="align-items:flex-start">
+          <span class="ic tint">${icon.shield}</span>
+          <div class="main"><div class="t wrap" style="font-weight:600">Your bids are end-to-end encrypted</div>
+          <div class="s" style="white-space:normal">Enter the recovery key you saved when you set up cloud sync on your computer. It starts with BSK1.</div></div>
+        </div></div></div>
+        <div class="sec"><div class="group"><label class="row"><span class="vh">Recovery key</span>
+          <textarea class="field" id="key" rows="3" placeholder="BSK1-XXXX-XXXX-…" autocapitalize="characters" autocorrect="off" spellcheck="false"></textarea>
+        </label></div></div>
+        <div class="sec" id="errSec" hidden><div class="group"><div class="row err" id="err"></div></div></div>
+        <div class="sec"><div class="group"><button class="row action center" id="go" type="submit" disabled>Unlock</button></div></div>
+        <div class="sec"><div class="group clear"><div class="row note">Lost the key? It can be viewed or regenerated in BidSheet on your computer (Settings → Cloud Sync → Encryption). Neither BidSheet nor the cloud can recover it for you — that's the point.</div></div></div>
+        <div class="tips"><b>Preview tips</b><ul>
+          <li>Any key starting with <code>BSK1-</code> unlocks, e.g. <code>BSK1-DEMO-FIELD-2026</code>.</li>
+          <li>Anything else shows the invalid-key error.</li>
+          <li>Like the real app, this screen shows once per device.</li>
+        </ul></div>
+      </form>`;
+    const key = $("#key", el), go = $("#go", el);
+    key.addEventListener("input", () => { go.disabled = !key.value.trim(); });
+    $("#out", el).addEventListener("click", signOut);
+    $("#f", el).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (go.disabled) return;
+      go.disabled = true;
+      go.innerHTML = `<span class="spin"></span>`;
+      $("#errSec", el).hidden = true;
+      try {
+        await net(900);
+        if (!/^\s*BSK1-[A-Z0-9-]{4,}/i.test(key.value)) throw new Error("That doesn't look like a valid recovery key. Check it and try again.");
+        state.unlocked = true;
+        state.phase = "ready";
+        setRoot();
+      } catch (err) {
+        $("#err", el).textContent = err.message;
+        $("#errSec", el).hidden = false;
+        go.textContent = "Unlock";
+        go.disabled = false;
+      }
+    });
+  }
+
+  async function signOut() {
+    // Sign-out wipes everything: session, cached key, cached plans, queue.
+    Object.assign(state, { phase: "signedOut", unlocked: false, downloaded: {}, userFiles: {}, pending: {}, lastError: null });
+    setRoot();
+  }
+
+  // ---- JobListView ------------------------------------------------------
+  async function refreshJobs() {
+    try {
+      await net(600);
+      state.lastError = null;
+    } catch (err) {
+      state.lastError = err.message; // keeps showing the cached list
+    }
+  }
+
+  function JobListView(el) {
+    el.innerHTML = `${navBar({ right: `<button class="nbtn" id="menu" aria-label="More">${icon.more}</button>` })}
+      <div class="scroll" style="padding-top:0">
+        <div class="large" style="padding-left:4px">Jobs</div>
+        ${state.jobs.length === 0
+          ? `<div class="hero muted center">${icon.tray}<h1 style="font-size:17px">No synced jobs yet</h1><p>Turn on cloud sync for a job in BidSheet on your computer and it will show up here.</p></div>`
+          : `<div class="sec" style="margin-top:10px"><div class="group">${state.jobs.map((job) => `
+              <button class="row" data-job="${job.id}">
+                <div class="main">
+                  <div class="t" style="font-weight:600">${esc(displayName(job))}</div>
+                  <div class="meta">
+                    ${job.meta?.status ? `<span class="pill">${esc(cap(job.meta.status))}</span>` : ""}
+                    <span class="n">${icon.doc}${jobFiles(job).length}</span>
+                    <span>${esc(job.updated_at.slice(0, 10))}</span>
+                  </div>
+                </div>
+                <span class="chev">${icon.chev}</span>
+              </button>`).join("")}</div></div>`}
+      </div>`;
+    el.querySelectorAll("[data-job]").forEach((b) =>
+      b.addEventListener("click", () => push(JobDetailView, { job: state.jobs.find((j) => j.id === b.dataset.job) })));
+    $("#menu", el).addEventListener("click", (e) =>
+      openPopover(e.currentTarget, [
+        { label: "Refresh", action: async () => { await refreshJobs(); rerender(); } },
+        { label: "Simulate No Signal", check: state.offline, icon: icon.wifiOff, action: async () => { state.offline = !state.offline; persist(); await refreshJobs(); rerender(); } },
+        { label: "Reset Preview", action: () => {
+          Object.assign(state, { phase: "signedOut", unlocked: false, offline: false, downloaded: {}, userFiles: {}, pending: {}, lastError: null });
+          setRoot();
+        } },
+        { label: "Sign Out", danger: true, action: signOut },
+      ]));
+    toast(el, state.lastError);
+  }
+
+  // ---- JobDetailView ----------------------------------------------------
+  const kindIcon = { photo: icon.photo, plan: icon.plan, markup: icon.scribble, job: icon.box };
+
+  function JobDetailView(el, { job }) {
+    let loaded = false, loadingPlan = false, uploading = false, error = null;
+
+    const photos = () => jobFiles(job).filter((f) => f.kind === "photo")
+      .sort((a, b) => (parseWire(b.takenAt ?? b.created_at) ?? 0) - (parseWire(a.takenAt ?? a.created_at) ?? 0));
+    const pendingCount = () => (state.pending[job.id] || []).length;
+
+    function draw() {
+      const plan = job.plan ? plans[job.plan] : null;
+      const hasPlan = !!plan && !!state.downloaded[job.id];
+      const markupPages = job.markup ? T.pagesWithMarkup(job.markup) : [];
+      const files = jobFiles(job);
+      const ph = photos();
+      const title = displayName(job);
+
+      el.innerHTML = `${navBar({ title, back: "Jobs" })}
+        ${!loaded ? `<div class="loading"><span class="spin"></span></div>` : `<div class="scroll">
+          <div class="sec"><h3>Job</h3><div class="group">
+            ${job.info.client ? `<div class="row"><div class="lc"><span>Client</span><span>${esc(job.info.client)}</span></div></div>` : ""}
+            ${job.info.location ? `<div class="row"><div class="lc"><span>Location</span><span>${esc(job.info.location)}</span></div></div>` : ""}
+            ${job.info.status ? `<div class="row"><div class="lc"><span>Status</span><span>${esc(cap(job.info.status))}</span></div></div>` : ""}
+          </div></div>
+
+          <div class="sec"><h3>Plans &amp; Takeoff</h3><div class="group">
+            ${!plan ? `<div class="row note">No plan synced for this job.</div>`
+              : hasPlan ? `
+                <button class="row ico link" id="openPlan"><span class="ic tint">${icon.plan}</span><div class="main"><div class="t">${esc(plan.filename)}</div></div><span class="chev">${icon.chev}</span></button>
+                ${markupPages.length
+                  ? `<button class="row ico link" id="openTakeoff"><span class="ic tint">${icon.scribble}</span><div class="main"><div class="t">Takeoff markup</div></div><span class="chev">${icon.chev}</span></button>`
+                  : `<div class="row note" style="font-size:13px">No takeoff drawn on this plan yet.</div>`}`
+              : `<button class="row ico action" id="dl" ${loadingPlan ? "disabled" : ""}>${loadingPlan
+                  ? `<span class="ic"><span class="spin"></span></span><span>Downloading…</span>`
+                  : `<span class="ic tint">${icon.down}</span><span>Download plan for offline use</span>`}</button>`}
+          </div></div>
+
+          <div class="sec"><h3>Jobsite Photos (${ph.length})</h3><div class="group">
+            <button class="row ico action" id="snap" ${uploading ? "disabled" : ""}>${uploading
+              ? `<span class="ic"><span class="spin"></span></span><span>Uploading…</span>`
+              : `<span class="ic tint">${icon.camera}</span><span>Take Photo</span>`}</button>
+            ${pendingCount() ? `<div class="row ico" style="font-size:13px;color:var(--muted)"><span class="ic">${icon.requeue}</span><span>${pendingCount()} photo${pendingCount() === 1 ? "" : "s"} waiting to upload</span></div>` : ""}
+            ${ph.map((p) => `<button class="row ico link" data-photo="${p.id}"><span class="ic">${icon.photo}</span><div class="main"><div class="t" style="font-size:15px">${esc(localLabel(p.takenAt ?? p.created_at) ?? p.name)}</div></div><span class="chev">${icon.chev}</span></button>`).join("")}
+          </div></div>
+
+          ${files.length ? `<div class="sec"><h3>All Files (${files.length})</h3><div class="group">
+            ${files.map((f) => `<div class="row ico"><span class="ic">${kindIcon[f.kind] || icon.doc}</span><div class="main">
+              <div class="t" style="font-size:15px">${esc(f.name || "Untitled file")}</div>
+              <div class="s">${esc(cap(f.kind || "file"))} • ${byteString(f.size)}${f.created_at ? ` • ${esc(f.created_at.slice(0, 10))}` : ""}</div>
+            </div></div>`).join("")}
+          </div></div>` : ""}
+
+          ${error ? `<div class="sec"><div class="group"><div class="row err">${esc(error)}</div></div></div>` : ""}
+        </div>`}`;
+      wireBack(el);
+      $("#dl", el)?.addEventListener("click", loadPlan);
+      $("#openPlan", el)?.addEventListener("click", () => push(PlanViewerView, { job }));
+      $("#openTakeoff", el)?.addEventListener("click", () => push(TakeoffView, { job }));
+      $("#snap", el)?.addEventListener("click", takePhoto);
+      el.querySelectorAll("[data-photo]").forEach((b) =>
+        b.addEventListener("click", () => push(PhotoViewerView, { job, file: jobFiles(job).find((f) => f.id === b.dataset.photo) })));
+    }
+
+    async function load() {
+      // Push anything captured offline first, so the manifest includes it.
+      await uploadPending();
+      try {
+        await net(500);
+      } catch {
+        // Offline: fall back to the cached job (the demo data stands in
+        // for FileCache), and stay quiet — same as the Swift fallback.
+      }
+      loaded = true;
+      draw();
+    }
+
+    async function loadPlan() {
+      loadingPlan = true;
+      draw();
+      try {
+        await net(1400);
+        state.downloaded[job.id] = true;
+        error = null;
+        persist();
+      } catch (err) {
+        error = err.message;
+      }
+      loadingPlan = false;
+      draw();
+    }
+
+    // Camera → durably queue first, then try to upload (UploadPending).
+    const cam = $("#camera");
+    function takePhoto() {
+      cam.value = "";
+      cam.onchange = async () => {
+        const file = cam.files && cam.files[0];
+        if (!file) return;
+        uploading = true;
+        draw();
+        let src;
+        try { src = await downscale(file); }
+        catch { uploading = false; error = "That file isn't a viewable image."; draw(); return; }
+        const q = (state.pending[job.id] ||= []);
+        q.push({ filename: `${uuid()}.jpg`, takenAt: new Date().toISOString(), src, size: Math.round(file.size || src.length * 0.75) });
+        persist();
+        await uploadPending();
+        uploading = false;
+        if (!pendingCount()) error = null;
+        draw();
+      };
+      cam.click();
+    }
+
+    async function uploadPending() {
+      const q = state.pending[job.id] || [];
+      while (q.length) {
+        try { await net(900); } catch { break; } // still offline — leave the rest queued
+        const p = q.shift();
+        (state.userFiles[job.id] ||= []).push({ id: `u-${p.filename}`, kind: "photo", name: p.filename, size: p.size, created_at: d1(new Date()), takenAt: p.takenAt, src: p.src });
+        persist();
+      }
+    }
+
+    draw();
+    load();
+  }
+
+  /** Photos are kept small so a few survive in browser storage between visits. */
+  function downscale(file, max = 1280) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.naturalWidth * k);
+        c.height = Math.round(img.naturalHeight * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL("image/jpeg", 0.72));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
+      img.src = url;
+    });
+  }
+
+  // ---- PhotoViewerView --------------------------------------------------
+  function PhotoViewerView(el, { job, file }) {
+    el.innerHTML = `${navBar({ title: "Photo", back: displayName(job) })}
+      <div class="loading"><span class="spin"></span>Loading photo…</div>
+      <div class="caption">${icon.clock}<span>${esc(localLabel(file.takenAt ?? file.created_at) ?? "")}</span></div>`;
+    wireBack(el);
+    (async () => {
+      let src = file.src;
+      if (!src) {
+        try { await net(600); } catch (err) {
+          $(".loading", el).innerHTML = `<span style="display:flex;gap:6px;align-items:center">${icon.warn.replace("<svg", '<svg width="18" height="18"')}${esc(err.message)}</span>`;
+          return;
+        }
+        src = demoPhoto(file.demo ?? 0);
+      }
+      const img = new Image();
+      img.alt = "Jobsite photo";
+      img.onload = () => {
+        const v = document.createElement("div");
+        v.className = "viewer black";
+        $(".loading", el).replaceWith(v);
+        mountZoom(v, img, img.naturalWidth, img.naturalHeight, 6);
+      };
+      img.src = src;
+    })();
+  }
+
+  /** Generated stand-ins for crew photos: an open trench with pipe in it. */
+  const photoCache = {};
+  function demoPhoto(n) {
+    if (photoCache[n]) return photoCache[n];
+    const c = document.createElement("canvas");
+    c.width = 1200; c.height = 900;
+    const g = c.getContext("2d");
+    const sky = g.createLinearGradient(0, 0, 0, 380);
+    sky.addColorStop(0, n ? "#9bb7cf" : "#7fa6cc"); sky.addColorStop(1, "#dfe7ec");
+    g.fillStyle = sky; g.fillRect(0, 0, 1200, 380);
+    g.fillStyle = "#7a6a55"; g.fillRect(0, 360, 1200, 540);           // native soil
+    g.fillStyle = "#3b3d42"; g.fillRect(0, 330, 1200, 40);            // asphalt edge
+    g.fillStyle = "#5b4a38";                                           // trench
+    g.beginPath(); g.moveTo(n ? 380 : 300, 900); g.lineTo(n ? 520 : 470, 370); g.lineTo(n ? 700 : 740, 370); g.lineTo(n ? 900 : 920, 900); g.fill();
+    g.fillStyle = "#c9b98f";                                           // bedding
+    g.beginPath(); g.moveTo(n ? 410 : 330, 900); g.lineTo(n ? 470 : 400, 700); g.lineTo(n ? 820 : 850, 700); g.lineTo(n ? 870 : 890, 900); g.fill();
+    g.fillStyle = "#2f6fc0"; g.fillRect(n ? 470 : 420, 640, n ? 340 : 410, 70); // blue C900 pipe
+    g.fillStyle = "rgba(255,255,255,.25)"; g.fillRect(n ? 470 : 420, 648, n ? 340 : 410, 10);
+    if (!n) { g.fillStyle = "#e0a100"; g.fillRect(900, 250, 180, 120); g.fillStyle = "#222"; g.fillRect(920, 370, 50, 40); g.fillRect(1020, 370, 50, 40); } // excavator-ish
+    g.fillStyle = "#e85d04"; for (const x of [140, 1020]) { g.beginPath(); g.moveTo(x, 520); g.lineTo(x + 26, 440); g.lineTo(x + 52, 520); g.fill(); }
+    g.fillStyle = "rgba(0,0,0,.55)"; g.fillRect(24, 836, 470, 44);
+    g.fillStyle = "#fff"; g.font = "600 24px -apple-system, system-ui, sans-serif";
+    g.fillText(n ? "STA 12+40 · 8\" C900 bedding" : "STA 10+85 · tie-in at ex. 6\" CI", 38, 866);
+    return (photoCache[n] = c.toDataURL("image/jpeg", 0.85));
+  }
+
+  // ---- PlanViewerView (continuous pages, pinch-zoom) --------------------
+  function PlanViewerView(el, { job }) {
+    const plan = plans[job.plan];
+    el.innerHTML = `${navBar({ title: displayName(job), back: true })}<div class="viewer"></div>`;
+    wireBack(el);
+    const pageW = SHEET.w, pageH = SHEET.h, gap = 16;
+    const holder = document.createElement("div");
+    holder.className = "pages";
+    for (let p = 1; p <= plan.pages; p++) {
+      holder.insertAdjacentHTML("beforeend", `<svg class="page-sheet" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">${sheetArt(plan, p)}</svg>`);
+    }
+    const w = pageW + gap * 2, h = plan.pages * pageH + (plan.pages + 1) * gap;
+    holder.style.width = `${w}px`;
+    mountZoom($(".viewer", el), holder, w, h, 8, { fit: "width" });
+  }
+
+  // ---- TakeoffView ------------------------------------------------------
+  function TakeoffView(el, { job, page: startPage }) {
+    const t = job.markup;
+    const pages = T.pagesWithMarkup(t).length ? T.pagesWithMarkup(t) : [1];
+    const page = startPage ?? pages[0];
+    const plan = plans[job.plan];
+    el.innerHTML = `${navBar({
+      title: "Takeoff", back: true,
+      right: `${pages.length > 1 ? `<button class="nbtn" id="sheet">Sheet ${page}</button>` : ""}<button class="nbtn" id="sum" aria-label="Quantities">${icon.list}</button>`,
+    })}<div class="viewer"></div>`;
+    wireBack(el);
+
+    const rot = ((T.rotation(t, page) % 360) + 360) % 360;
+    const W = SHEET.w, H = SHEET.h;
+    const dw = rot % 180 === 90 ? H : W, dh = rot % 180 === 90 ? W : H;
+    // Page art gets the same transform the overlay points use (t() below),
+    // so markup lands on the linework at every user rotation.
+    const m = { 0: "matrix(1 0 0 1 0 0)", 90: `matrix(0 1 -1 0 ${H} 0)`, 180: `matrix(-1 0 0 -1 ${W} ${H})`, 270: `matrix(0 -1 1 0 0 ${W})` }[rot];
+    const svg = `<svg class="page-sheet" width="${dw}" height="${dh}" viewBox="0 0 ${dw} ${dh}"><g transform="${m}">${sheetArt(plan, page)}</g>${overlay(t, page, W, H, rot)}</svg>`;
+    const holder = document.createElement("div");
+    holder.style.padding = "16px";
+    holder.innerHTML = svg;
+    mountZoom($(".viewer", el), holder, dw + 32, dh + 32, 8);
+
+    $("#sheet", el)?.addEventListener("click", (e) =>
+      openPopover(e.currentTarget, pages.map((p) => ({
+        label: `Sheet ${p}`, check: p === page,
+        action: () => { stack[stack.length - 1].props = { job, page: p }; rerender(); },
+      }))));
+    $("#sum", el).addEventListener("click", () => openSheet((sheet, close) => summarySheet(sheet, close, t, page)));
+  }
+
+  /** The markup overlay — same drawing rules as TakeoffOverlay in Swift. */
+  function overlay(t, page, w, h, rot) {
+    const tr = (x, y) => rot === 90 ? [h - y, x] : rot === 180 ? [w - x, h - y] : rot === 270 ? [y, w - x] : [x, y];
+    const P = (pts) => pts.map((p) => tr(p.x_px ?? p[0], p.y_px ?? p[1]).map((v) => v.toFixed(1)).join(",")).join(" ");
+    const label = (text, [x, y], color) => text ? `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${color}" font-size="9" font-weight="600" text-anchor="middle" dominant-baseline="central" stroke="rgba(255,255,255,.85)" stroke-width="3" paint-order="stroke" stroke-linejoin="round" font-family="-apple-system, system-ui, sans-serif">${esc(text)}</text>` : "";
+    let out = "";
+
+    for (const a of t.areas.filter((a) => a.pdf_page === page)) {
+      const pts = T.polygon(t, a.id);
+      if (pts.length < 3) continue;
+      out += `<polygon points="${P(pts)}" fill="${a.color}" fill-opacity=".22" stroke="${a.color}" stroke-width="1.5"/>`;
+      const cx = pts.reduce((s, p) => s + p.x_px, 0) / pts.length, cy = pts.reduce((s, p) => s + p.y_px, 0) / pts.length;
+      let text = a.label || cap(a.area_type || "area");
+      const sf = T.areaSf(t, a.id, page);
+      if (sf != null) text += ` • ${Math.round(sf).toLocaleString()} SF`;
+      out += label(text, tr(cx, cy), a.color);
+    }
+    for (const r of t.runs.filter((r) => r.pdf_page === page)) {
+      const pts = T.polyline(t, r.id);
+      if (pts.length < 2) continue;
+      out += `<polyline points="${P(pts)}" fill="none" stroke="${r.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+      out += pts.map((p) => { const [x, y] = tr(p.x_px, p.y_px); return `<circle cx="${x}" cy="${y}" r="3" fill="${r.color}"/>`; }).join("");
+      const mid = pts[Math.floor(pts.length / 2)];
+      let text = "";
+      if (r.pipe_size_in != null) text += `${sizeLabel(r.pipe_size_in)}" `;
+      if (r.pipe_material) text += `${r.pipe_material} `;
+      if (r.label) text += r.label;
+      const lf = T.lengthFt(t, r.id, page);
+      if (lf != null) text += ` • ${Math.round(lf)} LF`;
+      out += label(text.trim(), tr(mid.x_px, mid.y_px), r.color);
+    }
+    for (const n of t.nodes.filter((n) => n.pdf_page === page)) {
+      const [x, y] = tr(n.x_px, n.y_px);
+      out += `<circle cx="${x}" cy="${y}" r="4.5" fill="#fff" stroke="#000" stroke-width="1.5"/>`;
+      out += label(n.label || n.structure_type || "", [x, y - 12], "#000");
+    }
+    for (const it of t.items.filter((i) => i.pdf_page === page)) {
+      const [x, y] = tr(it.x_px, it.y_px);
+      out += `<path d="M${x - 4} ${y - 4}L${x + 4} ${y + 4}M${x - 4} ${y + 4}L${x + 4} ${y - 4}" stroke="#EF4444" stroke-width="2"/>`;
+      let text = it.label || "";
+      if ((it.quantity ?? 1) > 1) text += ` ×${it.quantity}`;
+      out += label(text.trim(), [x, y - 11], "#EF4444");
+    }
+    for (const an of t.annotations.filter((a) => a.pdf_page === page)) {
+      const color = an.color || "#EF4444";
+      const [x1, y1] = tr(an.x1_px, an.y1_px);
+      if (an.kind === "arrow" && an.x2_px != null) {
+        const [x2, y2] = tr(an.x2_px, an.y2_px);
+        const ang = Math.atan2(y2 - y1, x2 - x1);
+        const head = [-1, 1].map((s) => `M${x2} ${y2}L${x2 - 10 * Math.cos(ang + s * 0.45)} ${y2 - 10 * Math.sin(ang + s * 0.45)}`).join("");
+        out += `<path d="M${x1} ${y1}L${x2} ${y2}${head}" stroke="${color}" stroke-width="2" fill="none"/>`;
+        out += label(an.text, [x1, y1 - 10], color);
+      } else if (an.kind === "cloud" && an.x2_px != null) {
+        const [x2, y2] = tr(an.x2_px, an.y2_px);
+        const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+        out += `<rect x="${rx}" y="${ry}" width="${Math.abs(x2 - x1)}" height="${Math.abs(y2 - y1)}" rx="8" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="7 4"/>`;
+        out += label(an.text, [rx + Math.abs(x2 - x1) / 2, ry - 9], color);
+      } else {
+        out += label(an.text, [x1, y1], color);
+      }
+    }
+    return `<g>${out}</g>`;
+  }
+
+  function summarySheet(sheet, close, t, page) {
+    const runs = t.runs.filter((r) => r.pdf_page === page);
+    const areas = t.areas.filter((a) => a.pdf_page === page);
+    const items = t.items.filter((i) => i.pdf_page === page);
+    const lf = (r) => { const v = T.lengthFt(t, r.id, page); return v == null ? "—" : `${Math.round(v).toLocaleString()} LF`; };
+    const sf = (a) => { const v = T.areaSf(t, a.id, page); return v == null ? "—" : `${Math.round(v).toLocaleString()} SF`; };
+    sheet.innerHTML = `<div class="grab"></div>
+      ${navBar({ title: `Sheet ${page} Quantities`, right: `<button class="nbtn" id="done" style="font-weight:600">Done</button>` })}
+      <div class="scroll">
+        ${runs.length ? `<div class="sec" style="margin-top:8px"><h3>Pipe Runs</h3><div class="group">${runs.map((r) => `
+          <div class="row"><span class="dot" style="background:${r.color}"></span><div class="main"><div class="t">${esc(runTitle(r))}</div>${r.utility_type ? `<div class="s">${esc(cap(r.utility_type))}</div>` : ""}</div><span class="v">${lf(r)}</span></div>`).join("")}</div></div>` : ""}
+        ${areas.length ? `<div class="sec"><h3>Restoration Areas</h3><div class="group">${areas.map((a) => `
+          <div class="row"><span class="dot" style="background:${a.color}"></span><div class="main"><div class="t">${esc(a.label || cap(a.area_type || "Area"))}</div></div><span class="v">${sf(a)}</span></div>`).join("")}</div></div>` : ""}
+        ${items.length ? `<div class="sec"><h3>Count Items</h3><div class="group">${items.map((i) => `
+          <div class="row"><div class="main"><div class="t">${esc(i.label || "Item")}</div></div><span class="v">×${i.quantity ?? 1}</span></div>`).join("")}</div></div>` : ""}
+        ${T.pxPerFt(t, page) == null ? `<div class="sec"><div class="group"><div class="row ico" style="font-size:13px;color:var(--muted)"><span class="ic">${icon.ruler}</span><span>This sheet isn't scale-calibrated, so lengths and areas can't be computed. Calibrate it in BidSheet on the desktop.</span></div></div></div>` : ""}
+      </div>`;
+    $("#done", sheet).addEventListener("click", close);
+  }
+
+  // --------------------------------------------- plan sheet artwork (SVG)
+  // Stand-in for the PDF: a civil plan sheet with border, title block,
+  // streets, lot lines, stationing and existing utilities, drawn in the same
+  // 1224 × 792 point frame the takeoff coordinates use.
+  function sheetArt(plan, page) {
+    const title = plan.sheets[page - 1] || `SHEET ${page}`;
+    const ink = "#1f2430", light = "#9aa0aa", faint = "#c9ccd2";
+    const txt = (x, y, s, size = 10, extra = "") => `<text x="${x}" y="${y}" font-size="${size}" fill="${ink}" font-family="Arial, Helvetica, sans-serif" ${extra}>${esc(s)}</text>`;
+    let g = `<rect width="${SHEET.w}" height="${SHEET.h}" fill="#fff"/>`;
+    g += `<rect x="18" y="18" width="1188" height="756" fill="none" stroke="${ink}" stroke-width="2"/>`;
+    // title block
+    g += `<rect x="1030" y="18" width="176" height="756" fill="none" stroke="${ink}" stroke-width="1.2"/>`;
+    g += txt(1042, 50, "FAIRVIEW ENGINEERING", 9, 'font-weight="700"');
+    g += txt(1042, 64, "CIVIL · SURVEY", 8, `fill="${light}"`);
+    [120, 250, 600, 690].forEach((y) => (g += `<line x1="1030" y1="${y}" x2="1206" y2="${y}" stroke="${ink}" stroke-width=".8"/>`));
+    g += txt(1042, 140, "PROJECT", 7, `fill="${light}"`);
+    g += txt(1042, 158, plan.street + " UTILITY", 10, 'font-weight="700"');
+    g += txt(1042, 172, "IMPROVEMENTS", 10, 'font-weight="700"');
+    g += txt(1042, 270, "REVISIONS", 7, `fill="${light}"`);
+    ["1  ISSUED FOR BID", "2  ADDENDUM 2"].forEach((r, i) => (g += txt(1042, 290 + i * 16, r, 8)));
+    g += txt(1042, 620, "SHEET TITLE", 7, `fill="${light}"`);
+    g += `<foreignObject x="1040" y="628" width="160" height="60"><div xmlns="http://www.w3.org/1999/xhtml" style="font:700 11px Arial,Helvetica,sans-serif;color:${ink};line-height:1.25">${esc(title.replace(/^\S+\s/, ""))}</div></foreignObject>`;
+    g += txt(1118, 752, title.split(" ")[0], 34, 'font-weight="700" text-anchor="middle"');
+
+    if (title.includes("DETAIL")) {
+      // details sheet: a few boxed standard details
+      const boxes = [[60, 60, "THRUST BLOCK", 250, 300], [340, 60, "VALVE BOX", 520, 300], [620, 60, "HYDRANT SETTING", 800, 300], [60, 420, "TRENCH SECTION", 390, 560], [620, 420, "SERVICE CONN.", 800, 560]];
+      for (const [x, y, name, cx, cy] of boxes) {
+        g += `<rect x="${x}" y="${y}" width="${name === "TRENCH SECTION" ? 520 : 260}" height="300" fill="none" stroke="${ink}" stroke-width="1"/>`;
+        g += `<circle cx="${cx}" cy="${cy}" r="46" fill="none" stroke="${light}" stroke-width="1.2"/><rect x="${cx - 70}" y="${cy + 60}" width="140" height="18" fill="none" stroke="${faint}"/>`;
+        g += txt(x + 12, y + 290, name, 11, 'font-weight="700"') + txt(x + 12, y + 20, "N.T.S.", 8, `fill="${light}"`);
+      }
+      return g;
+    }
+
+    const storm = title.includes("STORM");
+    // lot lines
+    for (let x = 40; x < 1010; x += storm ? 150 : 110) {
+      g += `<line x1="${x}" y1="40" x2="${x}" y2="300" stroke="${faint}" stroke-width=".8"/><line x1="${x}" y1="440" x2="${x}" y2="760" stroke="${faint}" stroke-width=".8"/>`;
+    }
+    g += `<rect x="70" y="80" width="80" height="60" fill="none" stroke="${faint}"/><rect x="720" y="600" width="110" height="80" fill="none" stroke="${faint}"/>`;
+    // main street
+    g += `<rect x="18" y="300" width="1012" height="140" fill="#f6f7f9"/>`;
+    g += `<line x1="18" y1="300" x2="1030" y2="300" stroke="${ink}" stroke-width="1.4"/><line x1="18" y1="440" x2="1030" y2="440" stroke="${ink}" stroke-width="1.4"/>`;
+    g += `<line x1="18" y1="330" x2="1030" y2="330" stroke="${ink}" stroke-width=".8"/><line x1="18" y1="410" x2="1030" y2="410" stroke="${ink}" stroke-width=".8"/>`;
+    g += `<line x1="18" y1="370" x2="1030" y2="370" stroke="${light}" stroke-width=".8" stroke-dasharray="18 6 3 6"/>`;
+    g += txt(200, 432, plan.street, 13, `font-weight="700" letter-spacing="3" fill="${light}"`);
+    // cross street
+    if (!storm) {
+      g += `<rect x="560" y="18" width="80" height="282" fill="#f6f7f9"/><rect x="560" y="440" width="80" height="334" fill="#f6f7f9"/>`;
+      g += `<path d="M560 18V300M640 18V300M560 440V774M640 440V774" stroke="${ink}" stroke-width="1.4"/>`;
+      g += txt(625, 200, plan.cross, 13, `font-weight="700" letter-spacing="3" fill="${light}" transform="rotate(-90 625 200)"`);
+    }
+    // stationing
+    for (let i = 0; i <= 5; i++) {
+      const x = 60 + i * 180;
+      g += `<line x1="${x}" y1="365" x2="${x}" y2="375" stroke="${ink}"/>` + txt(x, 386, `${10 + i}+00`, 8, 'text-anchor="middle"');
+    }
+    // existing utilities
+    g += `<line x1="18" y1="395" x2="1030" y2="395" stroke="${light}" stroke-width="1.2" stroke-dasharray="10 5"/>` + txt(40, 405, storm ? "EX 8\" SAN" : "EX 6\" CI WM (ABANDON)", 7, `fill="${light}"`);
+    g += `<line x1="18" y1="318" x2="1030" y2="318" stroke="${light}" stroke-width="1" stroke-dasharray="3 4"/>` + txt(40, 314, "EX GAS", 7, `fill="${light}"`);
+    // north arrow + scale bar
+    g += `<g transform="translate(975 80)"><circle r="22" fill="none" stroke="${ink}"/><path d="M0 -18L7 10L0 4L-7 10Z" fill="${ink}"/>${txt(0, -26, "N", 10, 'text-anchor="middle" font-weight="700"')}</g>`;
+    const bar = storm ? 72 : 72; // 1 in on paper
+    g += `<g transform="translate(60 735)"><rect width="${bar}" height="6" fill="${ink}"/><rect x="${bar}" width="${bar}" height="6" fill="none" stroke="${ink}"/>${txt(0, -4, "0", 8)}${txt(bar - 6, -4, storm ? "20" : "40", 8)}${txt(bar * 2 - 6, -4, storm ? "40" : "80", 8)}${txt(bar * 2 + 12, 7, storm ? "SCALE: 1\" = 20'" : "SCALE: 1\" = 40'", 8)}</g>`;
+    return g;
+  }
+
+  // ------------------------------------------------ pinch / pan / zoom
+  // One small zoom surface for plans, takeoff and photos: two-finger pinch,
+  // one-finger pan, double-tap to zoom in/out, ctrl/trackpad wheel on desktop.
+  function mountZoom(view, content, cw, ch, maxZoom, { fit = "contain" } = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "content";
+    wrap.style.width = `${cw}px`;
+    wrap.style.height = `${ch}px`;
+    wrap.appendChild(content);
+    view.appendChild(wrap);
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = "Pinch to zoom · double-tap to zoom in";
+    view.appendChild(hint);
+    const hideHint = () => { hint.style.opacity = "0"; };
+    const hintTimer = setTimeout(hideHint, 2600);
+    cleanup.push(() => clearTimeout(hintTimer));
+
+    let s = 1, x = 0, y = 0, min = 0.1;
+    const vw = () => view.clientWidth, vh = () => view.clientHeight;
+    function fitNow() {
+      const k = fit === "width" ? vw() / cw : Math.min(vw() / cw, vh() / ch);
+      min = k;
+      s = k;
+      x = (vw() - cw * s) / 2;
+      y = fit === "width" ? 0 : (vh() - ch * s) / 2;
+      apply();
+    }
+    function clamp() {
+      s = Math.max(min, Math.min(maxZoom, s));
+      const w = cw * s, h = ch * s;
+      x = w <= vw() ? (vw() - w) / 2 : Math.min(0, Math.max(vw() - w, x));
+      y = h <= vh() ? (vh() - h) / 2 : Math.min(0, Math.max(vh() - h, y));
+    }
+    function apply() { clamp(); wrap.style.transform = `translate(${x}px, ${y}px) scale(${s})`; }
+    function zoomAt(px, py, ns) {
+      ns = Math.max(min, Math.min(maxZoom, ns));
+      x = px - ((px - x) * ns) / s;
+      y = py - ((py - y) * ns) / s;
+      s = ns;
+      apply();
+    }
+
+    const pts = new Map();
+    let last = null, lastTap = 0;
+    const local = (e) => { const r = view.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const gesture = () => {
+      const a = [...pts.values()];
+      if (a.length === 1) return { cx: a[0][0], cy: a[0][1], d: 0 };
+      return { cx: (a[0][0] + a[1][0]) / 2, cy: (a[0][1] + a[1][1]) / 2, d: Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) };
+    };
+    view.addEventListener("pointerdown", (e) => {
+      view.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId, local(e));
+      last = gesture();
+      hideHint();
+      if (pts.size === 1) {
+        const now = Date.now();
+        if (now - lastTap < 300) {
+          const [px, py] = local(e);
+          zoomAt(px, py, s > min * 1.5 ? min : Math.min(maxZoom, s * 2.5));
+          if (s === min) fitNow();
+          lastTap = 0;
+        } else lastTap = now;
+      }
+    });
+    view.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, local(e));
+      const g = gesture();
+      if (last && pts.size >= 2 && last.d > 0) {
+        const ns = s * (g.d / last.d);
+        x += g.cx - last.cx;
+        y += g.cy - last.cy;
+        zoomAt(g.cx, g.cy, ns);
+      } else if (last) {
+        x += g.cx - last.cx;
+        y += g.cy - last.cy;
+        apply();
+      }
+      last = g;
+    });
+    const end = (e) => { pts.delete(e.pointerId); last = pts.size ? gesture() : null; };
+    view.addEventListener("pointerup", end);
+    view.addEventListener("pointercancel", end);
+    view.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const [px, py] = local(e);
+      if (e.ctrlKey || e.metaKey) zoomAt(px, py, s * Math.exp(-e.deltaY * 0.01));
+      else { x -= e.deltaX; y -= e.deltaY; apply(); }
+    }, { passive: false });
+    // iOS Safari fires its own gesture events on top of pointer events.
+    const stopGesture = (e) => e.preventDefault();
+    view.addEventListener("gesturestart", stopGesture);
+
+    const ro = new ResizeObserver(() => fitNow());
+    ro.observe(view);
+    cleanup.push(() => ro.disconnect());
+    fitNow();
+  }
+
+  // ------------------------------------------------------------- boot
+  restore();
+  setRoot();
+})();
+</script>

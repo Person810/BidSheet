@@ -35,6 +35,27 @@ The whole backend (auth, manifest endpoint, encrypted file metadata, E2EE key
 distribution) was built with this client in mind, so building now is mostly
 UI + the crypto port — and the crypto port is pinned by golden tests.
 
+## Trying it in a phone browser (no Mac needed)
+
+`web-preview/index.html` is a click-through of the app that runs in any
+browser: the same screens in the same order (sign in → authenticator code →
+recovery key → jobs → job → plans / takeoff markup / photos), with pinch-zoom
+on the plan sheets and a real camera button. It runs on **sample jobs only**:
+it never talks to BidSheet Cloud and does no real encryption, so it is for
+trying the flows and layout, not for checking your synced data.
+
+```sh
+npm run field:preview
+```
+
+It prints an `On your phone:` address. Open that in Safari/Chrome on a phone
+on the same Wi-Fi. (Or just open `web-preview/index.html` straight from disk
+on a computer.) The sign-in screens list what to type; the ••• menu on the
+jobs list can cut the signal to try offline photo queuing.
+
+It is one self-contained file with no build step. When a SwiftUI screen
+changes, update the preview to match.
+
 ## Building (requires a Mac with Xcode 15+)
 
 ```sh
